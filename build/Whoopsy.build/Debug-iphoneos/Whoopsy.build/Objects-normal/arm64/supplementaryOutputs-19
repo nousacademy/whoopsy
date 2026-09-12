@@ -1,0 +1,51 @@
+{
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/UserProfileRecord.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/CSV/CSVRecoveryRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/CSV/CSVSleepRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/CSV/CSVStrainRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBBiometricRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBSleepRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBStrainRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.swiftdeps"
+  }
+}

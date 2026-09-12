@@ -1,0 +1,51 @@
+{
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBUserProfileRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/LocalPresentationRepositories.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/SwiftDataRecoveryRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Services/LocationTrackingService.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/BiometricSample.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/HRVMetric.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/HealthImportSummary.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.swiftdeps"
+  }
+}

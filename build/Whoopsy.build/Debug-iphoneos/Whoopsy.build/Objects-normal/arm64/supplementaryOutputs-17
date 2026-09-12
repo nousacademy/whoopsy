@@ -1,0 +1,51 @@
+{
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/WhoopPacketEncoder.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Repositories/WhoopBLEDeviceRepositoryImpl.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Exporters/LocalDataExporter.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthKitBridge.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthKitImporter.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthKitStoreClient.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthStoreClient.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.dia",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.swiftdeps"
+  }
+}

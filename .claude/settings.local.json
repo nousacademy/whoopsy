@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(swift build *)",
+      "Bash(swiftc -I /tmp/whoopsy-verify/arm64-apple-macosx/debug/Modules -Xcc -fmodule-map-file=.build/checkouts/GRDB.swift/Sources/CSQLite/module.modulemap /tmp/whoopsy-verify/arm64-apple-macosx/debug/Whoopsy.build/*.o /tmp/whoopsy-verify/arm64-apple-macosx/debug/GRDB.build/*.o Tests/WhoopsyTestRunner/main.swift -o /tmp/whoopsy-verify/WhoopsyTestRunner)",
+      "Bash(/tmp/whoopsy-verify/WhoopsyTestRunner)",
+      "Bash(cp Sources/Whoopsy/Presentation/Screens/Home/HomeDashboardView.swift /tmp/HomeDashboardView.swift.v2)",
+      "Bash(shasum -a 256 /tmp/HomeDashboardView.swift.v2)",
+      "Bash(python3 -)",
+      "Bash(export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer)",
+      "Bash(xcodebuild -project Whoopsy.xcodeproj -scheme WhoopsyApp -destination id=__TRACKED_VAR__ -derivedDataPath /tmp/whoopsy-probe build CODE_SIGNING_ALLOWED=NO)",
+      "Bash(grep -n \"getXHistory\\(days:\\)\\\\` windows back\\\\|HealthKit availability is a runtime question\" CLAUDE.md)",
+      "WebSearch"
+    ]
+  }
+}

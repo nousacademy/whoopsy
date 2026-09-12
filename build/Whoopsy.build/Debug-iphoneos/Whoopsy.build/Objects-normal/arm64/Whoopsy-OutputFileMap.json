@@ -1,0 +1,949 @@
+{
+  "" : {
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Whoopsy-primary.dia",
+    "emit-module-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Whoopsy-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Whoopsy-primary-emit-module.dia",
+    "pch" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Whoopsy-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Whoopsy-primary.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/App/AppEnvironment.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppEnvironment.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppEnvironment.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppEnvironment.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppEnvironment.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppEnvironment.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppEnvironment.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppEnvironment.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppEnvironment~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/App/DependencyInjection/DIContainer.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DIContainer.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DIContainer.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DIContainer.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DIContainer.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DIContainer.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DIContainer.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DIContainer.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DIContainer~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/App/WhoopsyApp.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyApp.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyApp.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyApp.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyApp.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyApp.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyApp.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyApp.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyApp~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Extensions/Date+Extensions.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Date+Extensions.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Date+Extensions.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Date+Extensions.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Date+Extensions.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Date+Extensions.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Date+Extensions.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Date+Extensions.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Date+Extensions~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Extensions/Double+Extensions.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Double+Extensions.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Double+Extensions.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Double+Extensions.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Double+Extensions.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Double+Extensions.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Double+Extensions.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Double+Extensions.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Double+Extensions~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Logging/AppLogger.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppLogger.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppLogger.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppLogger.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppLogger.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppLogger.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppLogger.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppLogger.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AppLogger~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/BaselineStatisticsMath.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BaselineStatisticsMath.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BaselineStatisticsMath.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BaselineStatisticsMath.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BaselineStatisticsMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BaselineStatisticsMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BaselineStatisticsMath.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BaselineStatisticsMath.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BaselineStatisticsMath~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/HeartRateVariabilityMath.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateVariabilityMath.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateVariabilityMath.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateVariabilityMath.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateVariabilityMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateVariabilityMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateVariabilityMath.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateVariabilityMath.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateVariabilityMath~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/StrainAccumulatorMath.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainAccumulatorMath.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainAccumulatorMath.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainAccumulatorMath.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainAccumulatorMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainAccumulatorMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainAccumulatorMath.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainAccumulatorMath.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainAccumulatorMath~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Constants/WhoopGATTConstants.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopGATTConstants.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopGATTConstants.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopGATTConstants.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopGATTConstants.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopGATTConstants.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopGATTConstants.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopGATTConstants.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopGATTConstants~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEManager.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEManager.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEManager.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEManager.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEManager.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEManager.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEManager.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEManager~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Manager/WhoopMockBLEManager.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopMockBLEManager.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopMockBLEManager.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopMockBLEManager.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopMockBLEManager.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopMockBLEManager.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopMockBLEManager.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopMockBLEManager.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopMockBLEManager~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/CRCUtils.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CRCUtils.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CRCUtils.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CRCUtils.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CRCUtils.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CRCUtils.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CRCUtils.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CRCUtils.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CRCUtils~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/WhoopPacketDecoder.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketDecoder.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketDecoder.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketDecoder.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketDecoder.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketDecoder.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketDecoder.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketDecoder.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketDecoder~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/WhoopPacketEncoder.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopPacketEncoder~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Repositories/WhoopBLEDeviceRepositoryImpl.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Exporters/LocalDataExporter.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDataExporter~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthKitBridge.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitBridge~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthKitImporter.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitImporter~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthKitStoreClient.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthKitStoreClient~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthStoreClient.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClient~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthStoreClientFactory.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClientFactory.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClientFactory.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClientFactory.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClientFactory.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClientFactory.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClientFactory.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClientFactory.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthStoreClientFactory~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Database/CSVImporter.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVImporter.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVImporter.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVImporter.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVImporter.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVImporter.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVImporter.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVImporter.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVImporter~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Database/LocalDatabaseManager.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDatabaseManager.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDatabaseManager.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDatabaseManager.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDatabaseManager.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDatabaseManager.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDatabaseManager.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDatabaseManager.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalDatabaseManager~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/BiometricSampleRecord.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSampleRecord.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSampleRecord.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSampleRecord.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSampleRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSampleRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSampleRecord.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSampleRecord.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSampleRecord~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/RecoveryRecord.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRecord.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRecord.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRecord.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRecord.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRecord.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRecord~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/SleepRecord.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRecord.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRecord.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRecord.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRecord.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRecord.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRecord~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/StrainRecord.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRecord.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRecord.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRecord.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRecord.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRecord.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRecord~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/UserProfileRecord.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRecord~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/CSV/CSVRecoveryRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVRecoveryRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/CSV/CSVSleepRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVSleepRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/CSV/CSVStrainRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CSVStrainRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBBiometricRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBBiometricRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBSleepRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBSleepRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBStrainRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBStrainRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBUserProfileRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GRDBUserProfileRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/LocalPresentationRepositories.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocalPresentationRepositories~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/SwiftDataRecoveryRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SwiftDataRecoveryRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Services/LocationTrackingService.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LocationTrackingService~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/BiometricSample.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricSample~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/HRVMetric.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HRVMetric~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/HealthImportSummary.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HealthImportSummary~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/HeartRateReading.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateReading.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateReading.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateReading.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateReading.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateReading.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateReading.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateReading.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateReading~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/HeartRateZone.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZone.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZone.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZone.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZone.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZone.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZone.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZone.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZone~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/PresentationSupport.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationSupport.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationSupport.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationSupport.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationSupport.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationSupport.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationSupport.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationSupport.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationSupport~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/RRInterval.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RRInterval.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RRInterval.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RRInterval.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RRInterval.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RRInterval.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RRInterval.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RRInterval.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RRInterval~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/RecoveryMetric.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryMetric.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryMetric.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryMetric.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryMetric.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryMetric.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryMetric.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryMetric.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryMetric~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/SleepSession.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepSession.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepSession.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepSession.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepSession.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepSession.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepSession.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepSession.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepSession~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/StrainScore.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainScore.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainScore.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainScore.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainScore.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainScore.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainScore.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainScore.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainScore~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/UserProfile.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfile.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfile.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfile.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfile.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfile.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfile.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfile.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfile~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/WhoopDevice.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopDevice.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopDevice.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopDevice.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopDevice.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopDevice.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopDevice.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopDevice.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopDevice~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/BiometricRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/BiometricRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/PresentationRepositories.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationRepositories.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationRepositories.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationRepositories.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationRepositories.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationRepositories.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationRepositories.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationRepositories.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationRepositories~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/RecoveryRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/SleepRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/StrainRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/UserProfileRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/UserProfileRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/WhoopBLEDeviceRepository.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepository.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepository.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepository.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepository.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepository.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopBLEDeviceRepository~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/AnalyzeSleepUseCase.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AnalyzeSleepUseCase.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AnalyzeSleepUseCase.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AnalyzeSleepUseCase.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AnalyzeSleepUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AnalyzeSleepUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AnalyzeSleepUseCase.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AnalyzeSleepUseCase.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/AnalyzeSleepUseCase~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/CalculateRecoveryUseCase.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateRecoveryUseCase.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateRecoveryUseCase.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateRecoveryUseCase.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateRecoveryUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateRecoveryUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateRecoveryUseCase.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateRecoveryUseCase.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateRecoveryUseCase~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/CalculateStrainUseCase.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateStrainUseCase.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateStrainUseCase.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateStrainUseCase.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateStrainUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateStrainUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateStrainUseCase.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateStrainUseCase.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CalculateStrainUseCase~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/ExportLocalDataUseCase.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ExportLocalDataUseCase.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ExportLocalDataUseCase.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ExportLocalDataUseCase.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ExportLocalDataUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ExportLocalDataUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ExportLocalDataUseCase.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ExportLocalDataUseCase.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ExportLocalDataUseCase~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/ManageBLEConnectionUseCase.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ManageBLEConnectionUseCase.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ManageBLEConnectionUseCase.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ManageBLEConnectionUseCase.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ManageBLEConnectionUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ManageBLEConnectionUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ManageBLEConnectionUseCase.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ManageBLEConnectionUseCase.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ManageBLEConnectionUseCase~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/PresentationUseCases.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationUseCases.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationUseCases.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationUseCases.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationUseCases.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationUseCases.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationUseCases.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationUseCases.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/PresentationUseCases~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/RecoveryScoring.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryScoring.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryScoring.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryScoring.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryScoring.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryScoring.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryScoring.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryScoring.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryScoring~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/StreamBiometricsUseCase.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StreamBiometricsUseCase.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StreamBiometricsUseCase.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StreamBiometricsUseCase.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StreamBiometricsUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StreamBiometricsUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StreamBiometricsUseCase.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StreamBiometricsUseCase.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StreamBiometricsUseCase~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/SyncHistoricalDataUseCase.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SyncHistoricalDataUseCase.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SyncHistoricalDataUseCase.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SyncHistoricalDataUseCase.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SyncHistoricalDataUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SyncHistoricalDataUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SyncHistoricalDataUseCase.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SyncHistoricalDataUseCase.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SyncHistoricalDataUseCase~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/GaugeRingView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GaugeRingView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GaugeRingView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GaugeRingView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GaugeRingView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GaugeRingView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GaugeRingView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GaugeRingView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GaugeRingView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/GlassCardModifier.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GlassCardModifier.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GlassCardModifier.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GlassCardModifier.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GlassCardModifier.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GlassCardModifier.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GlassCardModifier.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GlassCardModifier.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/GlassCardModifier~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/HeartRateZoneBar.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZoneBar.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZoneBar.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZoneBar.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZoneBar.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZoneBar.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZoneBar.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZoneBar.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HeartRateZoneBar~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/LiveHRWaveformView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LiveHRWaveformView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LiveHRWaveformView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LiveHRWaveformView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LiveHRWaveformView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LiveHRWaveformView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LiveHRWaveformView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LiveHRWaveformView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/LiveHRWaveformView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/MetricCardView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MetricCardView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MetricCardView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MetricCardView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MetricCardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MetricCardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MetricCardView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MetricCardView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MetricCardView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Theme.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Theme.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Theme.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Theme.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Theme.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Theme.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Theme.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Theme.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/Theme~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/WhoopComponents.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopComponents.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopComponents.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopComponents.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopComponents.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopComponents.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopComponents.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopComponents.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopComponents~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Coach/CoachDashboardView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachDashboardView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachDashboardView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachDashboardView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachDashboardView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachDashboardView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachDashboardView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Coach/CoachViewModel.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachViewModel.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachViewModel.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachViewModel.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachViewModel.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachViewModel.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/CoachViewModel~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Device/DeviceSettingsView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceSettingsView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceSettingsView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceSettingsView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceSettingsView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceSettingsView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceSettingsView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceSettingsView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceSettingsView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Device/DeviceViewModel.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceViewModel.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceViewModel.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceViewModel.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceViewModel.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceViewModel.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/DeviceViewModel~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Home/HomeDashboardView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeDashboardView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeDashboardView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeDashboardView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeDashboardView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeDashboardView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeDashboardView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Home/HomeViewModel.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeViewModel.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeViewModel.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeViewModel.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeViewModel.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeViewModel.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HomeViewModel~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/MainContainerView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MainContainerView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MainContainerView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MainContainerView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MainContainerView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MainContainerView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MainContainerView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MainContainerView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/MainContainerView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Recovery/RecoveryDashboardView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryDashboardView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryDashboardView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryDashboardView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryDashboardView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryDashboardView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryDashboardView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Recovery/RecoveryViewModel.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryViewModel.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryViewModel.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryViewModel.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryViewModel.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryViewModel.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/RecoveryViewModel~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Settings/SettingsDashboardView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsDashboardView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsDashboardView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsDashboardView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsDashboardView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsDashboardView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsDashboardView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Settings/SettingsViewModel.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsViewModel.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsViewModel.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsViewModel.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsViewModel.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsViewModel.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SettingsViewModel~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/HypnogramChartView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HypnogramChartView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HypnogramChartView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HypnogramChartView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HypnogramChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HypnogramChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HypnogramChartView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HypnogramChartView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/HypnogramChartView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepDashboardView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepDashboardView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepDashboardView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepDashboardView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepDashboardView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepDashboardView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepDashboardView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepViewModel.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepViewModel.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepViewModel.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepViewModel.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepViewModel.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepViewModel.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/SleepViewModel~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Strain/StrainDashboardView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainDashboardView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainDashboardView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainDashboardView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainDashboardView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainDashboardView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainDashboardView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Strain/StrainViewModel.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainViewModel.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainViewModel.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainViewModel.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainViewModel.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainViewModel.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/StrainViewModel~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/WhoopsyPreviews.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyPreviews.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyPreviews.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyPreviews.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyPreviews.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyPreviews.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyPreviews.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyPreviews.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WhoopsyPreviews~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Workout/ActiveWorkoutHUDView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutHUDView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutHUDView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutHUDView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutHUDView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutHUDView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutHUDView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutHUDView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutHUDView~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Workout/ActiveWorkoutViewModel.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutViewModel.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutViewModel.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutViewModel.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutViewModel.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutViewModel.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/ActiveWorkoutViewModel~partial.swiftmodule"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Workout/WorkoutSummaryView.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WorkoutSummaryView.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WorkoutSummaryView.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WorkoutSummaryView.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WorkoutSummaryView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WorkoutSummaryView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WorkoutSummaryView.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WorkoutSummaryView.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/Whoopsy.build/Objects-normal/arm64/WorkoutSummaryView~partial.swiftmodule"
+  }
+}

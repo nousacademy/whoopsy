@@ -1,0 +1,112 @@
+import Foundation
+
+/// Dependency Injection Container managing lifecycle and resolving dependencies across Clean Architecture layers.
+public final class DIContainer: @unchecked Sendable {
+    public static let shared = DIContainer(useMockBLE: false)
+    public static let preview = DIContainer(useMockBLE: true)
+
+    // Repositories
+    public let bleRepository: any WhoopBLEDeviceRepository
+    public let biometricRepository: any BiometricRepository
+    public let recoveryRepository: any RecoveryRepository
+    public let strainRepository: any StrainRepository
+    public let sleepRepository: any SleepRepository
+    public let userProfileRepository: any UserProfileRepository
+    public let workoutRepository: any WorkoutRepository
+
+    // Use Cases
+    public let streamBiometricsUseCase: StreamBiometricsUseCase
+    public let calculateRecoveryUseCase: CalculateRecoveryUseCase
+    public let calculateStrainUseCase: CalculateStrainUseCase
+    public let analyzeSleepUseCase: AnalyzeSleepUseCase
+    public let analyzeStressUseCase: AnalyzeStressUseCase
+    public let manageBLEConnectionUseCase: ManageBLEConnectionUseCase
+    public let syncHistoricalDataUseCase: SyncHistoricalDataUseCase
+    public let exportLocalDataUseCase: ExportLocalDataUseCase
+    public let saveWorkoutUseCase: SaveWorkoutUseCase
+    public let generateCoachInsightsUseCase: GenerateCoachInsightsUseCase
+    public let preferencesRepository: any AppPreferencesRepository
+    public let healthKitSync: any HealthKitSyncing
+    public let whoopExportImport: any WhoopExportImporting
+    @MainActor public var locationTracking: any LocationTracking { useMockBLE ? PreviewLocationTrackingService() : CoreLocationTrackingService() }
+    private let useMockBLE: Bool
+
+    public init(useMockBLE: Bool = true) {
+        self.useMockBLE = useMockBLE
+        let db = LocalDatabaseManager.shared
+        self.bleRepository = WhoopBLEDeviceRepositoryImpl(useMock: useMockBLE)
+        self.biometricRepository = GRDBBiometricRepository(db: db)
+        self.recoveryRepository = GRDBRecoveryRepository(db: db)
+        self.strainRepository = GRDBStrainRepository(db: db)
+        self.sleepRepository = GRDBSleepRepository(db: db)
+        self.userProfileRepository = GRDBUserProfileRepository(db: db)
+        self.workoutRepository = GRDBWorkoutRepository(db: db)
+
+        self.streamBiometricsUseCase = StreamBiometricsUseCase(
+            bleRepository: bleRepository,
+            biometricRepository: biometricRepository
+        )
+
+        self.calculateRecoveryUseCase = CalculateRecoveryUseCase(
+            biometricRepository: biometricRepository,
+            recoveryRepository: recoveryRepository,
+            sleepRepository: sleepRepository,
+            userProfileRepository: userProfileRepository
+        )
+
+        self.calculateStrainUseCase = CalculateStrainUseCase(
+            biometricRepository: biometricRepository,
+            strainRepository: strainRepository,
+            userProfileRepository: userProfileRepository
+        )
+
+        self.analyzeSleepUseCase = AnalyzeSleepUseCase(
+            biometricRepository: biometricRepository,
+            sleepRepository: sleepRepository,
+            // The night's Sleep Need is a function of the previous day's Strain — see `SleepNeedMath`.
+            strainRepository: strainRepository,
+            userProfileRepository: userProfileRepository
+        )
+
+        // Derived on read, like the other no-schema metrics: nothing here writes, so pointing it at
+        // any day is safe — which is what distinguishes it from the calculate use cases.
+        self.analyzeStressUseCase = AnalyzeStressUseCase(
+            biometricRepository: biometricRepository
+        )
+
+        self.manageBLEConnectionUseCase = ManageBLEConnectionUseCase(
+            bleRepository: bleRepository
+        )
+
+        self.syncHistoricalDataUseCase = SyncHistoricalDataUseCase(
+            bleRepository: bleRepository,
+            biometricRepository: biometricRepository
+        )
+
+        self.exportLocalDataUseCase = ExportLocalDataUseCase(
+            biometricRepository: biometricRepository,
+            recoveryRepository: recoveryRepository,
+            strainRepository: strainRepository,
+            sleepRepository: sleepRepository
+        )
+        // Was `LocalWorkoutRepository()`, an in-memory array — a recorded workout did not survive the
+        // launch that recorded it. Same store as everything else now, so the ACTIVITIES card can list
+        // a day's sessions back.
+        self.saveWorkoutUseCase = SaveWorkoutUseCase(repository: workoutRepository)
+        self.generateCoachInsightsUseCase = GenerateCoachInsightsUseCase()
+        self.preferencesRepository = UserDefaultsAppPreferencesRepository()
+        // The same repositories the strap path writes through, so an import and a strap run land in
+        // one table under one day key rather than two stores that can disagree.
+        self.healthKitSync = HealthKitBridge(
+            store: useMockBLE
+                ? HealthStoreClientFactory.makePreview() : HealthStoreClientFactory.make(),
+            recoveryRepository: recoveryRepository,
+            sleepRepository: sleepRepository,
+            userProfileRepository: userProfileRepository)
+        self.whoopExportImport = WhoopExportImporter(
+            recoveryRepository: recoveryRepository,
+            sleepRepository: sleepRepository,
+            strainRepository: strainRepository,
+            userProfileRepository: userProfileRepository)
+    }
+}

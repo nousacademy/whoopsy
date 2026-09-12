@@ -1,0 +1,17 @@
+.DS_Store
+/.build
+/Packages
+xcuserdata/
+DerivedData/
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+Design/
+
+# Health data — never commit. These are a real person's physiological record:
+# recovery, HRV, skin temperature, blood oxygen, sleep staging, and 550 free-text
+# journal notes. Paired with timestamps and a timezone they are de-anonymising.
+# `physiological_cycles.csv` is also the app's bundled import resource, so a fresh
+# clone will not build until you supply one — your own export, or a header-only
+# placeholder. Recipe in README.md §Building.
+Sources/Whoopsy/Data/Resources/*.csv

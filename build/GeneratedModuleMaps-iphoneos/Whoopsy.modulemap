@@ -1,0 +1,4 @@
+module Whoopsy {
+header "Whoopsy-Swift.h"
+export *
+}

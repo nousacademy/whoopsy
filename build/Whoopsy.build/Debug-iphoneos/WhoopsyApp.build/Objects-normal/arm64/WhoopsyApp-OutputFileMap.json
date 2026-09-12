@@ -1,0 +1,19 @@
+{
+  "" : {
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp-primary.dia",
+    "emit-module-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp-primary-emit-module.dia",
+    "pch" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp-primary.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/App/iOS/WhoopsyApp.swift" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp.dia",
+    "index-unit-output-path" : "/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp.o",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp.swiftdeps",
+    "swiftmodule" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Debug-iphoneos/WhoopsyApp.build/Objects-normal/arm64/WhoopsyApp~partial.swiftmodule"
+  }
+}

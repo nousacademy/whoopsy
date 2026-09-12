@@ -1,0 +1,39 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 77;
+	objects = {
+
+		A10000000000000000000001 /* WhoopsyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* WhoopsyApp.swift */; };
+		A10000000000000000000002 /* WhoopsyCore in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000021 /* WhoopsyCore */; };
+
+		A10000000000000000000011 /* WhoopsyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhoopsyApp.swift; sourceTree = "<group>"; };
+		A10000000000000000000012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A10000000000000000000013 /* Whoopsy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Whoopsy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+
+		A10000000000000000000031 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000002 /* WhoopsyCore in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000032 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001 /* WhoopsyApp.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A10000000000000000000033 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+
+		A10000000000000000000041 = {isa = PBXGroup; children = (A10000000000000000000042 /* App */, A10000000000000000000043 /* Products */,); sourceTree = "<group>"; };
+		A10000000000000000000042 /* App */ = {isa = PBXGroup; children = (A10000000000000000000011 /* WhoopsyApp.swift */, A10000000000000000000012 /* Info.plist */,); path = App/iOS; sourceTree = "<group>"; };
+		A10000000000000000000043 /* Products */ = {isa = PBXGroup; children = (A10000000000000000000013 /* Whoopsy.app */,); name = Products; sourceTree = "<group>"; };
+
+		A10000000000000000000051 /* WhoopsyApp */ = {isa = PBXNativeTarget; buildConfigurationList = A10000000000000000000061 /* Build configuration list for PBXNativeTarget "WhoopsyApp" */; buildPhases = (A10000000000000000000032 /* Sources */, A10000000000000000000031 /* Frameworks */, A10000000000000000000033 /* Resources */,); buildRules = (); dependencies = (); name = WhoopsyApp; packageProductDependencies = (A10000000000000000000021 /* WhoopsyCore */,); productName = WhoopsyApp; productReference = A10000000000000000000013 /* Whoopsy.app */; productType = "com.apple.product-type.application"; };
+
+		A10000000000000000000071 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2660; LastUpgradeCheck = 2660; TargetAttributes = {A10000000000000000000051 = {CreatedOnToolsVersion = 26.6; }; }; }; buildConfigurationList = A10000000000000000000072 /* Build configuration list for PBXProject "Whoopsy" */; compatibilityVersion = "Xcode 16.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base,); mainGroup = A10000000000000000000041; packageReferences = (A10000000000000000000081 /* XCLocalSwiftPackageReference "Whoopsy" */,); productRefGroup = A10000000000000000000043 /* Products */; projectDirPath = ""; projectRoot = ""; targets = (A10000000000000000000051 /* WhoopsyApp */,); };
+
+		A10000000000000000000061 /* Build configuration list for PBXNativeTarget "WhoopsyApp" */ = {isa = XCConfigurationList; buildConfigurations = (A10000000000000000000062 /* Debug */, A10000000000000000000063 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A10000000000000000000062 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; ENABLE_DEBUG_DYLIB = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = App/iOS/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = org.whoopsy.app; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		A10000000000000000000063 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = App/iOS/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = org.whoopsy.app; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+
+		A10000000000000000000072 /* Build configuration list for PBXProject "Whoopsy" */ = {isa = XCConfigurationList; buildConfigurations = (A10000000000000000000073 /* Debug */, A10000000000000000000074 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A10000000000000000000073 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 6.0; }; name = Debug; };
+		A10000000000000000000074 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 6.0; }; name = Release; };
+
+		A10000000000000000000081 /* XCLocalSwiftPackageReference "Whoopsy" */ = {isa = XCLocalSwiftPackageReference; relativePath = .; };
+		A10000000000000000000021 /* WhoopsyCore */ = {isa = XCSwiftPackageProductDependency; package = A10000000000000000000081 /* XCLocalSwiftPackageReference "Whoopsy" */; productName = WhoopsyCore; };
+	};
+	rootObject = A10000000000000000000071 /* Project object */;
+}

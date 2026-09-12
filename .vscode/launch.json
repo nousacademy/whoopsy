@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:whoopsy}",
+            "name": "Debug WhoopsyApp",
+            "target": "WhoopsyApp",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug WhoopsyApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:whoopsy}",
+            "name": "Release WhoopsyApp",
+            "target": "WhoopsyApp",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release WhoopsyApp"
+        }
+    ]
+}

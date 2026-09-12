@@ -1,0 +1,16 @@
+Target dependency graph (7 targets)
+Target 'WhoopsyApp' in project 'Whoopsy'
+➜ Explicit dependency on target 'WhoopsyCore' in project 'Whoopsy'
+Target 'WhoopsyCore' in project 'Whoopsy'
+➜ Explicit dependency on target 'Whoopsy' in project 'Whoopsy'
+➜ Explicit dependency on target 'GRDB' in project 'GRDB'
+Target 'Whoopsy' in project 'Whoopsy'
+➜ Explicit dependency on target 'GRDB' in project 'GRDB'
+Target 'GRDB' in project 'GRDB'
+➜ Explicit dependency on target 'GRDB' in project 'GRDB'
+➜ Explicit dependency on target 'GRDB_GRDB' in project 'GRDB'
+Target 'GRDB' in project 'GRDB'
+➜ Explicit dependency on target 'GRDB_GRDB' in project 'GRDB'
+➜ Explicit dependency on target 'CSQLite' in project 'GRDB'
+Target 'CSQLite' in project 'GRDB' (no dependencies)
+Target 'GRDB_GRDB' in project 'GRDB' (no dependencies)
