@@ -25,9 +25,9 @@ import SwiftUI
 /// row pinned to the top once they scroll out of view (`collapsedHeader`), and the STRESS MONITOR tile
 /// draws the day's windows (`StressMonitorChartView`).
 ///
-/// **The week's figures all come from one `MetricWeek`.** The RESTING HEART RATE, SLEEP NEEDED, HEART
-/// RATE VARIABILITY and VO₂ MAX panels and the STRAIN & RECOVERY chart are views of the same seven
-/// days, so they read through one value rather than five separate reads — see
+/// **The week's figures all come from one `MetricWeek`.** The RHR, SLEEP NEEDED, HRV and VO₂ MAX
+/// panels and the STRAIN & RECOVERY chart are views of the same seven days, so they read through one
+/// value rather than five separate reads — see
 /// `HomeViewModel.metricWeek`. Each panel's small number is a **7-day mean of its own metric**, which
 /// is what the reference's figures are; it is not the previous day, and not
 /// `UserProfile.targetSleepHours`, which is a hard-coded `8.0` that nothing ever persists.
@@ -565,7 +565,7 @@ public struct HomeDashboardView: View {
                 if let change {
                     Image(systemName: change.symbolName)
                         .font(.system(size: 9))
-                        .foregroundStyle(change.direction == .up ? Theme.recoveryGreen : Theme.strainPrimary)
+                        .foregroundStyle(change.color)
                     Text(change.previousText)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Theme.textSecondary)
@@ -594,13 +594,18 @@ public struct HomeDashboardView: View {
         .accessibilityLabel(tileDescription(label: label, value: value, change: change))
     }
 
-    /// One tile, one announcement. The arrow is a drawn glyph rather than text, so without this the
-    /// direction it encodes is invisible to VoiceOver entirely.
+    /// One tile, one announcement. The marker is a drawn glyph and a colour, and neither reaches
+    /// VoiceOver — so the verdict is spelled out, matching `RecoveryDetailView`'s rows. A listener
+    /// who hears the day's figure and the one it is read against can work out which way the number
+    /// moved; which way was good is the part that has to be said.
     private func tileDescription(label: String, value: String?, change: MetricChange?) -> String {
         guard let value else { return "\(label), no measurement" }
         guard let change else { return "\(label), \(value)" }
-        let direction = change.direction == .up ? "up from" : "down from"
-        return "\(label), \(value), \(direction) \(change.previousText)"
+        switch change.verdict {
+        case .better: return "\(label), \(value), better than \(change.previousText)"
+        case .same: return "\(label), \(value), the same as \(change.previousText)"
+        case .worse: return "\(label), \(value), worse than \(change.previousText)"
+        }
     }
 
     // MARK: - The four metric panels
@@ -636,8 +641,7 @@ public struct HomeDashboardView: View {
         symbol: String,
         value: String?,
         baselineText: String?,
-        change: MetricChange?,
-        changeColor: Color
+        change: MetricChange?
     ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
@@ -665,7 +669,7 @@ public struct HomeDashboardView: View {
                     if let change {
                         Image(systemName: change.symbolName)
                             .font(.system(size: 9))
-                            .foregroundStyle(changeColor)
+                            .foregroundStyle(change.color)
                         Text(change.previousText)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Theme.textSecondary)
@@ -689,8 +693,8 @@ public struct HomeDashboardView: View {
             panelDescription(label: label, value: value, baselineText: baselineText, change: change))
     }
 
-    /// One panel, one announcement. The arrow is a drawn glyph, and its direction is also the only
-    /// thing that says whether the day is above or below the baseline.
+    /// One panel, one announcement. The marker is a drawn glyph and a colour and neither reaches
+    /// VoiceOver, so the verdict is spelled out — the same choice `RecoveryDetailView`'s rows make.
     private func panelDescription(
         label: String, value: String?, baselineText: String?, change: MetricChange?
     ) -> String {
@@ -699,8 +703,11 @@ public struct HomeDashboardView: View {
             guard let baselineText else { return "\(label), \(value)" }
             return "\(label), \(value), 7-day average \(baselineText)"
         }
-        let direction = change.direction == .up ? "above" : "below"
-        return "\(label), \(value), \(direction) the 7-day average of \(change.previousText)"
+        switch change.verdict {
+        case .better: return "\(label), \(value), better than the 7-day average of \(change.previousText)"
+        case .same: return "\(label), \(value), the same as the 7-day average of \(change.previousText)"
+        case .worse: return "\(label), \(value), worse than the 7-day average of \(change.previousText)"
+        }
     }
 
     /// The day's resting heart rate over the week's mean.
@@ -709,18 +716,17 @@ public struct HomeDashboardView: View {
     /// why `MetricWeek` gates it twice — see `MetricDay`.
     private var restingHeartRatePanel: some View {
         let baseline = viewModel.metricWeek?.restingHeartRateBaseline
-        let marker = MetricChange.marker(
+        let change = MetricChange.between(
             current: selectedMetricDay?.restingHeartRate.map { Double($0) },
-            baseline: baseline.map { Double($0) },
+            previous: baseline.map { Double($0) },
             higherIsBetter: false,
             formatted: { String(Int($0.rounded())) })
         return metricPanel(
-            label: "RESTING HEART RATE",
+            label: "RHR",
             symbol: "heart.fill",
             value: selectedMetricDay?.restingHeartRate.map { "\($0)" },
             baselineText: baseline.map { "\($0)" },
-            change: marker?.change,
-            changeColor: marker?.color ?? Theme.textMuted)
+            change: change)
     }
 
     /// The night's need over the week's mean.
@@ -731,9 +737,9 @@ public struct HomeDashboardView: View {
     /// against the export's measurement.
     private var sleepNeededPanel: some View {
         let baseline = viewModel.metricWeek?.sleepNeedBaselineSeconds
-        let marker = MetricChange.marker(
+        let change = MetricChange.between(
             current: selectedMetricDay?.sleepNeedSeconds,
-            baseline: baseline,
+            previous: baseline,
             higherIsBetter: false,
             formatted: { $0.formattedCompactHoursMinutes() })
         return metricPanel(
@@ -741,8 +747,7 @@ public struct HomeDashboardView: View {
             symbol: "moon.zzz.fill",
             value: selectedMetricDay?.sleepNeedSeconds?.formattedCompactHoursMinutes(),
             baselineText: baseline?.formattedCompactHoursMinutes(),
-            change: marker?.change,
-            changeColor: marker?.color ?? Theme.textMuted)
+            change: change)
     }
 
     /// The night's HRV over the week's mean.
@@ -759,18 +764,17 @@ public struct HomeDashboardView: View {
     /// from the newest metric's days only, and can print none at all while the week has readings in it.
     private var heartRateVariabilityPanel: some View {
         let baseline = viewModel.metricWeek?.hrvBaselineMs
-        let marker = MetricChange.marker(
+        let change = MetricChange.between(
             current: selectedMetricDay?.hrvValueMs,
-            baseline: baseline,
+            previous: baseline,
             higherIsBetter: true,
             formatted: { String(format: "%.0f", $0) })
         return metricPanel(
-            label: "HEART RATE VARIABILITY",
+            label: "HRV",
             symbol: "waveform.path.ecg",
             value: selectedMetricDay?.hrvValueMs.map { String(format: "%.0f", $0) },
             baselineText: baseline.map { String(format: "%.0f", $0) },
-            change: marker?.change,
-            changeColor: marker?.color ?? Theme.textMuted)
+            change: change)
     }
 
     /// The day's estimated VO₂ max, with the week's mean beneath it and **no change marker**.
@@ -785,12 +789,13 @@ public struct HomeDashboardView: View {
     /// of the same kind, which is the "At baseline" mistake in a different tile. See `ALGORITHMS.md`
     /// §6 for the model and §`Vo2MaxMath` for the anchor decision.
     ///
-    /// The marker is the part that is still a decision. `MetricChange.marker` would compare the day's
-    /// estimate with the week's mean and colour an arrow by the result, which asserts a day-to-day
-    /// movement this quantity does not have: VO₂ max declines over decades, and the estimate's own
-    /// error is several times the daily swing. The mean is still context worth printing, so it goes in
-    /// the plain muted slot `metricPanel` keeps for a figure with no direction attached; a dash there
-    /// means the week has fewer than three days that could produce an estimate at all.
+    /// The marker is the part that is still a decision. `MetricChange.between` would compare the day's
+    /// estimate with the week's mean and draw an arrow coloured by the result, which asserts a
+    /// day-to-day movement this quantity does not have: VO₂ max declines over decades, and the
+    /// estimate's own error is several times the daily swing. The mean is still context worth
+    /// printing, so it goes in the plain muted slot `metricPanel` keeps for a figure with no direction
+    /// attached; a dash there means the week has fewer than three days that could produce an estimate
+    /// at all.
     ///
     /// **A dash is still a normal state, not a failure.** The estimate needs a measured resting heart
     /// rate for the day, so every day with no recovery row — the whole of a week before the first
@@ -802,8 +807,7 @@ public struct HomeDashboardView: View {
             symbol: "lungs.fill",
             value: selectedMetricDay?.vo2MaxMlKgMin.map { String(format: "%.0f", $0) },
             baselineText: baseline.map { String(format: "%.0f", $0) },
-            change: nil,
-            changeColor: Theme.textMuted)
+            change: nil)
     }
 
     /// The full-width STRESS MONITOR tile.
@@ -952,6 +956,7 @@ public struct HomeDashboardView: View {
         MetricChange.between(
             current: viewModel.steps.map(Double.init),
             previous: viewModel.previousDaySteps.map(Double.init),
+            higherIsBetter: true,
             formatted: { $0.formatted(.number.grouping(.automatic)) })
     }
 
@@ -959,6 +964,7 @@ public struct HomeDashboardView: View {
         MetricChange.between(
             current: viewModel.restorativeSleepSeconds,
             previous: viewModel.previousDayRestorativeSleepSeconds,
+            higherIsBetter: true,
             formatted: { $0.formattedCompactHoursMinutes() })
     }
 }

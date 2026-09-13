@@ -209,6 +209,19 @@ because slicing first would take the wrong thirty. Strictly before, so a day nev
 own baseline. The series handed in must be **oldest-first**, which is what the repositories return
 (`order(Column("date").asc)`) and what the importer's chronological walk produces.
 
+**"Strictly before" is a comparison of calendar days, not of instants, and that distinction is
+load-bearing because the two callers pass different kinds of anchor.** Rows are keyed on
+`startOfDay`, but `WhoopExportImporter` hands a snapped day key while the Recovery screen hands the
+`Date` it is displaying — an instant, which on any day this app runs is hours after midnight.
+Compared raw, that instant is *later* than the day's own midnight row, so the day was counted inside
+its own baseline and the printed mean came from a different set of days than the score above it.
+Measured on the simulator: 2026-08-17 printed an HRV baseline of 53 ms and a sleep-performance
+baseline of 80%, where the strictly-before window gives 52 ms and 78%. Both sides are snapped inside
+`baselineWindow` rather than at the call sites, so the rule holds for whatever anchor a caller
+passes; the day this was found on was one of the roughly one-in-fifteen where the two windows do not
+round to the same printed figure, which is why a screenshot check on an arbitrary day would not have
+caught it.
+
 The distinction is not academic, and it is measured rather than assumed. Over the bundled export, on
 the 907 days with a comparable predecessor, **391 days (43%) have a calendar-30 window that differs
 from the last-30-rows window**. The mean differs by up to **18.03 ms** (p95 5.59, median 0.40), and
@@ -769,7 +782,7 @@ profile's maximal heart rate. It is derived rather than read, so:
   that distinction is worth a label.
 
 Because the estimate reads the slot's resting heart rate and nothing else, it **cannot disagree with
-the RESTING HEART RATE panel drawn beside it** — one day, one rate, one pair of figures. That is
+the RHR panel drawn beside it** — one day, one rate, one pair of figures. That is
 structural, not a convention: `makeDay` hoists the gated rate into one local and both fields read it.
 
 The HealthKit read-through that used to back this panel is **gone** — `vo2MaxReadings(days:endingOn:)`

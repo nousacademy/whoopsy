@@ -48,6 +48,22 @@ public enum Theme {
     public static let sleepPerformance = Color(red: 0.42, green: 0.60, blue: 0.73)
     public static let strainRing = Color(red: 0.00, green: 0.68, blue: 1.00)
 
+    /// The Recovery detail page's three week line charts — heart-rate variability, resting heart
+    /// rate and respiratory rate — for their lines, points and value labels.
+    ///
+    /// A token of its own rather than one of the four blues above, because every one of them already
+    /// means something else: `sleepLight`/`sleepIndigo`/`sleepDeep` are sleep *stages* on the
+    /// hypnogram, `sleepRem` its wakefulness, `sleepPerformance` Home's sleep ring and `strainRing`
+    /// Home's strain ring. Neither of these quantities has a ring, a stage or a tier, so borrowing any
+    /// of them would invite a reader to compare two things this app has decided not to put on one axis.
+    ///
+    /// **Both charts share it, and here the colour is deliberately not carrying quantity identity.**
+    /// On the bars above them it does — the bar's colour *is* the recovery tier — but on these two the
+    /// card's own label says which quantity is plotted and each has its own axis, so colouring them
+    /// apart would imply a relationship between a millisecond count and a beat rate that does not
+    /// exist. One token also keeps them from drifting into two nearly-the-same blues.
+    public static let weekLine = Color(red: 0.55, green: 0.66, blue: 0.92)
+
     // Telemetry Pulse
     public static let livePulseCyan = Color(red: 0.0, green: 0.95, blue: 1.0)
     public static let textPrimary = Color.white

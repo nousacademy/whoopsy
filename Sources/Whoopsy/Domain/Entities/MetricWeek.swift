@@ -1,7 +1,7 @@
 import Foundation
 
-/// One day of a `MetricWeek`: the six daily figures Home draws, each already reduced to the only
-/// question a screen asks of it — a number, or nothing.
+/// One day of a `MetricWeek`: the daily figures a screen draws from it, each already reduced to the
+/// only question that screen asks of it — a number, or nothing.
 ///
 /// Every field is optional because every one of them can genuinely be absent, and each absence has a
 /// different mechanism behind it: a day the strap recorded nothing for holds **no row at all**, a
@@ -31,8 +31,43 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
     /// The day's resting heart rate in bpm, or nil when nothing recorded one.
     public let restingHeartRate: Int?
 
+    /// The day's respiratory rate in breaths per minute, or nil when nothing recorded one.
+    ///
+    /// **The one field here with no reserved zero to gate, and so the one with no gate.** A
+    /// `recoveries` row stores `respiratory_rate` as a nullable column whose only writers pass
+    /// `sleepSession?.respiratoryRate` straight through, and the strap has no respiratory sensor at
+    /// all — so the column holds either a real reading or nothing, and `hasMeasurement` never enters
+    /// into it. That is the same shape the RESPIRATORY RATE row on the detail screen reads, and
+    /// deliberately so: a gate here would let the chart omit a point the row above it prints.
+    ///
+    /// A night can carry a respiratory rate without carrying an HRV — the two are independent
+    /// measurements — so this can be non-nil on a slot whose `hrvValueMs` is nil, and neither implies
+    /// the other.
+    public let respiratoryRate: Double?
+
     /// The day's sleep need in seconds, or nil when the day has no classified night.
     public let sleepNeedSeconds: TimeInterval?
+
+    /// The night's sleep performance toward that need, as a whole percentage, or nil when the day has
+    /// no classified night.
+    ///
+    /// The second field read off the same `sleeps` row as `sleepNeedSeconds` above, so the two are
+    /// absent together and a day with a night always has both. It is **not** a column: it is computed
+    /// on read by `SleepSession.sleepPerformancePercentage` from the night's staged minutes over its
+    /// need, which is why there is nothing here for a reserved zero to hide in.
+    ///
+    /// **Ungated, like `respiratoryRate` below and unlike every other field here.** There is no stored
+    /// zero to filter, and the one way this could state a figure with no measurement behind it is the
+    /// `guard targetSleepNeedSeconds > 0 else { return 100 }` inside that property — a hard `100`
+    /// standing in for a denominator that was not there, which is a defaulted number rather than a
+    /// night well slept. Over the bundled export that path is unreachable: `WhoopExportImporter`
+    /// builds a session only for a row carrying a wake onset, and every one of those 910 rows carries
+    /// a `Sleep need (min)` too, so no stored night has a zero need. It is one CSV column away from
+    /// being reachable and is recorded here for that reason — but it is **not** gated, because the
+    /// SLEEP PERFORMANCE row on the Recovery detail screen reads the same property with no gate
+    /// either, and a gate here would let this week's chart omit a bar that the row directly above it
+    /// prints. The same argument, made for the same reason, as `respiratoryRate`'s.
+    public let sleepPerformance: Int?
 
     /// The day's HRV in milliseconds, or nil when nothing recorded one.
     public let hrvValueMs: Double?
@@ -61,8 +96,10 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
         recoveryScore: Int?,
         restingHeartRate: Int?,
         sleepNeedSeconds: TimeInterval?,
+        sleepPerformance: Int? = nil,
         hrvValueMs: Double? = nil,
         hrvMetric: HRVMetric? = nil,
+        respiratoryRate: Double? = nil,
         vo2MaxMlKgMin: Double? = nil
     ) {
         self.date = date
@@ -70,8 +107,10 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
         self.recoveryScore = recoveryScore
         self.restingHeartRate = restingHeartRate
         self.sleepNeedSeconds = sleepNeedSeconds
+        self.sleepPerformance = sleepPerformance
         self.hrvValueMs = hrvValueMs
         self.hrvMetric = hrvMetric
+        self.respiratoryRate = respiratoryRate
         self.vo2MaxMlKgMin = vo2MaxMlKgMin
     }
 
@@ -90,6 +129,17 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
     /// the value was read through from HealthKit it could exist on a day with no stored row at all,
     /// so counting it could draw the tile's frame and its "1 measured" caption over a week with no
     /// strain and no recovery in it.
+    ///
+    /// `respiratoryRate` is excluded for the same stated intent, and unlike the VO₂ estimate its
+    /// exclusion is **not** redundant — a night can carry a respiratory rate with no HRV, so this is
+    /// the one field here that could make an otherwise empty day count. It must not: this is the draw
+    /// test for a chart of strain and recovery, and a respiratory rate is drawn by neither.
+    ///
+    /// `sleepPerformance` is excluded on the same stated intent, and its exclusion is the redundant
+    /// kind: it is read off the same night as `sleepNeedSeconds`, which is already in the list, so a
+    /// day carrying a performance necessarily carries a need. Kept for the reason the VO₂ estimate's
+    /// is — the STRAIN & RECOVERY chart draws strain and recovery, and a sleep performance is drawn by
+    /// neither, so it must not be able to justify either the tile's frame or its measured count.
     public var hasAnyMeasurement: Bool {
         strain != nil || recoveryScore != nil || restingHeartRate != nil || sleepNeedSeconds != nil
     }
@@ -145,11 +195,19 @@ public struct MetricWeek: Equatable, Sendable {
     /// `minimumBaselineDays`.
     public let hrvBaselineMs: Double?
 
-    /// Which quantity `hrvBaselineMs` is a mean of — nil exactly when there is no baseline.
+    /// The quantity the week's HRV is read in — the newest measured slot's — or nil when no slot in
+    /// the week carries a reading at all.
     ///
     /// Exposed so a screen can say which quantity it is printing rather than leaving the number
     /// unlabelled: SDNN and RMSSD are different measurements on different scales, and a week can hold
     /// both (the export's days are RMSSD, a HealthKit-imported day is SDNN).
+    ///
+    /// **It is not the same condition as `hrvBaselineMs != nil`, and the difference is the floor.**
+    /// This names which quantity the week is in and is set as soon as one slot has a reading; the mean
+    /// above it additionally requires `minimumBaselineDays` (3) days *in that quantity*, so a
+    /// two-day week is `hrvBaselineMs == nil` with `hrvBaselineMetric == .rmssd`. Anything selecting
+    /// the days to plot, or narrowing a series, wants this one — it is answering "which quantity",
+    /// not "is there a baseline". `MetricWeek.hrvBaselineMs` is the one that answers the latter.
     public let hrvBaselineMetric: HRVMetric?
 
     /// The mean of the week's estimated VO₂ max values, or nil below `minimumBaselineDays`.
@@ -306,12 +364,22 @@ public struct MetricWeek: Equatable, Sendable {
             // Sleep has no placeholder: an unclassifiable night has no row, so the row's presence is
             // the measurement. The `> 0` guard covers the narrower case of a row with no need stored.
             sleepNeedSeconds: sleep.flatMap { $0.targetSleepNeedSeconds > 0 ? $0.targetSleepNeedSeconds : nil },
+            // Passed straight through, like the respiratory rate below and unlike the need above it.
+            // The `> 0` guard on the need is about *this slot's* denominator, and applying it here as
+            // well would drop a bar the SLEEP PERFORMANCE row above the chart still prints — while
+            // the case it would guard is unreachable on any stored night. See the property's comment.
+            sleepPerformance: sleep?.sleepPerformancePercentage,
             // The same double gate as the heart rate, for the same reason: the flag is about the row
             // and `> 0` is this column's reserved marker, so a placeholder's `0.0` ms never reaches
             // the panel. `hrvMetric` is carried only alongside a value that survived the gate, so the
             // pair can never disagree — a slot with a metric and no reading is not representable.
             hrvValueMs: recovery.flatMap { $0.hasMeasurement && $0.hrvValueMs > 0 ? $0.hrvValueMs : nil },
             hrvMetric: measured && (recovery?.hrvValueMs ?? 0) > 0 ? recovery?.hrvMetric : nil,
+            // Passed straight through, unlike every other field here: this column has no reserved
+            // zero, so the optional is already the whole rule and a second gate could only disagree
+            // with the RESPIRATORY RATE row, which reads the same value through `RecoveryMetric`
+            // without one. See the property's own comment.
+            respiratoryRate: recovery?.respiratoryRate,
             // Derived, not read: the day's own gated rate over the profile's assumed maximum. It
             // therefore needs no gate of its own — an absent rate, a `0` rate and a `nil`
             // `maxHeartRate` all arrive at `heartRateRatioEstimate` as `nil` and leave as `nil`. It

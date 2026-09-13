@@ -86,6 +86,17 @@ public enum RecoveryScoring {
     /// recovery detail screen prints the baseline its score was computed against, and a screen that
     /// reached for a neighbouring definition would be explaining the ring with a number the ring
     /// never saw.
+    ///
+    /// **The comparison is made on the calendar day, not on the instant.** Every row in `series` is
+    /// keyed on `startOfDay`, but `day` arrives from two different kinds of caller: the importer hands
+    /// a snapped day key, while the Recovery screen hands the `Date` it is displaying — which is an
+    /// instant, and on every day this app runs is some hours after midnight. Compared raw, that
+    /// instant is *later* than the day's own midnight row, so the day landed inside its own baseline
+    /// and the screen printed a mean taken over a different set of days than the score above it. It
+    /// was invisible on the screenshot that first checked this: on 2026-08-22 both windows round to
+    /// the same printed figures, and they diverge only one day in fifteen. Snapping both sides here
+    /// rather than at the call site is what makes the contract above true for whatever anchor a
+    /// caller passes.
     public static func baselineWindow(before day: Date, in series: [RecoveryMetric]) -> [RecoveryMetric] {
         window(before: day, in: series, dated: \.date)
     }
@@ -100,7 +111,9 @@ public enum RecoveryScoring {
     }
 
     private static func window<T>(before day: Date, in series: [T], dated: KeyPath<T, Date>) -> [T] {
-        Array(series.filter { $0[keyPath: dated] < day }.suffix(baselineWindowDays))
+        let cutoff = day.startOfDay
+        return Array(
+            series.filter { $0[keyPath: dated].startOfDay < cutoff }.suffix(baselineWindowDays))
     }
 
     /// What a day's figure is being read against: the trailing window's means, and how many

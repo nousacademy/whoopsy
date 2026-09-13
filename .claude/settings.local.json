@@ -10,7 +10,15 @@
       "Bash(export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer)",
       "Bash(xcodebuild -project Whoopsy.xcodeproj -scheme WhoopsyApp -destination id=__TRACKED_VAR__ -derivedDataPath /tmp/whoopsy-probe build CODE_SIGNING_ALLOWED=NO)",
       "Bash(grep -n \"getXHistory\\(days:\\)\\\\` windows back\\\\|HealthKit availability is a runtime question\" CLAUDE.md)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(rm -rf /tmp/whoopsy-verify && swift build --scratch-path /tmp/whoopsy-verify 2>&1 | tail -3 && swiftc -I /tmp/whoopsy-verify/arm64-apple-macosx/debug/Modules \\\\ *)",
+      "Bash(python3 - '/Users/alex/Library/Developer/CoreSimulator/Devices/55511A6D-ED4D-4405-941C-FB0DFF107662/data/Containers/Data/Application/147F7D68-CA46-4252-BD6B-75C34BAE5363/Library/Application Support/whoopsy.sqlite')",
+      "Read(//Users/alex/Library/Developer/CoreSimulator/Devices/55511A6D-ED4D-4405-941C-FB0DFF107662/data/Containers/Data/Application/147F7D68-CA46-4252-BD6B-75C34BAE5363/Library/Application Support/**)",
+      "Bash(sqlite3 'file:/Users/alex/Library/Developer/CoreSimulator/Devices/55511A6D-ED4D-4405-941C-FB0DFF107662/data/Containers/Data/Application/147F7D68-CA46-4252-BD6B-75C34BAE5363/Library/Application Support/whoopsy.sqlite?mode=ro' 'select count\\(*\\) from sleeps;')",
+      "Bash(tee /tmp/whoopsy-verify/run3.log)"
+    ],
+    "additionalDirectories": [
+      "/private/tmp/whoopsy-verify"
     ]
   }
 }

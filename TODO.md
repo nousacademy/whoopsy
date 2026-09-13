@@ -51,8 +51,8 @@ never closed and become `strains`-only rows (`CLAUDE.md` has the 23:30 boundary 
 ### Recovery inputs
 
 - [ ] **`Recovery score %`** — 910/935 (1–99) — parsed into `WhoopExportRow.recoveryScorePercent` and consumed by **nothing but `isEmpty`**. **Decision — do not cover.** `WhoopExportImporter` re-scores all 910 days through `RecoveryScoring` so one formula covers the whole history; storing WHOOP's would put two models on one chart
-- [x] **`Resting heart rate (bpm)`** — 910 (46–98) — → `recoveries.resting_heart_rate`; the `RecoveryScoring` z-score input and Home's RESTING HEART RATE panel
-- [x] **`Heart rate variability (ms)`** — 910 (15–99) — → `recoveries.hrv_value_ms` + `hrv_metric` (classified `.rmssd` — an inference, `ALGORITHMS.md` §1); the scoring input and Home's HEART RATE VARIABILITY panel
+- [x] **`Resting heart rate (bpm)`** — 910 (46–98) — → `recoveries.resting_heart_rate`; the `RecoveryScoring` z-score input and Home's RHR panel
+- [x] **`Heart rate variability (ms)`** — 910 (15–99) — → `recoveries.hrv_value_ms` + `hrv_metric` (classified `.rmssd` — an inference, `ALGORITHMS.md` §1); the scoring input and Home's HRV panel
 - [x] **`Skin temp (celsius)`** — 909 (29.73–35.84) — → `recoveries.skin_temp`. **Stored, exported, and printed by no screen.** `RecoveryDashboardView` says so in prose instead
 - [x] **`Blood oxygen %`** — 909 (87.88–100) — → `recoveries.spo2`. Same: stored, never drawn
 
@@ -67,8 +67,8 @@ never closed and become `strains`-only rows (`CLAUDE.md` has the 23:30 boundary 
 
 - [x] **`Sleep onset`** — 910 — → `SleepSession.startTime`
 - [x] **`Wake onset`** — 910 — **the day key**, and → `SleepSession.endTime`
-- [ ] **`Sleep performance %`** — 910 (5–100) — parsed, consumed by nothing. **Decision — do not cover.** `SleepSession.sleepPerformancePercentage` derives asleep-over-need ([SleepSession.swift:89](Sources/Whoopsy/Domain/Entities/SleepSession.swift#L89)); the two disagree on **457 of 910 nights**, and one rule is the point
-- [x] **`Respiratory rate (rpm)`** — 910 (13.5–20.2) — → `sleeps.respiratory_rate` and `RecoveryMetric.respiratoryRate` → the Recovery screen's "Respiratory tracking" card
+- [ ] **`Sleep performance %`** — 910 (5–100) — parsed, consumed by nothing. **Decision — do not cover.** `SleepSession.sleepPerformancePercentage` derives asleep-over-need ([SleepSession.swift:89](Sources/Whoopsy/Domain/Entities/SleepSession.swift#L89)); the two disagree on **457 of 910 nights**, and one rule is the point. **The column stays uncovered, but the derivation is now drawn**: it is the SLEEP PERFORMANCE breakdown row on the Recovery screen and, below it, the sleep-performance week chart (`MetricDay.sleepPerformance` → `WeekBarSeries(sleepPerformanceWeek:)`). So this line reads as "the export's number is not used", not "the quantity is absent from the app" — the figure on those two screens is this app's own, and it will not match WHOOP's for the same night
+- [x] **`Respiratory rate (rpm)`** — 910 (13.5–20.2) — → `sleeps.respiratory_rate`, `recoveries.respiratory_rate` and `MetricDay.respiratoryRate` → the Recovery screen's RESPIRATORY RATE breakdown row and the Respiratory Rate week chart under it. Read to **one decimal** there, because a week spans about two units — the reference week is 14.8…16.5, which whole numbers flatten to six `15`s
 - [ ] **`Asleep duration (min)`** — 910 (68–940) — parsed into `WhoopExportRow.asleepMinutes` and read by **nothing**. **Redundancy**: `totalTimeAsleepSeconds` sums the three stages, and on this export the two agree **exactly on all 910 rows**
 - [ ] **`In bed duration (min)`** — 910 (87–954) — parsed into `WhoopExportRow.inBedMinutes` and read by nothing. **Redundancy, and the measurement is the interesting part**: `sleepPeriodSeconds` (asleep + awake) reproduces this column **exactly on 904 of 910 rows**, so the app already holds this number and the column has nothing to add — see the in-bed section below for the 6 that differ and why storing them would not help
 - [x] **`Light sleep duration (min)`** — 910 (31–940) — → `sleeps`
@@ -101,7 +101,7 @@ which days they land on.
 - [ ] **`Cycle timezone`** — 918 — not parsed
 - [ ] **`Sleep onset`** — 918 — not parsed. Already covered for the 910 nights by the bundled file
 - [ ] **`Wake onset`** — 918 — not parsed. Same
-- [ ] **`Sleep performance %`** — 918 — not parsed; derived on the entity. Same **Decision** as §1
+- [ ] **`Sleep performance %`** — 918 — not parsed; derived on the entity and drawn from there. Same **Decision** as §1
 - [ ] **`Respiratory rate (rpm)`** — 917 — not parsed. Already covered for the 910 nights
 - [ ] **`Asleep duration (min)`** — 918 — not parsed; derivable from the stages
 - [ ] **`In bed duration (min)`** — 918 — not parsed; same discrepancy as §1 applies

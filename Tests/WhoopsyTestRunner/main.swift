@@ -612,6 +612,27 @@ func runScoringAndFormatterTests() {
         !filteredWindow.contains { $0.date == day(0) },
         "…and the day being scored is not inside its own baseline")
 
+    // **The anchor the real screen passes is an instant, and every fixture above is snapped** — which
+    // is how the day came to be inside its own baseline on the Recovery page while these assertions
+    // passed. `RecoveryViewModel.loadBaselines` hands `RecoveryScoring.baselineWindow` the `Date` it
+    // is displaying, which is `Date()` or the day a caller seeded, and on every day this app runs that
+    // is some hours after midnight — so a raw `< day` let the day's own `startOfDay` row through and
+    // the printed mean was taken over a different set of days than the score above it. Measured on
+    // the simulator: 2026-08-17 printed an HRV baseline of 53 and a sleep-performance baseline of 80,
+    // where the strictly-before window gives 52 and 78. The 2026-08-22 screenshot both windows agree
+    // on is the reason it went unnoticed — they diverge on roughly one day in fifteen.
+    let midMorning = day(0).addingTimeInterval(9 * 3600 + 37 * 60)
+    assertTest(
+        !RecoveryScoring.baselineWindow(before: midMorning, in: withToday)
+            .contains { $0.date == day(0) },
+        "An instant anchor mid-way through the day still excludes that day's own row — the anchor is "
+            + "snapped to the calendar day, so the screen and the importer cannot disagree about "
+            + "which days the mean covers")
+    assertTest(
+        RecoveryScoring.baselineWindow(before: midMorning, in: withToday).count == scoringWindowDays,
+        "…and the window it returns is still the full \(scoringWindowDays) days, so snapping the "
+            + "anchor drops the day rather than the oldest observation")
+
     // The lookback a reader has to fetch. It must exceed the window, because the window is of the
     // last thirty days *that have rows* — a history with a gap reaches back further than a month to
     // fill, so a reader that fetched exactly `baselineWindowDays` would silently build the printed
@@ -702,6 +723,12 @@ func runScoringAndFormatterTests() {
     assertTest(
         RecoveryScoring.baselineWindow(before: day(0), in: nightsPlusToday).count == 3,
         "The night window is strictly before the day as well (got \(RecoveryScoring.baselineWindow(before: day(0), in: nightsPlusToday).count))")
+    assertTest(
+        RecoveryScoring.baselineWindow(before: midMorning, in: nightsPlusToday).count == 3,
+        "…and it stays strictly before under the instant anchor the screen actually passes (got "
+            + "\(RecoveryScoring.baselineWindow(before: midMorning, in: nightsPlusToday).count)) — "
+            + "this overload is the one that carried the sleep-performance row's printed mean, which "
+            + "read 80 on a day the strictly-before window makes 78")
 
     // The guarantee the detail screen rests on: what `score` used and what a reader gets back are
     // one computation, not two that agree today.
@@ -1557,6 +1584,32 @@ func runDaySelectionTests() async {
             loadedBaselines?.displayed.respiratoryRate != nil,
             "…and a respiratory-rate baseline, which is the one the score does not read")
 
+        // The week card at the foot of the same screen. A `nil` week and a week with no measurement in
+        // it draw the same thing — no chart — so a wiring break here is invisible on screen, which is
+        // why the assignment is asserted rather than left to the screenshot.
+        let loadedWeek = await MainActor.run { recoveryViewModel.week }
+        assertTest(
+            loadedWeek != nil,
+            "A day loaded through the view model builds the week card's window")
+        assertTest(
+            loadedWeek?.days.count == MetricWeek.dayCount,
+            "…with exactly \(MetricWeek.dayCount) slots (got \(loadedWeek?.days.count ?? -1))")
+        assertTest(
+            loadedWeek?.endingOn == lastRecoveryDay.startOfDay,
+            "…ending on the day that was loaded, not on today")
+        assertTest(
+            loadedWeek?.days.last?.recoveryScore == recoveryBefore?.recoveryScore,
+            "…whose last slot carries the stored day's own score, so the bar and the ring describe one day")
+
+        // A deliberate documentation of the narrowing, in the shape of the `batteryPercentage == 100`
+        // assertion below: the page's week is built from the recovery history **alone**, so `strain` is
+        // `nil` on every slot and that `nil` means *not asked for* rather than *not measured*. This
+        // fails loudly if anyone points the week at a strain-plotted view, where every day of it would
+        // read as unmeasured.
+        assertTest(
+            loadedWeek?.days.allSatisfy { $0.strain == nil } == true,
+            "The Recovery page's week carries no strain on any slot — it is built from one history, and that `nil` is 'not asked for', not 'not measured'")
+
         let strainViewModel = await MainActor.run {
             StrainViewModel(
                 calculate: CalculateStrainUseCase(
@@ -2095,7 +2148,7 @@ func runHomeSourceTests() async {
         assertTest(
             week.days.last?.vo2MaxMlKgMin != nil
                 && week.days.last?.restingHeartRate == 50,
-            "…and it is computed from the very rate the RESTING HEART RATE panel prints beside it, "
+            "…and it is computed from the very rate the RHR panel prints beside it, "
                 + "so the two panels cannot describe different days")
         assertTest(
             week.days[5].vo2MaxMlKgMin == nil && week.days[5].restingHeartRate == nil,
@@ -2457,55 +2510,88 @@ func runHomeSourceTests() async {
 
     // ---- The arrow Home's panels and the Recovery breakdown both draw ----
     //
-    // `MetricChange` is one definition shared by two screens, so its two decisions have to be pinned
-    // here rather than at either use site: whether a comparison is worth drawing at all, and which
-    // colour its direction carries. The colour assertions are the "one rule, one definition" guard —
-    // a copy of this in a view is what would drift, and the direction-versus-verdict split (up is
-    // green for HRV and orange for resting heart rate) is the part a copy gets wrong first.
+    // `MetricChange` is one definition shared by two screens, so its three decisions have to be pinned
+    // here rather than at either use site: whether a comparison is worth drawing at all, which way the
+    // glyph points, and what colour that carries. The colour assertions are the "one rule, one
+    // definition" guard — a copy of this in a view is what would drift, and the direction-versus-
+    // verdict split (up is green for HRV and *worse* for resting heart rate) is the part a copy gets
+    // wrong first.
+    //
+    // The verdict is three states, and the middle one is the reason the colour cannot be derived from
+    // the direction: a figure equal to its average has no direction to point, so it draws a dot and
+    // carries a colour no arrow ever uses. That case used to be `nil` — "nothing to compare" — which
+    // conflated *no measurement* with *no movement*, two different answers the screen must render
+    // differently. `nil` is now reserved for a missing side.
     let whole: (Double) -> String = { String(format: "%.0f", $0) }
 
     // Measured on the simulator: a resting heart rate of 52 against a mean of 52.4 drew a down
     // triangle between two figures both printed as `52`. The digits on screen are the whole of the
     // evidence a reader has, so an arrow between two identical ones is a row contradicting itself —
     // and this is the case a raw `current != previous` comparison lets through.
+    let printedAlike = MetricChange.between(
+        current: 52, previous: 52.4, higherIsBetter: false, formatted: whole)
     assertTest(
-        MetricChange.between(current: 52, previous: 52.4, formatted: whole) == nil,
-        "A comparison whose two figures print the same draws no arrow — 52 against a mean of 52.4 "
-            + "is below it, but the row would read `52 ▼ 52`")
+        printedAlike?.verdict == .same && printedAlike?.direction == nil
+            && printedAlike?.previousText == "52",
+        "A comparison whose two figures print the same is a *dot*, not an arrow — 52 against a mean "
+            + "of 52.4 is genuinely below it, but the row would read `52 ▼ 52`")
     assertTest(
-        MetricChange.between(current: 52.0, previous: 52.0, formatted: whole) == nil,
-        "…and two genuinely equal values still draw none, which is the rule this extends rather "
-            + "than replaces")
+        MetricChange.between(current: 52.0, previous: 52.0, higherIsBetter: true, formatted: whole)?
+            .verdict == .same,
+        "…and two genuinely equal values reach the same verdict by the same gate, which is the rule "
+            + "this extends rather than replaces")
+    assertTest(
+        MetricChange.between(current: 52, previous: 52.4, higherIsBetter: true, formatted: whole)?
+            .symbolName == "circle.fill",
+        "…and the equal case draws `circle.fill`, so a row that has not moved renders as one "
+            + "without a direction glyph that would contradict its own two figures")
+    assertTest(
+        MetricChange.color(for: .same) == Theme.recoveryYellow
+            && MetricChange.color(for: .same) != MetricChange.color(for: .better)
+            && MetricChange.color(for: .same) != MetricChange.color(for: .worse),
+        "The middle verdict is its own token — a dot sharing the up-arrow's green would report a "
+            + "figure sitting on its average as an improvement")
 
-    let rise = MetricChange.between(current: 59, previous: 52, formatted: whole)
+    let rise = MetricChange.between(current: 59, previous: 52, higherIsBetter: true, formatted: whole)
     assertTest(
-        rise?.direction == .up && rise?.previousText == "52",
+        rise?.direction == .up && rise?.previousText == "52" && rise?.symbolName
+            == "arrowtriangle.up.fill",
         "A rise carries the upward direction and the baseline it beat, formatted by the caller")
     assertTest(
-        MetricChange.between(current: 14.9, previous: 15.8, formatted: { String(format: "%.1f", $0) })?
-            .direction == .down,
+        MetricChange.between(current: 14.9, previous: 15.8, higherIsBetter: true, formatted: {
+            String(format: "%.1f", $0)
+        })?.direction == .down,
         "…and a fall points down — the direction is literal and never inverted by what is good")
 
-    // The verdict, which is *not* a property of the direction: the same arrow is green for HRV and
-    // orange for resting heart rate. Two calls, one differing argument, two colours — a view that
-    // read `direction` and picked its own token could not satisfy this pair.
+    // The verdict, which is *not* a property of the direction: the same up arrow is green for HRV and
+    // red for resting heart rate. Two calls, one differing argument, two colours — a view that read
+    // `direction` and picked its own token could not satisfy this pair.
     assertTest(
-        MetricChange.marker(current: 59, baseline: 52, higherIsBetter: true, formatted: whole)?.color
-            == Theme.recoveryGreen
-            && MetricChange.marker(current: 52, baseline: 59, higherIsBetter: true, formatted: whole)?
-                .color == Theme.strainPrimary,
-        "For a figure where higher is better, a rise is green and a fall is not")
+        MetricChange.between(current: 59, previous: 52, higherIsBetter: true, formatted: whole)?
+            .color == Theme.recoveryGreen
+            && MetricChange.between(current: 52, previous: 59, higherIsBetter: true, formatted: whole)?
+                .color == Theme.recoveryRed,
+        "For a figure where higher is better, a rise is green and a fall is red")
     assertTest(
-        MetricChange.marker(current: 52, baseline: 59, higherIsBetter: false, formatted: whole)?.color
-            == Theme.recoveryGreen
-            && MetricChange.marker(current: 59, baseline: 52, higherIsBetter: false, formatted: whole)?
-                .color == Theme.strainPrimary,
+        MetricChange.between(current: 52, previous: 59, higherIsBetter: false, formatted: whole)?
+            .color == Theme.recoveryGreen
+            && MetricChange.between(current: 59, previous: 52, higherIsBetter: false, formatted: whole)?
+                .color == Theme.recoveryRed,
         "…and for resting heart rate the same two arrows carry the opposite verdicts, so the colour "
             + "cannot be read off the direction alone")
     assertTest(
-        MetricChange.marker(current: 59, baseline: nil, higherIsBetter: true, formatted: whole) == nil,
-        "A day with no baseline behind it draws no arrow, which is what keeps a cold start from "
-            + "printing a movement against a constant")
+        MetricChange.between(current: 59, previous: 52, higherIsBetter: true, formatted: whole)?.direction
+            == MetricChange.between(current: 59, previous: 52, higherIsBetter: false, formatted: whole)?
+                .direction,
+        "…though both still point the same way, which is what keeps the glyph literal while the "
+            + "colour carries the judgement")
+    assertTest(
+        MetricChange.between(current: 59, previous: nil, higherIsBetter: true, formatted: whole) == nil
+            && MetricChange.between(current: nil, previous: 52, higherIsBetter: true, formatted: whole)
+                == nil,
+        "A day with no baseline behind it — or no figure of its own — draws nothing at all, which is "
+            + "what keeps a cold start from printing a movement against a constant, and what keeps "
+            + "`nil` meaning `unmeasured` rather than `unchanged`")
 
     // ---- The calendar's key, off the same ranges the tiers band on ----
     //
@@ -3227,6 +3313,403 @@ func runHomeSourceTests() async {
             week.day(for: day(9)) == nil && week.day(for: anchor)?.date == anchor,
             "A date outside the window has no slot rather than the nearest one, and the anchor's own "
                 + "day resolves to the last slot")
+
+        // ---- The week charts' series, on the same narrowing ----
+        //
+        // `WeekLineSeries` is what `WeekLineChartView` plots, and it is a type rather than logic in
+        // that view's body for the reason `DayBarRules` is: the runner has no renderer, so a rule
+        // written into a `View` is a rule nothing can assert. Both rules below are ones this app has
+        // already got wrong somewhere else — the mixture, and the interpolated gap.
+        //
+        // **The two line charts answer "which days plot" differently, and that is the whole of the
+        // difference between them.** Resting heart rate is one quantity in one unit, so every measured
+        // day plots and its series needs no narrowing; HRV cannot, because SDNN and RMSSD are
+        // different quantities on different scales. The fixtures below are shared by both blocks
+        // deliberately — the same week has to give the RHR series more points than the HRV one, or the
+        // narrowing is not being applied.
+        //
+        // The fixtures are the two above, reused deliberately: `mixed` is already built so the
+        // narrowed answer and the unfiltered one differ, which is exactly what makes it able to fail.
+        // The two SDNN days in it are *measured*, and the chart must drop them anyway — a mixed week
+        // plots fewer points than it has readings, which is why the count of points is not the count
+        // of measured days.
+        if let mixedSeries = WeekLineSeries(hrvWeek: mixed) {
+            assertTest(
+                mixedSeries.points.map(\.slot) == [2, 3, 6],
+                "The HRV chart plots only the week's own metric, so a week holding both plots fewer "
+                    + "points than it has readings — the two SDNN days here are measured and are "
+                    + "still dropped (got slots \(mixedSeries.points.map(\.slot)), and the week's own "
+                    + "quantity is "
+                    + "\(mixed.hrvBaselineMetric.map(\.displayName) ?? "nil"))")
+            assertTest(
+                mixedSeries.runs.map { $0.map(\.slot) } == [[2, 3], [6]],
+                "…and the line breaks at the gap the narrowing made: slots 4 and 5 are measured, in "
+                    + "the other quantity, and a segment drawn across them would be a reading this "
+                    + "chart never took (got \(mixedSeries.runs.map { $0.map(\.slot) }))")
+        } else {
+            assertTest(false, "The mixed week yields no HRV series at all, so no chart is drawn")
+        }
+
+        // The minority case, from the other fixture: narrowing to the newest metric leaves three
+        // adjacent SDNN days and drops the one RMSSD day, so the series is a single unbroken run and
+        // the RMSSD reading is not plotted as a collapse on an SDNN axis.
+        if let sdnnSeries = WeekLineSeries(hrvWeek: mostlySdnn) {
+            assertTest(
+                mostlySdnn.hrvBaselineMetric == .sdnn
+                    && sdnnSeries.points.map(\.slot) == [4, 5, 6]
+                    && sdnnSeries.runs.count == 1,
+                "A week whose newest reading is the minority still plots its own quantity, so the "
+                    + "single RMSSD day is dropped rather than drawn on an SDNN axis (got metric "
+                    + "\(mostlySdnn.hrvBaselineMetric.map(\.displayName) ?? "nil") at slots "
+                    + "\(sdnnSeries.points.map(\.slot)))")
+        } else {
+            assertTest(false, "The mostly-SDNN week yields no HRV series at all")
+        }
+
+        // The other line chart, on the same week. Every one of `mixed`'s five days carries a resting
+        // rate, so this series has five points where the HRV one has three — which is the assertion
+        // that fails if anyone folds the narrowing into the shared series type and quietly drops RHR
+        // days that were never in two quantities.
+        if let mixedRates = WeekLineSeries(restingHeartRateWeek: mixed) {
+            assertTest(
+                mixedRates.points.map(\.slot) == [2, 3, 4, 5, 6]
+                    && mixedRates.runs.count == 1,
+                "The resting-heart-rate chart plots every measured day and narrows nothing, so the "
+                    + "same week that gives the HRV line three points gives this one five (got slots "
+                    + "\(mixedRates.points.map(\.slot)) in "
+                    + "\(mixedRates.runs.count) run(s))")
+            assertTest(
+                mixedRates.points.allSatisfy { $0.value == 50 },
+                "…and each point is that day's own rate rather than a mean of the week's, since a "
+                    + "chart of one repeated number would draw a flat line that looks like data")
+        } else {
+            assertTest(false, "The week's measured days yield no resting-heart-rate series")
+        }
+
+        // A hole in the middle, which is the rule the two charts share. The day at slot 4 has no row
+        // at all, so it has no rate; the line has to break there rather than join slot 3 to slot 5,
+        // which would draw a reading across a day nothing measured.
+        if let holedRates = WeekLineSeries(
+            restingHeartRateWeek: MetricWeek(
+                endingOn: anchor,
+                recovery: [0, 1, 3, 4].map { offset in
+                    RecoveryMetric(
+                        date: day(offset), score: 60, hrvValueMs: 60, hrvMetric: .rmssd,
+                        restingHeartRate: 50)
+                }))
+        {
+            assertTest(
+                holedRates.points.map(\.slot) == [2, 3, 5, 6]
+                    && holedRates.runs.map { $0.map(\.slot) } == [[2, 3], [5, 6]],
+                "A day with no rate ends a run, so the line breaks at the hole rather than joining "
+                    + "the days either side of it (got "
+                    + "\(holedRates.runs.map { $0.map(\.slot) }))")
+        } else {
+            assertTest(false, "A week with four measured days yields no series")
+        }
+
+        // An unmeasured week has no series, which is what omits the card — and is not the same as an
+        // empty one. Seven labelled columns with no line or bar in them is a week of zeros drawn once
+        // per column, the same fabrication a point at zero would be. Asserted for all five charts,
+        // because each card is omitted on its own series and one of them going non-optional would put
+        // an empty frame on the page.
+        let blankWeek = MetricWeek(endingOn: anchor, recovery: [])
+        assertTest(
+            WeekLineSeries(hrvWeek: blankWeek) == nil
+                && WeekLineSeries(restingHeartRateWeek: blankWeek) == nil
+                && WeekLineSeries(respiratoryRateWeek: blankWeek) == nil
+                && WeekBarSeries(recoveryWeek: blankWeek) == nil
+                && WeekBarSeries(sleepPerformanceWeek: blankWeek) == nil,
+            "A week with no reading in it has no series rather than an empty one, for any of the "
+                + "five charts, so every card is omitted instead of drawn empty")
+
+        // ---- The third line, and the precision rule that only it exercises ----
+        //
+        // Respiratory rate is the one quantity here that is not read to whole units, and the week
+        // below is the reference week's own — measured off the imported export, 14.8 15.4 14.9 14.9
+        // 14.9 16.5 14.9 — chosen because it is the case that fails if anyone prints it the way the
+        // other two are printed. Rounded to whole numbers it reads 15 15 15 15 15 17 15: six distinct
+        // days collapsed into one number, and the 16.5 that is the week's entire point erased. So the
+        // assertion is not "it formats" but "it does not lose the reading".
+        // Written offset-first like the fixtures above, so `day(offset)` is the day each rate is
+        // filed under and the slot it lands in is `6 - offset` — the anchor is slot 6.
+        let referenceRespiratory = MetricWeek(
+            endingOn: anchor,
+            recovery: [
+                (0, 14.9), (1, 16.5), (2, 14.9), (3, 14.9), (4, 14.9), (5, 15.4), (6, 14.8),
+            ].map { offset, rate in
+                RecoveryMetric(
+                    date: day(offset), score: 60, hrvValueMs: 60, hrvMetric: .rmssd,
+                    restingHeartRate: 52, respiratoryRate: rate)
+            })
+        if let breaths = WeekLineSeries(respiratoryRateWeek: referenceRespiratory) {
+            assertTest(
+                breaths.points.map(\.slot) == [0, 1, 2, 3, 4, 5, 6] && breaths.runs.count == 1,
+                "The respiratory-rate chart plots every measured day and narrows nothing, so a full "
+                    + "week is seven points in one run (got slots \(breaths.points.map(\.slot)) in "
+                    + "\(breaths.runs.count) run(s))")
+            assertTest(
+                breaths.valueDecimals == 1,
+                "…and reads its numbers to one decimal, which is the resolution the column is stored "
+                    + "at — printing this week whole would render six of its seven days as `15`")
+            assertTest(
+                breaths.points.map { String(format: "%.\(breaths.valueDecimals)f", $0.value) }
+                    == ["14.8", "15.4", "14.9", "14.9", "14.9", "16.5", "14.9"],
+                "…so the labels the chart draws for the reference week are the week's own figures (got "
+                    + "\(breaths.points.map { String(format: "%.1f", $0.value) }))")
+        } else {
+            assertTest(false, "The reference respiratory week yields no series at all")
+        }
+
+        // The other two are whole-number quantities and must stay that way: a `52.0` bpm or a `47.0`
+        // ms would claim a resolution neither column is stored at. Asserted together because the
+        // precision now lives in one shared property and a single edit could move all three.
+        assertTest(
+            WeekLineSeries(hrvWeek: mixed)?.valueDecimals == 0
+                && WeekLineSeries(restingHeartRateWeek: mixed)?.valueDecimals == 0
+                && WeekLineSeries(respiratoryRateWeek: referenceRespiratory)?.valueDecimals == 1,
+            "Each quantity carries its own resolution, so the fractional one cannot drag the other "
+                + "two to a decimal they were never measured at")
+
+        // The ungated pass-through, which is the one place in `makeDay` a value is not filtered. The
+        // column has no reserved zero — it is optional on the row and on the slot — so the optional is
+        // the whole rule, and the chart and the RESPIRATORY RATE row above it read the same value
+        // through it. A gate here would let the chart omit a point the row prints.
+        let onlyBreaths = MetricWeek(
+            endingOn: anchor,
+            recovery: [
+                RecoveryMetric(
+                    date: anchor, score: 0, hrvValueMs: 0, restingHeartRate: 0,
+                    respiratoryRate: 14.4)
+            ])
+        assertTest(
+            onlyBreaths.days.last?.respiratoryRate == 14.4,
+            "A respiratory rate reaches its slot even from a row this app calls unmeasured, because "
+                + "the column has no reserved zero to gate and the row above the chart is not gated "
+                + "either (got \(onlyBreaths.days.last?.respiratoryRate.map { "\($0)" } ?? "nil"))")
+        assertTest(
+            onlyBreaths.days.last?.hasAnyMeasurement == false,
+            "…while still not counting as a measurement on the STRAIN & RECOVERY chart, which draws "
+                + "neither a respiratory rate nor anything else this row holds")
+
+        // The reference week's own breaths, and the axis they fit to. A two-unit span against the
+        // ladder's smallest step, which is the tightest fit in this app and the one where an
+        // off-by-one in the snapping would be most visible.
+        if let fitted = FittedAxis(values: [14.8, 15.4, 14.9, 14.9, 14.9, 16.5, 14.9]) {
+            assertTest(
+                fitted.lowerBound == 14 && fitted.upperBound == 17 && fitted.step == 1,
+                "The reference week's breaths fit to a one-rpm step rather than to the data's own "
+                    + "14.8…16.5 (got \(fitted.lowerBound)…\(fitted.upperBound) at step "
+                    + "\(fitted.step))")
+            assertTest(
+                fitted.gridLines == [15, 16],
+                "…and rule gridlines at whole breaths, which is as coarse as a reader can name on a "
+                    + "two-unit span (got \(fitted.gridLines))")
+        } else {
+            assertTest(false, "The reference week's respiratory rates yield no axis")
+        }
+
+        // The reserved-zero row: a day an older build wrote as unmeasured. `makeDay` gates the rate on
+        // `hasMeasurement && > 0`, so the `0` never reaches the series — the same double gate the
+        // panel's own field is asserted on above, reached through the drawing this time. Without it a
+        // placeholder day would plot a real-looking point at zero bpm.
+        assertTest(
+            WeekLineSeries(
+                restingHeartRateWeek: MetricWeek(
+                    endingOn: anchor,
+                    recovery: [
+                        RecoveryMetric(
+                            date: anchor, score: 0, hrvValueMs: 0, restingHeartRate: 0)
+                    ])) == nil,
+            "A reserved-zero row plots no point on the resting-heart-rate chart, so a day nothing "
+                + "measured cannot arrive as a rate of zero")
+
+        // The reference week's own rates, and the axis the screenshot's chart is drawn from. These are
+        // the seven days the resting-heart-rate card was built against, measured off the imported
+        // export — 55, 55, 52, 52, 49, 66, 52 — so a change to the fitting shows up here as numbers
+        // rather than as a chart that merely looks a little different.
+        if let fitted = FittedAxis(values: [55, 55, 52, 52, 49, 66, 52]) {
+            assertTest(
+                fitted.lowerBound == 45 && fitted.upperBound == 70 && fitted.step == 5,
+                "The reference week's rates fit to a 5 bpm step rather than to the data's own 49…66 "
+                    + "(got \(fitted.lowerBound)…\(fitted.upperBound) at step \(fitted.step))")
+            assertTest(
+                fitted.gridLines == [50, 55, 60, 65],
+                "…and rule gridlines at those five-bpm values, so the reader can name every line "
+                    + "without a label (got \(fitted.gridLines))")
+        } else {
+            assertTest(false, "The reference week's resting rates yield no axis")
+        }
+
+        // ---- The bars, and the two questions a bar series answers ----
+        //
+        // The page's two bar charts are one drawing, so which slots plot and what colour each bar is
+        // now live in `WeekBarSeries` rather than in a `View`'s body — the reason `DayBarRules` is a
+        // type. Neither rule is visible in a screenshot of a week where it happens not to bite, and
+        // both were previously unassertable.
+        //
+        // The recovery bars first: the rule they carry is that a day with no score gets no bar, which
+        // `mixed` exercises because only five of its seven slots hold a row.
+        if let scores = WeekBarSeries(recoveryWeek: mixed) {
+            assertTest(
+                scores.points.map(\.slot) == [2, 3, 4, 5, 6],
+                "The recovery bars cover exactly the days carrying a score — five of the seven slots, "
+                    + "and the two with no row draw no bar rather than a zero-height one (got "
+                    + "\(scores.points.map(\.slot)))")
+            assertTest(
+                scores.points.allSatisfy { $0.value == 60 },
+                "…and each bar states its own day's score, which is what the tier colour below is "
+                    + "computed from (got \(scores.points.map(\.value)))")
+        } else {
+            assertTest(false, "A week of five scored days yields no recovery bar series")
+        }
+        assertTest(
+            WeekBarSeries(recoveryWeek: mixed)?.palette == .recoveryTier,
+            "The recovery bars take their colour from the day's own tier — so the colour is the "
+                + "reading rather than decoration")
+        // The gridlines are the tier edges, so they move with the tiers: an off-by-one at 66/67 in
+        // `RecoveryState` would leave the bars coloured by one boundary and measured against another.
+        assertTest(
+            WeekBarSeries(recoveryWeek: mixed)?.gridEdges == [0.34, 0.67],
+            "…and the two lines it grids at are 34% and 67%, read off the tier ranges rather than "
+                + "typed, so a reader can see the boundaries the bar colours come from (got "
+                + "\((WeekBarSeries(recoveryWeek: mixed)?.gridEdges ?? []).map { "\($0)" }))")
+
+        // A night with a known need, so the chain from a `sleeps` row through `MetricDay` to a drawn
+        // bar is asserted end to end rather than at one end. The figures are chosen for their
+        // arithmetic — a 30% night is the case a chart is worth drawing for — and are not anyone's
+        // week: the app's own imported nights run to a different set of percentages.
+        func night(_ offset: Int, fraction: Double) -> SleepSession {
+            SleepSession(
+                date: day(offset),
+                startTime: day(offset),
+                endTime: day(offset),
+                targetSleepNeedSeconds: 8 * 3600,
+                lightSleepSeconds: fraction * 8 * 3600)
+        }
+        // Written offset-first like the fixtures above, so `day(offset)` is the night each is filed
+        // under and the slot it lands in is `6 - offset` — the anchor is slot 6.
+        let sleepWeek = MetricWeek(
+            endingOn: anchor,
+            sleep: [
+                (0, 0.81), (1, 0.30), (2, 0.81), (3, 0.82), (4, 0.82), (5, 0.76), (6, 0.81),
+            ].map { offset, fraction in night(offset, fraction: fraction) })
+
+        if let performance = WeekBarSeries(sleepPerformanceWeek: sleepWeek) {
+            assertTest(
+                performance.points.map(\.slot) == [0, 1, 2, 3, 4, 5, 6],
+                "The sleep-performance bars cover every classified night, so a full week is seven "
+                    + "bars (got \(performance.points.map(\.slot)))")
+            assertTest(
+                performance.points.map(\.value) == [81, 76, 82, 82, 81, 30, 81],
+                "…and each bar states that night's own percentage, computed from its staged minutes "
+                    + "over its need — the whole chain from a stored night to a drawn bar (got "
+                    + "\(performance.points.map(\.value)))")
+        } else {
+            assertTest(false, "A week of seven classified nights yields no sleep bar series")
+        }
+        assertTest(
+            WeekBarSeries(sleepPerformanceWeek: sleepWeek)?.palette == .sleepPerformance,
+            "The sleep bars are one flat colour rather than tiered, because this app has no "
+                + "sleep-performance bands to colour by")
+        assertTest(
+            WeekBarSeries(sleepPerformanceWeek: sleepWeek)?.gridEdges.isEmpty == true,
+            "…and consequently carry no gridlines at all. Round quarters under bars with no "
+                + "thresholds would be lines at meaningful-looking places that mean nothing, which is "
+                + "the opposite of what the recovery chart's gridlines are for")
+
+        // ---- The fifth chart is omitted on its own data, and it is the one that can be alone ----
+        //
+        // Sleep performance is read off a `sleeps` row and the other four off a `recoveries` row, so
+        // this is the only card on the page that can be drawn on a week all the others are absent
+        // from. The strap records nights and recoveries independently, so it is a real week and not a
+        // constructed one.
+        assertTest(
+            WeekBarSeries(recoveryWeek: sleepWeek) == nil
+                && WeekLineSeries(hrvWeek: sleepWeek) == nil
+                && WeekLineSeries(restingHeartRateWeek: sleepWeek) == nil
+                && WeekLineSeries(respiratoryRateWeek: sleepWeek) == nil
+                && WeekBarSeries(sleepPerformanceWeek: sleepWeek) != nil,
+            "A week whose only data is its nights draws the sleep-performance chart and none of the "
+                + "other four, rather than omitting the whole section or drawing four empty frames")
+        assertTest(
+            WeekBarSeries(sleepPerformanceWeek: mixed) == nil
+                && WeekBarSeries(recoveryWeek: mixed) != nil,
+            "…and the omissions are independent the other way: a week of recovery rows with no "
+                + "nights draws the recovery bars and no sleep chart")
+        assertTest(
+            sleepWeek.days.last?.recoveryScore == nil
+                && sleepWeek.days.last?.sleepPerformance == 81
+                && sleepWeek.days.last?.hasAnyMeasurement == true,
+            "A slot can hold a night and no recovery row at all, and still count as measured — "
+                + "through the night's need, which is the field `hasAnyMeasurement` already reads. "
+                + "That is why excluding the performance from it is redundant rather than "
+                + "load-bearing")
+
+        // The one path by which a bar could state a figure with no measurement behind it, asserted as
+        // the trap it is rather than as a behaviour. `SleepSession.sleepPerformancePercentage` guards
+        // `targetSleepNeedSeconds > 0` with a hard `100`, and `sleepNeedSeconds` on the same slot is
+        // gated to `nil` — so the pair disagree, which is only visible when they are asserted
+        // together. The chart plots the 100 because the SLEEP PERFORMANCE row above it prints the same
+        // 100, and dropping the bar here would make two statements of one figure contradict. It is
+        // unreachable on stored nights — every imported row with a wake onset carries a need, and the
+        // strap path computes one — so this fails loudly if anyone makes it reachable, which is the
+        // point.
+        let needlessNight = MetricWeek(
+            endingOn: anchor,
+            sleep: [
+                SleepSession(
+                    date: anchor, startTime: anchor, endTime: anchor, targetSleepNeedSeconds: 0)
+            ])
+        assertTest(
+            needlessNight.days.last?.sleepPerformance == 100
+                && needlessNight.days.last?.sleepNeedSeconds == nil,
+            "A night stored with no need states a performance of exactly 100 — the guard inside "
+                + "`SleepSession.sleepPerformancePercentage` standing in for a denominator that was "
+                + "not there — while the need on the same slot is nil, and the chart draws that 100 "
+                + "because the row above it prints it (got performance "
+                + "\(needlessNight.days.last?.sleepPerformance.map { "\($0)" } ?? "nil"), need "
+                + "\(needlessNight.days.last?.sleepNeedSeconds.map { "\($0)" } ?? "nil"))")
+
+        // ---- The fitted axis ----
+        //
+        // The one auto-scaled axis in this app, and the assertions that keep it from becoming the
+        // thing the fixed-scale rule forbids. The bounds are round and the gridlines are values a
+        // reader can name; `32…67` is the reference week's own range, so these are the numbers the
+        // screenshot's chart is drawn from.
+        if let fitted = FittedAxis(values: [47, 51, 59, 58, 63, 32, 67]) {
+            assertTest(
+                fitted.lowerBound == 30 && fitted.upperBound == 70 && fitted.step == 10,
+                "The fitted axis rounds out to a step a reader can name rather than to the data's "
+                    + "own extremes (got \(fitted.lowerBound)…\(fitted.upperBound) at step "
+                    + "\(fitted.step))")
+            assertTest(
+                fitted.gridLines == [40, 50, 60],
+                "…and rules its gridlines at those round values, strictly inside the bounds so the "
+                    + "frame's own edges are not drawn twice (got \(fitted.gridLines))")
+            assertTest(
+                fitted.upperBound >= 67 && fitted.lowerBound <= 32,
+                "The bounds contain every value they were fitted to, so nothing the chart hands this "
+                    + "can be clamped away by the frame")
+        } else {
+            assertTest(false, "The reference week's values yield no axis at all")
+        }
+
+        // A flat week is still a band to draw in. Without the widening a zero-span range would put
+        // the line on the frame's edge and leave the fraction dividing by zero.
+        if let flat = FittedAxis(values: [55, 55, 55]) {
+            assertTest(
+                flat.upperBound > flat.lowerBound,
+                "A week where every reading is identical still gets a non-zero range (got "
+                    + "\(flat.lowerBound)…\(flat.upperBound))")
+        } else {
+            assertTest(false, "A flat week yields no axis, which would draw an empty frame")
+        }
+
+        assertTest(
+            FittedAxis(values: []) == nil,
+            "An axis with nothing to describe is nil rather than a default range, so a caller cannot "
+                + "draw an empty frame through it")
 
         // ---- A day with no samples is not a day ----
         //

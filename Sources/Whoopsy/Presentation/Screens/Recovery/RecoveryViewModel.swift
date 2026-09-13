@@ -17,6 +17,28 @@ import SwiftUI
     /// scoring time and not kept.
     public private(set) var sleepSession: SleepSession?
 
+    /// The seven days ending on the day shown, for the week charts — built from the **recovery and
+    /// sleep histories**, and deliberately not from strain.
+    ///
+    /// `MetricWeek` joins three histories and is the app's canonical week. This page draws four of the
+    /// six figures it carries, and they come from two of those three: recovery score, HRV, resting
+    /// rate and respiratory rate are all columns on a `recoveries` row, and sleep performance is
+    /// computed from a `sleeps` row. **Strain is the one that is `nil` on every slot here**, and that
+    /// `nil` means *not asked for* rather than *not measured* — nothing on this page plots it, so the
+    /// read is not taken. A reader of this property must not treat that field as an absence: reading
+    /// strain off this week would report every day of it as unmeasured. Passing it a strain history is
+    /// the fix if a view ever needs one; passing this week to something that plots strain is not.
+    ///
+    /// The two reads are both taken over the day's own window rather than the week's, because
+    /// `MetricWeek` keeps the seven slots it was asked for and ignores the rest — so one read serves
+    /// the week and the day together. The sleep history is a second query and not a wider view of the
+    /// first: nothing on a `recoveries` row carries a sleep performance, so there is no window of one
+    /// that would do.
+    ///
+    /// `nil` before the first load, and on a failed one — the charts are then absent rather than
+    /// empty, which is the same rule each chart applies inside a loaded week.
+    public private(set) var week: MetricWeek?
+
     private let calculate: CalculateRecoveryUseCase
     private let repository: any RecoveryRepository
     private let sleepRepository: any SleepRepository
@@ -46,6 +68,10 @@ import SwiftUI
     public func load(for date: Date) async {
         isLoading = true
         defer { isLoading = false }
+        // Cleared before the reads, so a throw part-way through cannot leave the previous day's seven
+        // columns under this day's ring. The week is a window *ending on* the day being loaded, so a
+        // stale one is not merely old data — it is a chart labelled with the wrong dates.
+        week = nil
         do {
             var stored = try await repository.getRecovery(for: date)
             if shouldCompute(for: date, stored: stored) {
@@ -56,6 +82,12 @@ import SwiftUI
             // Fetched last so that a score computed just above, which lands on today, is in the trend
             // rather than one load behind it.
             history = try await repository.getRecoveryHistory(days: 14, endingOn: date)
+
+            // Over the same window, and not off the read above: sleep performance is computed from a
+            // `sleeps` row, and no column of a `recoveries` row carries one. `MetricWeek` keeps the
+            // seven slots it was asked for and ignores the rest, so one read serves week and day.
+            let nights = try await sleepRepository.getSleepHistory(days: 14, endingOn: date)
+            week = MetricWeek(endingOn: date, recovery: history, sleep: nights)
 
             await loadBaselines(for: date, todayHrvMetric: displayedHrvMetric)
         } catch {
