@@ -95,26 +95,67 @@ public final class AnalyzeSleepUseCase: Sendable {
         let previousDay = calendar.date(byAdding: .day, value: -1, to: morningDate.startOfDay) ?? morningDate
         let previousStrain = try await strainRepository.getStrain(for: previousDay)
 
+        // A flat `targetSleepHours` stood here, which reported every night against the same
+        // denominator while WHOOP's own need for the same nights ranged 321–650 min. See
+        // `SleepNeedMath` for the fit and for what is deliberately left out.
+        let targetSleepNeedSeconds = SleepNeedMath.sleepNeedSeconds(
+            baselineSeconds: profile.targetSleepHours * 3600,
+            previousDayStrain: previousStrain?.score)
+
+        let asleepSeconds = lightSec + deepSec + remSec
+
+        // The strap path's respiratory rate, read off the R-R series by respiratory sinus
+        // arrhythmia — WHOOP's own mechanism. The literal `14.4` that once stood here reached the
+        // Recovery screen as a measured "14.4 rpm"; what replaced it is a measurement rather than a
+        // constant, and `nil` when the beats cannot support one. The export carries no R-R series at
+        // all, so a night from the import keeps WHOOP's own stored figure and never comes here.
+        let respiratoryRate = RespiratoryRateMath.respiratoryRate(
+            from: samples.compactMap { sample in
+                guard let intervals = sample.rrIntervalsMs, !intervals.isEmpty else { return nil }
+                return RespiratoryRateMath.BeatPacket(
+                    arrival: sample.timestamp, rrIntervalsMs: intervals)
+            },
+            asleepIntervals: stages
+                .filter { $0.stage != .awake }
+                .map { DateInterval(start: $0.startTime, end: $0.endTime) })
+
+        // The running deficit. This is the only history read on this path, and it is anchored on the
+        // night being scored rather than on `Date()` — the night a strap recorded an hour ago and the
+        // night it recorded a week ago must walk the same series, which a `Date()` anchor would break
+        // for every night but today's.
+        //
+        // The anchor is `startOfDay`, matching the key `saveSleepSession` writes: the model compares
+        // `night.day` against the priors' days, and a raw `Date()` on the day the night is keyed to
+        // would be later than the night's own stored key — which is what made a day fall inside its
+        // own baseline in `RecoveryScoring.baselineWindow(before:)`, so the same snap is applied here
+        // rather than assumed of the caller.
+        let history = try await sleepRepository.getSleepHistory(
+            days: SleepDebtMath.historyLookbackDays, endingOn: morningDate.startOfDay)
+        let sleepDebtSeconds = SleepDebtMath.sleepDebtSeconds(
+            for: SleepDebtMath.Night(
+                day: morningDate.startOfDay,
+                needSeconds: targetSleepNeedSeconds,
+                asleepSeconds: asleepSeconds),
+            history: history.map {
+                SleepDebtMath.Night(
+                    day: $0.date,
+                    needSeconds: $0.targetSleepNeedSeconds,
+                    asleepSeconds: $0.totalTimeAsleepSeconds)
+            })
+
         let session = SleepSession(
             date: morningDate,
             startTime: firstSample.timestamp,
             endTime: lastSample.timestamp,
-            // A flat `targetSleepHours` stood here, which reported every night against the same
-            // denominator while WHOOP's own need for the same nights ranged 321–650 min. See
-            // `SleepNeedMath` for the fit and for what is deliberately left out.
-            targetSleepNeedSeconds: SleepNeedMath.sleepNeedSeconds(
-                baselineSeconds: profile.targetSleepHours * 3600,
-                previousDayStrain: previousStrain?.score),
+            targetSleepNeedSeconds: targetSleepNeedSeconds,
             lightSleepSeconds: lightSec,
             deepSleepSeconds: deepSec,
             remSleepSeconds: remSec,
             awakeSeconds: awakeSec,
             // Both derived from the epochs above: a disturbance is a counted awake epoch.
             disturbanceCount: disturbances,
-            // No respiratory sensor on this path. The literal 14.4 that stood here reached the
-            // Recovery screen as a measured "14.4 rpm"; absent is the honest answer, and Recovery
-            // already renders a nil respiratory rate as a dash.
-            respiratoryRate: nil,
+            respiratoryRate: respiratoryRate,
+            sleepDebtSeconds: sleepDebtSeconds,
             sleepStages: stages
         )
 

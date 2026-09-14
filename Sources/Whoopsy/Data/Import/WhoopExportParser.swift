@@ -1,11 +1,18 @@
 import Foundation
 
-/// One row of WHOOP's `physiological_cycles.csv`, parsed and nothing more.
+/// One row of a WHOOP export sleep file, parsed and nothing more.
 ///
 /// Every field is optional because the export leaves cells empty and that absence is information: a
 /// cycle that has not ended yet has no strain, and a day the strap was not worn has no HRV. Deciding
 /// what an empty cell *means* is the importer's job, not the parser's — this type only refuses to
 /// invent a value for one.
+///
+/// **One type covers both `physiological_cycles.csv` and `sleeps.csv`, because they share their sleep
+/// columns.** The cycle file is the superset — it carries recovery, strain and the sleep block — and
+/// the sleep file carries the sleep block plus `Nap`. Reading the two into one row type is what lets
+/// the nap path reuse the date and timezone plumbing rather than restate it; what keeps them apart is
+/// that `parseNaps` **requires** the `Nap` column, so pointing it at the cycle file throws instead of
+/// quietly reporting no naps.
 public struct WhoopExportRow: Sendable, Equatable {
     /// The cycle's start. Also the sleep onset for most rows.
     public let cycleStart: Date
@@ -25,6 +32,9 @@ public struct WhoopExportRow: Sendable, Equatable {
     public let averageHeartRate: Int?
 
     public let sleepPerformancePercent: Int?
+    /// WHOOP's own Sleep Consistency. Read rather than recomputed — see
+    /// `SleepConsistencyMath` for why the app also computes one, and `SleepViewModel` for which wins.
+    public let sleepConsistencyPercent: Int?
     public let respiratoryRate: Double?
     public let asleepMinutes: Double?
     public let inBedMinutes: Double?
@@ -33,9 +43,22 @@ public struct WhoopExportRow: Sendable, Equatable {
     public let remMinutes: Double?
     public let awakeMinutes: Double?
     public let sleepNeedMinutes: Double?
+    /// WHOOP's accumulated sleep deficit for the night, in minutes — stored as seconds, see
+    /// `SleepRecord.sleepDebt`.
+    public let sleepDebtMinutes: Double?
+
+    /// The export's `Nap` column: `true` on a nap record, `false` on a night, and **`nil` on every row
+    /// of `physiological_cycles.csv`**, which has no such column at all.
+    ///
+    /// That `nil` is the point rather than an inconvenience — it is what lets a reader tell "this file
+    /// does not classify its rows" from "this row is a night", which are different facts and only one
+    /// of which is safe to filter on. `parseNaps` requires the column before it returns anything.
+    public let isNap: Bool?
 
     /// Whether this row carries anything worth writing. `false` for the export's blank filler rows,
     /// which exist to close a cycle and hold no measurement at all.
+    ///
+    /// A nap is never empty: it has a wake onset, which is the whole of what this test asks.
     public var isEmpty: Bool {
         recoveryScorePercent == nil && dayStrain == nil && wakeOnset == nil
     }
@@ -90,6 +113,37 @@ public enum WhoopExportParser {
     }
 
     public static func parseCycles(_ text: String) throws -> [WhoopExportRow] {
+        try parse(text, requiring: requiredColumns)
+    }
+
+    /// The naps out of `sleeps.csv` — the only rows in the export that file holds and
+    /// `physiological_cycles.csv` does not.
+    ///
+    /// **`Nap` is required, not optional, and that is the load-bearing part.** The two files share
+    /// their sleep columns, so this parser would happily read the cycle file and find no naps in it —
+    /// reporting a successful import of nothing, which is the exact failure shape `WhoopExportError`
+    /// exists to refuse. Requiring the column means pointing this at the wrong file raises
+    /// `missingColumns(["Nap"])` instead. The column is also what makes the two files distinguishable
+    /// at all: `physiological_cycles.csv` has no such field, so `isNap` is `nil` on every row of it.
+    ///
+    /// The 910 non-nap rows are returned by the underlying parse and **filtered out here**, because
+    /// they are already the bundled file's 910 nights, set-for-set. Importing them from here as well
+    /// would be a second writer for days the cycle import already owns.
+    public static func parseNaps(at url: URL) throws -> [WhoopExportRow] {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+            throw WhoopExportError.unreadable(url)
+        }
+        return try parseNaps(text)
+    }
+
+    public static func parseNaps(_ text: String) throws -> [WhoopExportRow] {
+        try parse(text, requiring: requiredColumns + [napColumn]).filter { $0.isNap == true }
+    }
+
+    /// The `Nap` column, which only `sleeps.csv` carries.
+    static let napColumn = "Nap"
+
+    private static func parse(_ text: String, requiring required: [String]) throws -> [WhoopExportRow] {
         // `\r` because the file may have been round-tripped through a tool that wrote CRLF, and a
         // trailing carriage return on every field would poison every numeric parse.
         let lines = text
@@ -101,7 +155,7 @@ public enum WhoopExportParser {
         let columns = header.components(separatedBy: ",")
         let index = Dictionary(uniqueKeysWithValues: columns.enumerated().map { ($1, $0) })
 
-        let missing = requiredColumns.filter { index[$0] == nil }
+        let missing = required.filter { index[$0] == nil }
         guard missing.isEmpty else { throw WhoopExportError.missingColumns(missing) }
 
         return try lines.dropFirst().enumerated().compactMap { offset, line in
@@ -143,6 +197,14 @@ public enum WhoopExportParser {
                 number(column).map { Int($0.rounded()) }
             }
             func minutes(_ column: String) -> Double? { number(column) }
+            /// `nil` when the column is absent from the file entirely — which is a different fact
+            /// from a row that is not a nap, and the one `parseNaps` filters on.
+            func flag(_ column: String) -> Bool? {
+                guard index[column] != nil else { return nil }
+                let raw = field(fields, index[column]).lowercased()
+                if raw.isEmpty { return nil }
+                return raw == "true"
+            }
 
             return WhoopExportRow(
                 cycleStart: cycleStart,
@@ -158,6 +220,7 @@ public enum WhoopExportParser {
                 maxHeartRate: integer("Max HR (bpm)"),
                 averageHeartRate: integer("Average HR (bpm)"),
                 sleepPerformancePercent: integer("Sleep performance %"),
+                sleepConsistencyPercent: integer("Sleep consistency %"),
                 respiratoryRate: number("Respiratory rate (rpm)"),
                 asleepMinutes: minutes("Asleep duration (min)"),
                 inBedMinutes: minutes("In bed duration (min)"),
@@ -165,7 +228,9 @@ public enum WhoopExportParser {
                 deepMinutes: minutes("Deep (SWS) duration (min)"),
                 remMinutes: minutes("REM duration (min)"),
                 awakeMinutes: minutes("Awake duration (min)"),
-                sleepNeedMinutes: minutes("Sleep need (min)"))
+                sleepNeedMinutes: minutes("Sleep need (min)"),
+                sleepDebtMinutes: minutes("Sleep debt (min)"),
+                isNap: flag(napColumn))
         }
     }
 

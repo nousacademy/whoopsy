@@ -27,6 +27,7 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
     private let recoveryRepository: any RecoveryRepository
     private let sleepRepository: any SleepRepository
     private let strainRepository: any StrainRepository
+    private let napRepository: any NapRepository
     private let userProfileRepository: any UserProfileRepository
     private let calendar: Calendar
 
@@ -34,12 +35,14 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
         recoveryRepository: any RecoveryRepository,
         sleepRepository: any SleepRepository,
         strainRepository: any StrainRepository,
+        napRepository: any NapRepository,
         userProfileRepository: any UserProfileRepository,
         calendar: Calendar = .current
     ) {
         self.recoveryRepository = recoveryRepository
         self.sleepRepository = sleepRepository
         self.strainRepository = strainRepository
+        self.napRepository = napRepository
         self.userProfileRepository = userProfileRepository
         self.calendar = calendar
     }
@@ -54,19 +57,66 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
         Bundle.module.url(forResource: "physiological_cycles", withExtension: "csv")
     }
 
+    /// The bundled `sleeps.csv`, whose only unique contribution is its eight nap records.
+    ///
+    /// Same `Bundle.module` rule as the cycle file: it traps rather than returning nil when the
+    /// resource bundle is missing, so this must stay inside the user-initiated action.
+    public static func bundledNapsURL() -> URL? {
+        Bundle.module.url(forResource: "sleeps", withExtension: "csv")
+    }
+
     /// Imports the export that shipped with the app.
     ///
     /// This is where `Bundle.module` is touched, and it is deliberately only reachable from a
     /// user-initiated action — see `bundledExportURL()`.
+    ///
+    /// **Two files, one button.** The naps are imported first and folded into the summary, so the
+    /// person who pressed the button gets one report rather than two. The cycle file is the one they
+    /// asked for and the one whose absence is an error; a build without `sleeps.csv` imports no naps
+    /// and reports `0` for them — see `importBundledNaps()`.
     public func importBundledExport() async throws -> WhoopImportSummary {
         guard let url = Self.bundledExportURL() else { throw WhoopExportError.notBundled }
-        return try await importExport(at: url)
+        let napsWritten = try await importBundledNaps()
+        return try await importExport(at: url).recordingNapsWritten(napsWritten)
     }
 
     public func importExport(at url: URL) async throws -> WhoopImportSummary {
         let rows = try WhoopExportParser.parseCycles(at: url)
         let profile = try await userProfileRepository.getUserProfile()
         return try await importRows(rows, profile: profile)
+    }
+
+    // MARK: - Naps
+
+    /// The naps out of the bundled `sleeps.csv`, or `0` when this build does not carry that file.
+    ///
+    /// **A missing side file is not an error**, which is the opposite of the cycle file's rule. The
+    /// naps are eight rows of a 918-row file the app was not shipping at all until now; failing the
+    /// whole import over their absence would trade a working history for a missing curiosity.
+    @discardableResult
+    func importBundledNaps() async throws -> Int {
+        guard let url = Self.bundledNapsURL() else { return 0 }
+        return try await importNaps(at: url)
+    }
+
+    /// The naps in `sleeps.csv`. The non-nap rows are filtered by `parseNaps` — see there for why
+    /// importing them here would be a second writer for days the cycle import already owns.
+    @discardableResult
+    public func importNaps(at url: URL) async throws -> Int {
+        try await importNapRows(WhoopExportParser.parseNaps(at: url))
+    }
+
+    /// Rows written, which on this export is 8. Idempotent by construction: `NapRecord`'s primary key
+    /// is the nap's own start instant, so a second run updates the same eight rows.
+    @discardableResult
+    func importNapRows(_ rows: [WhoopExportRow]) async throws -> Int {
+        var written = 0
+        for row in rows {
+            guard let nap = Self.makeNap(from: row, calendar: calendar) else { continue }
+            try await napRepository.saveNap(nap, source: Self.sourceLabel)
+            written += 1
+        }
+        return written
     }
 
     /// The whole import, over rows that are already parsed — the seam the tests drive directly, so
@@ -315,7 +365,57 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
             awakeSeconds: seconds(row.awakeMinutes),
             disturbanceCount: nil,
             respiratoryRate: row.respiratoryRate,
+            // WHOOP's own, verbatim, exactly as `respiratoryRate` above and `sleepNeedMinutes` in the
+            // target are. This is the one quantity on the sleep screen where an imported night and a
+            // strap night carry numbers from different sources, and `GRDBSleepRepository` stores them
+            // in the same column without a marker: what distinguishes them is that a strap night's is
+            // computed on read from this column being empty, never written into it.
+            sleepConsistency: row.sleepConsistencyPercent,
+            // WHOOP's accumulated deficit, verbatim, in the seconds every duration in this entity is
+            // in. A strap night's is `nil` and stays `nil`: the deficit is WHOOP's own accumulation
+            // across nights, and no single night the app classifies can produce one — so this is the
+            // second quantity on this screen, after consistency, that an imported night carries from
+            // WHOOP and a strap night simply does not have.
+            //
+            // **`map`, never `?? 0`.** A missing `Sleep debt (min)` cell would become `0` seconds,
+            // and the screen prints that as `0 min` — a night in perfect credit, which is the
+            // strongest possible claim about a deficit and one this app would be inventing. Every
+            // duration above uses `?? 0` because a row with no stage durations genuinely has none;
+            // this one is optional *on the entity*, so the absence has somewhere to go.
+            sleepDebtSeconds: row.sleepDebtMinutes.map { $0 * 60 },
             sleepStages: [])
+    }
+
+    /// A nap from the export, or nil when the row cannot be placed in time or carries no duration.
+    ///
+    /// **The day key is the nap's own onset — the night table's rule, and the opposite of it.** A
+    /// night is filed under the morning it ended on because that is the day it belongs to; a nap is
+    /// filed under the day it was *taken* on, and four of the export's eight naps end after midnight
+    /// (2024-02-06 02:34, 2024-08-27 02:36). Measured against the bundled export, all eight land on a
+    /// day the cycle file already carries a night for — so this key puts every nap on a day the sleep
+    /// screen can actually show, which keying on the wake onset does not.
+    ///
+    /// **A nap with no asleep duration is not a nap**, so `nil` rather than a zero: `?? 0` here would
+    /// store a nap the user never took. The export populates this column on all eight rows.
+    static func makeNap(from row: WhoopExportRow, calendar: Calendar) -> SleepNap? {
+        guard let start = row.sleepOnset, let end = row.wakeOnset, end > start,
+            let asleepMinutes = row.asleepMinutes
+        else { return nil }
+
+        return SleepNap(
+            id: Self.napID(startingAt: start),
+            date: calendar.startOfDay(for: start),
+            startTime: start,
+            endTime: end,
+            asleepSeconds: asleepMinutes * 60)
+    }
+
+    /// A nap's stable identity: its own start instant, to the second.
+    ///
+    /// Deliberately not a `UUID` — see `NapRecord`'s doc comment. The import has to be idempotent, and
+    /// a fresh id per run writes eight more rows every time the button is pressed.
+    static func napID(startingAt start: Date) -> String {
+        String(Int(start.timeIntervalSince1970))
     }
 
     private static func displayDate(_ date: Date) -> String {

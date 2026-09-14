@@ -19,6 +19,13 @@ public struct WhoopImportSummary: Sendable, Equatable {
     public let sleepsWritten: Int
     public let strainsWritten: Int
 
+    /// Nap rows written, out of the bundled `sleeps.csv`.
+    ///
+    /// A fourth table and a fourth count, kept apart from `sleepsWritten` because it comes from a
+    /// different file and is not a night. On this export it is 8, against 910 nights — so it is the
+    /// one figure here a reader might otherwise assume was a typo.
+    public let napsWritten: Int
+
     /// Distinct days that received at least one row. A set count, not derivable from the three
     /// above — which is why the importer passes it in rather than the summary computing it.
     public let daysWritten: Int
@@ -63,6 +70,7 @@ public struct WhoopImportSummary: Sendable, Equatable {
         duplicateExportRows: Int = 0,
         daysWritten: Int = 0,
         strainOnlyDays: Int = 0,
+        napsWritten: Int = 0,
         firstDay: String = "",
         lastDay: String = ""
     ) {
@@ -76,8 +84,31 @@ public struct WhoopImportSummary: Sendable, Equatable {
         self.duplicateExportRows = duplicateExportRows
         self.daysWritten = daysWritten
         self.strainOnlyDays = strainOnlyDays
+        self.napsWritten = napsWritten
         self.firstDay = firstDay
         self.lastDay = lastDay
+    }
+
+    /// The same summary with the nap count filled in.
+    ///
+    /// The naps come out of a second file and are walked before the cycle import runs, so the count
+    /// exists before the summary does and has to be folded in afterwards rather than passed down
+    /// through the cycle walk, which knows nothing about naps.
+    public func recordingNapsWritten(_ count: Int) -> WhoopImportSummary {
+        WhoopImportSummary(
+            rowsInExport: rowsInExport,
+            rowsEmpty: rowsEmpty,
+            recoveriesWritten: recoveriesWritten,
+            sleepsWritten: sleepsWritten,
+            strainsWritten: strainsWritten,
+            daysAlreadyRecorded: daysAlreadyRecorded,
+            daysWithoutData: daysWithoutData,
+            duplicateExportRows: duplicateExportRows,
+            daysWritten: daysWritten,
+            strainOnlyDays: strainOnlyDays,
+            napsWritten: count,
+            firstDay: firstDay,
+            lastDay: lastDay)
     }
 
     public static let empty = WhoopImportSummary(
@@ -112,6 +143,9 @@ public struct WhoopImportSummary: Sendable, Equatable {
         }
         if daysAlreadyRecorded > 0 { text += " \(daysAlreadyRecorded) already recorded locally." }
         if daysWithoutData > 0 { text += " \(daysWithoutData) had no reading." }
+        // Naps are not days and must never be added to `daysWritten`. "and 8 naps" is a genuine
+        // addition to what was imported, stated as its own thing.
+        if napsWritten > 0 { text += " Plus \(napsWritten) naps." }
         return text
     }
 }

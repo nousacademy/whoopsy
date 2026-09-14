@@ -11,15 +11,16 @@ import SwiftUI
 /// the chevrons beside the rings and the STRESS MONITOR tile. None of them have a destination in this
 /// app, and a control that looks tappable and is not reads as broken.
 ///
-/// **The recovery ring is now the one exception, and it pushes rather than switching tabs.** Tapping
-/// it opens `RecoveryDetailView` seeded with the day on screen, on the `NavigationStack` this screen
-/// already owns. Switching to the Recovery tab would have been cheaper and is wrong: that tab keeps a
-/// private day seeded to `Date()`, so tapping an 87% ring on an imported day would land on "No data
-/// recorded" — today is past the export's end. The other two rings and the STRESS MONITOR tile stay
-/// inert for the reason above: Strain, Sleep and Stress each keep their own day the same way, so each
-/// needs the same push-shaped fix rather than a tab switch, and `RecoveryDetailView` is the shape to
-/// copy when they get one. **The chevrons stay omitted** — a chevron on one of three otherwise
-/// identical rings would say the other two are broken, and the tap target is discoverable without it.
+/// **Two of the three rings push, and they push rather than switching tabs.** The recovery ring opens
+/// `RecoveryDetailView` and the sleep ring opens `SleepDetailView`, both seeded with the day on
+/// screen, on the `NavigationStack` this screen already owns. Switching to a tab would have been
+/// cheaper and is wrong: the Recovery and Sleep tabs each keep a private day seeded to `Date()`, so
+/// tapping an 87% ring on an imported day would land on "No data recorded" — today is past the
+/// export's end. The strain ring and the STRESS MONITOR tile stay inert for the reason above: each
+/// keeps its own day the same way, so each needs the same push-shaped fix rather than a tab switch,
+/// and the two detail views are the shape to copy when they get one. **The chevrons stay omitted** —
+/// a chevron on one of three otherwise identical rings would say the others are broken, and the tap
+/// target is discoverable without it.
 ///
 /// **Implemented from the scrolled state of the reference:** the three rings collapse into a compact
 /// row pinned to the top once they scroll out of view (`collapsedHeader`), and the STRESS MONITOR tile
@@ -51,6 +52,10 @@ public struct HomeDashboardView: View {
     /// second `RecoveryViewModel` beside the Recovery tab's, deliberately: they are two screens with
     /// two days, and sharing one would make paging the pushed copy move the tab's day underneath it.
     @State private var recoveryViewModel: RecoveryViewModel
+    /// Built here for the same reason `recoveryViewModel` is: the sleep ring's destination needs a
+    /// view model before the push animation starts. A second `SleepViewModel` beside the Sleep tab's,
+    /// so paging the pushed screen cannot move the tab's night underneath it.
+    @State private var sleepViewModel: SleepViewModel
     @State private var selectedDate: Date = Date()
     @State private var isPresentingWorkout = false
     @State private var isPresentingCalendar = false
@@ -58,11 +63,13 @@ public struct HomeDashboardView: View {
     public init(
         viewModel: HomeViewModel,
         workoutViewModel: ActiveWorkoutViewModel,
-        recoveryViewModel: RecoveryViewModel
+        recoveryViewModel: RecoveryViewModel,
+        sleepViewModel: SleepViewModel
     ) {
         _viewModel = State(initialValue: viewModel)
         _workoutViewModel = State(initialValue: workoutViewModel)
         _recoveryViewModel = State(initialValue: recoveryViewModel)
+        _sleepViewModel = State(initialValue: sleepViewModel)
     }
 
     public var body: some View {
@@ -250,15 +257,26 @@ public struct HomeDashboardView: View {
     /// rings they sit under and would decide the header's height.
     private func ringRow(size: CGFloat, lineWidth: CGFloat, compact: Bool = false) -> some View {
         HStack(spacing: compact ? 18 : 6) {
-            ring(
-                value: sleepValue, label: "Sleep", progress: sleepProgress,
-                color: Theme.sleepPerformance, size: size, lineWidth: lineWidth, compact: compact)
-            // The one ring with a destination, and the only difference between the three besides
-            // their values. The destination is handed the day Home is showing, so tapping an 87%
-            // ring opens that 87% day — and it is now the *only* route to a past day on that screen,
-            // since `RecoveryDetailView` no longer pages. See it for why the Recovery tab could not
-            // be reached this way instead. `buttonStyle(.plain)` is load-bearing: the default styles
-            // tint the label and add a hit shape, which would recolour the arc itself.
+            // The sleep ring pushes `SleepDetailView` on the day Home is showing, exactly as the
+            // recovery ring below pushes its own. `buttonStyle(.plain)` is load-bearing here for the
+            // same reason: the default styles tint the label and add a hit shape, which would
+            // recolour the arc itself.
+            NavigationLink {
+                SleepDetailView(viewModel: sleepViewModel, date: selectedDate)
+            } label: {
+                ring(
+                    value: sleepValue, label: "Sleep", progress: sleepProgress,
+                    color: Theme.sleepPerformance, size: size, lineWidth: lineWidth,
+                    compact: compact)
+            }
+            .buttonStyle(.plain)
+            // A hint only. An explicit `accessibilityLabel` here would *replace* the composed one and
+            // drop the score out of the announcement.
+            .accessibilityHint("Opens this night's sleep statistics")
+            // The other ring with a destination. The destination is handed the day Home is showing,
+            // so tapping an 87% ring opens that 87% day — and it is the *only* route to a past day
+            // on that screen, since `RecoveryDetailView` no longer pages. See it for why the Recovery
+            // tab could not be reached this way instead.
             NavigationLink {
                 RecoveryDetailView(viewModel: recoveryViewModel, date: selectedDate)
             } label: {

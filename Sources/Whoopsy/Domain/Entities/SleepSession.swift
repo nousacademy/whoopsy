@@ -44,10 +44,30 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
     public let remSleepSeconds: TimeInterval
     public let awakeSeconds: TimeInterval
     /// Optional because the strap does not always yield them: the actigraphy classifier derives a
-    /// disturbance count only from the epochs it can read, and the strap has no respiratory sensor
-    /// at all. A defaulted number here is a fabricated reading, not a convenience.
+    /// disturbance count only from the epochs it can read, and the respiratory rate is derived from
+    /// the R-R series, so it is absent on any night whose beats cannot support one — which is every
+    /// imported night, since the export carries no R-R series at all. A defaulted number here is a
+    /// fabricated reading, not a convenience.
     public let disturbanceCount: Int?
     public let respiratoryRate: Double?
+
+    /// WHOOP's own Sleep Consistency for the night, when the night came from an import.
+    ///
+    /// Optional because two real states have no value: a strap night the app could not read four
+    /// priors for, and any row written before `v9` added the column. The screen falls back to
+    /// `SleepConsistencyMath` when this is `nil` — see `SleepViewModel.sleepConsistency` — so the
+    /// field is the *stored* answer and never the only one.
+    public let sleepConsistency: Int?
+
+    /// WHOOP's accumulated sleep deficit for the night, in seconds.
+    ///
+    /// **A different kind of quantity from every other duration on this struct**, and the reason it is
+    /// optional where they are not: the stage durations are a breakdown of this night, and this is a
+    /// running deficit across nights that no single night's stages can produce. Only an imported night
+    /// carries it, and a night before `v10` carries none either — so the screen draws `—` rather than
+    /// a `0`, which would be the claim that the user is in perfect sleep credit.
+    public let sleepDebtSeconds: TimeInterval?
+
     public let sleepStages: [SleepStageSegment]
 
     public init(
@@ -62,6 +82,8 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
         awakeSeconds: TimeInterval = 0,
         disturbanceCount: Int? = nil,
         respiratoryRate: Double? = nil,
+        sleepConsistency: Int? = nil,
+        sleepDebtSeconds: TimeInterval? = nil,
         sleepStages: [SleepStageSegment] = []
     ) {
         self.id = id
@@ -75,11 +97,43 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
         self.awakeSeconds = awakeSeconds
         self.disturbanceCount = disturbanceCount
         self.respiratoryRate = respiratoryRate
+        self.sleepConsistency = sleepConsistency
+        self.sleepDebtSeconds = sleepDebtSeconds
         self.sleepStages = sleepStages
     }
 
     public var totalTimeAsleepSeconds: TimeInterval {
         lightSleepSeconds + deepSleepSeconds + remSleepSeconds
+    }
+
+    /// The duration this entity holds for one stage.
+    ///
+    /// **The one switch that maps a stage to its column.** Three callers need it — the typical-range
+    /// card's four rows, the share each of those rows prints, and the window those shares are read
+    /// against — and a `switch` repeated at each would be three answers to "which field is Deep",
+    /// which is the question a stage enum exists to answer once.
+    public func seconds(of stage: SleepStageType) -> TimeInterval {
+        switch stage {
+        case .awake: return awakeSeconds
+        case .light: return lightSleepSeconds
+        case .deep: return deepSleepSeconds
+        case .rem: return remSleepSeconds
+        }
+    }
+
+    /// WHOOP's own sum of the two stages it calls **restorative** — SWS and REM. Wake and light sleep
+    /// are the other two and neither counts.
+    ///
+    /// It is a property rather than `deepSleepSeconds + remSleepSeconds` at the call site because the
+    /// sleep detail screen prints it as a row *and* reads a window's mean of it, and those two have to
+    /// be the same quantity to be comparable. Two spellings of the sum would let one of them drift.
+    ///
+    /// It carries no band and no target: WHOOP's published guidance is that restorative sleep is
+    /// "about 40–50% of total sleep" for most people, which is a population figure and not this
+    /// user's own range — so the card reads it against the user's own nights and never against that
+    /// number.
+    public var restorativeSleepSeconds: TimeInterval {
+        deepSleepSeconds + remSleepSeconds
     }
 
     /// Sleep period time: total sleep plus the wake the classifier placed inside it.

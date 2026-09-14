@@ -50,6 +50,41 @@ public enum BaselineStatisticsMath {
         return max(0.001, sqrt(variance))
     }
 
+    /// The value `fraction` of the way through `values`, or `nil` when there is nothing to take a
+    /// percentile of.
+    ///
+    /// Linear interpolation between the two nearest order statistics, computed on a **sorted copy** —
+    /// the caller's array is not reordered, so a caller that needs its input in its own order can
+    /// still hand it here. The definition is the one R's `quantile(type = 7)` and NumPy's default
+    /// use, which is deliberate: a figure pinned in the suite against a literal can be reproduced
+    /// outside this codebase rather than being this app's private convention.
+    ///
+    /// **`nil` — not `0` — for an input holding no finite observation.** A percentile of nothing is
+    /// not zero, and a zero here would draw a typical range of `0–0%` on a night whose window held
+    /// nothing, which is the fabrication every absence rule in this app exists to prevent. For the
+    /// same reason a non-finite `fraction` is `nil` rather than clamped to something.
+    ///
+    /// Non-finite values are dropped rather than sorted, since a `NaN` has no defined position in an
+    /// order and would poison the interpolation on either side of it. So one observation returns
+    /// itself at every fraction — a single night's share is its own range, which the count floor at
+    /// the call site is what actually prevents from being drawn.
+    ///
+    /// - Parameters:
+    ///   - values: observations, in any order.
+    ///   - fraction: 0…1, clamped. `0` is the minimum and `1` the maximum.
+    public static func percentile(_ values: [Double], at fraction: Double) -> Double? {
+        guard fraction.isFinite else { return nil }
+        let sorted = values.filter { $0.isFinite }.sorted()
+        guard let minimum = sorted.first else { return nil }
+        guard sorted.count > 1 else { return minimum }
+
+        let position = min(1, max(0, fraction)) * Double(sorted.count - 1)
+        let lower = Int(position.rounded(.down))
+        let upper = min(sorted.count - 1, lower + 1)
+        let weight = position - Double(lower)
+        return sorted[lower] + (sorted[upper] - sorted[lower]) * weight
+    }
+
     /// Standard normal z-score: (value - mean) / stdDev, clamped to ±`maximumAbsoluteZScore`.
     public static func zScore(value: Double, mean: Double, stdDev: Double) -> Double {
         let safeStd = max(0.001, stdDev)

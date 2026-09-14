@@ -6,6 +6,16 @@ public struct GaugeRingView: View {
     public let scoreText: String
     public let label: String
     public let ringColor: Color
+    /// The label's colour, and a parameter rather than a constant for the same reason `ringColor` is
+    /// one: the screens that draw this ring are not styled alike.
+    ///
+    /// It defaults to `Theme.textSecondary`, which is what every caller but `SleepDetailView` passes
+    /// through by omission — the sleep detail page is the one that follows a reference in printing its
+    /// label at full strength under the score. A caller that wanted a *different* label could not
+    /// reach one before this existed, and the alternative to a defaulted parameter here is the one
+    /// `MetricRingView`'s doc comment records: a fifth parameter on a shared component moves four
+    /// screens, so the exception is made reachable without being made compulsory.
+    public var labelColor: Color = Theme.textSecondary
     public var lineWidth: CGFloat = 14
     public var size: CGFloat = 140
 
@@ -14,6 +24,7 @@ public struct GaugeRingView: View {
         scoreText: String,
         label: String,
         ringColor: Color,
+        labelColor: Color = Theme.textSecondary,
         lineWidth: CGFloat = 14,
         size: CGFloat = 140
     ) {
@@ -21,6 +32,7 @@ public struct GaugeRingView: View {
         self.scoreText = scoreText
         self.label = label
         self.ringColor = ringColor
+        self.labelColor = labelColor
         self.lineWidth = lineWidth
         self.size = size
     }
@@ -55,8 +67,12 @@ public struct GaugeRingView: View {
 
                 Text(label.uppercased())
                     .font(.system(size: size * 0.09, weight: .semibold, design: .rounded))
-                    .foregroundColor(Theme.textSecondary)
+                    .foregroundColor(labelColor)
                     .tracking(1.2)
+                    // A label long enough to carry its own line break — the sleep detail page's
+                    // `SLEEP` over `PERFORMANCE` — would otherwise centre the block and left-align
+                    // the lines inside it, which reads as a mistake rather than as two lines.
+                    .multilineTextAlignment(.center)
             }
         }
         .frame(width: size, height: size)

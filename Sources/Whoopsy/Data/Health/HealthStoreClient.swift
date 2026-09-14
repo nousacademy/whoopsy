@@ -14,10 +14,6 @@ public enum HealthQuantityMetric: String, CaseIterable, Sendable {
     /// The only HRV quantity Apple exposes. There is no RMSSD type in HealthKit.
     case heartRateVariabilitySDNN
     case restingHeartRate
-    case respiratoryRate
-    /// Reported as a 0…1 fraction by HealthKit, not 0…100.
-    case oxygenSaturation
-    case sleepingWristTemperature
     /// Cumulative, not a reading — see the type comment. Summed, never sampled.
     case stepCount
 
@@ -25,9 +21,7 @@ public enum HealthQuantityMetric: String, CaseIterable, Sendable {
     public var unitDescription: String {
         switch self {
         case .heartRateVariabilitySDNN: return "ms"
-        case .restingHeartRate, .respiratoryRate: return "count/min"
-        case .oxygenSaturation: return "fraction (0…1)"
-        case .sleepingWristTemperature: return "°C"
+        case .restingHeartRate: return "count/min"
         case .stepCount: return "count"
         }
     }

@@ -290,6 +290,79 @@ public actor LocalDatabaseManager {
                 to: "biometric_samples", columns: [("rrIntervalsMs", .text)], in: db)
         }
 
+        // `v9` adds WHOOP's own Sleep Consistency to a night.
+        //
+        // The export has carried this column all along — `physiological_cycles.csv` column 26, 892
+        // non-empty values — and nothing parsed it, so the quantity was not merely unshown but
+        // unreadable. The sleep-performance screen needs it, and it belongs on the row for the same
+        // reason `Sleep need (min)` does: an imported night carries WHOOP's own number and a strap
+        // night carries one this app computed, exactly as `total_sleep_needed` already works.
+        //
+        // Nullable and undefaulted, which is what the helper produces and the honest shape here. NULL
+        // is the value for every row written before the column existed, and it stays the value for a
+        // night the app has no four priors to compute one for. It is deliberately **not** backfilled
+        // from `SleepConsistencyMath`: that would write a computed number into a column an imported
+        // row uses for a measured one, and the two would then be indistinguishable.
+        migrator.registerMigration("v9_sleep_consistency") { db in
+            try Self.addMissingColumns(to: "sleeps", columns: [("sleep_consistency", .integer)], in: db)
+        }
+
+        // `v10` adds WHOOP's accumulated Sleep Debt to a night.
+        //
+        // The export has carried `Sleep debt (min)` all along — 910 non-empty values, 0 to 127 — and
+        // nothing parsed it, so the app held a night's need and its performance but not the deficit
+        // between them. It belongs on the row for the same reason `sleep_consistency` does: it is a
+        // figure about *this* night, and the sleep screen is where a night's figures are read.
+        //
+        // **Seconds, like every other duration in this table**, though the export writes minutes. A
+        // column here that was in minutes while `light_sleep` beside it is in seconds is the kind of
+        // inconsistency that reads as a bug at every call site; the conversion is exact and happens
+        // once, in the importer.
+        //
+        // Nullable and undefaulted, which is what the helper produces and the honest shape: NULL is
+        // the value for every row written before this column existed, and it stays NULL for a strap
+        // night, which has no source for a debt — the deficit is WHOOP's own accumulation across
+        // nights, not something one night's stages can produce. It is deliberately **not** computed
+        // here: a fitted deficit would be this app's number in a column an imported row uses for
+        // WHOOP's, and the two would then be indistinguishable.
+        migrator.registerMigration("v10_sleep_debt") { db in
+            try Self.addMissingColumns(to: "sleeps", columns: [("sleep_debt", .double)], in: db)
+        }
+
+        // `v11` gives naps a table of their own.
+        //
+        // **They cannot live in `sleeps`, and the reason is the day key.** That table is primary-keyed
+        // on `date` snapped to `startOfDay` because a night is one per day; measured against the
+        // export, all eight of its nap records land on a day that already holds a night — four of them
+        // by their own wake onset (2024-02-06, 2024-08-27), and the rest by the onset day — so filing
+        // them there would either overwrite a night or be silently skipped by the INSERT-or-UPDATE on
+        // the shared key. So this is `workouts`' shape, not `sleeps`': **`id`-keyed, with `date` an
+        // ordinary indexed lookup column**, and a read that returns an array because a day can hold
+        // more than one nap.
+        //
+        // The `id` is the nap's own start instant rather than a fresh `UUID` — the importer supplies
+        // it, and `NapRecord.id` carries the reasoning. A random id per import would make the second
+        // press of the import button write eight more rows.
+        //
+        // Only the window and the asleep duration are stored. The export's nap rows carry a full stage
+        // split as well, and it is left alone deliberately: those columns are already covered on the
+        // *night* rows, nothing draws a nap's stages, and four more columns no reader touches is the
+        // shape `csv-field-coverage` exists to prevent. `sleep_performance` is absent for a stronger
+        // reason — see `WhoopImportSummary.napsWritten`'s sibling note in `WhoopExportImporter`: a
+        // nap's performance is its own asleep minutes over a whole night's need, which is why the
+        // export's eight nap rows score 6% to 43%. That is not a performance and must not be stored
+        // as one.
+        migrator.registerMigration("v11_recorded_naps") { db in
+            try db.create(table: "naps", ifNotExists: true) { t in
+                t.primaryKey("id", .text)
+                t.column("date", .datetime).notNull().indexed()
+                t.column("started_at", .datetime).notNull()
+                t.column("ended_at", .datetime).notNull()
+                t.column("asleep_seconds", .double).notNull()
+                t.column("source", .text)
+            }
+        }
+
         try migrator.migrate(queue)
     }
 
@@ -407,6 +480,28 @@ public actor LocalDatabaseManager {
                 .filter(Column("date") >= window.from)
                 .filter(Column("date") <= window.to)
                 .order(Column("date").asc)
+                .fetchAll(db)
+        }
+    }
+
+    /// See `saveRecovery` for why the date is snapped — and note that a nap's snap is onto the day it
+    /// **started**, which is a different question from the night table's wake-onset key and the
+    /// reason the two live in separate tables.
+    public func saveNap(_ record: NapRecord) throws {
+        var snapped = record
+        snapped.date = record.date.startOfDay
+        try dbQueue.write { db in
+            try snapped.save(db)
+        }
+    }
+
+    /// The naps taken on `date`'s day, earliest first. More than one in a day is possible, which is
+    /// why this returns an array where `getSleep(for:)` returns a single row.
+    public func getNaps(on date: Date) throws -> [NapRecord] {
+        try dbQueue.read { db in
+            try NapRecord
+                .filter(Column("date") == date.startOfDay)
+                .order(Column("started_at").asc)
                 .fetchAll(db)
         }
     }

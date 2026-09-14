@@ -28,8 +28,16 @@ public actor HealthKitStoreClient: HealthStoreClient {
 
     // MARK: - Types
 
-    /// The quantity types this client will read. Not all are imported yet; the extra ones are
-    /// authorized in one prompt so a later importer does not need a second consent screen.
+    /// The quantity types this client will read.
+    ///
+    /// **One case per metric that has a reader, and no more.** A scope is asked for because
+    /// something reads it, not because something might one day: a consent prompt that requests a
+    /// quantity the app never queries asks the user to hand over health data this app has no use
+    /// for, and the prompt is the only place that cost is visible. `respiratoryRate`,
+    /// `oxygenSaturation` and `sleepingWristTemperature` were once authorized here under the
+    /// "so a later importer does not need a second consent screen" argument and were removed when
+    /// it turned out nothing queried any of them — the strap path's respiratory rate comes from
+    /// `RespiratoryRateMath` off the R-R series, not from HealthKit.
     private static var readTypes: Set<HKObjectType> {
         var types: Set<HKObjectType> = [HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!]
         for metric in HealthQuantityMetric.allCases {
@@ -44,30 +52,19 @@ public actor HealthKitStoreClient: HealthStoreClient {
             return HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN)
         case .restingHeartRate:
             return HKObjectType.quantityType(forIdentifier: .restingHeartRate)
-        case .respiratoryRate:
-            return HKObjectType.quantityType(forIdentifier: .respiratoryRate)
-        case .oxygenSaturation:
-            return HKObjectType.quantityType(forIdentifier: .oxygenSaturation)
-        case .sleepingWristTemperature:
-            return HKObjectType.quantityType(forIdentifier: .appleSleepingWristTemperature)
         case .stepCount:
             return HKObjectType.quantityType(forIdentifier: .stepCount)
         }
     }
 
     /// HealthKit stores every quantity in a canonical unit and converts on read. Getting this wrong
-    /// does not fail loudly — it silently rescales every value (SpO2 read as a fraction when you
-    /// expected percent reads as 0.97, not 97).
+    /// does not fail loudly — it silently rescales every value.
     private static func unit(for metric: HealthQuantityMetric) -> HKUnit? {
         switch metric {
         case .heartRateVariabilitySDNN:
             return HKUnit.secondUnit(with: .milli)
-        case .restingHeartRate, .respiratoryRate:
+        case .restingHeartRate:
             return HKUnit.count().unitDivided(by: .minute())
-        case .oxygenSaturation:
-            return HKUnit.percent()
-        case .sleepingWristTemperature:
-            return HKUnit.degreeCelsius()
         case .stepCount:
             return HKUnit.count()
         }

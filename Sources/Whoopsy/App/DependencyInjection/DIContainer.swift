@@ -11,6 +11,7 @@ public final class DIContainer: @unchecked Sendable {
     public let recoveryRepository: any RecoveryRepository
     public let strainRepository: any StrainRepository
     public let sleepRepository: any SleepRepository
+    public let napRepository: any NapRepository
     public let userProfileRepository: any UserProfileRepository
     public let workoutRepository: any WorkoutRepository
 
@@ -39,6 +40,7 @@ public final class DIContainer: @unchecked Sendable {
         self.recoveryRepository = GRDBRecoveryRepository(db: db)
         self.strainRepository = GRDBStrainRepository(db: db)
         self.sleepRepository = GRDBSleepRepository(db: db)
+        self.napRepository = GRDBNapRepository(db: db)
         self.userProfileRepository = GRDBUserProfileRepository(db: db)
         self.workoutRepository = GRDBWorkoutRepository(db: db)
 
@@ -107,6 +109,7 @@ public final class DIContainer: @unchecked Sendable {
             recoveryRepository: recoveryRepository,
             sleepRepository: sleepRepository,
             strainRepository: strainRepository,
+            napRepository: napRepository,
             userProfileRepository: userProfileRepository)
     }
 }

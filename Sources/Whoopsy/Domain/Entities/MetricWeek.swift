@@ -35,9 +35,8 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
     ///
     /// **The one field here with no reserved zero to gate, and so the one with no gate.** A
     /// `recoveries` row stores `respiratory_rate` as a nullable column whose only writers pass
-    /// `sleepSession?.respiratoryRate` straight through, and the strap has no respiratory sensor at
-    /// all — so the column holds either a real reading or nothing, and `hasMeasurement` never enters
-    /// into it. That is the same shape the RESPIRATORY RATE row on the detail screen reads, and
+    /// `sleepSession?.respiratoryRate` straight through — so the column holds either a real reading or
+    /// nothing, and `hasMeasurement` never enters into it. That is the same shape the RESPIRATORY RATE row on the detail screen reads, and
     /// deliberately so: a gate here would let the chart omit a point the row above it prints.
     ///
     /// A night can carry a respiratory rate without carrying an HRV — the two are independent

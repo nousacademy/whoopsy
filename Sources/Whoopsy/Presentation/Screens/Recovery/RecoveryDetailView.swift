@@ -397,9 +397,9 @@ public struct RecoveryDetailView: View {
     /// quantity the week is narrowed to*, which the never-mix rule can make true in a week that has
     /// readings; resting heart rate is absent when no day has a rate — and a day whose row is measured
     /// can still have none, since a `0` bpm is written only by an older build's placeholder;
-    /// respiratory rate is absent when no day has one, which on a week this app recorded itself is
-    /// always, because the strap has no respiratory sensor and the quantity only arrives from an
-    /// imported night or from HealthKit; sleep performance is absent when the week holds no classified
+    /// respiratory rate is absent when no day has one, which is common on a week this app recorded
+    /// itself — the strap derives it from the R-R series, so a night whose beats cannot support one
+    /// carries none; sleep performance is absent when the week holds no classified
     /// night, and — being read off a `sleeps` row rather than off the recovery row the other four come
     /// from — it is the one that can be present on a week **all four of the others are absent from**,
     /// since the strap records nights and recoveries independently. None of them draws an empty one:

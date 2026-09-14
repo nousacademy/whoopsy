@@ -26,7 +26,15 @@ public struct MainContainerView: View {
                 recoveryViewModel: RecoveryViewModel(
                     calculate: container.calculateRecoveryUseCase,
                     repository: container.recoveryRepository,
-                    sleepRepository: container.sleepRepository)
+                    sleepRepository: container.sleepRepository),
+                // A second `SleepViewModel` beside the Sleep tab's below, and for the same reason
+                // Home's `recoveryViewModel` is a second one beside the Recovery tab's: they are two
+                // screens with two days, and sharing one would make the pushed copy move the tab's
+                // night underneath it.
+                sleepViewModel: SleepViewModel(
+                    analyze: container.analyzeSleepUseCase,
+                    repository: container.sleepRepository,
+                    napRepository: container.napRepository)
             )
             .tabItem { Label("Home", systemImage: "house.fill") }
             StrainDashboardView(
@@ -39,7 +47,8 @@ public struct MainContainerView: View {
             SleepDashboardView(
                 viewModel: SleepViewModel(
                     analyze: container.analyzeSleepUseCase,
-                    repository: container.sleepRepository)
+                    repository: container.sleepRepository,
+                    napRepository: container.napRepository)
             ).tabItem { Label("Sleep", systemImage: "moon.fill") }
             RecoveryDashboardView(
                 viewModel: RecoveryViewModel(

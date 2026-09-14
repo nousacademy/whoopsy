@@ -41,6 +41,11 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 calculate: container.calculateRecoveryUseCase,
                 repository: container.recoveryRepository,
                 sleepRepository: container.sleepRepository
+            ),
+            sleepViewModel: SleepViewModel(
+                analyze: container.analyzeSleepUseCase,
+                repository: container.sleepRepository,
+                napRepository: container.napRepository
             )
         )
         .preferredColorScheme(.dark)

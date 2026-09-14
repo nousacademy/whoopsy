@@ -29,6 +29,8 @@ public final class GRDBSleepRepository: SleepRepository, Sendable {
             awakeTime: session.awakeSeconds,
             respiratoryRate: session.respiratoryRate,
             disturbanceCount: session.disturbanceCount,
+            sleepConsistency: session.sleepConsistency,
+            sleepDebt: session.sleepDebtSeconds,
             source: source
         )
         try await db.saveSleep(record)
@@ -49,7 +51,9 @@ public final class GRDBSleepRepository: SleepRepository, Sendable {
             remSleepSeconds: record.remSleep,
             awakeSeconds: record.awakeTime,
             disturbanceCount: record.disturbanceCount,
-            respiratoryRate: record.respiratoryRate
+            respiratoryRate: record.respiratoryRate,
+            sleepConsistency: record.sleepConsistency,
+            sleepDebtSeconds: record.sleepDebt
         )
     }
 }
