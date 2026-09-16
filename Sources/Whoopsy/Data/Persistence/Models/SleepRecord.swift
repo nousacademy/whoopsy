@@ -38,6 +38,25 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
     /// which is why the column is undefaulted.
     public let sleepDebt: Double?
 
+    /// The night's stage timeline — one segment per 30-second epoch, in the order they occurred.
+    ///
+    /// **It is a JSON-encoded `.text` column, which is the only shape this repo stores an array in.**
+    /// `Array` is not a `DatabaseValueConvertible`, so a `[SleepStageSegment]` can only ever be a
+    /// record *property* — the same constraint `biometric_samples.rrIntervalsMs` documents, and the
+    /// same reason `v12` declares the column `.text`.
+    ///
+    /// **Optional because the absence is real and common, not because the write may fail.** A night
+    /// the strap classified has one; every night the export supplied does not and never can — the
+    /// export reports stage *totals* and no timeline — and neither does any row written before `v12`
+    /// existed. `AnalyzeSleepUseCase` is the only producer, and this column is what lets the timeline
+    /// it builds outlive the moment it was built: until `v12` the segments were computed and then
+    /// dropped at the write, so a night re-read from storage came back with `[]` however carefully it
+    /// had been staged. An empty array is deliberately **not** written — see
+    /// `GRDBSleepRepository.saveSleepSession`, which stores `nil` for one — because "the night had no
+    /// stages" and "the night was never staged" are the same thing and only one of them should have a
+    /// representation.
+    public let sleepStages: [SleepStageSegment]?
+
     /// Where the row came from, when that is worth recording — see `RecoveryRecord.source`.
     public let source: String?
 
@@ -55,6 +74,7 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         disturbanceCount: Int? = nil,
         sleepConsistency: Int? = nil,
         sleepDebt: Double? = nil,
+        sleepStages: [SleepStageSegment]? = nil,
         source: String? = nil
     ) {
         self.date = date
@@ -70,6 +90,7 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         self.disturbanceCount = disturbanceCount
         self.sleepConsistency = sleepConsistency
         self.sleepDebt = sleepDebt
+        self.sleepStages = sleepStages
         self.source = source
     }
 
@@ -87,6 +108,7 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         case disturbanceCount = "disturbance_count"
         case sleepConsistency = "sleep_consistency"
         case sleepDebt = "sleep_debt"
+        case sleepStages = "sleep_stages"
         case source
     }
 }

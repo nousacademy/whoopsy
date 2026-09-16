@@ -78,10 +78,11 @@ public enum SleepStageRangeScoring {
 
     /// The card's whole content.
     ///
-    /// **One condition, three carriers.** `nightCount == 0` ⟺ every `row.typical == nil` ⟺
-    /// `typicalRestorativeSeconds == nil`. They are the same fact — the window held fewer than
-    /// `minimumBaselineDays` usable nights — seen from three places, and the equivalence is asserted
-    /// rather than assumed so a fourth carrier cannot be added without one of them disagreeing.
+    /// **One condition, five carriers.** `nightCount == 0` ⟺ every `row.typical == nil` ⟺
+    /// `typicalRestorativeSeconds == nil` ⟺ `typicalAsleepSeconds == nil` ⟺
+    /// `typicalPerformancePercent == nil`. They are the same fact — the window held fewer than
+    /// `minimumBaselineDays` usable nights — seen from five places, and the equivalence is asserted
+    /// rather than assumed so a sixth carrier cannot be added without one of them disagreeing.
     public struct Summary: Equatable, Sendable {
         /// In `stages` order.
         public let rows: [Row]
@@ -109,16 +110,66 @@ public enum SleepStageRangeScoring {
         /// same reason — the `session` is in hand where this is built and nowhere afterwards.
         public let restorativeSeconds: TimeInterval
 
+        /// The night's **hours of sleep** — `SleepSession.totalTimeAsleepSeconds`, the three sleep
+        /// stages with the wake the classifier placed inside the period taken out.
+        ///
+        /// It is the sleep-hours card's headline figure, and it is a second quantity on a card that
+        /// already prints `durationSeconds`: the two differ by exactly the awake row, and the card
+        /// prints both so a reader can check one against the other (`asleep + awake = DURATION`). That
+        /// identity is asserted rather than assumed, and it is the reason this is the entity's own
+        /// property rather than a subtraction done on the card — a subtraction written twice is a
+        /// subtraction that can be written twice differently.
+        ///
+        /// **Not `sleepPeriodSeconds − awakeSeconds` spelled out here.** The entity owns that sum (and
+        /// documents why it is a lower bound on time in bed rather than a measurement of it); this
+        /// carries it, on `restorativeSeconds`' reasoning.
+        public let asleepSeconds: TimeInterval
+
+        /// The window's mean **hours of sleep**, or `nil` below the count floor.
+        ///
+        /// A mean and not a band, for `typicalRestorativeSeconds`' reason: it is read against one
+        /// figure rather than drawn on a 0–100% track, so there is nothing for quartiles to be drawn
+        /// on. `nil` prints the headline with no comparison rather than a comparison against zero.
+        public let typicalAsleepSeconds: TimeInterval?
+
+        /// The window's mean sleep performance, or `nil` below the count floor.
+        ///
+        /// **A third mean over the same window as the two above, and it is here rather than derived by
+        /// the card** for `typicalAsleepSeconds`' reason: it is a mean over the *usable* nights, so the
+        /// filter `summary(for:priorNights:)` applies — a stored row with no sleep period cannot be a
+        /// night and must not be averaged in — has to be the same one. A card averaging
+        /// `priorNights.map(\.sleepPerformancePercentage)` itself would be a second window definition,
+        /// and this screen already has exactly one.
+        ///
+        /// **It is the same ratio the need card's headline prints**, `asleep ÷ need`, taken over the
+        /// window instead of the night — which is what makes the comparison on that card like for like.
+        /// It is a `Double` and not the entity's `Int`, because it is a mean of the window rather than a
+        /// night's own figure: rounding the nights *before* averaging would move the mean by up to half
+        /// a point on every window, and `MetricChange` then decides "these print alike" on the formatted
+        /// pair, which is where the rounding belongs.
+        ///
+        /// Gated on `bands.isEmpty` — the one condition this whole type hangs off — so it joins
+        /// `typicalAsleepSeconds` and `typicalRestorativeSeconds` in the equivalence that doc comment
+        /// records: below `RecoveryScoring.minimumBaselineDays` usable nights there is no comparison to
+        /// draw, and the headline prints alone.
+        public let typicalPerformancePercent: Double?
+
         public init(
             rows: [Row],
             nightCount: Int,
             restorativeSeconds: TimeInterval,
-            typicalRestorativeSeconds: TimeInterval?
+            typicalRestorativeSeconds: TimeInterval?,
+            asleepSeconds: TimeInterval,
+            typicalAsleepSeconds: TimeInterval?,
+            typicalPerformancePercent: Double?
         ) {
             self.rows = rows
             self.nightCount = nightCount
             self.restorativeSeconds = restorativeSeconds
             self.typicalRestorativeSeconds = typicalRestorativeSeconds
+            self.asleepSeconds = asleepSeconds
+            self.typicalAsleepSeconds = typicalAsleepSeconds
+            self.typicalPerformancePercent = typicalPerformancePercent
         }
 
         /// The card's `DURATION` figure: the four rows added up.
@@ -130,6 +181,15 @@ public enum SleepStageRangeScoring {
         /// fields), so this is not a second answer to a question the entity already answers; it is the
         /// one the card draws, stated where the card can be held to it.
         public var durationSeconds: TimeInterval { rows.reduce(0) { $0 + $1.seconds } }
+
+        /// Tonight's wake inside the sleep period: the fourth row.
+        ///
+        /// Here so the card's two headline figures can be read against each other without either one
+        /// reaching into `rows` by stage — `asleepSeconds + awakeSeconds == durationSeconds` is the
+        /// arithmetic the card asserts on screen, and this is the third term of it.
+        public var awakeSeconds: TimeInterval {
+            rows.first { $0.stage == .awake }?.seconds ?? 0
+        }
     }
 
     /// One night against the nights before it, or `nil` when there is no night to describe.
@@ -166,7 +226,15 @@ public enum SleepStageRangeScoring {
             restorativeSeconds: session.restorativeSleepSeconds,
             typicalRestorativeSeconds: bands.isEmpty
                 ? nil
-                : BaselineStatisticsMath.mean(window.map(\.restorativeSleepSeconds)))
+                : BaselineStatisticsMath.mean(window.map(\.restorativeSleepSeconds)),
+            asleepSeconds: session.totalTimeAsleepSeconds,
+            typicalAsleepSeconds: bands.isEmpty
+                ? nil
+                : BaselineStatisticsMath.mean(window.map(\.totalTimeAsleepSeconds)),
+            typicalPerformancePercent: bands.isEmpty
+                ? nil
+                : BaselineStatisticsMath.mean(
+                    window.map { Double($0.sleepPerformancePercentage) }))
     }
 
     /// Whole percents for a set of durations, **summing to exactly 100**, or `nil` when there is no

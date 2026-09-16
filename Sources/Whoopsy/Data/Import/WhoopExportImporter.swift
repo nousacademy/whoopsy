@@ -372,10 +372,9 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
             // computed on read from this column being empty, never written into it.
             sleepConsistency: row.sleepConsistencyPercent,
             // WHOOP's accumulated deficit, verbatim, in the seconds every duration in this entity is
-            // in. A strap night's is `nil` and stays `nil`: the deficit is WHOOP's own accumulation
-            // across nights, and no single night the app classifies can produce one — so this is the
-            // second quantity on this screen, after consistency, that an imported night carries from
-            // WHOOP and a strap night simply does not have.
+            // in. A strap night's is a different quantity — this app's own `SleepDebtMath` running
+            // deficit — and `hasWhoopSleepNeed` below is what keeps the two from being read as one:
+            // WHOOP's is an additive term of the need beside it, and this app's is not.
             //
             // **`map`, never `?? 0`.** A missing `Sleep debt (min)` cell would become `0` seconds,
             // and the screen prints that as `0 min` — a night in perfect credit, which is the
@@ -383,6 +382,11 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
             // duration above uses `?? 0` because a row with no stage durations genuinely has none;
             // this one is optional *on the entity*, so the absence has somewhere to go.
             sleepDebtSeconds: row.sleepDebtMinutes.map { $0 * 60 },
+            // The need above is WHOOP's own column, stored verbatim, and that is the fact a reader
+            // of the row cannot recover from the numbers: this need is a total that already contains
+            // the debt term, where a strap night's is a total that does not. It is also written to
+            // `sleeps.source` at the save site below, which is where the read path gets it back.
+            hasWhoopSleepNeed: true,
             sleepStages: [])
     }
 

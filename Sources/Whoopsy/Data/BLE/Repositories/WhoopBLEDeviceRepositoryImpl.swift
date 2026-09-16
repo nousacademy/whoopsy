@@ -6,13 +6,13 @@ public final class WhoopBLEDeviceRepositoryImpl: WhoopBLEDeviceRepository, @unch
     private let mockBleManager: WhoopMockBLEManager?
     private let isMockMode: Bool
 
-    public init(useMock: Bool = true) {
+    public init(useMock: Bool = true, strapModelRepository: (any StrapModelRepository)? = nil) {
         self.isMockMode = useMock
         if useMock {
             self.mockBleManager = WhoopMockBLEManager()
             self.realBleManager = nil
         } else {
-            self.realBleManager = WhoopBLEManager()
+            self.realBleManager = WhoopBLEManager(strapModelRepository: strapModelRepository)
             self.mockBleManager = nil
         }
     }
@@ -37,6 +37,11 @@ public final class WhoopBLEDeviceRepositoryImpl: WhoopBLEDeviceRepository, @unch
         if isMockMode {
             mockBleManager!.startScanning()
         } else {
+            // Prime the model cache *before* discovery. `didDiscover` is a synchronous CoreBluetooth
+            // callback and cannot await, so a cache loaded any later would leave the first discovery
+            // resolving on the name heuristic alone — and the first discovery is the one that decides
+            // which strap the user is looking at.
+            await realBleManager!.refreshStrapModels()
             realBleManager!.startScanning()
         }
     }
@@ -65,20 +70,33 @@ public final class WhoopBLEDeviceRepositoryImpl: WhoopBLEDeviceRepository, @unch
         }
     }
 
+    /// Both senders take the same three-step shape, and each step is a real refusal rather than a
+    /// formality: no manager (mock mode) means no wire, **no profile means this strap's envelope is
+    /// not implemented and the frame must not be built at all**, and `nil` from the builder means the
+    /// same. `WhoopBLEManager.sendCommand` guards the profile again at the write.
     public func sendHapticAlert(durationSeconds: Int, pattern: Int) async throws {
-        let cmdData = WhoopPacketEncoder.hapticAlarmCommand(durationSeconds: durationSeconds, pattern: pattern)
-        if !isMockMode {
-            realBleManager?.sendCommand(cmdData)
-        }
+        guard !isMockMode, let manager = realBleManager, let profile = manager.currentProfile,
+              let cmdData = WhoopPacketEncoder.hapticAlarmCommand(
+                  profile: profile,
+                  seq: manager.commandSequence.next(),
+                  durationSeconds: durationSeconds,
+                  pattern: pattern)
+        else { return }
+        manager.sendCommand(cmdData)
     }
 
     public func requestHistoricalSync(from startDate: Date, to endDate: Date) async throws {
         let s = UInt32(startDate.timeIntervalSince1970)
         let e = UInt32(endDate.timeIntervalSince1970)
-        let cmd = WhoopPacketEncoder.requestHistoricalSync(startEpoch: s, endEpoch: e)
-        if !isMockMode {
-            realBleManager?.sendCommand(cmd)
-        }
+        guard !isMockMode, let manager = realBleManager, let profile = manager.currentProfile,
+              let cmd = WhoopPacketEncoder.requestHistoricalSync(
+                  profile: profile, seq: manager.commandSequence.next(), startEpoch: s, endEpoch: e)
+        else { return }
+        manager.sendCommand(cmd)
+    }
+
+    public func refreshStrapModel() async {
+        await realBleManager?.refreshStrapModels()
     }
 
     public func getCurrentDevice() async -> WhoopDevice? {

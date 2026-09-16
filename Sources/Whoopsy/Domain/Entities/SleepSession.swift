@@ -1,6 +1,11 @@
 import Foundation
 
-public enum SleepStageType: String, CaseIterable, Identifiable, Sendable {
+/// `Codable` for one reason: a night's segments are persisted as a JSON `.text` column, which is how
+/// this repo stores an array (see `SleepRecord.sleepStages` and `biometric_samples.rrIntervalsMs`).
+/// The raw value is what is written, so a stored segment names its stage as `"Deep / SWS"` rather
+/// than as an index — an index would silently re-point every stored night at a different stage the
+/// moment a case is inserted into this enum.
+public enum SleepStageType: String, Codable, CaseIterable, Identifiable, Sendable {
     case awake = "Awake"
     case light = "Light"
     case deep = "Deep / SWS"
@@ -9,7 +14,7 @@ public enum SleepStageType: String, CaseIterable, Identifiable, Sendable {
     public var id: String { rawValue }
 }
 
-public struct SleepStageSegment: Identifiable, Equatable, Sendable {
+public struct SleepStageSegment: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public let startTime: Date
     public let endTime: Date
@@ -59,14 +64,38 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
     /// field is the *stored* answer and never the only one.
     public let sleepConsistency: Int?
 
-    /// WHOOP's accumulated sleep deficit for the night, in seconds.
+    /// The night's sleep deficit, in seconds. **Two producers, and they are not the same quantity.**
     ///
-    /// **A different kind of quantity from every other duration on this struct**, and the reason it is
-    /// optional where they are not: the stage durations are a breakdown of this night, and this is a
-    /// running deficit across nights that no single night's stages can produce. Only an imported night
-    /// carries it, and a night before `v10` carries none either — so the screen draws `—` rather than
-    /// a `0`, which would be the claim that the user is in perfect sleep credit.
+    /// It is optional where the stage durations are not, because the stage durations are a breakdown of
+    /// this night and a deficit is a running total across nights that no single night's stages can
+    /// produce. `nil` is a night with none — one before `v10` added the column — so the screen draws `—`
+    /// rather than a `0`, which would be the claim that the user is in perfect sleep credit.
+    ///
+    /// **An imported night's is WHOOP's own accumulated deficit, stored verbatim, and it is an additive
+    /// component of that night's need**: WHOOP publishes `sleep_needed` as a sum containing
+    /// `need_from_sleep_debt`, and a fit over the export recovers that term at a coefficient of 0.98. A
+    /// **strap** night's is this app's own — `SleepDebtMath`, over the nights before it — and the need
+    /// above it is `SleepNeedMath`'s, which **deliberately omits any debt term** (`ALGORITHMS.md` §4).
+    ///
+    /// So the debt is a part of the need on one producer's nights and not on the other's, and nothing
+    /// about the two numbers shows it. `hasWhoopSleepNeed` is what carries the difference.
     public let sleepDebtSeconds: TimeInterval?
+
+    /// Whether `targetSleepNeedSeconds` is **WHOOP's own** figure rather than one this app computed.
+    ///
+    /// `true` for a night `WhoopExportImporter` wrote — the export's `Sleep need (min)`, stored verbatim
+    /// — and `false` for a night `AnalyzeSleepUseCase` classified, whose need is `SleepNeedMath`'s.
+    /// It is set on read from `sleeps.source`, the column that is the only thing distinguishing the two
+    /// producers, and it is `false` for a row written before that column existed: an unknown provenance
+    /// may not be spent as a known one.
+    ///
+    /// **It exists because one published identity holds for one producer only.** WHOOP's need is a total
+    /// that contains its debt term, so `need − debt` is the sum of the other two terms WHOOP names;
+    /// this app's need contains no such term, so the same subtraction on a strap night would report a
+    /// base requirement short by the whole deficit and then add that deficit back as a component the
+    /// need never had. `SleepNeedBreakdown` is the only consumer and it withholds the split when this is
+    /// `false`.
+    public let hasWhoopSleepNeed: Bool
 
     public let sleepStages: [SleepStageSegment]
 
@@ -84,6 +113,7 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
         respiratoryRate: Double? = nil,
         sleepConsistency: Int? = nil,
         sleepDebtSeconds: TimeInterval? = nil,
+        hasWhoopSleepNeed: Bool = false,
         sleepStages: [SleepStageSegment] = []
     ) {
         self.id = id
@@ -99,6 +129,7 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
         self.respiratoryRate = respiratoryRate
         self.sleepConsistency = sleepConsistency
         self.sleepDebtSeconds = sleepDebtSeconds
+        self.hasWhoopSleepNeed = hasWhoopSleepNeed
         self.sleepStages = sleepStages
     }
 

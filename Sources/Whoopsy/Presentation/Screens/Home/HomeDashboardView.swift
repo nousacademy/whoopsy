@@ -60,16 +60,26 @@ public struct HomeDashboardView: View {
     @State private var isPresentingWorkout = false
     @State private var isPresentingCalendar = false
 
+    /// Home's own device page, reached from the badge in the top bar.
+    ///
+    /// Built here rather than inside the badge's destination for the same reason every other screen's
+    /// view model is built in `MainContainerView`: a `NavigationLink` destination is re-evaluated on
+    /// each push, and a view model constructed in its closure would be a fresh one every time —
+    /// losing the device subscription each push and starting another.
+    private let deviceDetailViewModel: DeviceDetailViewModel
+
     public init(
         viewModel: HomeViewModel,
         workoutViewModel: ActiveWorkoutViewModel,
         recoveryViewModel: RecoveryViewModel,
-        sleepViewModel: SleepViewModel
+        sleepViewModel: SleepViewModel,
+        deviceDetailViewModel: DeviceDetailViewModel
     ) {
         _viewModel = State(initialValue: viewModel)
         _workoutViewModel = State(initialValue: workoutViewModel)
         _recoveryViewModel = State(initialValue: recoveryViewModel)
         _sleepViewModel = State(initialValue: sleepViewModel)
+        self.deviceDetailViewModel = deviceDetailViewModel
     }
 
     public var body: some View {
@@ -178,31 +188,49 @@ public struct HomeDashboardView: View {
             DayNavigationBar(date: $selectedDate, onTitleTap: {
                 withAnimation(.snappy(duration: 0.3)) { isPresentingCalendar = true }
             })
-            statusBadge
+            // The badge is the way into the strap's own page — it is the only thing on Home that is
+            // about the strap rather than about the day, and the page behind it is where the model is
+            // chosen. Home already owns the `NavigationStack` at the root of this body, so this is a
+            // link rather than another navigation container.
+            NavigationLink {
+                DeviceDetailView(viewModel: deviceDetailViewModel)
+            } label: {
+                statusBadge
+            }
+            .buttonStyle(.plain)
         }
     }
 
-    /// The strap's connection dot and battery percentage.
+    /// The strap's connection state and battery percentage.
     ///
     /// The percentage is a dash unless the strap is *connected*. `WhoopBLEManager` writes a literal
     /// `100` at discovery and `WhoopDevice` defaults to `100`, so a disconnected strap would
     /// otherwise show a confident fabricated "100%" — the exact failure the dash convention exists to
-    /// prevent. The dot carries the state honestly in that case instead.
+    /// prevent. The glyph carries the state honestly in that case instead, in the same colour the dot
+    /// used to: the colour is the state, the shape is the affordance.
     private var statusBadge: some View {
         HStack(spacing: 6) {
-            Circle()
-                .fill(connectionColor)
-                .frame(width: 7, height: 7)
+            Image(systemName: "sensor.tag.radiowaves.forward.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(connectionColor)
             Text(batteryText)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
                 .monospacedDigit()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.textMuted)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
         .background(Theme.homeCard)
         .clipShape(Capsule())
+        // The label describes the strap and the hint says what opening it is for, rather than the
+        // link inheriting the label of the `HStack` inside it — which would announce a battery
+        // percentage as a button with no indication of where it leads.
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(connectionLabel)
+        .accessibilityHint(Text("Opens strap details and model selection"))
     }
 
     private var batteryText: String {

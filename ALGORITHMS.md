@@ -630,6 +630,45 @@ meet on one chart. The test suite asserts it directly — every imported night c
 of minutes, and 53 of the 910 needed *less* than the 8-hour baseline, which the formula above cannot
 produce because its floor is the baseline.
 
+### Splitting a stored need into its parts
+
+WHOOP's published breakdown has four terms and the export carries two of them: the total
+(`Sleep need (min)`) and one component (`Sleep debt (min)`). No column of any of the four bundled
+CSVs holds a personal baseline or a strain contribution. So the split this app can source is
+**two parts**, not the reference app's three — `need − debt`, and `debt` — and the first is named
+`Healthy Minimum + Recent Strain` because it *is* both of WHOOP's remaining terms at once.
+
+**That the two parts are WHOOP's own is a measurement, not an assumption.** Regressing the export's
+own need on its own inputs recovers the published shape and fixes the coefficient the debt enters at:
+
+$$\text{need} = 427.5 + 4.05 \times \text{previousDayStrain} + 0.98 \times \text{debt}$$
+
+MAE 4.64 min over 882 nights. **The debt coefficient is 0.98**, and that is the finding the split
+rests on: the stored debt is an additive component of the stored need at face value, so subtracting
+it leaves exactly the other two terms. Had it come back at, say, 0.4, `need − debt` would have been a
+quantity with no published meaning and the split would not have been buildable from this data at all.
+
+Note the strain coefficient here is **4.05**, against the 6.40 in the formula above, and the
+difference is not noise: the need fitted above already contains the debt term, so the strain term
+absorbs what the debt would otherwise carry — the same substitution §"Accumulated Sleep Debt" records
+in the other direction. The two fits are not two answers to one question.
+
+**The split holds only for a need that contains the debt, which is why it is gated.** WHOOP's need
+contains the term; `SleepNeedMath`'s deliberately does not. On a strap night the same subtraction is
+`baseline + strain − debt` — a base requirement short by the whole deficit, printed under a row
+labelled `Healthy Minimum + Recent Strain`. Both producers store a need *and* a debt, so nothing in
+the two numbers tells them apart; `SleepSession.hasWhoopSleepNeed` does, it is read off `sleeps.source`,
+and it is `false` for a strap night *and* for a row written before that column existed.
+
+Three states produce no split, and the card draws its need bar undivided rather than a false one: a
+need this app computed, a night with no stored debt, and a stored pair whose debt exceeds its need.
+The last is a guard rather than an assumption — over all 910 imported nights `need − debt` runs
+228…523 min — and it is what keeps a corrupt row from drawing a negative segment. **A debt of `0` is a
+measurement and not an absence**: seventeen of the export's nights are in perfect sleep credit, and
+they produce a split whose second part is zero-length.
+
+`TODO.md` §1 records `Sleep debt (min)`'s coverage line against this reader.
+
 ### Sleep Consistency
 
 Sleep Consistency scores how closely a night's **timing** matches the nights before it, on a 0–100%
@@ -721,6 +760,47 @@ WHOOP's figure closely but not exactly, so a column that had been recomputed rat
 agree on *every* night, and the suite asserts that a large number of nights disagree by more than the
 model's own error bar.
 
+**The two rules the consistency chart draws are that mean, computed circularly.**
+`typicalBoundaries(for:history:)` takes the recency-weighted mean of the same four priors the score
+was read against — one for their onsets, one for their wakes — and `SleepConsistencyScoring` puts
+them on the screen beside the five nights as spans. The window is deliberately the model's own four
+rather than the 30-day window the figure's comparison uses: the four grey columns *are* the reference
+the fifth was scored against, so a reader can check the rule against the bars by eye, which no other
+arrangement of that chart allows. It follows the day stepper, because the window moves with the
+anchor; over the bundled export the derived rule has a p05–p95 spread of 2.6 hours.
+
+**The mean is taken around the clock, not along the number line.** Each sample becomes a unit vector
+at $2\pi \cdot \text{minutes}/1440$, the vectors are summed with their weights, and the answer is the
+direction of the sum, $\operatorname{atan2}(y, x)$ mapped back to minutes. A naive mean of the four
+bedtimes 23:50, 23:50, 00:10, 00:10 is 12:00 — midday, twelve hours from either sample — because
+minutes past midnight are not a linear coordinate for a time of day. The same four read on the
+noon-pivoted night clock average to midnight. That is not a refinement of the display: the rules are
+drawn across a chart a reader measures against the bars, and a rule through the middle of the day
+would be read as a fact about the history.
+
+The degeneracy is tested on the **resultant's length**, `hypot(x, y) > 1e-9 · Σw`, and not on the
+components being zero. Two boundaries exactly twelve hours apart genuinely have no mean, but their
+components do not cancel in floating point — `sin(π)` is `1.2e-16`, not `0` — so a component-wise
+guard passes the very input it exists to catch and answers 06:00. The concentration ratio is the
+standard test for this: it is near 1 for any set with a direction at all and at the rounding error of
+the sum for a cancellation.
+
+**The chart's axis is the night clock read as a chart, and it widens rather than clipping.** The
+default window is 7 PM → 11 AM (night-clock 420…1380), so a whole night is one contiguous run with no
+midnight seam inside it; a boundary outside it — a bar's or either rule's — pushes that edge out to
+the enclosing whole hour and no further, which is the rule `HoursOfSleepChartView` follows for a
+reading outside its own scale. Measured over the export this affects 1 night in 910. Five ticks at the
+quarter points are derived from the widened span rather than written as literals, so a widened axis
+relabels itself; on the default sixteen-hour window the quarter points land on whole hours and the
+labels are the reference's own `7 PM / 11 PM / 3 AM / 7 AM / 11 AM`.
+
+`SleepConsistencyChartLayout.init?` refuses a night whose interval **contains noon** — its wake not
+after its own onset on the night clock — and draws no chart rather than a bar running backwards up the
+plot. The condition is about the interval and not its length: an 11:00 → 13:00 row is two hours long
+and is refused, and a fifteen-hour mis-keyed row is refused by the same comparison. Like the model's
+own gate this is a corrupt row rather than an absence, so the figure above the chart is drawn either
+way.
+
 ### Sleep bands, and the rows that take no band
 
 The Sleep detail screen draws **up to four rows, and they are two kinds of thing**: three banded
@@ -739,9 +819,10 @@ nothing at all and carried a caption explaining that no path here produces the r
 discussion is below and it is why the row was not worth its line. The two readings are still written,
 by `RespiratoryRateMath` and `SleepDebtMath` on the strap path and by the import verbatim, and they are
 not left in the same position afterwards: the respiratory rate still reaches a screen, because
-`CalculateRecoveryUseCase` copies it onto the `recoveries` row the Recovery detail page draws, while
-**`sleeps.sleep_debt` is now read by no screen at all**. `TODO.md` §1 records that as a stored value
-with no reader rather than a broken producer.
+`CalculateRecoveryUseCase` copies it onto the `recoveries` row the Recovery detail page draws, and
+the debt reaches one as the bottom card's breakdown box, which is the two-part split
+§"Splitting a stored need into its parts" describes. `TODO.md` §1 records that reader against the
+column.
 
 The three banded rows take their colours from one rule, `SleepBand.band(for:metric:)`.
 Thresholds are this app's own calibration, anchored on WHOOP's published numbers where they exist:
@@ -825,7 +906,7 @@ series to build one from: `biometric_samples.rrIntervalsMs` exists as of `v8` an
 database on this machine, because the app has never run against a strap. This is the second
 WHOOP-named quantity this app declines to reconstruct, beside §6's VO₂ max.
 
-### The typical range, and the one thing on that screen with no producer
+### The typical range, and why the chart above it is deferred rather than impossible
 
 Below the band legend, the same screen draws a fourth block: the night's four stages as shares of the
 sleep period, each over a bar that marks the band that share is normally in. It is
@@ -873,12 +954,27 @@ $52.5 / 22.5 / 20 / 5$, which naive rounding prints as $53 + 23 + 20 + 5 = 101$,
 contradicting the total printed above it.
 
 **The heart-rate-during-sleep line chart the reference puts above this block is not built, and must not
-be faked.** It is the largest element of that screen's mockup and it has no producer on any path this
-app has: the export carries no HR series (only a per-cycle `Average HR (bpm)` / `Max HR (bpm)`, one
-figure for a whole day), `biometric_samples` is empty in every database on this machine, and the
-obvious fallback — a hypnogram — is dead too, because `SleepRecord` has no column for stage segments, so
-`session.sleepStages` returns `[]` from every stored read. A strap night could one day yield a series
-and nothing else on this screen could. `TODO.md` carries the gap.
+be faked.** It is the largest element of that screen's mockup, and it is absent because of *where this
+app's data comes from* rather than because of the mathematics. The export carries no HR series (only a
+per-cycle `Average HR (bpm)` / `Max HR (bpm)`, one figure for a whole day), so all 910 imported nights
+have none and no model can give them one — that is a property of the file. The obvious fallback is dead
+for the same class of reason: a hypnogram would at least put a shape on the axis, but an imported night
+has no per-epoch timeline to draw — `WhoopExportImporter` stores `sleepStages: []`, because the export
+reports stage totals and no timeline.
+
+**A strap, however, does have a producer — two of them — and saying otherwise is the mistake this
+paragraph exists to prevent.** The live `0x2A37` path is implemented end to end (`WhoopBLEManager` →
+`BiometricSample` → `StreamBiometricsUseCase`) and needs no sampling rate at all: the intervals are
+their own time base, so beat times come from their cumulative sum and instantaneous heart rate is
+`60000 / rr` at each beat. It exists only for nights the app was running and connected, and
+`biometric_samples` is empty in every database on this machine because nothing here has ever been
+connected to a strap — an untested producer, not an absent one. The second is stronger and is *not*
+implemented: the 4.0 flash record is one type-24 record per second of wear carrying an absolute unix
+time of its own at `[7:11]`, so a drained night is placeable on a timeline and **needs no app at all**
+(`BLE_PROTOCOL.md` §5, which calls this "the finding that changes the feasibility question"). So the
+chart is a **strap-sync deliverable rather than a chart deliverable**, blocked where that path is
+blocked — a 16-byte walk through a 96-byte header, no ACK/token loop, and the `RTC_LOST` trap that
+files a night under a *wrong* day rather than under no day. `TODO.md` §5 carries the gap.
 
 ### Respiratory Rate (RSA)
 

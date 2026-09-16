@@ -45,7 +45,13 @@ struct HomeDashboardView_Previews: PreviewProvider {
             sleepViewModel: SleepViewModel(
                 analyze: container.analyzeSleepUseCase,
                 repository: container.sleepRepository,
-                napRepository: container.napRepository
+                napRepository: container.napRepository,
+                biometricRepository: container.biometricRepository
+            ),
+            deviceDetailViewModel: DeviceDetailViewModel(
+                manage: container.manageBLEConnectionUseCase,
+                strapModels: container.strapModelRepository,
+                protocols: container.protocolCatalog
             )
         )
         .preferredColorScheme(.dark)

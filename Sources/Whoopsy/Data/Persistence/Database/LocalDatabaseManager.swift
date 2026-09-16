@@ -363,6 +363,32 @@ public actor LocalDatabaseManager {
             }
         }
 
+        // `v12` adds the night's stage timeline, which until now was computed and then thrown away.
+        //
+        // `AnalyzeSleepUseCase` has always built one `SleepStageSegment` per 30-second epoch and
+        // handed the array to the `SleepSession` — but no record property and no column existed for
+        // it, so `saveSleepSession` dropped it and the read path's `[]` default filled it back in.
+        // A night the strap had staged perfectly came back from storage indistinguishable from one
+        // that was never staged at all, and the sleep-efficiency card's timeline could therefore only
+        // ever draw its "strap data not available" note. This is the column that makes a recording
+        // outlive the moment it was made.
+        //
+        // `.text` rather than a table of its own, which follows `v8_rr_interval_series`: an `Array`
+        // is not a `DatabaseValueConvertible`, so a `[SleepStageSegment]` can only be stored as its
+        // JSON encoding, and `SleepRecord.sleepStages` is the property that carries it. A side table
+        // would need a second repository, a protocol and a container entry to hold the same bytes.
+        //
+        // **Nullable and undefaulted, and NULL is the meaning rather than a gap.** A row written
+        // before `v12` has no timeline and neither does any imported night — `WhoopExportImporter`
+        // writes `sleepStages: []` because the export reports stage totals and no timeline, and an
+        // empty array is stored as NULL for exactly that reason. It is deliberately **not** backfilled
+        // from `AnalyzeSleepUseCase`: this database holds no raw samples for an imported night, so a
+        // backfill could only invent one.
+        migrator.registerMigration("v12_sleep_stage_segments") { db in
+            try Self.addMissingColumns(
+                to: "sleeps", columns: [("sleep_stages", .text)], in: db)
+        }
+
         try migrator.migrate(queue)
     }
 

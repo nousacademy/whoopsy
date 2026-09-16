@@ -117,6 +117,115 @@ public enum SleepConsistencyMath {
     /// which is a recording gap rather than a history this model should score across.
     public static let historyLookbackDays = 12
 
+    /// The recency-weighted mean of the four priors' two boundaries, in night-clock minutes.
+    ///
+    /// **It is not a second model and it is not a target.** WHOOP labels the two rules drawn from this
+    /// "optimal bed/waketime", but nothing in this app computes a recommendation: what is computed is
+    /// the average of the same four nights the score beside it is read against. That is a fact about
+    /// history rather than a prescription, and it is why the screen that draws it says *average*.
+    public struct TypicalBoundaries: Equatable, Sendable {
+        /// Minutes on the night clock — see `nightClockMinutes`. Never the same frame as a `Date`.
+        public let onsetMinutes: Double
+        public let wakeMinutes: Double
+
+        public init(onsetMinutes: Double, wakeMinutes: Double) {
+            self.onsetMinutes = onsetMinutes
+            self.wakeMinutes = wakeMinutes
+        }
+    }
+
+    /// The four nights a score is read against, **newest first**.
+    ///
+    /// **The one definition of "the priors".** `consistency(for:history:)` scores against them and
+    /// `typicalBoundaries(for:history:)` averages them, and the two have to select the same records or
+    /// the dashed rule would be a line drawn across a different four nights than the figure printed
+    /// above it. The sort is on the night's own `day` — never calendar arithmetic against an onset —
+    /// for rule 1 in the type's doc comment.
+    public static func priorNights(for night: Night, history: [Night]) -> [Night] {
+        Array(
+            history
+                .filter { $0.day < night.day }
+                .sorted { $0.day > $1.day }
+                .prefix(priorNightCount))
+    }
+
+    /// The two dashed rules: the recency-weighted mean of the four priors' onsets and wakes.
+    ///
+    /// **Circular, and that is not a refinement.** Four onsets of 23:50, 23:50, 00:10 and 00:10 have a
+    /// mean of midnight; averaged as ordinary minute-of-day numbers they have a mean of noon, which
+    /// drawn on this chart is a rule through the middle of the day. `circularMean` takes the mean
+    /// around the clock instead, and the noon pivot `nightClockMinutes` applies puts a whole night in
+    /// one contiguous run so there is no seam inside it to average across.
+    ///
+    /// `nil` below four priors, so the rule and the score appear together or not at all.
+    public static func typicalBoundaries(
+        for night: Night, history: [Night], calendar: Calendar = .current
+    ) -> TypicalBoundaries? {
+        let priors = priorNights(for: night, history: history)
+        // The same gate the score takes. A mean of three nights would be a rule drawn across a
+        // history the figure above it declined to score.
+        guard priors.count == priorNightCount else { return nil }
+
+        guard let onset = circularMean(
+            priors.map { nightClockMinutes($0.onset, calendar: calendar) },
+            weights: recencyWeights),
+            let wake = circularMean(
+                priors.map { nightClockMinutes($0.wake, calendar: calendar) },
+                weights: recencyWeights)
+        else { return nil }
+
+        return TypicalBoundaries(onsetMinutes: onset, wakeMinutes: wake)
+    }
+
+    /// The weighted mean of a set of clock minutes, taken **around the clock** rather than along the
+    /// number line.
+    ///
+    /// Each sample becomes a unit vector at `2π · minutes / 1440`, the vectors are summed with their
+    /// weights, and the result is the direction of the sum — which is the mean a clock has rather than
+    /// the mean a ruler has. Equal weights when `weights` is `nil`.
+    ///
+    /// `nil` for an empty set, a mismatched weight count, and for the one degenerate input: samples
+    /// whose directions **cancel**, so the weighted sum has no direction and a mean drawn through an
+    /// arbitrary one of them would be a claim the data does not make. Two onsets exactly twelve hours
+    /// apart are that case, and so is a set whose weights are all zero.
+    ///
+    /// **The cancellation test is on the resultant's length, not on its components being zero.** The
+    /// components of a true cancellation are not zero in floating point — `sin(.pi)` is `1.2e-16`, not
+    /// `0` — so a `x != 0 || y != 0` guard passes the very input it exists to catch and hands back
+    /// `atan2(1.2e-16, 0)`, which is six in the morning. `hypot(x, y)` against the weight that
+    /// produced it is the standard concentration test: for a set with any direction at all the ratio
+    /// is close to `1`, and for a cancellation it is at the rounding error of the sum.
+    public static func circularMean(_ samples: [Double], weights: [Double]? = nil) -> Double? {
+        guard !samples.isEmpty else { return nil }
+        let weights = weights ?? Array(repeating: 1, count: samples.count)
+        guard weights.count == samples.count else { return nil }
+
+        var x = 0.0
+        var y = 0.0
+        var totalWeight = 0.0
+        for (sample, weight) in zip(samples, weights) where sample.isFinite && weight > 0 {
+            let angle = 2 * .pi * sample / 1440
+            x += weight * cos(angle)
+            y += weight * sin(angle)
+            totalWeight += weight
+        }
+        guard totalWeight > 0, hypot(x, y) > 1e-9 * totalWeight else { return nil }
+
+        let minutes = atan2(y, x) / (2 * .pi) * 1440
+        return minutes < 0 ? minutes + 1440 : minutes
+    }
+
+    /// The inverse of `nightClockMinutes`: minutes past midnight, in `[0, 1440)`.
+    ///
+    /// Here because a night-clock minute is a position on this model's own axis and not a time anyone
+    /// reads — a caller printing one has to come back through this, and a caller subtracting 720 by
+    /// hand is a second answer to the shift.
+    public static func clockMinutes(fromNightClock minutes: Double) -> Double {
+        let shifted = minutes.truncatingRemainder(dividingBy: 1440)
+        let wrapped = shifted < 0 ? shifted + 1440 : shifted
+        return (wrapped + 720).truncatingRemainder(dividingBy: 1440)
+    }
+
     /// A night's consistency, or `nil` when there are not four prior nights to read it against.
     ///
     /// - Parameters:
@@ -128,10 +237,7 @@ public enum SleepConsistencyMath {
     public static func consistency(
         for night: Night, history: [Night], calendar: Calendar = .current
     ) -> Int? {
-        let priors = history
-            .filter { $0.day < night.day }
-            .sorted { $0.day > $1.day }
-            .prefix(priorNightCount)
+        let priors = priorNights(for: night, history: history)
 
         // Four priors or nothing. The model's error at one, two or three of them is larger than the
         // spread of the scores it would be predicting — at one prior its MAE is 6.547 — so a partial

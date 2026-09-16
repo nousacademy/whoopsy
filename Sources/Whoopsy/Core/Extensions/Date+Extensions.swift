@@ -30,6 +30,34 @@ extension Date {
         return formatter.string(from: self)
     }
 
+    /// `"11:54 PM"` from a count of minutes past midnight, for a chart that has clock times but no
+    /// date to hang them on.
+    ///
+    /// The sleep-consistency chart's axis is night-clock minutes — a position in the model's own
+    /// shifted frame — so its five ticks and its two callouts are the only times on that card, and
+    /// there is no `Date` anywhere near them to format. Rebuilt here rather than at the call site
+    /// because the twelve-hour rule (a `0` hour is `12 AM`, an hour past noon is `1 PM`) is a
+    /// formatting decision, and it belongs with the other four in this file.
+    ///
+    /// **The minutes are printed only when they are not zero.** `"7 PM"` and `"11:54 PM"` are the two
+    /// strings that card needs and they are one rule apart: a tick on a whole-hour axis is a time of
+    /// night, where `:00` is three characters of noise repeated five times down a 40pt gutter, while a
+    /// callout is a mean that lands on a minute and has to print it. The alternative — two formatters,
+    /// one of them stripping a suffix — is the same rule written twice.
+    ///
+    /// A minute past midnight is `12 AM` and a minute past noon is `12 PM`, which is why the hour is
+    /// taken modulo twelve rather than from the 24-hour value.
+    public static func formattedClock(minutesOfDay: Double) -> String {
+        var total = Int(minutesOfDay.rounded())
+        total = ((total % 1440) + 1440) % 1440
+        let hour24 = total / 60
+        let hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12
+        let meridiem = hour24 < 12 ? "AM" : "PM"
+
+        guard total % 60 != 0 else { return String(format: "%d %@", hour12, meridiem) }
+        return String(format: "%d:%02d %@", hour12, total % 60, meridiem)
+    }
+
     /// `"6 AM"`. The Stress Monitor chart's axis, where the hour is the whole resolution — the
     /// minutes on a between-the-hours tick would be noise, and there are none to show anyway.
     public func formattedHour() -> String {

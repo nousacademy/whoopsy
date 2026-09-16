@@ -35,6 +35,23 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
 
     private var currentDeviceState: WhoopDevice?
 
+    /// The user's per-strap model choices, and an in-memory copy of them.
+    ///
+    /// The copy exists because `didDiscover` is a **synchronous** CoreBluetooth callback and
+    /// `StrapModelRepository` is `async` — there is no way to await inside the callback, and resolving
+    /// the generation after the fact would mean the device is briefly described as the wrong strap.
+    /// So the map is loaded once (at scan start, and again whenever the user changes a choice) and
+    /// read synchronously here.
+    ///
+    /// `nil` repository leaves the resolver on the name heuristic alone, which is what the mock and
+    /// any hand-built manager get.
+    private let strapModelRepository: (any StrapModelRepository)?
+    private let strapModelLock = NSLock()
+    private var strapModelCache: [String: WhoopHardwareGeneration] = [:]
+
+    /// Sequence numbers for outgoing command frames, which are a field of the inner record.
+    private let sequence = WhoopCommandSequence()
+
     /// Whether the one-shot discovery/0x2A37 diagnostics have been logged for this connection.
     ///
     /// Reset on connect and disconnect, so each session logs once. The 0x2A37 branch fires per
@@ -43,10 +60,105 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     private var hasLoggedCharacteristicInventory = false
     private var hasLoggedHeartRateFrames = false
 
-    public override init() {
+    /// Whether the one-shot proprietary-frame diagnostic has been logged for this connection.
+    ///
+    /// Same reason as the two above: the branch runs per notification. This is the log that would
+    /// carry a capture's first evidence — a real strap's packet type, sequence number, opcode and
+    /// payload length — so it is worth exactly one line per connection and no more.
+    private var hasLoggedProprietaryFrame = false
+
+    public init(strapModelRepository: (any StrapModelRepository)? = nil) {
+        self.strapModelRepository = strapModelRepository
         super.init()
         self.centralManager = CBCentralManager(delegate: self, queue: DispatchQueue(label: "org.whoopsy.ble.queue"))
     }
+
+    // MARK: - Strap generation
+
+    /// Re-reads the stored model choices and re-resolves the connected strap's generation.
+    ///
+    /// Called before a scan, and again when the user changes a choice — the second is what makes a
+    /// change take effect without a reconnect, which matters because the generation decides the
+    /// envelope every subsequent command is framed with and the disposition of every frame received.
+    public func refreshStrapModels() async {
+        guard let strapModelRepository else { return }
+        let models = await strapModelRepository.allModels()
+        storeStrapModels(models)
+
+        // Re-resolve the device that is already connected, so the screen and the codec agree with the
+        // choice the moment it is saved rather than at the next discovery.
+        guard let current = currentDeviceState, !current.id.isEmpty else { return }
+        let resolved = resolveGeneration(advertisedName: current.name, deviceId: current.id)
+        guard resolved != current.hardwareGeneration else { return }
+        updateDeviceState {
+            WhoopDevice(
+                id: current.id,
+                name: current.name,
+                hardwareGeneration: resolved,
+                batteryPercentage: current.batteryPercentage,
+                connectionState: current.connectionState,
+                isOnBody: current.isOnBody,
+                isCharging: current.isCharging,
+                firmwareVersion: current.firmwareVersion,
+                serialNumber: current.serialNumber,
+                signalStrengthRssi: current.signalStrengthRssi,
+                lastSyncTime: current.lastSyncTime
+            )
+        }
+    }
+
+    /// The model for a strap: **the user's stored choice if there is one, otherwise a guess.**
+    private func resolveGeneration(advertisedName: String, deviceId: String) -> WhoopHardwareGeneration {
+        strapModelLock.lock()
+        let stored = strapModelCache[deviceId]
+        strapModelLock.unlock()
+        return Self.resolvedGeneration(stored: stored, advertisedName: advertisedName)
+    }
+
+    /// The precedence rule itself, as a pure function of its two inputs.
+    ///
+    /// Separated from the cache read above for one reason that is not tidiness: this is the rule the
+    /// whole generation-aware path rests on, and every way it can be wrong is silent. A guess that
+    /// overrode a choice would put the app back on the wrong envelope with the screen still showing
+    /// the user's selection; the guess itself cannot tell a 5.0 from a 5.0 MG at all, and a strap
+    /// advertising nothing arrives as `"WHOOP Strap"` — no `5` in it, so it is called a 4.0. As a
+    /// static taking both inputs it is assertable without a `CBCentralManager`, which the suite has no
+    /// way to build (constructing one raises a system Bluetooth prompt).
+    ///
+    /// The heuristic is kept as the fallback rather than deleted, because a strap the user has never
+    /// been asked about still has to be described as something.
+    public static func resolvedGeneration(
+        stored: WhoopHardwareGeneration?,
+        advertisedName: String
+    ) -> WhoopHardwareGeneration {
+        if let stored { return stored }
+        return advertisedName.contains("5") ? .whoop5 : .whoop4
+    }
+
+    /// The cache write, kept synchronous on purpose.
+    ///
+    /// `NSLock.lock()` is unavailable from an `async` context under Swift 6 — "use async-safe scoped
+    /// locking instead" — and `refreshStrapModels` is async because the repository is. Hopping the
+    /// critical section into a plain function is the honest fix here: the lock genuinely guards
+    /// nothing but a dictionary assignment, and this class is `@unchecked Sendable` with the lock as
+    /// its only synchronisation, so an `actor` or a `Mutex` would be a larger change than the problem.
+    private func storeStrapModels(_ models: [String: WhoopHardwareGeneration]) {
+        strapModelLock.lock()
+        strapModelCache = models
+        strapModelLock.unlock()
+    }
+
+    /// The envelope for the strap currently connected, or `nil` when this build has none for it.
+    ///
+    /// `nil` is not "unknown" — it is "no proprietary framing is implemented for this generation", and
+    /// everything that writes to the command characteristic refuses on it. See `WhoopProtocolProfile`.
+    public var currentProfile: WhoopProtocolProfile? {
+        guard let generation = currentDeviceState?.hardwareGeneration else { return nil }
+        return WhoopProtocolProfile.profile(for: generation)
+    }
+
+    /// The sequence number for the next outgoing command.
+    public var commandSequence: WhoopCommandSequence { sequence }
 
     public var deviceStream: AsyncStream<WhoopDevice> {
         AsyncStream { continuation in
@@ -148,7 +260,22 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         }
     }
 
+    /// Writes a frame to the command characteristic — **the only place in the app that does.**
+    ///
+    /// The profile guard is the last line of defence and the reason this method is the choke point.
+    /// The packet-type numberings do not overlap between generations, so a 4.0-framed command written
+    /// to a 5.0 strap is not a command the strap rejects — it is a *different command*, and one of the
+    /// documented opcodes is a destructive flash erase (`0x19 FORCE_TRIM`). Every builder in
+    /// `WhoopPacketEncoder` already returns `nil` for an unimplemented envelope; this guard means that
+    /// even a frame built by some future path cannot reach the wire without a profile behind it.
     public func sendCommand(_ data: Data) {
+        guard currentProfile != nil else {
+            AppLogger.ble.warning("""
+                Refused to transmit \(data.count, privacy: .public) bytes: no protocol profile for \
+                \(self.currentDeviceState?.hardwareGeneration.rawValue ?? "no device", privacy: .public)
+                """)
+            return
+        }
         guard let peripheral = connectedPeripheral, let char = commandCharacteristic else { return }
         let type: CBCharacteristicWriteType = char.properties.contains(.writeWithoutResponse) ? .withoutResponse : .withResponse
         peripheral.writeValue(data, for: char, type: type)
@@ -186,7 +313,7 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
         peripheral.delegate = self
 
         let devName = peripheral.name ?? "WHOOP Strap"
-        let gen: WhoopHardwareGeneration = devName.contains("5") ? .whoop5 : .whoop4
+        let gen = resolveGeneration(advertisedName: devName, deviceId: peripheral.identifier.uuidString)
 
         let device = WhoopDevice(
             id: peripheral.identifier.uuidString,
@@ -204,11 +331,12 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
         AppLogger.ble.info("Connected to \(peripheral.name ?? "Strap")")
         hasLoggedCharacteristicInventory = false
         hasLoggedHeartRateFrames = false
+        hasLoggedProprietaryFrame = false
         updateDeviceState {
-            WhoopDevice(
-                id: peripheral.identifier.uuidString,
-                name: peripheral.name ?? "WHOOP Strap",
-                connectionState: .connected
+            resolvedDevice(
+                for: peripheral,
+                connectionState: .connected,
+                fallback: currentDeviceState
             )
         }
         peripheral.discoverServices(nil)
@@ -218,13 +346,47 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
         AppLogger.ble.warning("Disconnected peripheral: \(peripheral.name ?? "Strap"), error: String(describing: error))")
         hasLoggedCharacteristicInventory = false
         hasLoggedHeartRateFrames = false
+        hasLoggedProprietaryFrame = false
         updateDeviceState {
-            WhoopDevice(
-                id: peripheral.identifier.uuidString,
-                name: peripheral.name ?? "WHOOP Strap",
-                connectionState: .disconnected
+            resolvedDevice(
+                for: peripheral,
+                connectionState: .disconnected,
+                fallback: currentDeviceState
             )
         }
+    }
+
+    /// The device state for a lifecycle transition, preserving what discovery already worked out.
+    ///
+    /// **These two callbacks used to throw the generation away.** Both built a bare
+    /// `WhoopDevice(id:name:connectionState:)`, whose `hardwareGeneration` defaults to `.whoop4`, so
+    /// the value guessed at discovery was replaced by a literal the instant the strap connected — the
+    /// generation was not merely unread, it did not survive the connection that would have used it.
+    /// Now they carry it, together with the fields discovery populated, and fall back to the last
+    /// known values for anything the peripheral object does not carry.
+    private func resolvedDevice(
+        for peripheral: CBPeripheral,
+        connectionState: WhoopConnectionState,
+        fallback: WhoopDevice?
+    ) -> WhoopDevice {
+        let id = peripheral.identifier.uuidString
+        let name = peripheral.name ?? fallback?.name ?? "WHOOP Strap"
+        // Re-resolve rather than carry: a `disconnect`/`connect` cycle is exactly when the user may
+        // have been to the device screen and changed the model.
+        let generation = resolveGeneration(advertisedName: name, deviceId: id)
+        return WhoopDevice(
+            id: id,
+            name: name,
+            hardwareGeneration: generation,
+            batteryPercentage: fallback?.batteryPercentage ?? 100,
+            connectionState: connectionState,
+            isOnBody: fallback?.isOnBody ?? true,
+            isCharging: fallback?.isCharging ?? false,
+            firmwareVersion: fallback?.firmwareVersion,
+            serialNumber: fallback?.serialNumber,
+            signalStrengthRssi: fallback?.signalStrengthRssi,
+            lastSyncTime: fallback?.lastSyncTime
+        )
     }
 }
 
@@ -276,8 +438,14 @@ extension WhoopBLEManager: CBPeripheralDelegate {
         for char in characteristics {
             if char.uuid == WhoopGATTConstants.whoop4CommandUUID || char.uuid == WhoopGATTConstants.whoop5CommandUUID {
                 self.commandCharacteristic = char
-                // Send telemetry start command
-                sendCommand(WhoopPacketEncoder.enableLiveTelemetry(enable: true))
+                // Send telemetry start command — under the connected strap's own envelope, and only
+                // if this build has one. `sendCommand` refuses a profileless generation too, so a
+                // 5.0 strap gets silence here rather than a 4.0-framed `0x05`.
+                if let profile = currentProfile,
+                   let frame = WhoopPacketEncoder.enableLiveTelemetry(
+                       profile: profile, seq: sequence.next(), enable: true) {
+                    sendCommand(frame)
+                }
             }
 
             if char.properties.contains(.notify) {
@@ -335,28 +503,24 @@ extension WhoopBLEManager: CBPeripheralDelegate {
         }
 
         // 3. Proprietary 0xAA packets
-        if let decoded = decoder.decodeProprietaryFrame(data: data) {
-            switch decoded {
-            case .liveBiometric(let sample):
-                yieldTelemetry(sample)
-            case .batteryStatus(let battery, let isCharging, let onBody):
-                if let current = currentDeviceState {
-                    updateDeviceState {
-                        WhoopDevice(
-                            id: current.id,
-                            name: current.name,
-                            hardwareGeneration: current.hardwareGeneration,
-                            batteryPercentage: battery,
-                            connectionState: .connected,
-                            isOnBody: onBody,
-                            isCharging: isCharging
-                        )
-                    }
-                }
-            case .historicalBatch(let samples):
-                for s in samples { yieldTelemetry(s) }
-            case .rawData:
-                break
+        //
+        // Validated and logged, not decoded. The envelope is checked (start of frame, declared
+        // length, header checksum, payload checksum) and the bytes are carried up raw, because no
+        // payload layout on this path has been verified against a strap — see `WhoopRawFrame`. The
+        // 4.0 historical record *is* documented (`BLE_PROTOCOL.md` §4: a 96-byte header with heart
+        // rate at `[17]`) and parsing it is the drain's work, not something to approximate here.
+        //
+        // What this branch is for right now is the one-shot log below: it is the only place a real
+        // strap's frame would ever be seen, and those bytes are what `BLE_PROTOCOL.md` §6 asks for.
+        guard let profile = currentProfile else { return }
+        if let frame = decoder.decodeProprietaryFrame(data: data, profile: profile) {
+            if !hasLoggedProprietaryFrame {
+                hasLoggedProprietaryFrame = true
+                AppLogger.ble.info("""
+                    Proprietary frame: type=0x\(String(frame.type, radix: 16, uppercase: true)) \
+                    seq=\(frame.seq) cmd=0x\(String(frame.cmd, radix: 16, uppercase: true)) \
+                    payload=\(frame.payload.count) bytes
+                    """)
             }
         }
     }

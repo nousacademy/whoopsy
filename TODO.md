@@ -28,7 +28,7 @@ checkable: a checklist shorter than the column count is a column nobody has look
 
 | File | Rows | Cols | Covered | Bundled | Read by |
 | :--- | ---: | ---: | ---: | :--- | :--- |
-| `physiological_cycles.csv` | 935 | 26 | **19** | yes | `WhoopExportParser` → `WhoopExportImporter` |
+| `physiological_cycles.csv` | 935 | 26 | **20** | yes | `WhoopExportParser` → `WhoopExportImporter` |
 | `sleeps.csv` | 918 | 18 | **1** | yes | `WhoopExportParser.parseNaps` → `WhoopExportImporter.importNaps` |
 | `journal_entries.csv` | 3403 | 6 | **0** | no | nothing |
 | `workouts.csv` | 673 | 17 | **0** | no | nothing |
@@ -87,10 +87,10 @@ legend. They were `[x]` before that and are `[x]` after it, which is the point: 
 of a covered column, not a newly covered one, and the rule that a *parsed* column is not a covered one
 does not make a covered column count twice. `ALGORITHMS.md` §4 carries the band's definition and the
 explicit note that WHOOP publishes no stage boundaries, so every threshold in it is this app's own.
-- [x] **`Sleep need (min)`** — 910 (321–650) — → `sleeps.target_sleep_need_seconds` → Home's SLEEP NEEDED panel. Stored verbatim; imported and strap nights must not be crossed
-- [x] **`Sleep debt (min)`** — 910 (0–127) — → `sleeps.sleep_debt` (× 60, seconds like every duration on that table). Stored verbatim for an imported night, computed by `SleepDebtMath` ([SleepDebtMath.swift](Sources/Whoopsy/Core/Math/SleepDebtMath.swift)) for a strap night — **a two-producer column**, distinguished by `source`, like `Sleep consistency %` below. **It was drawn as the SLEEP DEBT row of the Sleep detail screen, and that row was removed: the column is now read by no screen at all**, which is recorded here rather than left to read as an oversight — the producer still runs, so the value is stored and shown nowhere. When it was drawn it carried no band, because a running deficit is not monotone the way the three banded rows are. The model is lagged (WHOOP's column correlates 0.891 with the *prior* night's shortfall against 0.506 with its own) and fitted, MAE 8.31 against a column of sd 33.9 — `ALGORITHMS.md` §4. **It stays out of `SleepNeedMath`**, and that is a separate decision from covering the column: the 7-night deficit term buys 0.35 of a point for a second fitted constant, and the nap term that the newly-stored `naps` table makes measurable is significant in sample (t = −5.74) and harmful out of it (3.634 against 3.588). Both measurements are in `ALGORITHMS.md` §4
+- [x] **`Sleep need (min)`** — 910 (321–650) — → `sleeps.target_sleep_need_seconds` → Home's SLEEP NEEDED panel, **and the SLEEP NEEDED figure of the `HOURS VS. NEEDED` card on the Sleep detail screen**. Stored verbatim; imported and strap nights must not be crossed
+- [x] **`Sleep debt (min)`** — 910 (0–127) — → `sleeps.sleep_debt` (× 60, seconds like every duration on that table) → the **`Sleep Debt` row of the `HOURS VS. NEEDED` card's breakdown box**, which is also the column's second consumer of `Sleep need (min)` above: the card's other row is that need minus this debt. Stored verbatim for an imported night, computed by `SleepDebtMath` ([SleepDebtMath.swift](Sources/Whoopsy/Core/Math/SleepDebtMath.swift)) for a strap night — **a two-producer column**, distinguished by `source`, like `Sleep consistency %` below. **The two producers' values are not the same quantity and the card may only use one of them**: WHOOP's need is a total containing its debt term, so `need − debt` is WHOOP's own base-plus-strain, while `SleepNeedMath`'s need deliberately omits any debt term — so the box is gated on `SleepSession.hasWhoopSleepNeed` and is not drawn at all on a strap night, where both of its rows would sum to the printed total and both be mislabelled. The card is gated on the *pair*, so a night with no stored debt and a night whose debt exceeds its need draw no box either. The row carries no band, which it did not when it was drawn either, because a running deficit is not monotone the way the three banded rows are. The model is lagged (WHOOP's column correlates 0.891 with the *prior* night's shortfall against 0.506 with its own) and fitted, MAE 8.31 against a column of sd 33.9 — `ALGORITHMS.md` §4. **It stays out of `SleepNeedMath`**, and that is a separate decision from covering the column: the 7-night deficit term buys 0.35 of a point for a second fitted constant, and the nap term that the newly-stored `naps` table makes measurable is significant in sample (t = −5.74) and harmful out of it (3.634 against 3.588). Both measurements are in `ALGORITHMS.md` §4
 - [ ] **`Sleep efficiency %`** — 910 (59–99) — not parsed. **Decision — do not cover, and the reason is measured.** `sleepEfficiencyPercentage` is the standard TST-over-TIB and matches this column on 826 of 910 rows. On 83 of the other 84 the mismatch is **not** a denominator problem: the export's own `In bed duration` equals asleep + awake on those rows, and the column still reads 2–5 points higher, so **WHOOP's efficiency is not a function of the two durations WHOOP publishes beside it**. There is no input to store that would reproduce it — see the efficiency section below
-- [x] **`Sleep consistency %`** — 892 (7–94) — → `sleeps.sleep_consistency` → the **SLEEP CONSISTENCY** row of the Sleep detail screen. Stored verbatim for an imported night; a strap night is computed by `SleepConsistencyMath` ([SleepConsistencyMath.swift](Sources/Whoopsy/Core/Math/SleepConsistencyMath.swift)), a four-prior boundary-shift fit — `ALGORITHMS.md` §4. The column is nullable because the two producers must stay distinguishable: NULL is "not scored", `0` is "scored as badly as the scale allows"
+- [x] **`Sleep consistency %`** — 892 (7–94) — → `sleeps.sleep_consistency` → the **SLEEP CONSISTENCY** row of the Sleep detail screen **and the card of the same name that closes the page**, which is the column's second consumer and the reason the row is no longer its only reader. `SleepConsistencyScoring.summary(for:history:score:typicalScore:)` reads the stored value for the anchor night (stored-first, `session.sleepConsistency`), scores the four priors through `SleepConsistencyMath` when they carry none, and hands the pair to `SleepViewModel.consistencySummary` for `SleepConsistencyCard`; the card's headline is the figure the row prints two elements up, and the window mean the card used to print under it is a mean over this column. That mean is **computed and spoken but no longer drawn**: `SleepConsistencyCard.headline` passes `change: nil`, so a sighted reader sees the figure alone and the mean reaches only the card's `spoken(for:)` description — the column is not orphaned, it simply no longer surfaces as a second figure on the card. **The mean skips nights the model cannot score rather than counting them as zero**: `typicalScore` maps each window night stored-first and `compactMap`s the ones that still produce nothing, so two stored values beside two unscoreable nights average the two, and the mean is withheld below `RecoveryScoring.minimumBaselineDays`. The chart's five columns are all imported nights on a real device, so the stored value is what every one of them is drawn from. Stored verbatim for an imported night; a strap night is computed by `SleepConsistencyMath` ([SleepConsistencyMath.swift](Sources/Whoopsy/Core/Math/SleepConsistencyMath.swift)), a four-prior boundary-shift fit — `ALGORITHMS.md` §4. The column is nullable because the two producers must stay distinguishable: NULL is "not scored", `0` is "scored as badly as the scale allows"
 
 ---
 
@@ -269,15 +269,31 @@ not functional (`CLAUDE.md` §Building for iOS) and the app has never executed a
 is read off the code and the spec; none is a measurement of a device. Read it as a list of what is
 wrong on paper, not as a list of observed failures.
 
+**The table now has a reader, and that is new.** The sleep detail screen's `HOURS OF SLEEP` card draws
+the night's heart rate out of `biometric_samples` (`HoursOfSleepChartSeries`, read in
+`SleepViewModel.resolveHoursOfSleepSeries`), so an empty table is no longer latent — it is the `No
+Data` state on a screen a user can open, on every night the export can show. Nothing below changes
+because of it: the read path landing does not drain anything, and the four gaps in this section are
+exactly what still stands between the strap's cache and that chart. It is recorded here so the next
+person to read a screenshot of that chart knows the absence is this section's, not a chart bug.
+
 ### The chain that exists
 
 Settings → `DeviceViewModel.syncNow()` ([DeviceViewModel.swift:10](Sources/Whoopsy/Presentation/Screens/Device/DeviceViewModel.swift#L10)) →
 `SyncHistoricalDataUseCase.execute()` → `WhoopPacketEncoder.requestHistoricalSync`
-([WhoopPacketEncoder.swift:54-60](Sources/Whoopsy/Data/BLE/Parser/WhoopPacketEncoder.swift#L54-L60)) →
-`WhoopPacketDecoder` `case 0x30` ([WhoopPacketDecoder.swift:87](Sources/Whoopsy/Data/BLE/Parser/WhoopPacketDecoder.swift#L87)) →
-`decodeHistoricalSyncPayload` ([WhoopPacketDecoder.swift:156](Sources/Whoopsy/Data/BLE/Parser/WhoopPacketDecoder.swift#L156)) →
-`.historicalBatch` → `yieldTelemetry` → `StreamBiometricsUseCase` →
-`biometric_samples`. The pipe is connected end to end. Six things stop it working.
+([WhoopPacketEncoder.swift:109](Sources/Whoopsy/Data/BLE/Parser/WhoopPacketEncoder.swift#L109)) →
+`WhoopPacketDecoder.decodeProprietaryFrame` ([WhoopPacketDecoder.swift:124](Sources/Whoopsy/Data/BLE/Parser/WhoopPacketDecoder.swift#L124)) →
+`WhoopRawFrame` → `yieldTelemetry` → `StreamBiometricsUseCase` → `biometric_samples`.
+
+**The pipe is connected end to end, and it now stops one step earlier than it used to — on purpose.**
+The decoder validates the envelope and hands up a `WhoopRawFrame` whose payload it does not decode:
+start-of-frame, declared length, header checksum and payload checksum are all checked, and the bytes
+are passed through undecoded. The three payload decoders that used to sit here are **deleted**, not
+fixed, and that is the change that matters most in this section — see the record-walk item below for
+why. Both the encoder and the decoder take a `WhoopProtocolProfile`, and both refuse rather than guess
+when handed a generation this build cannot frame, so **a 5.0 or 5.0 MG strap gets no command at all**
+(there is no profile for it) and the strap page says so in as many words. What remains below is what
+stops the drain working.
 
 ### The shape of the protocol, from the open-source references
 
@@ -312,49 +328,23 @@ packet-type numberings.
   advance — `grep -rn "batchAck\|0x17" Sources/` returns nothing. Every other item here is downstream
   of this one: a drain that is never acknowledged does not advance, so nothing else can be tested
   until it is
-- [ ] **The opcode disagrees with both references.** They put the historical request at `0x16`
+- [ ] **The request opcode disagrees with both references.** They put the historical request at `0x16`
   (4.0) / 22 (5.0) and the record type at `0x2F` (4.0) / 47 (5.0); this document's own §2 assigns
-  `0x30` to **Asynchronous Event / Heartbeat**. The code sends `0x30` as a *command id* and decodes
-  responses on `0x30`, so it is wrong in both directions — an outbound `0x30` is asking for an event,
-  and an inbound `0x30` is an event frame being parsed as a record batch
-- [ ] **The frame layout disagrees with the spec too.** `BLE_PROTOCOL.md` §2 frames
-  `SOF | len_lo | len_hi | crc8 | type | seq | cmd | data | crc32` — a 4-byte header and a 3-byte
-  payload prefix. `buildPacket` ([WhoopPacketEncoder.swift:8](Sources/Whoopsy/Data/BLE/Parser/WhoopPacketEncoder.swift#L8))
-  writes `SOF | cmd | len_lo | crc8 | data | crc32` with a **1-byte** length, and the decoder mirrors
-  it ([WhoopPacketDecoder.swift:64-66](Sources/Whoopsy/Data/BLE/Parser/WhoopPacketDecoder.swift#L64-L66)) —
-  so the app is self-consistent and its tests pass, against a spec it does not match. Two sub-items
-  found in the same pass: `buildPacket` hashes a high length byte into the CRC8 that it **never
-  transmits**, so a payload ≥ 256 bytes declares a wrong length; and `CRCUtils.crc16Modbus` is called
-  from **no production path** — the only call sites are the suite's own smoke tests
-  ([main.swift:22](Tests/WhoopsyTestRunner/main.swift#L22)) — though the 5.0 / MG envelope requires it
-- [ ] **The CRC8 is computed over the wrong bytes, and this is verified rather than inferred.**
-  The 4.0 format puts CRC8 over **the two length bytes only**; `buildPacket` computes
-  `crc8([cmd, lengthLow, lengthHigh])` — three bytes, with `cmd` prepended. Worked out against both
-  references' published vectors, the app writes `0x43` for ping where the format specifies `0x00`,
-  and `0x0A` for the haptic alarm where the format specifies `0xA8`. **So every command this app
-  sends carries a wrong header CRC**, which is a plausible first-order reason a strap would ignore it
-  entirely — and the fix is one expression (`Data([lengthLow, lengthHigh])`). The `CRCUtils`
-  *functions* are all correct (all four vectors reproduce, §2.1), so this is a call-site bug, not a
-  math bug
-- [ ] **No inbound CRC is verified.** The decoder binds `data[3]` to `_` and never checks it
-  ([WhoopPacketDecoder.swift:66](Sources/Whoopsy/Data/BLE/Parser/WhoopPacketDecoder.swift#L66)), and
-  in `Sources/` `crc8`/`crc32` are called only from the encoder. Both references flag length-based
-  reassembly as essential precisely because payloads contain `0xAA` — so today a payload byte that
-  happens to be `0xAA` is indistinguishable from a frame boundary
-- [ ] **The CRC and framing assertions are self-referential, which is *why* the two defects above
-  survived.** `Tests/WhoopsyTestRunner` §1 calls all three CRCs, but asserts `crc8Val >= 0` — a
-  comparison a `UInt8` can never fail — and `!= 0` for the other two, which is only "not identically
-  zero". None is checked against a **known-answer vector**, and the layout assertion beside them
-  (`packet[1] == 0x10`) checks the encoder's output against the encoder's own constant — so the wrong
-  CRC8 *input* passes. **The vectors are now in hand and were run against `CRCUtils` directly**, so
-  this is a drop-in: `crc8([0x08,0x00]) == 0xA8`, `crc8([0x10,0x00]) == 0x57`,
-  `crc16Modbus(hello[0..<6]) == 0x71E6`, `crc32(hello payload) == 0x8D5C3E36` — all four pass today
-  (`BLE_PROTOCOL.md` §2.1 has the frame bytes). Fix this **first**: it is the cheapest item in this
-  section and it is what would have caught the CRC8 bug before it shipped
-- [ ] **The 16-byte record layout is a guess.** `decodeHistoricalSyncPayload` slices the payload into
-  16-byte records and feeds each through `decodeLiveTelemetryPayload`, which reads that function's
-  *live* offsets. The 4.0 record header is 96 bytes, so this walk is reading the wrong bytes at the
-  wrong stride — and it is the reason the timestamp below is discarded
+  `0x30` to **Asynchronous Event / Heartbeat**. So an outbound `0x30` is asking for an event rather
+  than a drain. The inbound half of this is gone with the payload decoders — there is no longer a
+  `case 0x30` parsing an event frame as a record batch — and **the outbound byte is deliberately not
+  corrected yet**: the drain is a loop that needs the per-batch `0x17` ACK, and §4 records that
+  without a correct ACK **the strap re-sends the same batch forever**. Starting a drain this app
+  cannot acknowledge is worse than sending a command a strap ignores. The opcode moves when the ACK
+  loop lands, not before it
+- [ ] **No record walk exists at all, and that is now the honest state rather than a wrong one.**
+  The decoder used to walk the payload as 16-byte chunks through the *live* offsets; §4 gives a
+  **96-byte** record header, so the walk read the wrong bytes at the wrong stride — and on a real
+  drain it would have read a byte of the record counter as a heart rate and written it to
+  `biometric_samples`. That walk and its two helper decoders (`decodeHistoricalSyncPayload`,
+  `decodeLiveTelemetryPayload`) are **deleted**. What replaces them is `WhoopRawFrame`: a validated
+  envelope and its bytes, undecoded. The record parser is written against a capture, which is the
+  order §6 sets out — and the frame this hands up is the evidence that capture needs
 - [ ] **Which 4.0 base UUID is real is unresolved.** `BLE_PROTOCOL.md` §1 and `WhoopGATTConstants`
   disagree (`…82b8-614a-1c8cb0f8dcc6` against `…82A5-4E40-1CA360B95B30`). This does not present as a
   decode error — it presents as **no device found**, which is why it is worth settling with a service
@@ -362,22 +352,23 @@ packet-type numberings.
 
 ### Not blocked — true whatever the strap turns out to say
 
-- [ ] **Every historical sample would be filed under today.** `decodeLiveTelemetryPayload` hardcodes
-  `timestamp: Date()` ([WhoopPacketDecoder.swift:125](Sources/Whoopsy/Data/BLE/Parser/WhoopPacketDecoder.swift#L125))
-  and the batch decoder reuses it per record, so fourteen days of cache land on the instant Sync was
-  tapped. This is the one defect here that would corrupt the *other* screens rather than just this
-  one: `recoveries`, `sleeps` and `strains` are all keyed on `startOfDay`, and the app's whole day
-  model cannot represent a batch that spans fourteen of them. **The per-record time it needs is not
-  missing from the strap** — 4.0 carries it at `[7:11]` — it is being discarded by this decoder, so
-  the fix is to read the field rather than to reconstruct one. That is true for 4.0; 5.0 may need the
-  session-clock correlation instead, which is an open question for that strap (see below). **One
-  caveat sits on top of it and it is a real one**: an absolute timestamp is only as good as the clock
-  that stamped it. The strap's RTC is set by `0x0A SET_CLOCK` — which this app never sends — and the
-  reference's event enum has **type 13 `RTC_LOST`, "battery fully died (clock reset)"**. So on a
-  strap that has been flat, every drained record is wrong by an unknown offset with nothing in the
-  record to show it, and the failure is *silent*: it files history onto a **wrong day** rather than
-  onto no day, which is exactly the class of fabrication the day-key rule exists to prevent. Check a
-  drained record's `[7:11]` against wall time on each of the three straps before trusting it
+- [ ] **A drained batch will be filed under today unless the record parser reads the record's own
+  time, and the field is the deliverable rather than a nicety.** The decoder that used to stamp every
+  record with `Date()` is deleted, so nothing writes a wrong instant any more — and nothing writes a
+  right one either, because there is no walk. When there is one, the per-record time is **not missing
+  from the strap**: 4.0 carries a u32 unix time at `[7:11]` of the 96-byte header, so the parser reads
+  the field rather than reconstructing one. This matters beyond this section: `recoveries`, `sleeps`
+  and `strains` are all keyed on `startOfDay`, and the app's whole day model cannot represent a batch
+  that spans fourteen of them, so a batch collapsed onto one instant would corrupt three screens at
+  once. That is true for 4.0; 5.0 may need a session-clock correlation instead, which is an open
+  question for that strap (see below). **One caveat sits on top of it and it is a real one**: an
+  absolute timestamp is only as good as the clock that stamped it. The strap's RTC is set by
+  `0x0A SET_CLOCK` — which this app never sends — and the reference's event enum has **type 13
+  `RTC_LOST`, "battery fully died (clock reset)"**. So on a strap that has been flat, every drained
+  record is wrong by an unknown offset with nothing in the record to show it, and the failure is
+  *silent*: it files history onto a **wrong day** rather than onto no day, which is exactly the class
+  of fabrication the day-key rule exists to prevent. Check a drained record's `[7:11]` against wall
+  time on each of the three straps before trusting it
 - [ ] **The window asked for is one day, not fourteen.** `SyncHistoricalDataUseCase` starts from
   `getLatestSample()`, which is `nil` on an empty `biometric_samples`, so it falls back to
   `now − 1 day` ([SyncHistoricalDataUseCase.swift:17](Sources/Whoopsy/Domain/UseCases/SyncHistoricalDataUseCase.swift#L17)).

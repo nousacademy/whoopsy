@@ -34,4 +34,12 @@ public final class ManageBLEConnectionUseCase: Sendable {
     public func getCurrentDevice() async -> WhoopDevice? {
         await bleRepository.getCurrentDevice()
     }
+
+    /// Re-resolves the connected strap's generation from the stored model choices.
+    ///
+    /// Called after the user picks a model on the device screen. The generation selects the wire
+    /// envelope, so a saved choice that never reaches here would be a preference with no effect.
+    public func refreshStrapModel() async {
+        await bleRepository.refreshStrapModel()
+    }
 }

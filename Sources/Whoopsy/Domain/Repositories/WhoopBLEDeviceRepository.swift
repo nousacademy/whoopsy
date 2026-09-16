@@ -27,4 +27,12 @@ public protocol WhoopBLEDeviceRepository: Sendable {
 
     /// Get the current connected device state
     func getCurrentDevice() async -> WhoopDevice?
+
+    /// Re-reads the stored per-strap model and re-resolves the connected strap's generation.
+    ///
+    /// The generation decides which envelope a command is framed with and whether one can be framed
+    /// at all, so a change to it has to reach the BLE layer before the next command is sent. This is
+    /// what the device screen calls the moment the user picks a model — without it the choice would
+    /// not take effect until the strap was rediscovered.
+    func refreshStrapModel() async
 }

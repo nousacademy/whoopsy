@@ -29,13 +29,25 @@ public final class DIContainer: @unchecked Sendable {
     public let preferencesRepository: any AppPreferencesRepository
     public let healthKitSync: any HealthKitSyncing
     public let whoopExportImport: any WhoopExportImporting
+    /// Which model the user has said each strap is. Read by the BLE layer to resolve a generation and
+    /// written by the device screen.
+    public let strapModelRepository: any StrapModelRepository
+    /// Which generations this build can actually frame for. Presentation depends on this rather than
+    /// on `Data/BLE` so the device screen can say plainly that a 5.0 has no implementation behind it.
+    public let protocolCatalog: any WhoopProtocolProviding
     @MainActor public var locationTracking: any LocationTracking { useMockBLE ? PreviewLocationTrackingService() : CoreLocationTrackingService() }
     private let useMockBLE: Bool
 
     public init(useMockBLE: Bool = true) {
         self.useMockBLE = useMockBLE
         let db = LocalDatabaseManager.shared
-        self.bleRepository = WhoopBLEDeviceRepositoryImpl(useMock: useMockBLE)
+        // Built before the BLE repository, which is handed it: the manager resolves a strap's
+        // generation from these choices, so the store has to exist first.
+        let strapModels = UserDefaultsStrapModelRepository()
+        self.strapModelRepository = strapModels
+        self.protocolCatalog = WhoopProtocolCatalog()
+        self.bleRepository = WhoopBLEDeviceRepositoryImpl(
+            useMock: useMockBLE, strapModelRepository: strapModels)
         self.biometricRepository = GRDBBiometricRepository(db: db)
         self.recoveryRepository = GRDBRecoveryRepository(db: db)
         self.strainRepository = GRDBStrainRepository(db: db)

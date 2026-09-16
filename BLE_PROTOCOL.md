@@ -61,7 +61,10 @@ the standard `180D`, so all three straps are at least discoverable.
 ## 2. Packet Framing & Wire Format
 
 **This is the largest single difference between the generations, and this codebase implements only
-one of the two envelopes.**
+one of the two envelopes.** Which one it uses for a given strap is now a stored choice rather than a
+guess: the device screen (`Presentation/Screens/Device/DeviceDetailView.swift`) records the model per
+peripheral identifier, and `WhoopProtocolProfile.profile(for:)` turns that into an envelope — or into
+`nil`, which every command writer refuses.
 
 Both generations share a start-of-frame byte `0xAA`, an inner record of the shape
 `[type][seq][cmd][payload…]`, and the same zlib CRC-32 as the payload check (reflected, poly
@@ -118,9 +121,8 @@ Three consequences, and the third is the one that bites:
 1. **The header CRC algorithm is generation-selected** — `.crc8` versus `.crc16Modbus`. `CRCUtils`
    **[repo]** implements both plus `crc32`, and **all three are correct** — see §2.1, where they were
    checked against published reference vectors. `crc16Modbus` is nevertheless **called from no
-   production path at all**: the only call sites are the suite's own smoke tests
-   ([main.swift:22](Tests/WhoopsyTestRunner/main.swift#L22) and the dead `CRCUtilsTests`), so the
-   5.0 envelope's checksum is implemented and correct but wired to nothing.
+   production path at all**: no profile this build can construct selects it, so the 5.0 envelope's
+   checksum is implemented and correct but wired to nothing.
 2. **The inner record origin moves from 4 to 8.** A decoder that reads `cmd` at a fixed offset is
    correct for exactly one generation.
 3. **The packet-type numbering itself differs by generation.** 4.0 uses `0x23` / `0x24` / `0x30` /
@@ -143,10 +145,11 @@ Three consequences, and the third is the one that bites:
 
 Note for 4.0: **`0x30` is a packet type, not a command.** See §3.
 
-### 2.1 The checksum math is correct; the call site is not **[repo, verified]**
+### 2.1 The checksum vectors **[repo, verified]**
 
 Both references publish concrete frames, which makes the repo's CRC utilities checkable **today,
-with no strap**. They were run against them and **all three are correct**:
+with no strap**. They were run against them and **all three are correct** — and since the framing was
+corrected, all four are asserted in §1 of the suite rather than merely in a table here:
 
 | Vector | Source | Expected | `CRCUtils` | |
 | :--- | :--- | :--- | :--- | :--- |
@@ -165,26 +168,21 @@ AA 01 08 00 00 01 E6 71 23 01 91 01 36 3E 5C 8D
 └─ SOF                              crc16 LE = 0x71E6 over [0..<6]
 ```
 
-**The defect is therefore not in the arithmetic — it is in what `buildPacket` feeds it.** The 4.0
-format specifies CRC8 over **the two length bytes only** (`raw[3] == crc8(raw[1:3])`), but
-`buildPacket` computes `crc8([cmd, lengthLow, lengthHigh])` — three bytes, with `cmd` prepended.
-Direct computation of the difference, for the two commands the app actually sends:
+**The defect was not in the arithmetic — it was in what `buildPacket` fed it, and that is now fixed.**
+The 4.0 format specifies CRC8 over **the two length bytes only** (`raw[3] == crc8(raw[1:3])`), and
+`buildPacket` used to compute `crc8([cmd, lengthLow, lengthHigh])` — three bytes, with `cmd`
+prepended — so every command frame the app sent carried a header checksum the format does not agree
+with (`0x43` where ping should write `0x00`, `0x0A` where the haptic alarm should write `0xA8`). The
+input is now `Data([lengthLow, lengthHigh])`.
 
-| Frame | `buildPacket` writes | Format specifies |
-| :--- | :--- | :--- |
-| `pingCommand` (cmd `0x20`, len 0) | `0x43` | `0x00` |
-| `hapticAlarmCommand` (cmd `0x10`, len 8) | `0x0A` | `0xA8` |
-
-So **every command frame this app has ever sent carries a wrong header CRC**, by construction and
-on every call — a plausible first-order reason a strap would ignore the app entirely. The fix is one
-expression (`Data([lengthLow, lengthHigh])`), and the vectors above are what pins it.
-
-**This is also why it survived**, and the reason is worth recording next to the bug: the suite does
-exercise all three CRCs, but its assertions are `crc8Val >= 0` — a comparison a `UInt8` can never
-fail — and `!= 0` for the other two, which proves only that they are not identically zero. The frame
-layout assertion beside them (`packet[1] == 0x10`) checks the encoder's output against the encoder's
-own constant. So a wrong polynomial, a wrong byte order and a wrong *input* all pass. Replacing
-those four assertions with the vectors above is the cheapest correctness win on the BLE path.
+**How it survived is worth keeping, because the shape recurs.** The suite did exercise all three
+CRCs, but its assertions were `crc8Val >= 0` — a comparison a `UInt8` can never fail — and `!= 0` for
+the other two, which proves only that they are not identically zero; the frame-layout assertion
+beside them (`packet[1] == 0x10`) checked the encoder's output against the encoder's own constant. A
+wrong polynomial, a wrong byte order and a wrong *input* all passed. They are replaced by the four
+vectors above plus layout assertions derived from the format rather than from the encoder, and the
+lesson generalises: **an assertion whose expected value is computed by the code under test is not an
+assertion.**
 
 ---
 
@@ -222,6 +220,15 @@ which is part of why the implementation below came out wrong.
 
 `0x0A`, `0x75`, `0x76`, `0x78`, `0x22`, `0x16` and `0x17` appear nowhere in the Swift sources. There
 is no clock synchronization, no feature-flag negotiation, and no ACK loop.
+
+**Every one of those four frames is now written in the §2 envelope**, which it was not before: the
+header CRC8 is over the two length bytes, `length` is the inner record plus four, and the inner
+record is `[type][seq][cmd][payload…]` with the CRC32 over the whole record. Nothing has been
+captured on hardware, so this says the frames match both references — not that a strap accepts them.
+Two properties are new and both are enforced in code rather than described here: the decoder verifies
+the header and payload checksums on inbound frames and refuses anything that fails (§2), and the
+generation decides which envelope is used at all, with an unimplemented generation refusing to build
+a frame rather than falling back to 4.0 (`WhoopProtocolProfile.profile(for:)`).
 
 ---
 
@@ -346,58 +353,42 @@ safe command set along with reboot/power-cycle/firmware opcodes.
 
 ### Implementation status **[repo]**
 
-**The historical sync in this codebase does not match either generation, in four independent ways.**
-`DeviceViewModel` → `SyncHistoricalDataUseCase` → `WhoopBLEDeviceRepositoryImpl.requestHistoricalSync`
-is reachable from the Device screen, so this is live code, not a stub.
+**The historical sync in this codebase does not match either generation.** `DeviceViewModel` →
+`SyncHistoricalDataUseCase` → `WhoopBLEDeviceRepositoryImpl.requestHistoricalSync` is reachable from
+the Device screen, so this is live code, not a stub — but the four gaps below are all still open, and
+they are the reason the drain is sequenced after the screens.
 
 | | This codebase | 4.0 **[reported 4.0]** | 5.0 **[reported 5.0]** |
 | :--- | :--- | :--- | :--- |
 | Request opcode | `0x30` | `0x16` | 22 |
-| Inbound record type | `0x30` | `0x2F` | 47 |
+| Inbound record type | *(no case — the decoder dispatches on the frame's type byte and decodes no payload)* | `0x2F` | 47 |
 | ACK loop | **absent** | `0x17` + 8-byte token | 23 + `end_data`(8) |
-| Record layout | 16 bytes, live layout | 96-byte header | version-selected schema |
+| Record layout | **no walk at all** — the raw inner record is handed up undecoded | 96-byte header | version-selected schema |
 
-`0x30` is a problem in both directions. As an *outbound* command it is not a command at all — it is
-the 4.0 event packet type, and this document's own §2 says so. As an *inbound* case it can only match
-a frame whose type byte is `0x30`, which is an event, not a record.
+`0x30` remains wrong in both directions and is **deliberately left alone**. As an *outbound* command
+it is not a command — it is the 4.0 event packet type, and §2 says so. It has not been changed to
+`0x16` because the drain is a loop that requires the `0x17` ACK, and per the next subsection a
+**missing ACK makes the strap re-send the same batch forever**: starting a drain this app cannot
+acknowledge would be worse than sending a command a strap ignores. The opcode moves when the ACK loop
+lands, not before it.
 
-Two further defects that are self-contained and worth fixing regardless:
+Two defects that used to sit here are **fixed and have left this table**. The 16-byte walk through the
+live layout is gone — `decodeHistoricalSyncPayload` and `decodeLiveTelemetryPayload` no longer exist,
+and the decoder now returns the validated inner record as a `WhoopRawFrame` for a later parser to
+walk, which is the order §6 sets out. And the encoder's `headerCrc`/length-byte mismatch is gone with
+the framing rewrite in §2. What that buys is negative and worth stating as such: **the app can no
+longer fabricate a reading from a record it does not understand**, which is what the old walk did by
+reading a record-counter byte as a heart rate and writing it to `biometric_samples`.
 
-* **`decodeHistoricalSyncPayload`** walks the payload in fixed 16-byte chunks and feeds each through
-  `decodeLiveTelemetryPayload`, which stamps `timestamp: Date()`. So every record in a batch gets the
-  **same** instant, and the real time at `[7:11]` is discarded. This is the defect that produced the
-  (wrong) conclusion that the strap cannot time its own history.
-* **`buildPacket`** computes `headerCrc = crc8([cmd, lengthLow, lengthHigh])` but appends only
-  `[cmd][lengthLow][crc8]`. The high length byte is hashed and never transmitted, so any payload
-  ≥ 256 bytes declares a wrong length on the wire.
+Inbound CRCs **are** now verified — the header CRC8 and the payload CRC32, both enforced in
+`decodeProprietaryFrame`, which refuses a frame that fails either. That closes the `0xAA`-in-payload
+ambiguity at the frame level rather than at the reassembly level: a false boundary now yields a frame
+that fails its checksum instead of plausible garbage. Length-based reassembly across BLE fragments is
+still **not** implemented, and is the remaining half of that problem.
 
-And one that affects everything: **no inbound CRC is verified anywhere.** In `Sources/`, `crc8` and
-`crc32` are called only from the encoder; `crc16Modbus` is called from nothing. Both references
-independently flag length-based reassembly as essential, because payloads contain `0xAA` and BLE
-fragments land on it — so today a payload byte that happens to be `0xAA` is indistinguishable from a
-frame boundary.
-
-**The suite cannot catch any of this** — its CRC assertions are self-referential, and §2.1 has the
-detail, along with the four reference vectors that fix it. The short version: the checksum *math* is
-verified correct, so what the vectors catch is the *call site* and the framing around it.
-
-### The frame header does not match this document either
-
-Worth recording because it is the reason none of the above has surfaced locally. The encoder and
-decoder are **self-consistent with each other** — they round-trip — but both disagree with §2:
-
-| | Encoder+decoder **[repo]** | §2 of this document **[reported 4.0]** |
-| :--- | :--- | :--- |
-| Byte 1 | command | length, low byte |
-| Byte 2 | length, low byte | length, high byte |
-| Byte 3 | crc8 | crc8 |
-| Payload from | offset 4 | offset 4 |
-
-Both agree the payload starts at 4, which is presumably why the pair appears to work. But under the
-documented layout the decoder's `cmd` is really the length's low byte, which would make the
-`case 0x01` / `case 0x02, 0x20` / `case 0x30` dispatch fire on payload length rather than on command.
-**Neither has been validated against a strap**, and there is no local evidence either way: the
-development database holds zero sample rows, so nothing in it was ever written by this path.
+**There is still no local evidence either way.** The development database holds zero sample rows, so
+nothing in it was ever written by this path. Correcting the framing makes the frames agree with both
+references; it does not make a strap answer them.
 
 ---
 

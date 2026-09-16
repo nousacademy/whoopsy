@@ -22,6 +22,22 @@ extension Double {
         return String(format: "%d:%02d", totalMinutes / 60, totalMinutes % 60)
     }
 
+    /// A duration in seconds as `"+1:44"`, with a leading `+` and never a `-`.
+    ///
+    /// The sleep need card's breakdown box is a list of things *added to* a base requirement, so every
+    /// figure in it carries a sign — that is the reference's own convention and the only thing on the
+    /// card that says the rows are increments rather than a second set of totals.
+    ///
+    /// **The sign is a literal `"+"` rather than a format specifier's`, and the minus case is
+    /// deliberately unreachable.** No part of a need can be negative — `SleepNeedBreakdown.breakdown`
+    /// refuses a debt below zero and the other part is a subtraction of one non-negative quantity from
+    /// a larger one — so there is no negative value to render, and `String(format: "%+.0f")` would
+    /// print `"-0:00"` for a negative zero. A `0` prints as `"+0:00"`, which is the right answer for a
+    /// night in perfect sleep credit: the term is present and contributes nothing.
+    public func formattedSignedCompactHoursMinutes() -> String {
+        "+" + formattedCompactHoursMinutes()
+    }
+
     /// Rounds to a fixed number of decimal places.
     ///
     /// Stored physiological values are rounded through here rather than with an inline

@@ -1,6 +1,6 @@
 ---
 name: architecture-doc-sync
-description: Keep ARCHITECTURE.md, ALGORITHMS.md, BLE_PROTOCOL.md and CLAUDE.md in sync with the code whenever any Clean Architecture layer, component, protocol, or data-flow path under Sources/Whoopsy/ is added, moved, renamed, or deleted. Use after editing anything in Sources/Whoopsy/{App,Domain,Data,Core,Presentation}/, and when adding a directory, use case, repository implementation, GRDB migration, BLE decoder/encoder, or math formula.
+description: Keep ARCHITECTURE.md, ALGORITHMS.md, BLE_PROTOCOL.md and CLAUDE.md in sync with the code whenever any Clean Architecture layer, component, protocol, or data-flow path under Sources/Whoopsy/ is added, moved, renamed, or deleted — and PATENTS.md whenever a change moves a value WHOOP's filings speak to (a metric tier, a strain constant or band edge, an HRV averaging window, a sleep-need form, a stress threshold, the VO₂ max coefficient). Use after editing anything in Sources/Whoopsy/{App,Domain,Data,Core,Presentation}/, and when adding a directory, use case, repository implementation, GRDB migration, BLE decoder/encoder, or math formula.
 ---
 
 # Architecture Documentation Sync
@@ -9,6 +9,11 @@ Whoopsy documents its own architecture in four Markdown files. They are load-bea
 summaries: `ALGORITHMS.md` and `BLE_PROTOCOL.md` are the only written specification of the
 physiological math and the wire format. When code moves and docs don't, the next session reads a
 spec that describes types that no longer exist.
+
+`PATENTS.md` is a fifth document of a different kind — what WHOOP's filings disclose about that same
+math, and which of this app's values are substitutions for measurements it cannot take. It goes
+stale in a way the others do not: not by naming a type that no longer exists, but by recording a
+divergence the code no longer has. It is routed from a **condition**, not from a path — rule 10.
 
 Apply this skill **in the same turn** as the code change, not as a follow-up.
 
@@ -19,6 +24,7 @@ Apply this skill **in the same turn** as the code change, not as a follow-up.
 | `ARCHITECTURE.md` | Layer philosophy, folder layout, component inventory, unidirectional data-flow diagram |
 | `ALGORITHMS.md` | HRV, Strain, Recovery, Sleep math — formulas, constants, thresholds, tiers |
 | `BLE_PROTOCOL.md` | GATT UUIDs, `0xAA` framing, CRC layout, handshake command sequence, packet types |
+| `PATENTS.md` | What WHOOP's filings disclose about the math this app implements, what they do not, and which app values are forced substitutes. **A record, not a changelog** — updated only when a value it records moves, or a disclosed/undisclosed finding changes (rule 10) |
 | `CLAUDE.md` | Commands, architecture summary, and durable gotchas — **not** a component inventory |
 | `TODO.md` | Which column of which bundled CSV this app reads, and what the rest would take. Owned by `csv-field-coverage` — this skill routes *to* it, and does not edit it |
 
@@ -44,6 +50,7 @@ Apply this skill **in the same turn** as the code change, not as a follow-up.
 | `Presentation/DesignSystem/**` | `ARCHITECTURE.md` §2.C; `CLAUDE.md` design-token note (colors live in `Theme.swift`) |
 | `Presentation/Screens/**` | `ARCHITECTURE.md` §2.C screen list (`MainContainerView` tab list). Screens that render `RecoveryMetric` also read the no-measurement marker — a row can exist and hold no reading. Screens that render `SleepSession` test the optional instead, because an unclassifiable night has no row at all |
 | **A rule that spans layers** (e.g. the no-measurement placeholder, which the entity defines, the use cases write, the scoring filters and the views render) | The doc for the domain it belongs to — `ALGORITHMS.md` §3 here — plus a `CLAUDE.md` gotcha. One rule, one section; don't scatter it across the routing rows it happens to cross. Note the two no-data rules **do not share a mechanism** — Recovery writes a reserved-zero row and tests `hasMeasurement`, Sleep writes no row at all and tests the optional — so a view that handles one has not handled the other |
+| **A change that moves a value WHOOP's filings speak to** — a recovery tier, a strain constant or band edge, the HRV averaging window, the sleep-need form, a stress threshold, the VO₂ max coefficient | `PATENTS.md`, and **only if a recorded value actually moved** — rule 10 has the condition and the value → section map. A refactor that leaves those values alone routes to `ALGORITHMS.md` (and `ARCHITECTURE.md`) only. `PATENTS.md` is a record of what is disclosed, not a changelog |
 | `App/DependencyInjection/DIContainer.swift` | `ARCHITECTURE.md` §2.D + §3 flow; `CLAUDE.md` wiring bullet (`shared` vs `preview`) |
 | `App/AppEnvironment.swift` | `ARCHITECTURE.md` §2.A/§2.D |
 | **A new directory or layer under `Sources/Whoopsy/`** | `ARCHITECTURE.md` §1 ASCII diagram **and** §2 tree **and** the §2.A–D prose; `CLAUDE.md` Architecture section |
@@ -112,12 +119,50 @@ Apply this skill **in the same turn** as the code change, not as a follow-up.
    is the tell that both have happened.**
 9. **Sweep for stranded references.** After renaming or deleting a component, grep the whole doc set
    for the old name and its old path. A partial rename leaves the hardest kind of stale doc.
+10. **`PATENTS.md` is updated on a condition, not on a path.** Every other row in the routing table
+   fires because a *file* was touched; this one fires because a **value moved**. Three triggers, and
+   only three:
+
+   | Trigger | What moves |
+   | :--- | :--- |
+   | A value the doc records changes | The `[app]` column of that row in §0–§6, and any §8 item that argued for the change — **an applied item is deleted, not softened** (rule 7) |
+   | A divergence narrows or widens — the app starts, or stops, computing the quantity WHOOP discloses | The §0 table row, and the metric section's "where the app diverges, and why it has to" prose |
+   | A `[not disclosed]` negative is falsified, or a `[pending]` filing is read — US 19/561,023 (§5) and US 19/554,044 are the two outstanding | That section, its tag, and §9's coverage limits if a previously blocked source was reached |
+
+   The sites, in the routing table's own vocabulary:
+
+   | Value | Code site | `PATENTS.md` |
+   | :--- | :--- | :--- |
+   | Recovery tiers 67 / 34 | `Domain/Entities/RecoveryMetric.swift` | §2.2 — WHOOP's disclosed 66 / 33; the app's green edge **matches exactly** and the 33/34 edge is the one open question |
+   | Strain `k`, zone weights, %HRR edges | `Core/Math/StrainAccumulatorMath.swift`, `Domain/Entities/HeartRateZone.swift` | §1.1–§1.3 — the disclosed bands are the user's **AT and CPT**, which is *why* the %HRR grid is tagged a forced substitute |
+   | HRV averaging window | `Core/Math/HeartRateVariabilityMath.swift`, `Domain/UseCases/CalculateRecoveryUseCase.swift` | §2.3 — the disclosed window is slow-wave-anchored, so changing this changes **which quantity** is compared, not just a number |
+   | Sleep-need form and coefficient | `Core/Math/SleepNeedMath.swift` | §3.2 — the disclosed sigmoid is a different **functional form**, not a different coefficient |
+   | Staging and the disturbance count | `Domain/UseCases/AnalyzeSleepUseCase.swift` | §3.1 — a verified negative; deleting the actigraphy substitute would falsify it |
+   | Typical range, its percentile and window | `Domain/UseCases/SleepStageRangeScoring.swift`, `Presentation/Screens/Sleep/TypicalRangeBar.swift` | §3.4 — no patent basis, which is the section's whole content |
+   | Stress thresholds, baseline window, the HRV sign | `Core/Math/StressMath.swift` | §4.1–§4.4 — neither disclosed model is a z-score |
+   | VO₂ max coefficient and its citation | `Core/Math/Vo2MaxMath.swift` | §5 |
+   | Respiratory rate, sleep debt | `Core/Math/RespiratoryRateMath.swift`, `Core/Math/SleepDebtMath.swift` | §6.1; §3.2 for the **granted** two-term debt structure this app omits |
+
+   **Do not touch it for a change that moves none of these.** A refactor inside `StrainAccumulatorMath`
+   that leaves `k` and the edges alone is an `ALGORITHMS.md` change and nothing else. And never add a
+   date, a "recently changed" line, or a narrative of what the code used to do — that is rule 8's
+   failure mode with a different filename.
+
+   **The citation runs one way.** A disclosed value may be cited *into* `ALGORITHMS.md` — §8's item 1
+   is exactly that, for 66/33 — but a patent's numbers must never be written into `ALGORITHMS.md` as
+   if this app computed them, and a **claimed range is not an implemented constant**. `PATENTS.md` is
+   where the `[claimed]` / `[described]` / `[not disclosed]` / `[pending]` / `[app]` distinction is
+   preserved, so if a value is ever adopted from a filing, both files move and the tag travels with
+   it.
 
 ## Procedure
 
 1. List what actually changed, by layer:
    `git status` (if tracked) or the files you edited in this turn.
-2. Route each change through the table above to get the exact doc set to touch.
+2. Route each change through the table above to get the exact doc set to touch. If the change touched
+   `Core/Math/**`, a metric entity, or `RecoveryScoring`, walk rule 10's table before closing — the
+   path rows will not fire on their own, and a moved value is exactly the case that does not announce
+   itself.
 3. Grep the docs for existing mentions before editing, so you update in place rather than append:
    `grep -rn "CalculateStrainUseCase\|StrainAccumulatorMath" *.md`
 4. Make the edits. Match the surrounding doc's voice — these files are prose specs, not changelogs.
@@ -125,6 +170,9 @@ Apply this skill **in the same turn** as the code change, not as a follow-up.
 5. Verify:
    - `grep -rn "<new name>" *.md` returns the intended hits, and `grep -rn "<old name>" *.md` returns none.
    - Every type you named exists: `grep -rn "class <Type>\|struct <Type>\|protocol <Type>" Sources/`
+   - If a rule-10 value moved, `grep -n "<the old value>" PATENTS.md` returns nothing it should not,
+     and every `[app]` row you touched still describes what the code does. §8's list shrinks when an
+     item is applied — it should never grow to record that it was.
    - If you touched Swift, `swift build` still succeeds.
 
 ## Note on the legacy rule

@@ -1,19 +1,68 @@
 import Foundation
 
-public enum DecodedPacketPayload: Sendable {
-    case liveBiometric(BiometricSample)
-    case batteryStatus(batteryPercent: Int, isCharging: Bool, isOnBody: Bool)
-    case historicalBatch([BiometricSample])
-    case rawData(cmd: UInt8, payload: Data)
+/// A proprietary frame whose envelope this app has validated and whose payload it does not decode.
+///
+/// **This replaces the three decoded payload types the decoder used to produce, and the replacement is
+/// the point rather than a simplification.** `BLE_PROTOCOL.md` §2 documents the 4.0 packet types:
+/// `0x23` command, `0x24` command-response, `0x2F` historical data, `0x30` event, `0x31` metadata. It
+/// documents no live-telemetry packet type and no battery packet type. The app's `0x01` and
+/// `0x02` / `0x20` cases were its own invention, and because dispatch was keyed on a byte that is
+/// really the low half of a length, they were not reachable on hardware in the first place.
+///
+/// Two of the three were also redundant. Battery arrives on the standard `0x2A19` characteristic and
+/// live heart rate on `0x2A37`; `WhoopBLEManager` handles both on their own branches and always has.
+/// The third — the historical record — is the one payload that **is** documented and **is** the
+/// deliverable, and it was being walked as sixteen-byte chunks through the live layout when §4 gives a
+/// 96-byte header with heart rate at `[17]`. On a real drain that walk reads a byte of the record
+/// counter as a heart rate and writes it to `biometric_samples` — a fabricated reading of exactly the
+/// kind this app's absence rule exists to forbid.
+///
+/// So the decoder does the half it can do and says so plainly: start-of-frame, declared length, header
+/// checksum and payload checksum are all verified, and the bytes are handed up undecoded. That is also
+/// the shape the pending capture needs — raw frames are the evidence, and a parser written against
+/// them comes after, which is the order `BLE_PROTOCOL.md` §6 sets out.
+public struct WhoopRawFrame: Sendable, Equatable {
+    public let generation: WhoopHardwareGeneration
+
+    /// The inner record's packet type — `0x23` command, `0x2F` historical data, … See
+    /// `WhoopProtocolProfile.PacketTypes`.
+    public let type: UInt8
+
+    public let seq: UInt8
+
+    /// The command opcode, `inner[2]`. Meaningful when `type` is a command or a command-response.
+    public let cmd: UInt8
+
+    /// The inner record's bytes after `type` / `seq` / `cmd`.
+    public let payload: Data
+
+    public init(
+        generation: WhoopHardwareGeneration, type: UInt8, seq: UInt8, cmd: UInt8, payload: Data
+    ) {
+        self.generation = generation
+        self.type = type
+        self.seq = seq
+        self.cmd = cmd
+        self.payload = payload
+    }
 }
 
-/// Robust binary packet decoder for WHOOP proprietary 0xAA frames & standard BLE SIG GATT packets.
+/// Binary packet decoder for WHOOP proprietary 0xAA frames & standard BLE SIG GATT packets.
+///
+/// Stateless by construction: the envelope is a parameter rather than a property, because the decoder
+/// is built before a strap has been discovered and the generation is not known until it has been. A
+/// stored profile would have to be mutated from the BLE queue after construction, which is a race for
+/// no benefit — and it keeps this class at zero stored properties, which is what makes it `Sendable`
+/// without a lock.
 public final class WhoopPacketDecoder: Sendable {
     public static let startOfFrame: UInt8 = 0xAA
 
     public init() {}
 
     /// Decodes standard Bluetooth SIG Heart Rate Measurement (Characteristic 0x2A37).
+    ///
+    /// Unaffected by any of this: the standard profile is not a WHOOP envelope, and this is the one
+    /// heart-rate producer on the BLE path that is implemented end to end.
     public func decodeStandardHeartRate(data: Data) -> (heartRate: Int, rrIntervalsMs: [Double])? {
         guard !data.isEmpty else { return nil }
 
@@ -51,121 +100,81 @@ public final class WhoopPacketDecoder: Sendable {
         return (heartRate, rrIntervals)
     }
 
-    /// Decodes proprietary 0xAA binary frames from WHOOP 4.0 / 5.0 data stream.
-    public func decodeProprietaryFrame(data: Data) -> DecodedPacketPayload? {
-        guard data.count >= 4 else { return nil }
-
-        // 1. Verify Start of Frame
-        guard data[0] == Self.startOfFrame else {
-            AppLogger.decoder.debug("Invalid SOF byte: \(data[0], privacy: .public)")
+    /// Validates a proprietary frame under `profile`'s envelope and returns it undecoded.
+    ///
+    /// Returns `nil` — and logs why — for anything that does not validate. **A rejected frame is
+    /// silence, not an error the caller can act on**: the strap may send a shape this build has never
+    /// seen, and the correct response to that is to write nothing rather than to write a guess.
+    ///
+    /// Four checks, in the order that lets each one trust the indices the previous one established:
+    ///
+    /// 1. **Start of frame.** Without it there is no frame boundary to trust, and a payload byte that
+    ///    happens to be `0xAA` is otherwise indistinguishable from one.
+    /// 2. **Declared length.** `length` counts the whole inner record plus the four-byte CRC32
+    ///    trailer, so the total frame is `length + 4`. A frame that declares fewer than the three
+    ///    inner prefix bytes is rejected rather than sliced.
+    /// 3. **Header checksum** — over the format's own bytes, which for 4.0 is the two length bytes and
+    ///    nothing else.
+    /// 4. **Payload checksum** — CRC32 over `frame[innerOrigin ..< length]`.
+    ///
+    /// Checks 3 and 4 are new, and they are what turn this from a parser that cannot fail into one
+    /// that can. `CLAUDE.md` used to record that **no inbound CRC was verified anywhere**, which is
+    /// why a wrong parser built from the references reads as plausible garbage rather than as an
+    /// error. A frame that fails either check now produces nothing at all.
+    public func decodeProprietaryFrame(data: Data, profile: WhoopProtocolProfile) -> WhoopRawFrame? {
+        // 1. Start of frame.
+        guard data.first == Self.startOfFrame else {
+            AppLogger.decoder.debug("Rejected frame: bad SOF \(data.first ?? 0, privacy: .public)")
             return nil
         }
 
-        let cmd = data[1]
-        let lengthLow = UInt16(data[2])
-        _ = data[3]
-        
-        // Frame payload length
-        let payloadLength = Int(lengthLow)
-
-        // Minimum frame size = 4-byte header + payload
-        let headerSize = 4
-        guard data.count >= headerSize + payloadLength else {
-            AppLogger.decoder.debug("Frame truncated: expected \(payloadLength) payload bytes, got \(data.count - headerSize)")
+        // 2. The header runs to `innerOrigin`; the inner record needs its three prefix bytes.
+        guard data.count >= profile.innerOrigin + profile.innerPrefixBytes else {
+            AppLogger.decoder.debug("Rejected frame: \(data.count, privacy: .public) bytes is shorter than a header")
             return nil
         }
 
-        let payloadData = data.subdata(in: headerSize..<(headerSize + payloadLength))
-
-        switch cmd {
-        case 0x01: // Live Telemetry Sample
-            return decodeLiveTelemetryPayload(payloadData)
-
-        case 0x02, 0x20: // Battery / Strap Status
-            return decodeBatteryStatusPayload(payloadData)
-
-        case 0x30: // Historical sync block
-            return decodeHistoricalSyncPayload(payloadData)
-
-        default:
-            return .rawData(cmd: cmd, payload: payloadData)
-        }
-    }
-
-    private func decodeLiveTelemetryPayload(_ payload: Data) -> DecodedPacketPayload? {
-        guard payload.count >= 16 else { return nil }
-
-        let hr = Int(payload[4])
-        let rawRR = UInt16(payload[5]) | (UInt16(payload[6]) << 8)
-        let rrMs: Double? = (rawRR > 0 && rawRR < 2500) ? Double(rawRR) : nil
-
-        let rawAx = Int16(bitPattern: UInt16(payload[7]) | (UInt16(payload[8]) << 8))
-        let rawAy = Int16(bitPattern: UInt16(payload[9]) | (UInt16(payload[10]) << 8))
-        let rawAz = Int16(bitPattern: UInt16(payload[11]) | (UInt16(payload[12]) << 8))
-
-        let ax = Double(rawAx) / 8192.0
-        let ay = Double(rawAy) / 8192.0
-        let az = Double(rawAz) / 8192.0
-
-        let rawTemp = Int16(bitPattern: UInt16(payload[13]) | (UInt16(payload[14]) << 8))
-        let tempC: Double? = (rawTemp > 2000 && rawTemp < 4500) ? Double(rawTemp) / 100.0 : nil
-
-        let spo2Raw = payload[15]
-        let spo2: Double? = (spo2Raw >= 70 && spo2Raw <= 100) ? Double(spo2Raw) : nil
-
-        var onBody = true
-        var isCharging = false
-        if payload.count > 16 {
-            let flags = payload[16]
-            onBody = (flags & 0x01) != 0
-            isCharging = (flags & 0x02) != 0
+        let declaredLength = Int(data[1]) | (Int(data[2]) << 8)
+        guard declaredLength >= profile.innerOrigin + profile.innerPrefixBytes,
+              data.count >= declaredLength + 4
+        else {
+            AppLogger.decoder.debug("Rejected frame: declares \(declaredLength, privacy: .public) bytes, has \(data.count, privacy: .public)")
+            return nil
         }
 
-        let sample = BiometricSample(
-            timestamp: Date(),
-            heartRate: hr,
-            // The proprietary 0x01 payload carries exactly one interval, at `payload[5..6]`. It is
-            // passed as a one-element series rather than as the scalar so that every producer writes
-            // the canonical field, and `rrIntervalMs` stays what it is declared to be: derived.
-            rrIntervalsMs: rrMs.map { [$0] },
-            accelerometerX: ax,
-            accelerometerY: ay,
-            accelerometerZ: az,
-            skinTemperatureCelsius: tempC,
-            spO2Percentage: spo2,
-            isOnBody: onBody,
-            isCharging: isCharging
-        )
-
-        return .liveBiometric(sample)
-    }
-
-    private func decodeBatteryStatusPayload(_ payload: Data) -> DecodedPacketPayload? {
-        guard !payload.isEmpty else { return nil }
-        let battery = Int(payload[0])
-        let isCharging = payload.count > 1 ? (payload[1] != 0) : false
-        let onBody = payload.count > 2 ? (payload[2] != 0) : true
-
-        return .batteryStatus(
-            batteryPercent: max(0, min(100, battery)),
-            isCharging: isCharging,
-            isOnBody: onBody
-        )
-    }
-
-    private func decodeHistoricalSyncPayload(_ payload: Data) -> DecodedPacketPayload? {
-        var samples: [BiometricSample] = []
-        let recordSize = 16
-        var offset = 0
-
-        while offset + recordSize <= payload.count {
-            let chunk = payload.subdata(in: offset..<(offset + recordSize))
-            if case .liveBiometric(let sample) = decodeLiveTelemetryPayload(chunk) {
-                samples.append(sample)
+        // 3. Header checksum.
+        switch profile.headerChecksum {
+        case .crc8OverLengthBytes:
+            let expected = CRCUtils.crc8(Data([data[1], data[2]]))
+            guard data[3] == expected else {
+                AppLogger.decoder.debug("Rejected frame: header crc8 \(data[3], privacy: .public) != \(expected, privacy: .public)")
+                return nil
             }
-            offset += recordSize
+        case .crc16ModbusOverHeader:
+            // Not reachable through `WhoopProtocolProfile.profile(for:)` — no generation this build
+            // speaks uses it. Refused rather than parsed, because the offsets below are 4.0's.
+            return nil
         }
 
-        return .historicalBatch(samples)
+        // 4. Payload checksum, over the inner record.
+        let inner = data.subdata(in: profile.innerOrigin..<declaredLength)
+        let trailer = data.subdata(in: declaredLength..<(declaredLength + 4))
+        let declaredCRC = UInt32(trailer[trailer.startIndex])
+            | (UInt32(trailer[trailer.startIndex + 1]) << 8)
+            | (UInt32(trailer[trailer.startIndex + 2]) << 16)
+            | (UInt32(trailer[trailer.startIndex + 3]) << 24)
+        let computedCRC = CRCUtils.crc32(inner)
+        guard computedCRC == declaredCRC else {
+            AppLogger.decoder.debug("Rejected frame: payload crc32 \(declaredCRC, privacy: .public) != \(computedCRC, privacy: .public)")
+            return nil
+        }
+
+        return WhoopRawFrame(
+            generation: profile.generation,
+            type: inner[inner.startIndex],
+            seq: inner[inner.startIndex + 1],
+            cmd: inner[inner.startIndex + 2],
+            payload: inner.subdata(in: profile.innerPrefixBytes..<inner.count)
+        )
     }
 }
