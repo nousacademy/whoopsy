@@ -1,12 +1,96 @@
 import Foundation
 import Whoopsy
 
+// MARK: - Section selection
+
+/// The sections to run, from `WHOOPSY_SECTIONS=13,15`. Empty means all of them.
+///
+/// Read once at launch rather than per section, so a section cannot be selected halfway through a run.
+let selectedSections: Set<Int> = {
+    guard let raw = ProcessInfo.processInfo.environment["WHOOPSY_SECTIONS"], !raw.isEmpty else {
+        return []
+    }
+    return Set(raw.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) })
+}()
+
+// MARK: - The tally
+
+/// Counts assertions and the sections that ran, so the run can end with one machine-readable line.
+///
+/// **The summary exists because this suite has no test discovery.** A section that stopped running
+/// looks exactly like one that passed: the `✓` lines scroll past either way and nothing in the
+/// output says which sections produced them. `sections=` is the field that catches a dropped section;
+/// `assertions=` is the field that catches a section that ran but stopped asserting. Record both
+/// before editing, and treat a drop in either as a deleted guarantee rather than as noise.
+///
+/// A lock rather than a bare global, because assertions arrive from the main actor and from inside
+/// awaited async work and the two can interleave.
+final class SuiteTally: @unchecked Sendable {
+    private let lock = NSLock()
+    private var passed = 0
+    private var failed = 0
+    private var sections: [Int] = []
+
+    func record(_ ok: Bool) {
+        lock.lock(); defer { lock.unlock() }
+        if ok { passed += 1 } else { failed += 1 }
+    }
+
+    func markSection(_ number: Int) {
+        lock.lock(); defer { lock.unlock() }
+        sections.append(number)
+    }
+
+    var state: (passed: Int, failed: Int, sections: [Int]) {
+        lock.lock(); defer { lock.unlock() }
+        return (passed, failed, sections)
+    }
+}
+
+let tally = SuiteTally()
+
+/// Whether to run a section, marking it as run when the answer is yes.
+///
+/// The gate is on the section's **call**, not inside each `run*Tests` function, and that is the whole
+/// point: a skipped section must not open a database or import a CSV, which is the cost being skipped.
+func sectionEnabled(_ number: Int) -> Bool {
+    guard selectedSections.isEmpty || selectedSections.contains(number) else { return false }
+    tally.markSection(number)
+    return true
+}
+
+/// Prints the run's one-line summary and exits — the single exit path for every outcome.
+func finishSuite(exitCode: Int32 = 0) {
+    let state = tally.state
+
+    // A `WHOOPSY_SECTIONS` value naming a section that does not exist would otherwise run nothing and
+    // exit 0, which is a typo reading as a pass. Checked only on an otherwise-clean run, so a genuinely
+    // failing assertion is still the thing that gets reported.
+    if exitCode == 0, !selectedSections.isEmpty {
+        let missing = selectedSections.subtracting(state.sections)
+        if !missing.isEmpty {
+            print("\n❌ FAILED: WHOOPSY_SECTIONS named section(s) that do not exist: "
+                + missing.sorted().map(String.init).joined(separator: ","))
+            tally.record(false)
+            finishSuite(exitCode: 1)
+        }
+    }
+
+    print("\nSUITE sections=\(state.sections.sorted().map(String.init).joined(separator: ","))"
+        + " assertions=\(state.passed) failed=\(state.failed) exit=\(exitCode)")
+    exit(exitCode)
+}
+
 func assertTest(_ condition: Bool, _ message: String, file: String = #file, line: Int = #line) {
-    if !condition {
-        print("❌ FAILED: \(message) at \(file):\(line)")
-        exit(1)
-    } else {
+    tally.record(condition)
+    if condition {
         print("  ✓ \(message)")
+    } else {
+        // Fail fast, as before: the runner is linear, so a later section's result is not worth having
+        // once an earlier one has failed. `finishSuite` prints the summary before exiting, so even a
+        // failing run is machine-readable.
+        print("❌ FAILED: \(message) at \(file):\(line)")
+        finishSuite(exitCode: 1)
     }
 }
 
@@ -25,107 +109,10 @@ print("==================================================")
 // It is now built on the four vectors `BLE_PROTOCOL.md` §2.1 records from the two reverse-engineering
 // references' own published frames. These are checkable with no strap, and they are the assertions
 // that fail if the arithmetic or the frame layout moves.
-print("\n[1/15] Testing CRC Algorithms & Framing...")
 
-// The 4.0 header CRC8 is over the two length bytes only, poly 0x07. Both values are the references'
-// own, quoted in §2.1.
-assertTest(CRCUtils.crc8(Data([0x08, 0x00])) == 0xA8, "crc8([0x08, 0x00]) == 0xA8 (reference vector)")
-assertTest(CRCUtils.crc8(Data([0x10, 0x00])) == 0x57, "crc8([0x10, 0x00]) == 0x57 (reference vector)")
-
-// The 5.0 `CLIENT_HELLO` is a static 16-byte frame, so it validates the CRC16-Modbus over the first
-// six header bytes *and* the CRC32 over the inner record in one. Neither is wired to a frame this
-// build can build — `profile(for:)` returns nil for both 5.0 generations — but the arithmetic being
-// correct is what makes the eventual envelope a matter of framing rather than of checksums.
-let hello50 = Data([
-    0xAA, 0x01, 0x08, 0x00, 0x00, 0x01, 0xE6, 0x71,
-    0x23, 0x01, 0x91, 0x01, 0x36, 0x3E, 0x5C, 0x8D,
-])
-assertTest(
-    CRCUtils.crc16Modbus(hello50.subdata(in: 0..<6)) == 0x71E6,
-    "crc16Modbus(5.0 hello[0..<6]) == 0x71E6 (reference vector)")
-assertTest(
-    CRCUtils.crc32(hello50.subdata(in: 8..<12)) == 0x8D5C3E36,
-    "crc32(5.0 hello payload) == 0x8D5C3E36 (reference vector)")
-
-// The 4.0 envelope, end to end. `hapticAlarmCommand` carries a two-byte payload, so the inner record
-// is `type seq cmd 03 01` — five bytes — and `length` is that plus four.
-let haptic = WhoopPacketEncoder.hapticAlarmCommand(
-    profile: .whoop4, seq: 0x07, durationSeconds: 3, pattern: 1)
-assertTest(haptic != nil, "Encoder builds a frame for the 4.0 envelope")
-if let haptic {
-    assertTest(haptic[0] == 0xAA, "Frame start of frame is 0xAA")
-    // The defect this section could not see before: the CRC8 input. `length` is 9, so the two length
-    // bytes are `09 00` and the reference says the checksum over them is 0x57.
-    assertTest(haptic[1] == 0x09 && haptic[2] == 0x00, "Frame declares length 9 (5 inner bytes + 4)")
-    assertTest(
-        haptic[3] == CRCUtils.crc8(Data([haptic[1], haptic[2]])),
-        "Header crc8 is over the two length bytes only")
-    assertTest(haptic[4] == WhoopProtocolProfile.whoop4.packetTypes.command, "Inner type is the command type")
-    assertTest(haptic[5] == 0x07, "Inner seq echoes the sequence number handed in")
-    assertTest(haptic[6] == 0x10, "Inner cmd is 0x10 (haptic alarm)")
-    assertTest(haptic.count == 13, "Total frame size is length + 4")
-    // CRC32 covers the inner record `frame[4 ..< length]`, not the payload alone.
-    let inner = haptic.subdata(in: 4..<9)
-    let trailer = haptic.subdata(in: 9..<13)
-    let declared = UInt32(trailer[trailer.startIndex])
-        | (UInt32(trailer[trailer.startIndex + 1]) << 8)
-        | (UInt32(trailer[trailer.startIndex + 2]) << 16)
-        | (UInt32(trailer[trailer.startIndex + 3]) << 24)
-    assertTest(declared == CRCUtils.crc32(inner), "Payload crc32 covers the inner record, not the payload")
-}
-
-// The two CRC8 vectors are quoted for specific *declared lengths*, so they are reachable only from a
-// frame that declares those lengths — 0x08 is an inner record of four bytes (a one-byte payload), 0x10
-// one of twelve. Asserting them against the frame that produces each is what ties the arithmetic to
-// the layout; quoted bare in §1 above they validate the polynomial and nothing else.
-let lengthEight = WhoopPacketEncoder.buildPacket(
-    profile: .whoop4, type: WhoopProtocolProfile.whoop4.packetTypes.command,
-    seq: 0, cmd: 0x05, payload: Data([0x01]))!
-assertTest(
-    lengthEight[1] == 0x08 && lengthEight[2] == 0x00 && lengthEight[3] == 0xA8,
-    "A frame declaring length 8 carries crc8 0xA8 (the reference vector, in place)")
-let lengthSixteen = WhoopPacketEncoder.buildPacket(
-    profile: .whoop4, type: WhoopProtocolProfile.whoop4.packetTypes.command,
-    seq: 0, cmd: 0x05, payload: Data(repeating: 0x01, count: 9))!
-assertTest(
-    lengthSixteen[1] == 0x10 && lengthSixteen[2] == 0x00 && lengthSixteen[3] == 0x57,
-    "A frame declaring length 16 carries crc8 0x57 (the reference vector, in place)")
-
-// A sequence that advances and wraps rather than repeating a constant. A repeated `seq` would be a
-// second invented value sitting where a field is expected — the same class of error as a fabricated
-// battery percentage, and just as invisible.
-let seqCounter = WhoopCommandSequence()
-let seqValues = (0..<256).map { _ in seqCounter.next() }
-assertTest(seqValues.first == 1, "Command sequence starts at 1")
-assertTest(seqValues.last == 0, "Command sequence wraps at 256 rather than overflowing")
-assertTest(Set(seqValues).count == 256, "Command sequence produces 256 distinct values before repeating")
-
-// The envelope is selected by generation, and refusing is the default.
-//
-// `WhoopProtocolProfile.profile(for:)` is the choke point the whole generation-aware path rests on: it
-// answers nil for every envelope this build has not implemented, and every command writer refuses on
-// nil. The property worth pinning is the refusal, because the failure it prevents is silent — the
-// packet-type numberings do not overlap between generations, so a 4.0-framed command written to a 5.0
-// strap is a *different message* rather than a rejected one.
-assertTest(WhoopProtocolProfile.profile(for: .whoop4) == .whoop4, "whoop4 has a profile")
-for generation in [WhoopHardwareGeneration.whoop5, .whoop5MG, .standardBleHR, .simulator] {
-    assertTest(
-        WhoopProtocolProfile.profile(for: generation) == nil,
-        "\(generation.rawValue) has no profile — this build cannot frame for it")
-}
-let catalog = WhoopProtocolCatalog()
-assertTest(catalog.supportsProprietarySync(.whoop4), "Catalog reports sync implemented for 4.0")
-for generation in [WhoopHardwareGeneration.whoop5, .whoop5MG, .standardBleHR, .simulator] {
-    assertTest(
-        !catalog.supportsProprietarySync(generation),
-        "Catalog reports sync not implemented for \(generation.rawValue)")
-}
-
-// The three models the user can choose, derived from the cases rather than listed beside them — a
-// hardcoded list is one that a new case silently fails to join.
-assertTest(
-    WhoopHardwareGeneration.selectableModels == [.whoop4, .whoop5, .whoop5MG],
-    "The selectable models are exactly the three straps, 5.0 and MG distinct")
+// **Hoisted above §1's gate, deliberately.** `syntheticFive` is built here and read by
+// §2 as well, so gating §1 alone would put it out of §2's scope. It is a pure value with no
+// I/O, so building it on a run that skipped both sections costs nothing.
 
 // A hand-built 5.0-shaped profile, so the encoder's refusal is asserted against a real profile value
 // rather than against `nil`. `headerChecksum` is the field the builder switches on.
@@ -136,319 +123,473 @@ let syntheticFive = WhoopProtocolProfile(
     innerPrefixBytes: 3,
     packetTypes: WhoopProtocolProfile.PacketTypes(
         command: 35, commandResponse: 36, historicalData: 47, event: 48, metadata: 49))
-assertTest(
-    WhoopPacketEncoder.pingCommand(profile: syntheticFive, seq: 1) == nil,
-    "Encoder refuses to build a frame under an envelope it has no builder for")
-assertTest(
-    WhoopPacketEncoder.hapticAlarmCommand(profile: syntheticFive, seq: 1) == nil,
-    "Every command builder refuses the unimplemented envelope")
 
-// Which model a strap is: a stored choice, never overridden by the guess.
-//
-// The precedence rule, asserted directly. `resolvedGeneration` is a static function of its two inputs
-// precisely so this is reachable — constructing a `WhoopBLEManager` would raise a system Bluetooth
-// prompt in the middle of a test run.
-assertTest(
-    WhoopBLEManager.resolvedGeneration(stored: .whoop5MG, advertisedName: "WHOOP Strap")
-        == .whoop5MG,
-    "A stored choice wins over the name heuristic")
-assertTest(
-    WhoopBLEManager.resolvedGeneration(stored: .whoop4, advertisedName: "WHOOP 5.0")
-        == .whoop4,
-    "A stored choice is not overridden by a name that advertises the opposite")
-assertTest(
-    WhoopBLEManager.resolvedGeneration(stored: nil, advertisedName: "WHOOP 5.0") == .whoop5,
-    "With nothing stored, the name heuristic still answers")
-assertTest(
-    WhoopBLEManager.resolvedGeneration(stored: nil, advertisedName: "WHOOP Strap") == .whoop4,
-    "An unnamed strap falls back to 4.0 — the heuristic cannot read a name it was never given")
+if sectionEnabled(1) {
+    print("\n[1/15] Testing CRC Algorithms & Framing...")
 
-// MARK: - 2. Packet Decoder Tests
-print("\n[2/15] Testing WHOOP Packet Decoder...")
-let decoder = WhoopPacketDecoder()
+    // The 4.0 header CRC8 is over the two length bytes only, poly 0x07. Both values are the references'
+    // own, quoted in §2.1.
+    assertTest(CRCUtils.crc8(Data([0x08, 0x00])) == 0xA8, "crc8([0x08, 0x00]) == 0xA8 (reference vector)")
+    assertTest(CRCUtils.crc8(Data([0x10, 0x00])) == 0x57, "crc8([0x10, 0x00]) == 0x57 (reference vector)")
 
-// Test Standard SIG Heart Rate Frame
-let sigData = Data([0x10, 72, 0x50, 0x03]) // 72 BPM, 848 in 1/1024s (~828ms)
-let sigResult = decoder.decodeStandardHeartRate(data: sigData)
-assertTest(sigResult != nil, "Decoded standard SIG Heart Rate frame")
-assertTest(sigResult?.heartRate == 72, "Heart rate is 72 BPM")
-assertTest(sigResult?.rrIntervalsMs.count == 1, "Extracted 1 R-R interval")
-if let rr = sigResult?.rrIntervalsMs.first {
-    assertTest(rr > 800 && rr < 850, "R-R interval duration (~828ms) is correct")
-}
-
-// Proprietary 0xAA frames.
-//
-// This used to decode a frame built in the *encoder's* old layout — `[0xAA, 0x01, 16, 0x00]`, cmd at
-// index 1 — into a `.liveBiometric` payload the app had invented. Two things were wrong with that and
-// both are why this block is now built from the encoder instead of by hand: the layout was not the
-// documented one (byte 1 is a *length*, not a command), and `BLE_PROTOCOL.md` §2 documents no
-// live-telemetry packet type at all. The decoder now returns the envelope's contents undecoded, which
-// is the half that is specified, and the assertions below pin the four checks it performs.
-let envelopeProfile = WhoopProtocolProfile.whoop4
-
-// A well-formed frame, produced by the encoder so the two halves cannot drift apart unnoticed. It is
-// a *command* frame, which is one of the five types §2 does document.
-let wellFormed = WhoopPacketEncoder.buildPacket(
-    profile: envelopeProfile,
-    type: envelopeProfile.packetTypes.command,
-    seq: 0x2A,
-    cmd: 0x10,
-    payload: Data([0x03, 0x01]))!
-let rawFrame = decoder.decodeProprietaryFrame(data: wellFormed, profile: envelopeProfile)
-assertTest(rawFrame != nil, "Decoded a well-formed proprietary 0xAA frame")
-assertTest(rawFrame?.generation == .whoop4, "The frame reports the generation it was framed for")
-assertTest(rawFrame?.type == envelopeProfile.packetTypes.command, "Type is read from inner[0] (0x23)")
-assertTest(rawFrame?.seq == 0x2A, "Seq is read from inner[1]")
-assertTest(rawFrame?.cmd == 0x10, "Cmd is read from inner[2] — the field the old decoder called a length")
-assertTest(rawFrame?.payload == Data([0x03, 0x01]), "Payload is everything after the three-byte prefix")
-
-// Dispatch is type-first, and the type is not the cmd. Under the documented envelope the old
-// `case 0x30` fired on a payload length and the old `case 0x20` on a command, which is the whole of
-// the type/opcode confusion `BLE_PROTOCOL.md` §3 also flags in the handshake table. A command frame
-// whose cmd happens to equal a *packet type* constrains them to be different fields.
-let cmdEqualsType = WhoopPacketEncoder.buildPacket(
-    profile: envelopeProfile,
-    type: envelopeProfile.packetTypes.historicalData,
-    seq: 1,
-    cmd: envelopeProfile.packetTypes.command,
-    payload: Data())!
-let historical = decoder.decodeProprietaryFrame(data: cmdEqualsType, profile: envelopeProfile)
-assertTest(
-    historical?.type == envelopeProfile.packetTypes.historicalData,
-    "A cmd equal to the command type does not change the frame's type")
-assertTest(
-    historical?.cmd == envelopeProfile.packetTypes.command,
-    "The opcode is reported in its own field, not conflated with the type")
-
-// The four checks, each asserted as a refusal. Before this the decoder could not fail: any `0xAA`
-// byte was a frame boundary, a payload byte that happened to be `0xAA` was indistinguishable from
-// one, and no inbound checksum was verified anywhere in `Sources/`.
-func reject(_ data: Data, _ message: String) {
+    // The 5.0 `CLIENT_HELLO` is a static 16-byte frame, so it validates the CRC16-Modbus over the first
+    // six header bytes *and* the CRC32 over the inner record in one. Neither is wired to a frame this
+    // build can build — `profile(for:)` returns nil for both 5.0 generations — but the arithmetic being
+    // correct is what makes the eventual envelope a matter of framing rather than of checksums.
+    let hello50 = Data([
+        0xAA, 0x01, 0x08, 0x00, 0x00, 0x01, 0xE6, 0x71,
+        0x23, 0x01, 0x91, 0x01, 0x36, 0x3E, 0x5C, 0x8D,
+    ])
     assertTest(
-        decoder.decodeProprietaryFrame(data: data, profile: envelopeProfile) == nil,
-        message)
-}
+        CRCUtils.crc16Modbus(hello50.subdata(in: 0..<6)) == 0x71E6,
+        "crc16Modbus(5.0 hello[0..<6]) == 0x71E6 (reference vector)")
+    assertTest(
+        CRCUtils.crc32(hello50.subdata(in: 8..<12)) == 0x8D5C3E36,
+        "crc32(5.0 hello payload) == 0x8D5C3E36 (reference vector)")
 
-// 1. Start of frame.
-var badSOF = wellFormed
-badSOF[0] = 0xAB
-reject(badSOF, "A frame not beginning 0xAA is refused")
-
-// 2. Header checksum — the byte the 4.0 format specifies CRC8 over, corrupted.
-var badHeaderCRC = wellFormed
-badHeaderCRC[3] = badHeaderCRC[3] &+ 1
-reject(badHeaderCRC, "A frame with a wrong header crc8 is refused")
-
-// 3. Payload checksum, over the inner record.
-var badPayloadCRC = wellFormed
-badPayloadCRC[5] = badPayloadCRC[5] &+ 1
-reject(badPayloadCRC, "A frame whose inner record does not match its crc32 is refused")
-
-// 4. Declared length — a truncated frame, and one whose length field was never true. A parser that
-// sliced on the declared length alone would read past the buffer or return plausible garbage.
-reject(wellFormed.dropLast(), "A truncated frame is refused")
-var lyingLength = wellFormed
-lyingLength[1] = 0x40
-assertTest(
-    decoder.decodeProprietaryFrame(data: lyingLength, profile: envelopeProfile) == nil,
-    "A frame declaring a length beyond its own size is refused")
-
-// 5. The envelope itself. A profile this build cannot slice is refused rather than parsed with 4.0's
-// offsets — the same property `profile(for:)` enforces one level up, asserted here at the decoder.
-assertTest(
-    decoder.decodeProprietaryFrame(data: wellFormed, profile: syntheticFive) == nil,
-    "The decoder refuses an envelope it has no offsets for")
-
-// The standard Heart Rate characteristic (0x2A37) carries a *repeated* R-R field, and everything
-// downstream of the R-R series rests on this decoder returning all of it, in wire order. Until `v8`
-// the BLE layer kept only `rrs.first`, so a decoder that quietly returned one interval would have
-// looked correct — this is the assertion that distinguishes the two.
-//
-// Each interval is a `uint16` in units of 1/1024 s, so milliseconds are `raw / 1024 * 1000`; the
-// expected values below are written as that same expression rather than as decimal literals, which
-// would be a second rounding of the same number.
-do {
-    // flags 0x10 = R-R present, 8-bit HR, no energy-expended field.
-    func frame(flags: UInt8, hrBytes: [UInt8], extra: [UInt8] = [], rrRaw: [UInt16]) -> Data {
-        var bytes: [UInt8] = [flags] + hrBytes + extra
-        for raw in rrRaw {
-            bytes.append(UInt8(raw & 0xFF))
-            bytes.append(UInt8(raw >> 8))
-        }
-        return Data(bytes)
+    // The 4.0 envelope, end to end. `hapticAlarmCommand` carries a two-byte payload, so the inner record
+    // is `type seq cmd 03 01` — five bytes — and `length` is that plus four.
+    let haptic = WhoopPacketEncoder.hapticAlarmCommand(
+        profile: .whoop4, seq: 0x07, durationSeconds: 3, pattern: 1)
+    assertTest(haptic != nil, "Encoder builds a frame for the 4.0 envelope")
+    if let haptic {
+        assertTest(haptic[0] == 0xAA, "Frame start of frame is 0xAA")
+        // The defect this section could not see before: the CRC8 input. `length` is 9, so the two length
+        // bytes are `09 00` and the reference says the checksum over them is 0x57.
+        assertTest(haptic[1] == 0x09 && haptic[2] == 0x00, "Frame declares length 9 (5 inner bytes + 4)")
+        assertTest(
+            haptic[3] == CRCUtils.crc8(Data([haptic[1], haptic[2]])),
+            "Header crc8 is over the two length bytes only")
+        assertTest(haptic[4] == WhoopProtocolProfile.whoop4.packetTypes.command, "Inner type is the command type")
+        assertTest(haptic[5] == 0x07, "Inner seq echoes the sequence number handed in")
+        assertTest(haptic[6] == 0x10, "Inner cmd is 0x10 (haptic alarm)")
+        assertTest(haptic.count == 13, "Total frame size is length + 4")
+        // CRC32 covers the inner record `frame[4 ..< length]`, not the payload alone.
+        let inner = haptic.subdata(in: 4..<9)
+        let trailer = haptic.subdata(in: 9..<13)
+        let declared = UInt32(trailer[trailer.startIndex])
+            | (UInt32(trailer[trailer.startIndex + 1]) << 8)
+            | (UInt32(trailer[trailer.startIndex + 2]) << 16)
+            | (UInt32(trailer[trailer.startIndex + 3]) << 24)
+        assertTest(declared == CRCUtils.crc32(inner), "Payload crc32 covers the inner record, not the payload")
     }
 
-    let fourRaw: [UInt16] = [902, 890, 924, 896]
-    let four = decoder.decodeStandardHeartRate(data: frame(flags: 0x10, hrBytes: [68], rrRaw: fourRaw))
-    let expectedFour = fourRaw.map { (Double($0) / 1024.0) * 1000.0 }
-    assertTest(four?.heartRate == 68, "0x2A37 decodes an 8-bit heart rate")
+    // The two CRC8 vectors are quoted for specific *declared lengths*, so they are reachable only from a
+    // frame that declares those lengths — 0x08 is an inner record of four bytes (a one-byte payload), 0x10
+    // one of twelve. Asserting them against the frame that produces each is what ties the arithmetic to
+    // the layout; quoted bare in §1 above they validate the polynomial and nothing else.
+    let lengthEight = WhoopPacketEncoder.buildPacket(
+        profile: .whoop4, type: WhoopProtocolProfile.whoop4.packetTypes.command,
+        seq: 0, cmd: 0x05, payload: Data([0x01]))!
     assertTest(
-        four?.rrIntervalsMs == expectedFour,
-        "0x2A37 returns all 4 intervals in wire order, got \(four?.rrIntervalsMs ?? [])")
-
-    // The bit that matters most for the offset arithmetic: an energy-expended field (flags bit 3)
-    // and a 16-bit heart rate (bit 0) both sit *between* the flags and the R-R list, and a decoder
-    // that ignores either reads the R-R bytes from the wrong offset and still returns numbers.
-    let shifted = decoder.decodeStandardHeartRate(
-        data: frame(flags: 0x01 | 0x08 | 0x10, hrBytes: [0x2C, 0x01], extra: [0x00, 0x00], rrRaw: fourRaw))
-    assertTest(shifted?.heartRate == 300, "0x2A37 decodes a 16-bit heart rate (\(shifted?.heartRate ?? -1))")
+        lengthEight[1] == 0x08 && lengthEight[2] == 0x00 && lengthEight[3] == 0xA8,
+        "A frame declaring length 8 carries crc8 0xA8 (the reference vector, in place)")
+    let lengthSixteen = WhoopPacketEncoder.buildPacket(
+        profile: .whoop4, type: WhoopProtocolProfile.whoop4.packetTypes.command,
+        seq: 0, cmd: 0x05, payload: Data(repeating: 0x01, count: 9))!
     assertTest(
-        shifted?.rrIntervalsMs == expectedFour,
-        "The R-R list is read past the energy field, got \(shifted?.rrIntervalsMs ?? [])")
+        lengthSixteen[1] == 0x10 && lengthSixteen[2] == 0x00 && lengthSixteen[3] == 0x57,
+        "A frame declaring length 16 carries crc8 0x57 (the reference vector, in place)")
 
-    // R-R bit unset. This is the case the BLE layer collapses to `nil` — an absent series, which is
-    // a different statement from a series of length zero and must not be written as one.
-    let noRR = decoder.decodeStandardHeartRate(data: frame(flags: 0x00, hrBytes: [70], rrRaw: []))
-    assertTest(noRR?.heartRate == 70, "0x2A37 without the R-R bit still decodes a heart rate")
-    assertTest(noRR?.rrIntervalsMs.isEmpty == true, "0x2A37 without the R-R bit returns no intervals")
+    // A sequence that advances and wraps rather than repeating a constant. A repeated `seq` would be a
+    // second invented value sitting where a field is expected — the same class of error as a fabricated
+    // battery percentage, and just as invisible.
+    let seqCounter = WhoopCommandSequence()
+    let seqValues = (0..<256).map { _ in seqCounter.next() }
+    assertTest(seqValues.first == 1, "Command sequence starts at 1")
+    assertTest(seqValues.last == 0, "Command sequence wraps at 256 rather than overflowing")
+    assertTest(Set(seqValues).count == 256, "Command sequence produces 256 distinct values before repeating")
 
-    // A single interval is the common real-world shape and must not be special-cased into a scalar.
-    let one = decoder.decodeStandardHeartRate(data: frame(flags: 0x10, hrBytes: [58], rrRaw: [904]))
+    // The envelope is selected by generation, and refusing is the default.
+    //
+    // `WhoopProtocolProfile.profile(for:)` is the choke point the whole generation-aware path rests on: it
+    // answers nil for every envelope this build has not implemented, and every command writer refuses on
+    // nil. The property worth pinning is the refusal, because the failure it prevents is silent — the
+    // packet-type numberings do not overlap between generations, so a 4.0-framed command written to a 5.0
+    // strap is a *different message* rather than a rejected one.
+    assertTest(WhoopProtocolProfile.profile(for: .whoop4) == .whoop4, "whoop4 has a profile")
+    for generation in [WhoopHardwareGeneration.whoop5, .whoop5MG, .standardBleHR, .simulator] {
+        assertTest(
+            WhoopProtocolProfile.profile(for: generation) == nil,
+            "\(generation.rawValue) has no profile — this build cannot frame for it")
+    }
+    let catalog = WhoopProtocolCatalog()
+    assertTest(catalog.supportsProprietarySync(.whoop4), "Catalog reports sync implemented for 4.0")
+    for generation in [WhoopHardwareGeneration.whoop5, .whoop5MG, .standardBleHR, .simulator] {
+        assertTest(
+            !catalog.supportsProprietarySync(generation),
+            "Catalog reports sync not implemented for \(generation.rawValue)")
+    }
+
+    // The three models the user can choose, derived from the cases rather than listed beside them — a
+    // hardcoded list is one that a new case silently fails to join.
     assertTest(
-        one?.rrIntervalsMs == [(Double(904) / 1024.0) * 1000.0],
-        "0x2A37 with one interval returns a one-element series")
+        WhoopHardwareGeneration.selectableModels == [.whoop4, .whoop5, .whoop5MG],
+        "The selectable models are exactly the three straps, 5.0 and MG distinct")
+
+    assertTest(
+        WhoopPacketEncoder.pingCommand(profile: syntheticFive, seq: 1) == nil,
+        "Encoder refuses to build a frame under an envelope it has no builder for")
+    assertTest(
+        WhoopPacketEncoder.hapticAlarmCommand(profile: syntheticFive, seq: 1) == nil,
+        "Every command builder refuses the unimplemented envelope")
+
+    // Which model a strap is: a stored choice, never overridden by the guess.
+    //
+    // The precedence rule, asserted directly. `resolvedGeneration` is a static function of its two inputs
+    // precisely so this is reachable — constructing a `WhoopBLEManager` would raise a system Bluetooth
+    // prompt in the middle of a test run.
+    assertTest(
+        WhoopBLEManager.resolvedGeneration(stored: .whoop5MG, advertisedName: "WHOOP Strap")
+            == .whoop5MG,
+        "A stored choice wins over the name heuristic")
+    assertTest(
+        WhoopBLEManager.resolvedGeneration(stored: .whoop4, advertisedName: "WHOOP 5.0")
+            == .whoop4,
+        "A stored choice is not overridden by a name that advertises the opposite")
+    assertTest(
+        WhoopBLEManager.resolvedGeneration(stored: nil, advertisedName: "WHOOP 5.0") == .whoop5,
+        "With nothing stored, the name heuristic still answers")
+    assertTest(
+        WhoopBLEManager.resolvedGeneration(stored: nil, advertisedName: "WHOOP Strap") == .whoop4,
+        "An unnamed strap falls back to 4.0 — the heuristic cannot read a name it was never given")
+}
+
+// MARK: - 2. Packet Decoder Tests
+if sectionEnabled(2) {
+    print("\n[2/15] Testing WHOOP Packet Decoder...")
+    let decoder = WhoopPacketDecoder()
+
+    // Test Standard SIG Heart Rate Frame
+    let sigData = Data([0x10, 72, 0x50, 0x03]) // 72 BPM, 848 in 1/1024s (~828ms)
+    let sigResult = decoder.decodeStandardHeartRate(data: sigData)
+    assertTest(sigResult != nil, "Decoded standard SIG Heart Rate frame")
+    assertTest(sigResult?.heartRate == 72, "Heart rate is 72 BPM")
+    assertTest(sigResult?.rrIntervalsMs.count == 1, "Extracted 1 R-R interval")
+    if let rr = sigResult?.rrIntervalsMs.first {
+        assertTest(rr > 800 && rr < 850, "R-R interval duration (~828ms) is correct")
+    }
+
+    // Proprietary 0xAA frames.
+    //
+    // This used to decode a frame built in the *encoder's* old layout — `[0xAA, 0x01, 16, 0x00]`, cmd at
+    // index 1 — into a `.liveBiometric` payload the app had invented. Two things were wrong with that and
+    // both are why this block is now built from the encoder instead of by hand: the layout was not the
+    // documented one (byte 1 is a *length*, not a command), and `BLE_PROTOCOL.md` §2 documents no
+    // live-telemetry packet type at all. The decoder now returns the envelope's contents undecoded, which
+    // is the half that is specified, and the assertions below pin the four checks it performs.
+    let envelopeProfile = WhoopProtocolProfile.whoop4
+
+    // A well-formed frame, produced by the encoder so the two halves cannot drift apart unnoticed. It is
+    // a *command* frame, which is one of the five types §2 does document.
+    let wellFormed = WhoopPacketEncoder.buildPacket(
+        profile: envelopeProfile,
+        type: envelopeProfile.packetTypes.command,
+        seq: 0x2A,
+        cmd: 0x10,
+        payload: Data([0x03, 0x01]))!
+    let rawFrame = decoder.decodeProprietaryFrame(data: wellFormed, profile: envelopeProfile)
+    assertTest(rawFrame != nil, "Decoded a well-formed proprietary 0xAA frame")
+    assertTest(rawFrame?.generation == .whoop4, "The frame reports the generation it was framed for")
+    assertTest(rawFrame?.type == envelopeProfile.packetTypes.command, "Type is read from inner[0] (0x23)")
+    assertTest(rawFrame?.seq == 0x2A, "Seq is read from inner[1]")
+    assertTest(rawFrame?.cmd == 0x10, "Cmd is read from inner[2] — the field the old decoder called a length")
+    assertTest(rawFrame?.payload == Data([0x03, 0x01]), "Payload is everything after the three-byte prefix")
+
+    // Dispatch is type-first, and the type is not the cmd. Under the documented envelope the old
+    // `case 0x30` fired on a payload length and the old `case 0x20` on a command, which is the whole of
+    // the type/opcode confusion `BLE_PROTOCOL.md` §3 also flags in the handshake table. A command frame
+    // whose cmd happens to equal a *packet type* constrains them to be different fields.
+    let cmdEqualsType = WhoopPacketEncoder.buildPacket(
+        profile: envelopeProfile,
+        type: envelopeProfile.packetTypes.historicalData,
+        seq: 1,
+        cmd: envelopeProfile.packetTypes.command,
+        payload: Data())!
+    let historical = decoder.decodeProprietaryFrame(data: cmdEqualsType, profile: envelopeProfile)
+    assertTest(
+        historical?.type == envelopeProfile.packetTypes.historicalData,
+        "A cmd equal to the command type does not change the frame's type")
+    assertTest(
+        historical?.cmd == envelopeProfile.packetTypes.command,
+        "The opcode is reported in its own field, not conflated with the type")
+
+    // The four checks, each asserted as a refusal. Before this the decoder could not fail: any `0xAA`
+    // byte was a frame boundary, a payload byte that happened to be `0xAA` was indistinguishable from
+    // one, and no inbound checksum was verified anywhere in `Sources/`.
+    func reject(_ data: Data, _ message: String) {
+        assertTest(
+            decoder.decodeProprietaryFrame(data: data, profile: envelopeProfile) == nil,
+            message)
+    }
+
+    // 1. Start of frame.
+    var badSOF = wellFormed
+    badSOF[0] = 0xAB
+    reject(badSOF, "A frame not beginning 0xAA is refused")
+
+    // 2. Header checksum — the byte the 4.0 format specifies CRC8 over, corrupted.
+    var badHeaderCRC = wellFormed
+    badHeaderCRC[3] = badHeaderCRC[3] &+ 1
+    reject(badHeaderCRC, "A frame with a wrong header crc8 is refused")
+
+    // 3. Payload checksum, over the inner record.
+    var badPayloadCRC = wellFormed
+    badPayloadCRC[5] = badPayloadCRC[5] &+ 1
+    reject(badPayloadCRC, "A frame whose inner record does not match its crc32 is refused")
+
+    // 4. Declared length — a truncated frame, and one whose length field was never true. A parser that
+    // sliced on the declared length alone would read past the buffer or return plausible garbage.
+    reject(wellFormed.dropLast(), "A truncated frame is refused")
+    var lyingLength = wellFormed
+    lyingLength[1] = 0x40
+    assertTest(
+        decoder.decodeProprietaryFrame(data: lyingLength, profile: envelopeProfile) == nil,
+        "A frame declaring a length beyond its own size is refused")
+
+    // 5. The envelope itself. A profile this build cannot slice is refused rather than parsed with 4.0's
+    // offsets — the same property `profile(for:)` enforces one level up, asserted here at the decoder.
+    assertTest(
+        decoder.decodeProprietaryFrame(data: wellFormed, profile: syntheticFive) == nil,
+        "The decoder refuses an envelope it has no offsets for")
+
+    // The standard Heart Rate characteristic (0x2A37) carries a *repeated* R-R field, and everything
+    // downstream of the R-R series rests on this decoder returning all of it, in wire order. Until `v8`
+    // the BLE layer kept only `rrs.first`, so a decoder that quietly returned one interval would have
+    // looked correct — this is the assertion that distinguishes the two.
+    //
+    // Each interval is a `uint16` in units of 1/1024 s, so milliseconds are `raw / 1024 * 1000`; the
+    // expected values below are written as that same expression rather than as decimal literals, which
+    // would be a second rounding of the same number.
+    do {
+        // flags 0x10 = R-R present, 8-bit HR, no energy-expended field.
+        func frame(flags: UInt8, hrBytes: [UInt8], extra: [UInt8] = [], rrRaw: [UInt16]) -> Data {
+            var bytes: [UInt8] = [flags] + hrBytes + extra
+            for raw in rrRaw {
+                bytes.append(UInt8(raw & 0xFF))
+                bytes.append(UInt8(raw >> 8))
+            }
+            return Data(bytes)
+        }
+
+        let fourRaw: [UInt16] = [902, 890, 924, 896]
+        let four = decoder.decodeStandardHeartRate(data: frame(flags: 0x10, hrBytes: [68], rrRaw: fourRaw))
+        let expectedFour = fourRaw.map { (Double($0) / 1024.0) * 1000.0 }
+        assertTest(four?.heartRate == 68, "0x2A37 decodes an 8-bit heart rate")
+        assertTest(
+            four?.rrIntervalsMs == expectedFour,
+            "0x2A37 returns all 4 intervals in wire order, got \(four?.rrIntervalsMs ?? [])")
+
+        // The bit that matters most for the offset arithmetic: an energy-expended field (flags bit 3)
+        // and a 16-bit heart rate (bit 0) both sit *between* the flags and the R-R list, and a decoder
+        // that ignores either reads the R-R bytes from the wrong offset and still returns numbers.
+        let shifted = decoder.decodeStandardHeartRate(
+            data: frame(flags: 0x01 | 0x08 | 0x10, hrBytes: [0x2C, 0x01], extra: [0x00, 0x00], rrRaw: fourRaw))
+        assertTest(shifted?.heartRate == 300, "0x2A37 decodes a 16-bit heart rate (\(shifted?.heartRate ?? -1))")
+        assertTest(
+            shifted?.rrIntervalsMs == expectedFour,
+            "The R-R list is read past the energy field, got \(shifted?.rrIntervalsMs ?? [])")
+
+        // R-R bit unset. This is the case the BLE layer collapses to `nil` — an absent series, which is
+        // a different statement from a series of length zero and must not be written as one.
+        let noRR = decoder.decodeStandardHeartRate(data: frame(flags: 0x00, hrBytes: [70], rrRaw: []))
+        assertTest(noRR?.heartRate == 70, "0x2A37 without the R-R bit still decodes a heart rate")
+        assertTest(noRR?.rrIntervalsMs.isEmpty == true, "0x2A37 without the R-R bit returns no intervals")
+
+        // A single interval is the common real-world shape and must not be special-cased into a scalar.
+        let one = decoder.decodeStandardHeartRate(data: frame(flags: 0x10, hrBytes: [58], rrRaw: [904]))
+        assertTest(
+            one?.rrIntervalsMs == [(Double(904) / 1024.0) * 1000.0],
+            "0x2A37 with one interval returns a one-element series")
+    }
 }
 
 // MARK: - 3. Mathematical & HRV Algorithms
-print("\n[3/15] Testing HRV (RMSSD, SDNN, pNN50) & Artifact Rejection...")
-let rawRR: [Double] = [800.0, 805.0, 810.0, 795.0, 1500.0, 802.0, 808.0]
-let cleaned = HeartRateVariabilityMath.filterRRIntervals(rawRR)
-assertTest(!cleaned.contains(1500.0), "Ectopic beat (1500ms) successfully rejected by filter")
+if sectionEnabled(3) {
+    print("\n[3/15] Testing HRV (RMSSD, SDNN, pNN50) & Artifact Rejection...")
+    let rawRR: [Double] = [800.0, 805.0, 810.0, 795.0, 1500.0, 802.0, 808.0]
+    let cleaned = HeartRateVariabilityMath.filterRRIntervals(rawRR)
+    assertTest(!cleaned.contains(1500.0), "Ectopic beat (1500ms) successfully rejected by filter")
 
-let rmssd = HeartRateVariabilityMath.calculateRMSSD(from: rawRR)
-assertTest(rmssd > 0.0 && rmssd < 50.0, "RMSSD calculated accurately (\(String(format: "%.1f", rmssd)) ms)")
+    let rmssd = HeartRateVariabilityMath.calculateRMSSD(from: rawRR)
+    assertTest(rmssd > 0.0 && rmssd < 50.0, "RMSSD calculated accurately (\(String(format: "%.1f", rmssd)) ms)")
 
-let sdnn = HeartRateVariabilityMath.calculateSDNN(from: rawRR)
-assertTest(sdnn > 0.0, "SDNN calculated accurately (\(String(format: "%.1f", sdnn)) ms)")
+    let sdnn = HeartRateVariabilityMath.calculateSDNN(from: rawRR)
+    assertTest(sdnn > 0.0, "SDNN calculated accurately (\(String(format: "%.1f", sdnn)) ms)")
 
-let pnn50 = HeartRateVariabilityMath.calculatePNN50(from: rawRR)
-assertTest(pnn50 >= 0.0 && pnn50 <= 100.0, "pNN50 calculated accurately (\(String(format: "%.1f", pnn50))%)")
+    let pnn50 = HeartRateVariabilityMath.calculatePNN50(from: rawRR)
+    assertTest(pnn50 >= 0.0 && pnn50 <= 100.0, "pNN50 calculated accurately (\(String(format: "%.1f", pnn50))%)")
+}
 
 // MARK: - 4. Strain & Zone Accumulator
-print("\n[4/15] Testing Strain Integrator & Karvonen Zones...")
-let zones = StrainAccumulatorMath.computeZones(maxHR: 190, restHR: 50)
-assertTest(zones.count == 5, "Computed 5 distinct Heart Rate Zones")
-assertTest(zones[0].lowerBpm == 120, "Zone 1 threshold calculated via HRR: \(zones[0].lowerBpm)")
-assertTest(zones[4].upperBpm == 190, "Zone 5 ceiling equals Max HR")
+if sectionEnabled(4) {
+    print("\n[4/15] Testing Strain Integrator & Karvonen Zones...")
+    let zones = StrainAccumulatorMath.computeZones(maxHR: 190, restHR: 50)
+    assertTest(zones.count == 5, "Computed 5 distinct Heart Rate Zones")
+    assertTest(zones[0].lowerBpm == 120, "Zone 1 threshold calculated via HRR: \(zones[0].lowerBpm)")
+    assertTest(zones[4].upperBpm == 190, "Zone 5 ceiling equals Max HR")
 
-let zeroStrain = StrainAccumulatorMath.calculateStrainScore(from: 0.0)
-assertTest(zeroStrain == 0.0, "0 accumulated load yields 0.0 strain")
+    let zeroStrain = StrainAccumulatorMath.calculateStrainScore(from: 0.0)
+    assertTest(zeroStrain == 0.0, "0 accumulated load yields 0.0 strain")
 
-let modStrain = StrainAccumulatorMath.calculateStrainScore(from: 50_000.0)
-assertTest(modStrain >= 10.0 && modStrain <= 20.0, "Moderate load produces expected strain (\(modStrain))")
+    let modStrain = StrainAccumulatorMath.calculateStrainScore(from: 50_000.0)
+    assertTest(modStrain >= 10.0 && modStrain <= 20.0, "Moderate load produces expected strain (\(modStrain))")
 
-let extremeStrain = StrainAccumulatorMath.calculateStrainScore(from: 1_000_000.0)
-assertTest(extremeStrain <= 21.0 && extremeStrain >= 20.9, "Extreme load caps at 21.0 scale ceiling (\(extremeStrain))")
+    let extremeStrain = StrainAccumulatorMath.calculateStrainScore(from: 1_000_000.0)
+    assertTest(extremeStrain <= 21.0 && extremeStrain >= 20.9, "Extreme load caps at 21.0 scale ceiling (\(extremeStrain))")
+}
 
 // MARK: - 5. Recovery Baseline Model
-print("\n[5/15] Testing Recovery z-Score Baseline Model...")
-let greenRecovery = BaselineStatisticsMath.computeRecoveryScore(
-    todayHrv: 85.0,
-    baselineHrvMean: 65.0,
-    baselineHrvStd: 10.0,
-    todayRhr: 48.0,
-    baselineRhrMean: 54.0,
-    baselineRhrStd: 3.0,
-    sleepPerformance: 0.95
-)
-assertTest(greenRecovery >= 67, "High HRV + Low RHR yields Green Recovery (\(greenRecovery)%)")
+if sectionEnabled(5) {
+    print("\n[5/15] Testing Recovery z-Score Baseline Model...")
+    let greenRecovery = BaselineStatisticsMath.computeRecoveryScore(
+        todayHrv: 85.0,
+        baselineHrvMean: 65.0,
+        baselineHrvStd: 10.0,
+        todayRhr: 48.0,
+        baselineRhrMean: 54.0,
+        baselineRhrStd: 3.0,
+        sleepPerformance: 0.95
+    )
+    assertTest(greenRecovery >= 67, "High HRV + Low RHR yields Green Recovery (\(greenRecovery)%)")
 
-let redRecovery = BaselineStatisticsMath.computeRecoveryScore(
-    todayHrv: 35.0,
-    baselineHrvMean: 65.0,
-    baselineHrvStd: 10.0,
-    todayRhr: 64.0,
-    baselineRhrMean: 54.0,
-    baselineRhrStd: 3.0,
-    sleepPerformance: 0.60
-)
-assertTest(redRecovery <= 35, "Low HRV + High RHR yields Red Recovery (\(redRecovery)%)")
+    let redRecovery = BaselineStatisticsMath.computeRecoveryScore(
+        todayHrv: 35.0,
+        baselineHrvMean: 65.0,
+        baselineHrvStd: 10.0,
+        todayRhr: 64.0,
+        baselineRhrMean: 54.0,
+        baselineRhrStd: 3.0,
+        sleepPerformance: 0.60
+    )
+    assertTest(redRecovery <= 35, "Low HRV + High RHR yields Red Recovery (\(redRecovery)%)")
+}
 
 // MARK: - 6. End-to-End Clean Architecture & Local Data Sovereignty
-print("\n[6/15] Testing DI Container, Use Cases & Data Sovereignty Export...")
+//
+// Sections 6–15 live in `runMainSections` rather than in this `Task`'s own body, and the reason
+// is the exit code. A `Task { }`'s error is observed by nobody: an uncaught throw leaves the process
+// to idle out the `RunLoop` and exit 0, which reads exactly like a suite that ran and passed. Catching
+// one level out is what puts a throw on the exit code.
 Task {
-    let container = DIContainer(useMockBLE: true)
-
-    // Calculate Recovery UseCase. As with Sleep below, this runs against the shared dev database and
-    // a mock strap that recorded nothing, so both outcomes are checked only for what must hold of
-    // them: a day with a reading scores in range, and a day without one reports no reading rather
-    // than a row of zeros. The "answers nil *and* writes nothing" rule is asserted in §10, where the
-    // database is in memory and the sample source is empty.
-    let recovery = try await container.calculateRecoveryUseCase.execute()
-    if let recovery {
-        assertTest(recovery.score >= 0 && recovery.score <= 100, "Recovery UseCase returned valid score: \(recovery.score)%")
-        assertTest(recovery.hasMeasurement, "A returned recovery carries a measurement, not a reserved zero")
-    } else {
-        assertTest(true, "Recovery UseCase reported no measurement rather than inventing a row")
+    do {
+        try await runMainSections()
+    } catch {
+        print("❌ FAILED: the suite threw before completing: \(error)")
+        tally.record(false)
+        finishSuite(exitCode: 1)
     }
+}
 
-    // Calculate Strain UseCase
-    let strain = try await container.calculateStrainUseCase.execute()
-    if let strain {
-        assertTest(strain.score >= 0.0 && strain.score <= 21.0, "Strain UseCase returned valid score: \(strain.score)")
-        assertTest(strain.hasMeasurement, "A returned strain carries a measurement, not a reserved zero")
-    } else {
-        assertTest(true, "Strain UseCase reported no measurement rather than inventing a row")
+/// Sections 6–15 — everything that needs a live DI container, a database or the bundled export, and
+/// therefore everything worth being able to skip.
+///
+/// `WHOOPSY_SECTIONS=13` runs §13 and nothing else. `WHOOPSY_SECTIONS=13,15` runs those two. Adding a
+/// section means renumbering every header, exactly as before.
+func runMainSections() async throws {
+    // MARK: - 6. End-to-End Clean Architecture & Local Data Sovereignty
+    if sectionEnabled(6) {
+        print("\n[6/15] Testing DI Container, Use Cases & Data Sovereignty Export...")
+        let container = DIContainer(useMockBLE: true)
+
+        // Calculate Recovery UseCase. As with Sleep below, this runs against the shared dev database and
+        // a mock strap that recorded nothing, so both outcomes are checked only for what must hold of
+        // them: a day with a reading scores in range, and a day without one reports no reading rather
+        // than a row of zeros. The "answers nil *and* writes nothing" rule is asserted in §10, where the
+        // database is in memory and the sample source is empty.
+        let recovery = try await container.calculateRecoveryUseCase.execute()
+        if let recovery {
+            assertTest(recovery.score >= 0 && recovery.score <= 100, "Recovery UseCase returned valid score: \(recovery.score)%")
+            assertTest(recovery.hasMeasurement, "A returned recovery carries a measurement, not a reserved zero")
+        } else {
+            assertTest(true, "Recovery UseCase reported no measurement rather than inventing a row")
+        }
+
+        // Calculate Strain UseCase
+        let strain = try await container.calculateStrainUseCase.execute()
+        if let strain {
+            assertTest(strain.score >= 0.0 && strain.score <= 21.0, "Strain UseCase returned valid score: \(strain.score)")
+            assertTest(strain.hasMeasurement, "A returned strain carries a measurement, not a reserved zero")
+        } else {
+            assertTest(true, "Strain UseCase reported no measurement rather than inventing a row")
+        }
+
+        // Analyze Sleep UseCase. This runs against the shared dev database, which is not under the
+        // suite's control — whether a night exists for today depends on what this machine has recorded,
+        // and a database written by an older build can hold rows no current code would produce. So both
+        // outcomes are checked only for what must hold of them. The "answers nil *and* writes nothing"
+        // rule is asserted in §10, where the database is in memory and the sample source is empty.
+        let sleep = try await container.analyzeSleepUseCase.execute()
+        if let sleep {
+            assertTest(sleep.sleepPerformancePercentage >= 0 && sleep.sleepPerformancePercentage <= 100, "Sleep UseCase returned valid performance: \(sleep.sleepPerformancePercentage)%")
+        } else {
+            assertTest(true, "Sleep UseCase reported no session: no classifiable samples for today")
+        }
+
+        // Export Data UseCase (Data Sovereignty)
+        let exportResult = try await container.exportLocalDataUseCase.execute()
+        assertTest(!exportResult.jsonString.isEmpty, "JSON local backup generated successfully")
+        assertTest(exportResult.csvHeartRates.contains("Timestamp,HeartRateBPM"), "CSV heart rate telemetry exported properly")
     }
-
-    // Analyze Sleep UseCase. This runs against the shared dev database, which is not under the
-    // suite's control — whether a night exists for today depends on what this machine has recorded,
-    // and a database written by an older build can hold rows no current code would produce. So both
-    // outcomes are checked only for what must hold of them. The "answers nil *and* writes nothing"
-    // rule is asserted in §10, where the database is in memory and the sample source is empty.
-    let sleep = try await container.analyzeSleepUseCase.execute()
-    if let sleep {
-        assertTest(sleep.sleepPerformancePercentage >= 0 && sleep.sleepPerformancePercentage <= 100, "Sleep UseCase returned valid performance: \(sleep.sleepPerformancePercentage)%")
-    } else {
-        assertTest(true, "Sleep UseCase reported no session: no classifiable samples for today")
-    }
-
-    // Export Data UseCase (Data Sovereignty)
-    let exportResult = try await container.exportLocalDataUseCase.execute()
-    assertTest(!exportResult.jsonString.isEmpty, "JSON local backup generated successfully")
-    assertTest(exportResult.csvHeartRates.contains("Timestamp,HeartRateBPM"), "CSV heart rate telemetry exported properly")
 
     // MARK: - 7. Persistence Schema, Round-Trip & Day-Key Integrity
-    print("\n[7/15] Testing migrations, biometric round-trip and day-keyed writes...")
-    await runPersistenceTests()
+    if sectionEnabled(7) {
+        print("\n[7/15] Testing migrations, biometric round-trip and day-keyed writes...")
+        await runPersistenceTests()
+    }
 
     // MARK: - 8. HRV Metric Isolation & Baseline Guards
-    print("\n[8/15] Testing HRV metric isolation, baseline guards and formatters...")
-    runScoringAndFormatterTests()
+    if sectionEnabled(8) {
+        print("\n[8/15] Testing HRV metric isolation, baseline guards and formatters...")
+        runScoringAndFormatterTests()
+    }
 
     // MARK: - 9. HealthKit Import (hermetic: fixture store + in-memory database)
-    print("\n[9/15] Testing HealthKit import attribution, skipping and idempotency...")
-    await runHealthKitImportTests()
+    if sectionEnabled(9) {
+        print("\n[9/15] Testing HealthKit import attribution, skipping and idempotency...")
+        await runHealthKitImportTests()
+    }
 
     // MARK: - 10. Days with no data
-    print("\n[10/15] Testing no-data days store zeros, and zeros never enter a baseline...")
-    await runNoDataDayTests()
+    if sectionEnabled(10) {
+        print("\n[10/15] Testing no-data days store zeros, and zeros never enter a baseline...")
+        await runNoDataDayTests()
+    }
 
     // MARK: - 11. WHOOP export import (real CSV, in-memory database)
-    print("\n[11/15] Testing the WHOOP export import against the real file...")
-    await runWhoopExportImportTests()
+    if sectionEnabled(11) {
+        print("\n[11/15] Testing the WHOOP export import against the real file...")
+        await runWhoopExportImportTests()
+    }
 
     // MARK: - 12. Choosing a day
-    print("\n[12/15] Testing that a chosen day is read, and an imported day is never overwritten...")
-    await runDaySelectionTests()
+    if sectionEnabled(12) {
+        print("\n[12/15] Testing that a chosen day is read, and an imported day is never overwritten...")
+        await runDaySelectionTests()
+    }
 
     // MARK: - 13. Sleep Need
-    print("\n[13/15] Testing that a night's Sleep Need follows the previous day's Strain...")
-    await runSleepNeedTests()
+    if sectionEnabled(13) {
+        print("\n[13/15] Testing that a night's Sleep Need follows the previous day's Strain...")
+        await runSleepNeedTests()
+    }
 
     // MARK: - 14. The Home screen's sources
-    print("\n[14/15] Testing recorded workouts, HealthKit steps, the Stress Monitor, the recovery ring tiers and the seven-day MetricWeek join...")
-    await runHomeSourceTests()
+    if sectionEnabled(14) {
+        print("\n[14/15] Testing recorded workouts, HealthKit steps, the Stress Monitor, the recovery ring tiers and the seven-day MetricWeek join...")
+        await runHomeSourceTests()
+    }
 
     // MARK: - 15. The typical range
-    print("\n[15/15] Testing the sleep stage typical range, its whole-percent column, its absence rules, the night's heading and the hours-vs-needed card...")
-    await runTypicalRangeTests()
+    if sectionEnabled(15) {
+        print("\n[15/15] Testing the sleep stage typical range, its whole-percent column, its absence rules, the night's heading, the hours-vs-needed card, the sleep-efficiency card and the within-sleep stress model...")
+        await runTypicalRangeTests()
+    }
 
     print("\n==================================================")
     print("✅ ALL WHOOPSY TESTS PASSED SUCCESSFULLY! (100% OK)")
     print("==================================================")
-    exit(0)
+    finishSuite()
 }
 
 /// Hermetic: an in-memory database needs no device, no HealthKit and no files on disk.
@@ -1047,6 +1188,38 @@ struct NoSleepSource: SleepRepository {
     /// extension it stopped dispatching, so a conformer that still implemented only the old form would
     /// compile and have its body silently never called through `any SleepRepository`.
     func getSleepHistory(days: Int, endingOn: Date) async throws -> [SleepSession] { [] }
+}
+
+/// A real repository with a counter on its one windowed read.
+///
+/// It exists so that "the week chart costs no query of its own" can be **asserted** rather than stated
+/// in a doc comment. That claim is the entire justification for `SleepViewModel.resolveWindow` losing
+/// its read and taking the history as an argument, and it is exactly the kind of claim that decays
+/// silently: adding a `getSleepHistory` call back inside a resolver would leave every figure on the
+/// screen correct and only make the page issue two queries that could come back describing different
+/// nights — which is the failure the shared read exists to prevent, and one no assertion on a *value*
+/// can see.
+///
+/// Only the history is counted. `getSleepSession` is a keyed read of one row and is not the query this
+/// is about.
+actor CountingSleepRepository: SleepRepository {
+    private let inner: any SleepRepository
+    private(set) var historyReads = 0
+
+    init(wrapping inner: any SleepRepository) { self.inner = inner }
+
+    func getSleepSession(for date: Date) async throws -> SleepSession? {
+        try await inner.getSleepSession(for: date)
+    }
+
+    func saveSleepSession(_ session: SleepSession, source: String?) async throws {
+        try await inner.saveSleepSession(session, source: source)
+    }
+
+    func getSleepHistory(days: Int, endingOn: Date) async throws -> [SleepSession] {
+        historyReads += 1
+        return try await inner.getSleepHistory(days: days, endingOn: endingOn)
+    }
 }
 
 func runHealthKitImportTests() async {
@@ -2033,7 +2206,9 @@ func runDaySelectionTests() async {
                     userProfileRepository: profile),
                 repository: sleepRepository,
                 napRepository: napRepository,
-                biometricRepository: strapThatRecordedNothing)
+                biometricRepository: strapThatRecordedNothing,
+                analyzeSleepStress: AnalyzeSleepStressUseCase(
+                    biometricRepository: strapThatRecordedNothing))
         }
         await sleepViewModel.load(for: lastSleepDay)
 
@@ -4785,13 +4960,25 @@ func runHomeSourceTests() async {
         }
         assertTest(
             WeekBarSeries(sleepPerformanceWeek: sleepWeek)?.palette == .sleepPerformance,
-            "The sleep bars are one flat colour rather than tiered, because this app has no "
-                + "sleep-performance bands to colour by")
+            "The sleep bars are one flat colour rather than tiered: the quantity *is* banded, but the "
+                + "band is not what this chart is about — tiering would say the bars are a grade "
+                + "rather than a week of hours, and the reference draws every one of them flat")
+        // The sleep bars grid at the same two boundaries the `HOURS VS. NEEDED` row above them is
+        // coloured by — `SleepBand.Metric.hoursVsNeeded`'s. This assertion used to require an empty
+        // list, on the stated premise that this app has no sleep-performance bands; that premise was
+        // false and the sleep detail screen disproves it by colouring the same percentage through
+        // `SleepBand` three cards up. Reading the bounds rather than typing 0.70/0.95 is the point:
+        // a chart gridding at one pair while the row bands at another is two boundaries for one
+        // quantity, which is the drift `recoveryTierEdges` above exists to prevent.
         assertTest(
-            WeekBarSeries(sleepPerformanceWeek: sleepWeek)?.gridEdges.isEmpty == true,
-            "…and consequently carry no gridlines at all. Round quarters under bars with no "
-                + "thresholds would be lines at meaningful-looking places that mean nothing, which is "
-                + "the opposite of what the recovery chart's gridlines are for")
+            WeekBarSeries(sleepPerformanceWeek: sleepWeek)?.gridEdges == [0.70, 0.95],
+            "…and they grid at 70% and 95%, read off `SleepBand.Metric.hoursVsNeeded` rather than "
+                + "typed, so the bars and the `HOURS VS. NEEDED` row that colours the same night "
+                + "cannot come to disagree about where the bands are (got "
+                + "\((WeekBarSeries(sleepPerformanceWeek: sleepWeek)?.gridEdges ?? []).map { "\($0)" })). "
+                + "The literal is what makes this discriminating: `SleepBand` carries three band pairs "
+                + "on one shared 0–100 scale and they differ only in their bounds, so a chart pointed "
+                + "at the consistency metric would grid at 60/90")
 
         // ---- The fifth chart is omitted on its own data, and it is the one that can be alone ----
         //
@@ -5579,7 +5766,8 @@ func runTypicalRangeTests() async {
                     userProfileRepository: GRDBUserProfileRepository(db: hrDB)),
                 repository: hrSleepRepository,
                 napRepository: GRDBNapRepository(db: hrDB),
-                biometricRepository: biometrics)
+                biometricRepository: biometrics,
+                analyzeSleepStress: AnalyzeSleepStressUseCase(biometricRepository: biometrics))
         }
         await readBack.load(for: day)
 
@@ -5598,7 +5786,92 @@ func runTypicalRangeTests() async {
         assertTest(false, "The heart-rate read block threw: \(error)")
     }
 
-    // ── 10. The real export ──────────────────────────────────────────────────────────────────────
+    // ── 10. The sleep page's week chart ──────────────────────────────────────────────────────────
+    //
+    // The `Weekly Trends` section below the sleep-stress card, and the one element on that page that
+    // is not about the night: seven days of sleep performance ending on the night shown. It is
+    // asserted against an in-memory database rather than the export because the case that matters is
+    // the one the export cannot produce on demand — a day with **no night of its own** whose week
+    // still has bars in it. A fresh install opens on exactly that day, so a chart hung off `session`
+    // would be absent on the day it is most worth having.
+    //
+    // The chart itself is not re-asserted here; §14 owns `WeekBarSeries(sleepPerformanceWeek:)` and
+    // its absences. What is new is the wiring: that the week is built at all on a nightless day, that
+    // it ends on the day being shown, and that it and the three cards above it came off **one** read.
+    do {
+        let weekDB = LocalDatabaseManager(inMemory: true)
+        // The nights are written through the real repository and read back through the counter, so
+        // the query under assertion is the one the page actually issues.
+        let weekNights = CountingSleepRepository(wrapping: GRDBSleepRepository(db: weekDB))
+
+        let target = Calendar.current.startOfDay(
+            for: Calendar.current.date(byAdding: .day, value: -2, to: Date())!)
+        // Three nights inside the window and none of them on `target` itself, so the anchor column is
+        // the one column on the chart with nothing in it — which is the day this block is about.
+        for offset in 3...5 {
+            let day = Calendar.current.date(byAdding: .day, value: -offset, to: target)!
+            try await weekNights.saveSleepSession(
+                SleepSession(
+                    date: day,
+                    startTime: day,
+                    endTime: day,
+                    targetSleepNeedSeconds: 8 * 3600,
+                    lightSleepSeconds: 0.75 * 8 * 3600))
+        }
+
+        let weekViewModel = await MainActor.run {
+            SleepViewModel(
+                analyze: AnalyzeSleepUseCase(
+                    biometricRepository: EmptyBiometricStore(),
+                    sleepRepository: weekNights,
+                    strainRepository: GRDBStrainRepository(db: weekDB),
+                    userProfileRepository: GRDBUserProfileRepository(db: weekDB)),
+                repository: weekNights,
+                napRepository: GRDBNapRepository(db: weekDB),
+                biometricRepository: EmptyBiometricStore(),
+                analyzeSleepStress: AnalyzeSleepStressUseCase(
+                    biometricRepository: EmptyBiometricStore()))
+        }
+        await weekViewModel.load(for: target)
+
+        assertTest(
+            await MainActor.run { weekViewModel.session } == nil,
+            "The day the week chart is asserted on holds no night of its own")
+        let week = await MainActor.run { weekViewModel.week }
+        assertTest(
+            week?.days.count == MetricWeek.dayCount,
+            "…and its week is built anyway, from the nights before it, with all "
+                + "\(MetricWeek.dayCount) slots (got \(week?.days.count ?? -1))")
+        assertTest(
+            week?.endingOn == target,
+            "…ending on the day being shown rather than on today, so the highlighted column is that day")
+        assertTest(
+            week?.days.map(\.sleepPerformance) == [nil, 75, 75, 75, nil, nil, nil],
+            "…and each slot states its own night's performance, computed from the night's staged "
+                + "minutes over its need — oldest first, with the three measured nights in the middle "
+                + "and the anchor column absent (got "
+                + "\(week.map { "\($0.days.map(\.sleepPerformance))" } ?? "nil"))")
+        assertTest(
+            WeekBarSeries(sleepPerformanceWeek: week ?? MetricWeek(endingOn: target))?
+                .points.map(\.slot) == [1, 2, 3],
+            "…which the bar series plots as three bars and not four: a column with no night draws no "
+                + "bar and no value label")
+        assertTest(
+            week?.days.allSatisfy { $0.strain == nil && $0.recoveryScore == nil } == true,
+            "This page's week carries no strain and no recovery on any slot — it is built from the "
+                + "sleep history alone, and that `nil` is 'not asked for', not 'not measured'. A view "
+                + "handed this week and asked to plot strain would report every day of it as unmeasured")
+        assertTest(
+            await weekNights.historyReads == 1,
+            "The window's three cards, the sleep-stress baseline and the week chart came off **one** "
+                + "read of the sleep history (got \(await weekNights.historyReads)) — a second read "
+                + "would be a second chance for the chart and the cards above it to describe different "
+                + "nights")
+    } catch {
+        assertTest(false, "The week-chart block threw: \(error)")
+    }
+
+    // ── 11. The real export ──────────────────────────────────────────────────────────────────────
     //
     // The same properties as above, but over 910 real nights rather than fixtures — which is what
     // catches a rounding rule that only works on the shapes someone thought to build. Properties and
@@ -6836,11 +7109,1006 @@ func runTypicalRangeTests() async {
             "…and efficiency is not performance. The two agree on few enough nights that a card "
                 + "reading one for the other is visible on real data "
                 + "(\(disagreeing.count) of \(withPeriod.count) differ)")
+
+        // The restorative week's two bands are the night's own two stage columns and its labelled
+        // figure is their sum — `SleepSession.restorativeSleepSeconds` — so the label and the stack
+        // cannot come to describe different nights. Driven over every imported night rather than a
+        // fixture, and asserted through `MetricWeek` rather than by reading the entity twice, because
+        // the join is the thing that could drop or reorder a stage on its way to the chart.
+        let splitMismatches = imported.filter { session in
+            let day = Calendar.current.startOfDay(for: session.date)
+            let week = MetricWeek(endingOn: day, sleep: [session])
+            guard let slot = week.days.first(where: { $0.date == day }) else { return true }
+            return slot.deepSleepSeconds != session.deepSleepSeconds
+                || slot.remSleepSeconds != session.remSleepSeconds
+                || (slot.deepSleepSeconds ?? 0) + (slot.remSleepSeconds ?? 0)
+                    != session.restorativeSleepSeconds
+        }
+        assertTest(
+            splitMismatches.isEmpty,
+            "Every imported night's two stages reach a `MetricDay` unchanged and sum to the entity's "
+                + "own `restorativeSleepSeconds`, so the figure over a column is the two bands beneath "
+                + "it rather than a third number beside them "
+                + "(\(splitMismatches.count) of \(imported.count) disagree)")
+
+        // The zero column is a real case in this file and not a defensive branch: 2024-12-10 is 15
+        // hours 40 minutes of light sleep with no deep and no REM in it, which is the night the chart
+        // draws as a labelled column carrying no bar. Asserted as a property rather than on that
+        // date, so a device time zone that moves its day key does not weaken it.
+        assertTest(
+            imported.contains { $0.restorativeSleepSeconds == 0 },
+            "…and a night with no restorative sleep at all is in the file, which is what makes the "
+                + "chart's zero-total column a case to handle rather than a hypothetical")
+
+        // The time-in-bed week's two boundaries, over every imported night. Asserted through
+        // `MetricWeek` rather than by reading the entity twice, because the join is the thing that
+        // could convert a time in the wrong frame on its way to the chart.
+        let boundaryMismatches = imported.filter { session in
+            let day = Calendar.current.startOfDay(for: session.date)
+            let week = MetricWeek(endingOn: day, sleep: [session])
+            guard let slot = week.days.first(where: { $0.date == day }) else { return true }
+            return slot.sleepOnsetMinutes
+                    != SleepConsistencyMath.nightClockMinutes(
+                        session.startTime, calendar: Calendar.current)
+                || slot.sleepWakeMinutes
+                    != SleepConsistencyMath.nightClockMinutes(
+                        session.endTime, calendar: Calendar.current)
+        }
+        assertTest(
+            boundaryMismatches.isEmpty,
+            "Every imported night's onset and wake reach a `MetricDay` as the night clock's own "
+                + "minutes, so the two times a column prints are the row's own and not a second "
+                + "conversion done somewhere else "
+                + "(\(boundaryMismatches.count) of \(imported.count) disagree)")
+
+        // The refused-span branch, measured rather than assumed: a night whose wake does not come
+        // after its own onset on the night clock is a row the chart drops a column for, and this says
+        // whether that branch costs anything on real data. The twelve-hour night of 2024-12-09 is in
+        // the file and is *not* one of these — a 16:16 onset with an 08:16 wake is one contiguous
+        // sixteen-hour span on the pivot, which is why it widens the axis instead.
+        let undrawable = imported.filter {
+            !SleepClockAxis.isDrawable(
+                onset: SleepConsistencyMath.nightClockMinutes(
+                    $0.startTime, calendar: Calendar.current),
+                wake: SleepConsistencyMath.nightClockMinutes(
+                    $0.endTime, calendar: Calendar.current))
+        }
+        assertTest(
+            undrawable.isEmpty,
+            "…and no imported night contains noon on the night clock, so the chart's refused-span "
+                + "branch costs no column on any night the export can supply "
+                + "(\(undrawable.count) of \(imported.count) refused)")
+
+        let earlyOnsets = imported.filter {
+            SleepConsistencyMath.nightClockMinutes($0.startTime, calendar: Calendar.current)
+                < SleepClockAxis.defaultStartMinutes
+        }
+        assertTest(
+            !earlyOnsets.isEmpty,
+            "…and at least one imported night begins before the default axis' 7 PM top, which is "
+                + "what makes the whole-hour widening a fact about the producer rather than a case "
+                + "someone imagined: with \(imported.count) nights in the file and none of them "
+                + "early, the widening rule would be dead code")
     } catch {
         assertTest(false, "The efficiency block's export import threw: \(error)")
+    }
+
+    // ── 12. The night's activation ───────────────────────────────────────────────────────────────
+    //
+    // `AnalyzeSleepStressUseCase` reads `biometric_samples.rrIntervalsMs`, and on this machine that
+    // table holds no rows in any database: no strap has ever been connected, and the export carries no
+    // R-R series at all. So there is no night in this app's possession where a known activation and
+    // the beats that produced it are both present, and every fixture below is **synthetic** — §13's
+    // RSA block's shape and its reason. What is asserted is the model's plumbing and its rules; none
+    // of it is evidence that a real strap's beats produce a meaningful figure.
+    //
+    // The heart rates are set explicitly rather than derived from the intervals. A real notification's
+    // `heartRate` is `60000 / rr` and would move with the beat pattern, so the contiguity fixture
+    // below — which deliberately puts two different beat levels inside one window — would move two
+    // variables at once. The model reads the column, so pinning it isolates the R-R handling, which is
+    // the thing under test.
+    do {
+        let window = StressMath.windowSeconds
+        let origin = Date(timeIntervalSinceReferenceDate: 0)
+
+        func session(onset: Date, buckets: Int) -> SleepSession {
+            SleepSession(
+                date: onset,
+                startTime: onset,
+                endTime: onset.addingTimeInterval(Double(buckets) * window))
+        }
+
+        /// `count` R-R intervals alternating about `level`, so RMSSD is exactly `modulation`.
+        ///
+        /// Every successive difference is ±`modulation`, so the mean of their squares is
+        /// `modulation²`. Alternating rather than random because the value has to be a number this
+        /// file can name: `filterRRIntervals`' ectopic check compares each interval with the local
+        /// median, and a ±6.7% alternation clears it with room to spare, where a random series would
+        /// drop some intervals and give an RMSSD that depends on the seed.
+        func beats(level: Double = 600, modulation: Double = 40, count: Int = 25) -> [Double] {
+            (0..<count).map { $0.isMultiple(of: 2) ? level : level + modulation }
+        }
+
+        /// One notification: one arrival instant, one pulse reading, one contiguous run of beats.
+        func notification(
+            at time: Date,
+            heartRate: Int,
+            intervals: [Double],
+            motion: Double = 0
+        ) -> BiometricSample {
+            BiometricSample(
+                timestamp: time,
+                heartRate: heartRate,
+                rrIntervalsMs: intervals,
+                // Gravity is inside the magnitude, so a motionless strap reads ~1.0 G and anything
+                // above `StressMath.motionCeiling` is a strap being moved.
+                accelerometerX: motion)
+        }
+
+        // ── The arithmetic, which needs no use case at all ───────────────────────────────────────
+
+        let arithmeticSpan = origin..<origin.addingTimeInterval(Double(200) * window)
+
+        /// A night built from hand-made windows. The scores sit squarely inside their bands rather
+        /// than on an edge, so this fixture is about the share column and not about
+        /// `band(forScore:)`'s exclusive-bottom rule as well.
+        func night(high: Int, medium: Int, low: Int) -> SleepStressNight? {
+            var windows: [StressWindow] = []
+            for _ in 0..<high { windows.append(StressWindow(start: origin, score: 2.5)) }
+            for _ in 0..<medium { windows.append(StressWindow(start: origin, score: 1.5)) }
+            for _ in 0..<low { windows.append(StressWindow(start: origin, score: 0.5)) }
+            return SleepStressNight(
+                date: origin, span: arithmeticSpan, windows: windows, baselineNightCount: 14)
+        }
+
+        // The discriminating split. 67/67/66 of 200 is 33.5/33.5/33, which naive rounding prints as
+        // 34/34/33 — a column summing to 101 under a header that names a total. Largest-remainder
+        // gives the spare point to the first of the two .5 remainders.
+        let split = night(high: 67, medium: 67, low: 66)
+        assertTest(
+            split?.bands.map(\.percent) == [34, 33, 33],
+            "A 67/67/66 split prints 34/33/33 and not naive rounding's 34/34/33, which sums to 101 "
+                + "(got \(String(describing: split?.bands.map(\.percent))))")
+        assertTest(
+            split?.bands.map(\.percent).reduce(0, +) == 100,
+            "…and the three shares the card prints add up to the 100% they are shares of")
+        assertTest(
+            split?.highPercent == 34,
+            "…and the headline is the high row's own figure rather than a second computation of it")
+
+        assertTest(
+            split?.bands.map(\.durationSeconds) == [67 * window, 67 * window, 66 * window],
+            "Each band's duration is the windows it scored times the model's own window length — not a "
+                + "span reverse-engineered to match a figure this model never computed")
+        assertTest(
+            split?.scoredSeconds == 200 * window,
+            "…and the scored span those shares are of is the whole windows the night divided into")
+        assertTest(
+            split?.bands.reduce(0) { $0 + $1.durationSeconds } == split?.scoredSeconds,
+            "The three durations add up to the `SCORED` figure the card's header names, which is the "
+                + "identity a reader checking the column on screen would find")
+        assertTest(
+            split?.score.windowCount == split?.windows.count,
+            "The aggregate's window count is the series' own, so the two cannot be handed in disagreeing")
+
+        assertTest(
+            night(high: 0, medium: 1, low: 1)?.bands.map(\.percent) == [0, 50, 50],
+            "A band the night never entered is a real 0% — the one place in this app where a zero is "
+                + "the reading rather than a reserved placeholder")
+
+        assertTest(
+            SleepStressNight(date: origin, span: arithmeticSpan, windows: [], baselineNightCount: 14)
+                == nil,
+            "A night with no scored window has no card at all, rather than three 0% rows over an "
+                + "unnamed total — which is the strongest possible claim of calm")
+        assertTest(
+            SleepStressNight(
+                date: origin, span: origin..<origin,
+                windows: [StressWindow(start: origin, score: 1)], baselineNightCount: 14) == nil,
+            "…and a zero-length span is refused, because the shares are a division")
+
+        // The series, which is what the chart is drawn from.
+        let splitSeries = split.flatMap { SleepStressChartSeries(night: $0) }
+        assertTest(
+            splitSeries?.runs.count == 1,
+            "Windows one window apart are one run — the line is unbroken where the record is "
+                + "(got \(String(describing: splitSeries?.runs.count)) runs)")
+
+        let gapped = SleepStressNight(
+            date: origin,
+            span: origin..<origin.addingTimeInterval(20 * window),
+            windows: [
+                StressWindow(start: origin, score: 1.5),
+                StressWindow(start: origin.addingTimeInterval(window), score: 1.5),
+                StressWindow(start: origin.addingTimeInterval(5 * window), score: 1.5),
+            ],
+            baselineNightCount: 14)
+        let gappedSeries = gapped.flatMap { SleepStressChartSeries(night: $0) }
+        assertTest(
+            gappedSeries?.runs.map(\.points.count) == [2, 1],
+            "A window missing in between ends the run and starts another, because an ineligible "
+                + "window is unmeasured and joining across it draws a reading nobody took "
+                + "(got \(String(describing: gappedSeries?.runs.map(\.points.count))))")
+        assertTest(
+            gappedSeries?.runs.last?.points.first?.timeFraction == 0.25,
+            "…and the axis is the night's own span: a window a quarter of the way in sits at 0.25, "
+                + "not at a clock position on a 24-hour day")
+
+        // ── The use case, against synthetic tachograms ───────────────────────────────────────────
+
+        let baselineValues: [(modulation: Double, heartRate: Int)] = [(30, 54), (40, 60), (50, 66)]
+        let baselineOnsets = (1...3).map { origin.addingTimeInterval(-Double($0) * 86400) }
+        let baselineNights = baselineOnsets.map { session(onset: $0, buckets: 1) }
+        let baselineSamples = zip(baselineOnsets, baselineValues).map { onset, value in
+            notification(
+                at: onset.addingTimeInterval(10),
+                heartRate: value.heartRate,
+                intervals: beats(modulation: value.modulation))
+        }
+        // The three nights give RMSSD 30/40/50 and a pulse of 54/60/66, so the baseline is a mean of
+        // 40 ms and 60 bpm with a sample spread of 10 and 6 — real numbers rather than a flat series.
+        //
+        // **The pulse spread is 6 and not 2, and that is the fixture's one non-obvious choice.**
+        // `BaselineStatisticsMath.baseline` floors a spread at
+        // `minimumCoefficientOfVariation × the mean`, so a three-night pulse spread of 2 bpm around a
+        // mean of 60 is below the 3 bpm floor and the *floor* becomes the denominator. Every z-score
+        // below would then be taken against 3 rather than 2, and the window that should score 2.0
+        // scores 1.667 — which is what this fixture asserted before the floor was accounted for.
+        // A spread of 6 clears the floor, so the arithmetic below is the model's own.
+
+        /// One waking afternoon per baseline night, an hour past the night's own end.
+        ///
+        /// This is the population the **daytime** model scores and this one must not: a night's
+        /// baseline is drawn from prior nights, so these exist to be folded in by a read that reaches
+        /// wider than a night's own in-bed span — the calendar day, or the whole fourteen-night range
+        /// in one go — and to move the baseline when it does.
+        let decoys = baselineOnsets.map {
+            notification(
+                at: $0.addingTimeInterval(3600), heartRate: 120, intervals: beats(modulation: 5))
+        }
+
+        let tonight = session(onset: origin, buckets: 2)
+        let tonightSamples = [
+            notification(
+                at: origin.addingTimeInterval(10), heartRate: 60, intervals: beats(modulation: 40)),
+            // Two notifications in one window, at two different beat levels. The join between them is
+            // 300 ms of unaccounted time — the beats either side were never adjacent — and RMSSD has
+            // to be taken within each run rather than across it.
+            notification(
+                at: origin.addingTimeInterval(310), heartRate: 72,
+                intervals: beats(level: 600, modulation: 40)),
+            notification(
+                at: origin.addingTimeInterval(400), heartRate: 72,
+                intervals: beats(level: 900, modulation: 40)),
+        ]
+
+        func run(
+            _ night: SleepSession, _ priors: [SleepSession], _ samples: [BiometricSample]
+        ) async -> SleepStressNight? {
+            do {
+                return try await AnalyzeSleepStressUseCase(
+                    biometricRepository: OvernightBiometricStore(samples: samples)
+                ).execute(for: night, priorNights: priors)
+            } catch {
+                assertTest(false, "The night model threw: \(error)")
+                return nil
+            }
+        }
+
+        let scored = await run(
+            tonight, baselineNights, tonightSamples + baselineSamples + decoys)
+
+        assertTest(
+            scored?.windows.count == 2,
+            "Both of a two-window night's windows are scored "
+                + "(got \(String(describing: scored?.windows.count)))")
+        assertTest(
+            scored?.windows.first?.score == 1.0,
+            "A window sitting exactly on the personal baseline scores 1.0 — the low/medium edge, "
+                + "which is what makes the baseline relative (got "
+                + "\(String(describing: scored?.windows.first?.score)))")
+
+        // The contiguity rule, driven from both ends. The pair below is the fixture's own control:
+        // it proves the two arrangements really do differ before the night asserts that they do not.
+        let runA = beats(level: 600, modulation: 40)
+        let runB = beats(level: 900, modulation: 40)
+        let perRun = HeartRateVariabilityMath.calculateRMSSD(fromRuns: [runA, runB])
+        let pooled = HeartRateVariabilityMath.calculateRMSSD(fromRuns: [runA + runB])
+        assertTest(
+            abs(perRun - 40) < 1e-9,
+            "Two runs of beats alternating ±40 ms have an RMSSD of 40 ms when each run is differenced "
+                + "on its own (got \(perRun))")
+        assertTest(
+            pooled > 50,
+            "…and \(pooled) ms when the seam between them is differenced as though the beats were "
+                + "adjacent, which is the defect `AnalyzeStressUseCase` still has and this model must "
+                + "not inherit")
+        assertTest(
+            scored?.windows.last?.score == 2.0,
+            "…so the second window scores its own 2.0 — 40 ms of HRV at 72 bpm against a baseline of "
+                + "40 ms at 60 — rather than the lower figure the pooled 58 ms would give it (got "
+                + "\(String(describing: scored?.windows.last?.score)))")
+        assertTest(
+            scored?.windows.first?.score != scored?.windows.last?.score,
+            "…which is a different figure from the first window's, so the assertion above is not "
+                + "satisfied by a model that returns one constant for every window")
+
+        assertTest(
+            scored?.windows.allSatisfy {
+                $0.start >= tonight.startTime && $0.start < tonight.endTime
+            } == true,
+            "Every window is anchored inside the night's own in-bed span, which is what the night "
+                + "bucketing buys over the day model's first-sample anchor")
+        assertTest(
+            scored?.bands.map(\.percent) == [50, 50, 0],
+            "The night's two windows split evenly across the high and medium bands "
+                + "(got \(String(describing: scored?.bands.map(\.percent))))")
+
+        // ── The baseline is drawn from nights, and from their in-bed spans ────────────────────────
+
+        let dayWide = try? await OvernightBiometricStore(samples: decoys).getSamples(
+            from: baselineNights[0].startTime,
+            to: baselineNights[0].startTime.addingTimeInterval(7200))
+        assertTest(
+            dayWide?.count == 1,
+            "The decoys are really there: a read two hours wide around a baseline night returns one "
+                + "(got \(String(describing: dayWide?.count)))")
+
+        let withoutDecoys = await run(tonight, baselineNights, tonightSamples + baselineSamples)
+        assertTest(
+            withoutDecoys?.windows.map(\.score) == scored?.windows.map(\.score),
+            "…and an hour of waking samples sitting just outside each baseline night's own span "
+                + "moves nothing, so the baseline is drawn from those nights rather than from the "
+                + "days they fall in")
+
+        // ── The gates, one window each ───────────────────────────────────────────────────────────
+
+        let gatedOnset = origin.addingTimeInterval(86400 * 10)
+        let gated = session(onset: gatedOnset, buckets: 5)
+        let gatedSamples = [
+            notification(
+                at: gatedOnset.addingTimeInterval(10), heartRate: 60,
+                intervals: beats(count: 10)),
+            notification(
+                at: gatedOnset.addingTimeInterval(310), heartRate: 60,
+                intervals: Array(repeating: 600, count: 25)),
+            notification(
+                at: gatedOnset.addingTimeInterval(610), heartRate: 60,
+                intervals: beats(modulation: 40), motion: 2.0),
+            notification(
+                at: gatedOnset.addingTimeInterval(910), heartRate: 0,
+                intervals: beats(modulation: 40)),
+            notification(
+                at: gatedOnset.addingTimeInterval(1210), heartRate: 60,
+                intervals: beats(modulation: 40)),
+        ]
+
+        let gatedNight = await run(gated, baselineNights, gatedSamples + baselineSamples)
+        assertTest(
+            gatedNight?.windows.count == 1,
+            "Of five windows only the control is scored: ten intervals is under "
+                + "`minimumRRIntervals`, a metronomic run is a zero RMSSD and is refused because a "
+                + "zero scores as *maximum* stress, a moving strap is not still, and a sample with no "
+                + "pulse reading contributes no heart rate "
+                + "(got \(String(describing: gatedNight?.windows.count)))")
+        assertTest(
+            gatedNight?.windows.first?.start == gatedOnset.addingTimeInterval(4 * window),
+            "…and it is the fifth bucket, so each gate refused exactly its own window rather than "
+                + "the window after it")
+
+        let everyWindowRefused = await run(
+            gated, baselineNights, Array(gatedSamples.prefix(4)) + baselineSamples)
+        assertTest(
+            everyWindowRefused == nil,
+            "A night whose every window is ineligible is the same absent answer as one with no "
+                + "samples at all, and not a flat line at zero")
+
+        // ── The span, at both edges and in both directions ────────────────────────────────────────
+
+        let capped = session(onset: origin, buckets: 192)
+        assertTest(
+            capped.endTime.timeIntervalSince(capped.startTime)
+                == AnalyzeSleepStressUseCase.maximumNightSpanSeconds,
+            "The fixture below is a night of exactly `maximumNightSpanSeconds`")
+        assertTest(
+            await run(capped, baselineNights, tonightSamples + baselineSamples) != nil,
+            "A night of exactly sixteen hours is scored")
+        let overCap = SleepSession(
+            date: origin, startTime: origin,
+            endTime: origin.addingTimeInterval(
+                AnalyzeSleepStressUseCase.maximumNightSpanSeconds + 3600))
+        assertTest(
+            await run(overCap, baselineNights, tonightSamples + baselineSamples) == nil,
+            "…and one an hour past it is skipped rather than clamped. Its samples are inside the "
+                + "span, so this `nil` is the length guard and not an empty read: clamping would "
+                + "describe the first sixteen hours of something that is not a night and print the "
+                + "result as one")
+
+        let backwards = SleepSession(
+            date: origin, startTime: origin.addingTimeInterval(600), endTime: origin)
+        assertTest(
+            await run(backwards, baselineNights, tonightSamples + baselineSamples) == nil,
+            "A session that ends before it begins has no span to score")
+
+        // The span is the night's own and cannot be the day's: `StressMath.wakingWindow` is
+        // 06:00–22:00 and exists to *exclude* sleep, which is the whole reason this model exists
+        // beside the Stress Monitor.
+        let localDay = Calendar.current.startOfDay(for: origin)
+        let evening = Calendar.current.date(byAdding: .hour, value: 22, to: localDay)
+            ?? localDay.addingTimeInterval(22 * 3600)
+        let overnight = session(onset: evening, buckets: 32)
+        let overnightSamples = [
+            notification(
+                at: evening.addingTimeInterval(10), heartRate: 60, intervals: beats(modulation: 40))
+        ]
+        assertTest(
+            await run(overnight, baselineNights, overnightSamples + baselineSamples) != nil,
+            "A night beginning at 22:00 is scored — the sleep period the daytime model's own window "
+                + "cannot express, since it returns a range within one calendar day")
+        assertTest(
+            StressMath.wakingWindow(on: localDay)
+                .map { $0.contains(evening.addingTimeInterval(10)) } == false,
+            "…and that instant is outside 06:00–22:00, so this card scores the hours the Stress "
+                + "Monitor throws away rather than a second reading of the ones it keeps")
+
+        // ── The baseline floor, at both edges ─────────────────────────────────────────────────────
+
+        assertTest(
+            await run(
+                tonight, Array(baselineNights.prefix(2)), tonightSamples + baselineSamples) == nil,
+            "Two prior nights is below `StressMath.minimumBaselineDays`. A score here is a z-score "
+                + "and a z-score is defined relative to a personal baseline, so below the floor the "
+                + "honest answer is no score rather than one against a default")
+        assertTest(
+            scored != nil,
+            "…and three prior nights is the first night that produces one, which is the other edge "
+                + "of the same floor")
+
+        // ── Absence ──────────────────────────────────────────────────────────────────────────────
+
+        assertTest(
+            await run(tonight, baselineNights, baselineSamples) == nil,
+            "A night the strap recorded nothing for is absent — no card rather than a 0% one")
+
+        // ── The card's own words ─────────────────────────────────────────────────────────────────
+        //
+        // The runner has no renderer, so the card's drawing is unasserted; its strings are statics
+        // for this reason and are asserted here.
+
+        if let scored {
+            assertTest(
+                SleepStressCard.spokenHeading(night: scored)
+                    == "Sleep stress, 50 percent of the scored night in the high band, 0h 10m scored",
+                "The card's spoken heading names the figure, the band it is the share of, and the "
+                    + "denominator the shares are of (got "
+                    + "\"\(SleepStressCard.spokenHeading(night: scored))\")")
+            assertTest(
+                SleepStressCard.spokenBandRow(scored.bands[0])
+                    == "High, 50 percent of the scored night, 0h 5m",
+                "…and a row names its own band, says what the share is a share *of*, and gives its "
+                    + "duration in the spoken form rather than the compact one printed on screen "
+                    + "(got \"\(SleepStressCard.spokenBandRow(scored.bands[0]))\")")
+        }
+        assertTest(
+            SleepStressCard.baselineNote(baselineNightCount: 14) == "Baseline: 14 prior nights",
+            "…and the footer says how much history the score above it rests on, which is the "
+                + "difference between a 0% read against three nights and the same 0% against fourteen")
+        assertTest(
+            SleepStressCard.baselineNote(baselineNightCount: 1) == "Baseline: 1 prior night",
+            "…in the singular at one, which the floor makes unreachable through the use case and "
+                + "which is stated anyway so the sentence is right at every input")
+
+        // ── The hours-vs-needed week ─────────────────────────────────────────────────────────────
+        //
+        // The card that closes the page draws two lanes of the same quantity against **one** scale, so
+        // almost everything worth asserting about it is about the join rather than the drawing: which
+        // nights plot in each lane, that the two lanes are built independently, and that the axis is
+        // fitted to the union rather than to whichever lane was reached for first. The runner has no
+        // renderer, so the lines and the labels are unasserted; `HoursVsNeededWeek` is a type rather
+        // than logic in the view for exactly that reason.
+
+        let weekAnchor = Calendar.current.startOfDay(for: Date())
+
+        /// A night with a stated time asleep and a stated need, both in seconds, and no other stage
+        /// time — so `totalTimeAsleepSeconds` is exactly the `asleep` handed in.
+        ///
+        /// It is written out here rather than forwarding to the `night(dayOffset:…)` helper the
+        /// typical-range block above uses, because that name is shadowed from this point to the end
+        /// of this function by the stress block's own `night(high:medium:low:)`. Constructing the
+        /// session directly keeps the two fixtures independent.
+        func durationed(dayOffset: Int, asleep: TimeInterval, need: TimeInterval) -> SleepSession {
+            let day = Calendar.current.startOfDay(
+                for: Calendar.current.date(byAdding: .day, value: -dayOffset, to: Date())!)
+            let onset = day.addingTimeInterval(-8 * 3600)
+            return SleepSession(
+                date: day,
+                startTime: onset,
+                endTime: onset.addingTimeInterval(asleep),
+                targetSleepNeedSeconds: need,
+                lightSleepSeconds: asleep,
+                deepSleepSeconds: 0,
+                remSleepSeconds: 0,
+                awakeSeconds: 0)
+        }
+
+        // Two nights whose need is the higher lane on both, chosen so the union spans 6h30m–9h30m:
+        // three hours, which fits inside `FittedAxis`'s four-band limit at a step of one hour.
+        let comparison = MetricWeek(
+            endingOn: weekAnchor,
+            sleep: [
+                durationed(dayOffset: 0, asleep: 27000, need: 34200),  // 7:30 against 9:30
+                durationed(dayOffset: 1, asleep: 23400, need: 28800),  // 6:30 against 8:00
+            ])
+
+        if let series = HoursVsNeededWeek(week: comparison) {
+            assertTest(
+                series.asleep.map(\.slot) == [5, 6] && series.need.map(\.slot) == [5, 6],
+                "Both lanes plot the same two nights, in slot order — the anchor is slot 6, so a "
+                    + "night filed under today lands in the last column (got "
+                    + "\(series.asleep.map(\.slot)) asleep, \(series.need.map(\.slot)) need)")
+            assertTest(
+                series.asleep.map(\.seconds) == [23400, 27000]
+                    && series.need.map(\.seconds) == [28800, 34200],
+                "…and each lane carries the night's own stored seconds rather than a rounded hour "
+                    + "count, which is what lets the label print the same clock reading the card "
+                    + "above the chart prints")
+            assertTest(
+                series.axis.lowerBound == 6 && series.axis.upperBound == 10
+                    && series.axis.gridLines == [7, 8, 9],
+                "The axis is fitted to the **union** of the two lanes: 6h30m to 9h30m rounds out to "
+                    + "a 6–10 plot, ruled at the three whole hours inside it (got "
+                    + "\(series.axis.lowerBound)–\(series.axis.upperBound), "
+                    + "\(series.axis.gridLines))")
+            assertTest(
+                FittedAxis(values: series.asleep.map(\.hours))?.upperBound == 8,
+                "…and that is not the axis either lane would give alone: fitted to the sleep lane "
+                    + "the plot tops out at 8h, which would clamp the 9h30m need to the frame's top "
+                    + "and draw it level with the 8h one on the night before. Two axes here would "
+                    + "state the same shortfall as no shortfall at all")
+            assertTest(
+                series.spokenSentence
+                    == "Hours versus needed for the last seven days, 2 of 7 nights measured, "
+                        + "from 6h 30m to 9h 30m",
+                "…and the spoken sentence counts the nights carrying both lanes and speaks the span "
+                    + "in the duration form rather than the compact one the labels print (got "
+                    + "\"\(series.spokenSentence)\")")
+        } else {
+            assertTest(false, "A week of two nights yielding both durations produced no series")
+        }
+
+        // The two lanes are built independently, and the gating is what makes that visible: a need is
+        // only read off a night whose target is above zero, while the asleep total is read off the row
+        // unconditionally. So a stored night with no need is a sleep point with no need point beside
+        // it — the honest picture of that row, and not a reason to drop the column.
+        let needless = MetricWeek(
+            endingOn: weekAnchor,
+            sleep: [
+                durationed(dayOffset: 0, asleep: 27000, need: 0),
+                durationed(dayOffset: 1, asleep: 23400, need: 28800),
+            ])
+        assertTest(
+            HoursVsNeededWeek(week: needless)?.asleep.map(\.slot) == [5, 6]
+                && HoursVsNeededWeek(week: needless)?.need.map(\.slot) == [5],
+            "A night with no need still plots in the sleep lane and draws nothing in the need lane, "
+                + "rather than dropping the night or inventing a need for it")
+        assertTest(
+            HoursVsNeededWeek(week: MetricWeek(
+                endingOn: weekAnchor,
+                sleep: [durationed(dayOffset: 0, asleep: 27000, need: 0)])) == nil,
+            "…but a week with no need on any night has one lane and no comparison, which is no card "
+                + "at all — the same rule every other chart here follows for a frame that would be "
+                + "drawn over nothing")
+        assertTest(
+            HoursVsNeededWeek(week: MetricWeek(endingOn: weekAnchor)) == nil,
+            "…and a week with no nights is absent for the same reason, not an empty plot")
+
+        // A gap breaks each lane's line, on the slot index rather than on the date — `WeekLineSeries`'
+        // rule, and for its reason: the slots are one calendar day apart by construction, so a
+        // segment drawn across a missing index would span nights the lane has no value for.
+        let holed = MetricWeek(
+            endingOn: weekAnchor,
+            sleep: [
+                durationed(dayOffset: 0, asleep: 27000, need: 34200),
+                durationed(dayOffset: 1, asleep: 23400, need: 28800),
+                durationed(dayOffset: 3, asleep: 25200, need: 32400),
+            ])
+        assertTest(
+            HoursVsNeededWeek(week: holed)?.asleepRuns.map { $0.map(\.slot) } == [[3], [5, 6]]
+                && HoursVsNeededWeek(week: holed)?.needRuns.map { $0.map(\.slot) } == [[3], [5, 6]],
+            "A week with a night missing in the middle draws two segments per lane and never joins "
+                + "across the hole (got "
+                + "\((HoursVsNeededWeek(week: holed)?.asleepRuns ?? []).map { $0.map(\.slot) }))")
+        assertTest(
+            HoursVsNeededWeek(week: holed)?.axis.lowerBound == 6
+                && HoursVsNeededWeek(week: holed)?.axis.upperBound == 10,
+            "…and the hole does not change the axis, which is fitted to the points that are there "
+                + "rather than to the seven columns the frame has")
+
+        // ── The day's asleep total, and why it is a field rather than a derivation ───────────────
+        //
+        // This is the assertion that pins the reason `MetricDay.asleepSeconds` exists at all. The
+        // reference's own worst night is the case: `sleepPerformance` is the two durations' ratio
+        // rounded to a whole percent, and recovering either duration from it is lossy by up to half a
+        // percent of the need — three minutes on a nine-hour one. A chart deriving its point that way
+        // would draw a night two minutes short of the one the card above it prints, on one screen.
+        let referenceNight = durationed(dayOffset: 0, asleep: 27180, need: 33420)
+        let lossyWeek = MetricWeek(endingOn: weekAnchor, sleep: [referenceNight])
+        let lossyDay = lossyWeek.days.last
+        assertTest(
+            lossyDay?.asleepSeconds == 27180 && lossyDay?.sleepNeedSeconds == 33420
+                && lossyDay?.sleepPerformance == 81,
+            "A night's asleep total is read off the same `sleeps` row as its need and its "
+                + "performance — 7h33m against 9h17m reads back as 27180 seconds, 33420 seconds and "
+                + "81 percent, which are the reference's own figures (got "
+                + "\(lossyDay?.asleepSeconds ?? -1) / \(lossyDay?.sleepNeedSeconds ?? -1) / "
+                + "\(lossyDay?.sleepPerformance ?? -1))")
+        if let asleep = lossyDay?.asleepSeconds, let need = lossyDay?.sleepNeedSeconds,
+           let performance = lossyDay?.sleepPerformance {
+            assertTest(
+                Int((need * Double(performance) / 100).rounded()) == 27070 && asleep == 27180,
+                "…and the ratio cannot give that total back: 81 percent of the same need is 27070 "
+                    + "seconds, which is 7h31m where the night holds 7h33m. That two-minute gap is "
+                    + "the whole reason the field is stored rather than derived")
+        }
+        assertTest(
+            MetricWeek(endingOn: weekAnchor).days.allSatisfy { $0.asleepSeconds == nil },
+            "A day with no classified night carries no asleep total, which is the same absence "
+                + "`sleepNeedSeconds` has and is what the chart's `nil` reads through")
+
+        // ── The restorative-sleep week ────────────────────────────────────────────────────────────
+        //
+        // The one stacked bar chart in the app, and the only chart here whose axis **must** reach
+        // zero: a bar's height is its value, so a foot anywhere else draws every column as a
+        // proportion of a range nobody named. That is the assertion this block is built around, and
+        // the runner has no renderer — `RestorativeSleepWeek` is a type rather than logic in the view
+        // for exactly that reason.
+
+        /// A night carrying a stated deep/REM split, with an hour of light sleep beside it so the
+        /// night is a whole one. `durationed` above is the same shape with the split at zero.
+        func restorative(dayOffset: Int, deep: TimeInterval, rem: TimeInterval) -> SleepSession {
+            let day = Calendar.current.startOfDay(
+                for: Calendar.current.date(byAdding: .day, value: -dayOffset, to: Date())!)
+            let onset = day.addingTimeInterval(-8 * 3600)
+            return SleepSession(
+                date: day,
+                startTime: onset,
+                endTime: onset.addingTimeInterval(deep + rem + 3600),
+                targetSleepNeedSeconds: 28800,
+                lightSleepSeconds: 3600,
+                deepSleepSeconds: deep,
+                remSleepSeconds: rem,
+                awakeSeconds: 0)
+        }
+
+        // 1:30 deep + 1:15 REM is a 2:45 night, and 2:00 + 2:00 is a 4:00 one. The two totals are
+        // chosen so the axis has a whole-hour span to fit: the discriminating half of the foot
+        // assertion below needs a week whose totals alone would fit at a different step.
+        let restorativeWeek = MetricWeek(
+            endingOn: weekAnchor,
+            sleep: [
+                restorative(dayOffset: 0, deep: 7200, rem: 7200),  // 4:00 restorative
+                restorative(dayOffset: 1, deep: 5400, rem: 4500),  // 2:45 restorative
+            ])
+
+        if let series = RestorativeSleepWeek(week: restorativeWeek) {
+            assertTest(
+                series.nights.map(\.slot) == [5, 6],
+                "The two nights plot in slot order, the anchor's own night last — so the column under "
+                    + "the chip is the day the page is showing (got \(series.nights.map(\.slot)))")
+            assertTest(
+                series.nights.map(\.deepSeconds) == [5400, 7200]
+                    && series.nights.map(\.remSeconds) == [4500, 7200],
+                "…and each night carries its two stages as stored rather than a ratio, which is what "
+                    + "lets the stack's two bands be drawn at the night's own proportions")
+            assertTest(
+                series.nights.map(\.totalSeconds) == [9900, 14400]
+                    && series.nights.map(\.totalHours) == [2.75, 4.0],
+                "…and the figure over each column is their sum, `SleepSession`'s own restorative "
+                    + "total, with no third stored field free to disagree with the two bands under it "
+                    + "(got \(series.nights.map(\.totalSeconds)))")
+            assertTest(
+                series.axis.lowerBound == 0 && series.axis.upperBound == 4
+                    && series.axis.gridLines == [1, 2, 3],
+                "The axis' foot is **zero**, which is the one thing this chart needs and the two "
+                    + "fitted axes beside it deliberately refuse: a bar's height is its value, so a "
+                    + "foot anywhere else draws every column as a proportion of a range nobody named. "
+                    + "Zero is handed to the fit as a value rather than forced as a bound, so the "
+                    + "ladder still picks the step (got "
+                    + "\(series.axis.lowerBound)–\(series.axis.upperBound), "
+                    + "\(series.axis.gridLines))")
+            assertTest(
+                FittedAxis(values: series.nights.map(\.totalHours))?.lowerBound == 2,
+                "…and that is not the axis the totals alone would give: fitted to them the plot "
+                    + "starts at 2h, which for a line chart of the same week is merely a tight frame "
+                    + "and for a bar chart is a scale that no bar's height means anything on")
+            assertTest(
+                near(series.axis.fraction(2.75), 0.6875)
+                    && near(
+                        (FittedAxis(values: series.nights.map(\.totalHours))?.fraction(2.75)) ?? 0,
+                        0.375),
+                "…and the consequence is the drawn height, not a label: the 2:45 night is 0.6875 of "
+                    + "the bars' axis and 0.375 of the totals-only one, so a chart drawn against the "
+                    + "second would state it as barely more than half what it is")
+            assertTest(
+                series.spokenSentence
+                    == "Restorative sleep for the last seven days, 2 of 7 nights measured, "
+                        + "from 2h 45m to 4h 0m",
+                "…and the spoken sentence counts the nights it draws and speaks the span in the "
+                    + "duration form rather than the compact one the columns print (got "
+                    + "\"\(series.spokenSentence)\")")
+        } else {
+            assertTest(false, "A week of two nights with a stated split produced no series")
+        }
+
+        // A night of unbroken light sleep is a **zero and not an absence** — the two fields are nil
+        // for a day with no classified night and non-nil for a night the classifier read, so a night
+        // with no deep and no REM in it arrives here as `0 + 0`. One such night is in the bundled
+        // export (2024-12-10), which is what makes this a case to handle rather than a hypothetical.
+        let lightOnly = MetricWeek(
+            endingOn: weekAnchor,
+            sleep: [
+                restorative(dayOffset: 0, deep: 5400, rem: 4500),
+                restorative(dayOffset: 1, deep: 0, rem: 0),
+            ])
+        assertTest(
+            RestorativeSleepWeek(week: lightOnly)?.nights.map(\.totalSeconds) == [0, 9900],
+            "A night whose deep and REM are both zero still plots, as a column carrying no bar and "
+                + "the figure `0:00` — the same reading the typical-range card above prints for that "
+                + "night, and not a dropped column")
+        assertTest(
+            RestorativeSleepWeek(week: MetricWeek(
+                endingOn: weekAnchor,
+                sleep: [restorative(dayOffset: 0, deep: 0, rem: 0)])) == nil,
+            "…but a week in which no night has anything to stack draws no card at all, because seven "
+                + "zero-height columns are not a picture of a week")
+        assertTest(
+            RestorativeSleepWeek(week: MetricWeek(endingOn: weekAnchor)) == nil,
+            "…and a week with no nights is absent for the same reason, not an empty plot — the rule "
+                + "every chart in this app follows")
+        assertTest(
+            RestorativeSleepWeek(week: MetricWeek(
+                endingOn: weekAnchor,
+                sleep: [restorative(dayOffset: 0, deep: 600, rem: 300)])) == nil,
+            "A week whose tallest night is under half an hour of restorative sleep is **also** "
+                + "absent, and that is not the same rule: `FittedAxis` widens a range under half a "
+                + "unit to `value ± 1`, which with zero among the values puts the foot an hour below "
+                + "zero — and a bar drawn against that axis takes most of its height from the empty "
+                + "range beneath it, so a two-minute night and a twenty-minute one draw alike")
+        assertTest(
+            MetricWeek(endingOn: weekAnchor).days.allSatisfy {
+                $0.deepSleepSeconds == nil && $0.remSleepSeconds == nil
+            },
+            "A day with no classified night carries neither stage, which is the absence the chart's "
+                + "`nil` reads through")
+
+        // ── The time-in-bed week ──────────────────────────────────────────────────────────────────
+        //
+        // Seven nights drawn as spans on a clock, and the one thing this block has that no other
+        // block here does: **a second minute scale on the same value.** `MetricDay.sleepOnsetMinutes`
+        // is `SleepConsistencyMath.nightClockMinutes`' noon-pivoted frame — `0` is noon, `420` is
+        // 7 PM, `720` is midnight, `1140` is 7 AM — while the two figures a column prints are
+        // minutes past midnight, reached only through `SleepClockAxis.clockText`. So every literal
+        // below is written in the model's frame and read back through that one bridge, which is what
+        // `CLAUDE.md`'s gotcha says a caller gets wrong by twelve hours in one place and not the
+        // others.
+        //
+        // The clock times are set with `bySettingHour:`, for the consistency block's reason:
+        // `date(byAdding: .minute,)` adds elapsed time, so on a spring-forward day every literal here
+        // would move. The hours used (06:00–08:00, 16:00–23:00) sit outside both the 02:00 gap and
+        // the 01:00 fold, so the wall clock is unambiguous all year.
+        do {
+            let calendar = Calendar.current
+            let base = calendar.startOfDay(for: Date())
+
+            /// One night, keyed on the day it **ended** — `SleepSession.date` and this app's own day
+            /// key.
+            ///
+            /// Both times are set on that same date, so a 23:00→07:00 pair is `bySettingHour: 23` and
+            /// `bySettingHour: 7` of one day. The noon pivot is what makes that a single contiguous
+            /// eight-hour span instead of a negative one, and the assertions below pin it rather than
+            /// leaving it to be inferred.
+            func inBedNight(dayOffset: Int, onset: (Int, Int), wake: (Int, Int)) -> SleepSession {
+                let day = calendar.date(byAdding: .day, value: -dayOffset, to: base)!
+                return SleepSession(
+                    date: day,
+                    startTime: calendar.date(
+                        bySettingHour: onset.0, minute: onset.1, second: 0, of: day)!,
+                    endTime: calendar.date(
+                        bySettingHour: wake.0, minute: wake.1, second: 0, of: day)!)
+            }
+
+            // Two nights inside the default window: 11 PM→7 AM on the day before the anchor, and
+            // 10:30 PM→6:15 AM on the anchor's own day. The second carries minutes so one column's
+            // two labels are the eight-character strings the view's `minimumScaleFactor` exists for.
+            let bedWeek = MetricWeek(
+                endingOn: weekAnchor,
+                sleep: [
+                    inBedNight(dayOffset: 1, onset: (23, 0), wake: (7, 0)),
+                    inBedNight(dayOffset: 0, onset: (22, 30), wake: (6, 15)),
+                ])
+
+            if let series = TimeInBedWeek(week: bedWeek) {
+                assertTest(
+                    series.nights.map(\.slot) == [5, 6],
+                    "The nights plot in slot order, the anchor's own night last — so the column under "
+                        + "the chip is the day the page is showing, and a night is placed by the "
+                        + "frame's slot rather than by its own date "
+                        + "(got \(series.nights.map(\.slot)))")
+                assertTest(
+                    series.nights.map(\.spanMinutes) == [480, 465],
+                    "…and each column's height is its night's own span, derived from the two "
+                        + "boundaries rather than stored beside them: 11 PM→7 AM is eight hours and "
+                        + "10:30 PM→6:15 AM is seven hours forty-five "
+                        + "(got \(series.nights.map(\.spanMinutes)))")
+                assertTest(
+                    series.nights.first?.onsetText == "11 PM"
+                        && series.nights.first?.wakeText == "7 AM"
+                        && series.nights.last?.onsetText == "10:30 PM"
+                        && series.nights.last?.wakeText == "6:15 AM",
+                    "Both ends of every column are labelled, and both are a **clock time** rather "
+                        + "than a duration — which is the whole reason the card carries two figures "
+                        + "per column: reading either as minutes in bed states an eight-hour night as "
+                        + "`11:00` (got \(series.nights.map { "\($0.onsetText)–\($0.wakeText)" }))")
+
+                assertTest(
+                    series.axis.startMinutes == 420 && series.axis.endMinutes == 1380,
+                    "A week whose nights sit inside the reference window keeps the reference window: "
+                        + "7 PM to 11 AM, sixteen hours "
+                        + "(got \(series.axis.startMinutes)–\(series.axis.endMinutes))")
+                assertTest(
+                    series.axis.labels.map(\.text) == ["7 PM", "11 PM", "3 AM", "7 AM", "11 AM"],
+                    "…and its five ticks land on whole hours, which is the frame the five-night "
+                        + "consistency card above also draws against — one shared axis, so the two "
+                        + "charts cannot come to disagree about where eleven at night is "
+                        + "(got \(series.axis.labels.map(\.text)))")
+                assertTest(
+                    series.nights.allSatisfy {
+                        series.axis.fraction($0.onsetMinutes) < series.axis.fraction($0.wakeMinutes)
+                    } && near(series.axis.fraction(660), 0.25)
+                        && near(series.axis.fraction(1140), 0.75),
+                    "…and a night is drawn downwards from its onset to its wake, so the top of every "
+                        + "bar is the bedtime on the left of the label above it. 11 PM is a quarter "
+                        + "of the way down a 7 PM–11 AM axis and 7 AM is three quarters")
+
+                // The widening. 16:15 is **above** the default top on the night clock — 256, where
+                // the axis opens at 420 — so this night is the one case that moves it, and it is
+                // measured as a real row before it is used as a fixture (see the export block below).
+                let longNight = inBedNight(dayOffset: 0, onset: (16, 15), wake: (8, 0))
+                let longOnset = SleepConsistencyMath.nightClockMinutes(
+                    longNight.startTime, calendar: calendar)
+                assertTest(
+                    longOnset < SleepClockAxis.defaultStartMinutes,
+                    "…and a 16:15 bedtime is really outside the default window rather than "
+                        + "conveniently inside it, which is what makes the fixture below a test of the "
+                        + "widening rule and not of the default one (onset \(longOnset) against a top "
+                        + "of \(SleepClockAxis.defaultStartMinutes))")
+                if let widened = TimeInBedWeek(week: MetricWeek(
+                    endingOn: weekAnchor, sleep: [longNight])) {
+                    assertTest(
+                        widened.axis.startMinutes == 240,
+                        "The axis **widens in whole hours** to hold a boundary outside it — 16:15 "
+                            + "pushes the top out to 4 PM and no further — rather than clipping the "
+                            + "night to the frame, which would draw a bar at a position it does not "
+                            + "have (got \(widened.axis.startMinutes))")
+                    assertTest(
+                        widened.axis.labels.first?.text == "4 PM",
+                        "…and the widened end is a labelled tick like any other, so the frame a "
+                            + "reader measures against is a clock and not an edge "
+                            + "(got \(String(describing: widened.axis.labels.first?.text)))")
+                    assertTest(
+                        (0...1).contains(widened.axis.fraction(longOnset)),
+                        "…and the night that moved it is drawn inside the frame it moved, which is "
+                            + "the failure a widening rule that rounded the wrong way would have: "
+                            + "`floor` to 16:15's own hour leaves the onset at the very top edge, and "
+                            + "a `ceil` would put it above the top")
+                } else {
+                    assertTest(false, "The 16-hour night produced no series")
+                }
+
+                // The refused span: 11 AM to 1 PM contains noon, which the night clock has no seam
+                // to cross. Its own boundaries are deliberately **loud** — an 11:00 onset and a
+                // 13:00 wake are night-clock 1380 and 60, so including them would drag the axis'
+                // top from 420 down to 60 and the assertion below would see it.
+                let afternoon = inBedNight(dayOffset: 0, onset: (11, 0), wake: (13, 0))
+                let mixedWeek = MetricWeek(
+                    endingOn: weekAnchor,
+                    sleep: [
+                        inBedNight(dayOffset: 1, onset: (23, 0), wake: (7, 0)),
+                        afternoon,
+                    ])
+                if let mixed = TimeInBedWeek(week: mixedWeek) {
+                    assertTest(
+                        mixed.nights.map(\.slot) == [5],
+                        "A span the frame cannot draw costs **its own column** and not the card: the "
+                            + "honest night still plots, where the five-night consistency card above "
+                            + "refuses the whole chart for the same row — its five columns are one "
+                            + "unit and these seven are seven readings "
+                            + "(got \(mixed.nights.map(\.slot)))")
+                    assertTest(
+                        mixed.axis.startMinutes == 420,
+                        "…and the refused night's own boundaries are left out of the axis as well as "
+                            + "off the plot, so a corrupt row cannot move the scale the honest nights "
+                            + "are read against. This is the assertion that sees it: the 11 AM onset "
+                            + "is night-clock 1380 and would have pulled the top down to 1 AM "
+                            + "(got \(mixed.axis.startMinutes))")
+                } else {
+                    assertTest(false, "A week with one drawable night and one refused span drew nothing")
+                }
+                assertTest(
+                    TimeInBedWeek(week: MetricWeek(endingOn: weekAnchor, sleep: [afternoon])) == nil,
+                    "…but a week whose **only** night is refused draws no card at all, because seven "
+                        + "empty columns are not a picture of a week — the rule every chart in this "
+                        + "app follows")
+                assertTest(
+                    TimeInBedWeek(week: MetricWeek(endingOn: weekAnchor)) == nil,
+                    "…and a week with no nights is absent for the same reason, not an empty plot")
+
+                assertTest(
+                    series.nights.map(\.isAnchor) == [false, true],
+                    "The anchor is the night on the page's own day, recorded at the join where the "
+                        + "dates are — the sentence below reads it, and the drawing does not need it "
+                        + "because the frame already tints that column "
+                        + "(got \(series.nights.map(\.isAnchor)))")
+                let anchorless = TimeInBedWeek(week: MetricWeek(
+                    endingOn: weekAnchor,
+                    sleep: [inBedNight(dayOffset: 1, onset: (23, 0), wake: (7, 0))]))
+                assertTest(
+                    anchorless?.nights.allSatisfy { !$0.isAnchor } == true,
+                    "…and on a week whose own day carries no night, no column is marked as the anchor "
+                        + "— a fresh install's first day, which is exactly the case this card's gate "
+                        + "is built for")
+                assertTest(
+                    series.spokenSentence
+                        == "Time in bed for the last seven days, 2 of 7 nights measured, "
+                            + "last night 10:30 PM to 6:15 AM",
+                    "The card's words count the nights it draws and name **the anchor's own two "
+                        + "times**, not a range over the week: a week's earliest bedtime and latest "
+                        + "waketime are two clock times with no relation to each other, and "
+                        + "`from 10:30 PM to 7 AM` would read as one very long night "
+                        + "(got \"\(series.spokenSentence)\")")
+                assertTest(
+                    anchorless?.spokenSentence
+                        == "Time in bed for the last seven days, 1 of 7 nights measured, "
+                            + "no night on the day shown",
+                    "…and a week whose own day has no night says so rather than borrowing a "
+                        + "neighbouring column's times, which would put a night the page is not about "
+                        + "under the heading of the night it is "
+                        + "(got \"\(anchorless?.spokenSentence ?? "nil")\")")
+            } else {
+                assertTest(false, "A week of two drawable nights produced no series")
+            }
+
+            // The pair reaching the week, in the model's own frame. `660` is 11 PM and `1140` is
+            // 7 AM on the noon pivot; minutes past midnight would be `1380` and `420`, and the two
+            // pairs are twelve hours apart rather than near each other — which is the whole of why
+            // the fields are named for the frame they are in.
+            assertTest(
+                bedWeek.days[5].sleepOnsetMinutes == 660 && bedWeek.days[5].sleepWakeMinutes == 1140,
+                "A night's two boundaries reach a `MetricDay` as the **night clock's** minutes: an "
+                    + "11 PM onset is `660` and a 7 AM wake is `1140`, where minutes past midnight "
+                    + "would be `1380` and `420` (got "
+                    + "\(String(describing: bedWeek.days[5].sleepOnsetMinutes))–"
+                    + "\(String(describing: bedWeek.days[5].sleepWakeMinutes)))")
+            assertTest(
+                MetricWeek(endingOn: weekAnchor).days.allSatisfy {
+                    $0.sleepOnsetMinutes == nil && $0.sleepWakeMinutes == nil
+                },
+                "A day with no classified night carries neither boundary, which is the absence the "
+                    + "chart's per-column `nil` reads through — and the pair is absent *together*, "
+                    + "because both are read off the one night row")
+        }
     }
 }
 
 // The async sections need the process kept alive long enough to finish; 5s was too short on a
 // cold database.
 RunLoop.main.run(until: Date().addingTimeInterval(30.0))
+
+// **Reaching this line is a failure, not a pass.** Every path that completes leaves through
+// `finishSuite` — success, a failed assertion, or a throw — so getting here means the `Task` never
+// finished and the timeout above is the only other way out of the `RunLoop`. Falling off the end
+// would exit 0 and report a suite that hung as green, which is the failure mode this whole
+// arrangement exists to close.
+print("❌ FAILED: the suite did not finish within 30s — it hung, or a section returned without reporting")
+tally.record(false)
+finishSuite(exitCode: 1)

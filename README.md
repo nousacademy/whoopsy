@@ -49,7 +49,7 @@ strap.** Being specific about that is more useful than a feature list:
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-a 405-assertion test runner that pins the behaviour of all of them.
+an 853-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -155,21 +155,25 @@ works around. Add `CODE_SIGNING_ALLOWED=NO` to check compilation without a signi
 
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 14 sections, 405 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 15 sections, 853 assertions, and no
 test discovery:
 
 ```bash
-swift build --scratch-path /tmp/whoopsy-verify
-swiftc -I /tmp/whoopsy-verify/arm64-apple-macosx/debug/Modules \
-  -Xcc -fmodule-map-file=.build/checkouts/GRDB.swift/Sources/CSQLite/module.modulemap \
-  /tmp/whoopsy-verify/arm64-apple-macosx/debug/Whoopsy.build/*.o \
-  /tmp/whoopsy-verify/arm64-apple-macosx/debug/GRDB.build/*.o \
-  Tests/WhoopsyTestRunner/main.swift -o /tmp/whoopsy-verify/WhoopsyTestRunner
-/tmp/whoopsy-verify/WhoopsyTestRunner
+make test                 # build + run all 15 sections
+make test SECTIONS=13,15  # just those two
 ```
 
-Use a scratch path. `scripts/run_tests.sh` links stale object files from deleted sources and fails;
-the full explanation is in [`CLAUDE.md`](CLAUDE.md) §Tests.
+`scripts/test.sh` builds into a scratch path (the default build directory keeps object files from
+deleted sources and the link fails) and hands the runner an absolute `#filePath`, so the suite no
+longer cares which directory you run it from. It ends with one machine-readable line:
+
+```
+SUITE sections=1,...,15 assertions=853 failed=0 exit=0
+```
+
+Read that line rather than the scrollback — the suite has no test discovery, so a section that
+stopped running looks exactly like one that passed. The full explanation is in
+[`CLAUDE.md`](CLAUDE.md) §Tests.
 
 Note the runner is **not hermetic** — one section builds the real dependency container and therefore
 writes to your own development database. That is documented rather than hidden.

@@ -9,22 +9,18 @@ import SwiftUI
 /// not have), a bar whose two ends were placed in the wrong order, and a callout printing minutes
 /// out of the model's shifted frame rather than off a clock — and each is asserted in the runner.
 ///
-/// ## The axis is the night clock, and the chart owns its own scale
+/// ## The clock is `SleepClockAxis`, and the chart owns its own frame
 ///
-/// The default window is `7 PM → 11 AM` — night-clock `420 … 1380`, `SleepConsistencyMath`'s
-/// noon-pivot frame read as a chart: evening at the top, morning at the bottom, so a whole night is
-/// one contiguous run with no midnight seam inside it. `WeekChartAxis` is **not** reused, and the
-/// reason is geometry rather than taste: that type is a seven-column weekday axis with one label row
-/// under it, while this chart has five columns, a labelled scale down its leading edge and a second
-/// gutter trailing it. Bending it would move the Strain & Recovery chart to draw this one, which is
-/// the same reasoning `WeekChartAxis`'s own doc comment gives for `StrainRecoveryChartView`.
-///
-/// **The axis widens in whole hours rather than clipping or dropping.** A boundary outside the
-/// default window pushes that edge out to the enclosing hour and no further — the rule
-/// `HoursOfSleepChartView` follows for a reading outside its own scale. Clipping would draw the bar
-/// at a position it does not have; dropping the night would silently lose one of the five the card
-/// is about, and the anchor is one of them. Measured on the bundled export this affects 1 night in
-/// 910, so the default window is what every night a user is likely to open looks like.
+/// The scale is the shared one — the night clock, widening in whole hours, read back out through one
+/// inverse — and it lives in `SleepClockAxis` because the time-in-bed card below this one on the page
+/// draws on the same scale. What stays here is the frame, and `WeekChartAxis` is **not** reused for
+/// it. The reason is geometry rather than taste: that type is a seven-column weekday axis with one
+/// label row under it, while this chart has five columns, a labelled scale down its leading edge and a
+/// second gutter trailing it. Bending it would move the Strain & Recovery chart to draw this one,
+/// which is the same reasoning `WeekChartAxis`'s own doc comment gives for `StrainRecoveryChartView`.
+/// The week version of this same quantity takes the opposite decision, and for this reason read
+/// backwards: it is seven columns with no gutters, so it takes `WeekChartAxis` and lets each column
+/// label its own two ends instead of carrying a scale.
 ///
 /// ## The two rules are placed here and computed elsewhere
 ///
@@ -39,31 +35,9 @@ import SwiftUI
 /// "in practice" is not a reason to leave a rule undrawable.
 public struct SleepConsistencyChartLayout: Equatable, Sendable {
 
-    /// One tick of the scale down the leading edge.
-    public struct AxisLabel: Equatable, Sendable, Identifiable {
-        public var id: Int { index }
-
-        /// Position in the label row, `0` first. The identity, because two labels can print the same
-        /// string on a sufficiently narrow axis and a `String` id would collide.
-        public let index: Int
-
-        /// Distance down the plot, `0` at the top and `1` at the foot.
-        public let fraction: Double
-
-        /// The night-clock minute this tick sits on, so the suite can pin the mapping rather than
-        /// the rendered string.
-        public let minutes: Double
-
-        /// `"7 PM"`, or `"10:30 PM"` when the tick falls between hours.
-        public let text: String
-
-        public init(index: Int, fraction: Double, minutes: Double, text: String) {
-            self.index = index
-            self.fraction = fraction
-            self.minutes = minutes
-            self.text = text
-        }
-    }
+    /// One tick of the leading scale. The shared type, not a second one: the time-in-bed card's axis
+    /// is the same axis, and two label types would be two answers to what a tick is.
+    public typealias AxisLabel = SleepClockAxis.Label
 
     /// One night as the chart draws it: a span down the plot, and whether it is the night the card is
     /// about.
@@ -98,15 +72,21 @@ public struct SleepConsistencyChartLayout: Equatable, Sendable {
     /// Five bars, oldest first, the anchor last.
     public let bars: [Bar]
 
+    /// The clock the five bars and the two rules are placed on — the shared axis, so this card and
+    /// the time-in-bed card below it cannot come to disagree about where a minute sits.
+    public let axis: SleepClockAxis
+
     /// The scale down the leading edge, `axisLabelCount` of them from `axisStartMinutes` to
     /// `axisEndMinutes`.
-    public let axisLabels: [AxisLabel]
+    ///
+    /// Forwarded rather than stored twice, so a tick and the fraction it is drawn at are one value.
+    public var axisLabels: [AxisLabel] { axis.labels }
 
     /// The top of the axis, in night-clock minutes. `420` — 7 PM — unless a boundary widened it.
-    public let axisStartMinutes: Double
+    public var axisStartMinutes: Double { axis.startMinutes }
 
     /// The foot of the axis, in night-clock minutes. `1380` — 11 AM — unless a boundary widened it.
-    public let axisEndMinutes: Double
+    public var axisEndMinutes: Double { axis.endMinutes }
 
     /// Where the average onset rule is drawn.
     public let typicalOnsetFraction: Double
@@ -120,96 +100,67 @@ public struct SleepConsistencyChartLayout: Equatable, Sendable {
     /// The average wake as a clock time.
     public let typicalWakeText: String
 
-    /// The reference's own window: 7 PM at the top, 11 AM at the foot.
-    ///
-    /// Sixteen hours, which leaves an hour of margin on either side of the widest night the export
-    /// contains and is what makes the five ticks land on the reference's own `7 PM / 11 PM / 3 AM /
-    /// 7 AM / 11 AM` — the quarter points of a whole-hour window are whole hours, which is why the
-    /// default axis needs no minutes in its labels at all.
-    public static let defaultAxisStartMinutes = 420.0
-    public static let defaultAxisEndMinutes = 1380.0
+    /// The reference's own window, forwarded from the shared axis so this card and the time-in-bed
+    /// card below it cannot come to hold two answers to where 7 PM is.
+    public static let defaultAxisStartMinutes = SleepClockAxis.defaultStartMinutes
+    public static let defaultAxisEndMinutes = SleepClockAxis.defaultEndMinutes
 
-    /// Five, and the count is the reference's: four interior gaps, which is as many times of night as
-    /// a reader can hold on one card without the labels crowding each other.
-    public static let axisLabelCount = 5
+    /// Five, forwarded for the same reason: one count of ticks for both clocks.
+    public static let axisLabelCount = SleepClockAxis.labelCount
 
-    /// The one conversion from the model's own frame back to a clock.
-    ///
-    /// Here rather than at either call site because there are three of them — the two callouts and
-    /// the card's spoken description — and `SleepConsistencyMath.clockMinutes(fromNightClock:)` is
-    /// the kind of inverse a caller gets wrong by an hour in one of the three and not the others.
+    /// The one conversion from the model's own frame back to a clock. Forwarded from the shared axis,
+    /// which is where the argument for not inlining it lives.
     public static func clockText(forNightClockMinutes minutes: Double) -> String {
-        Date.formattedClock(
-            minutesOfDay: SleepConsistencyMath.clockMinutes(fromNightClock: minutes))
+        SleepClockAxis.clockText(forNightClockMinutes: minutes)
     }
 
     /// The five nights, the scale and the two rules, or `nil` when there is no chart to draw.
     ///
     /// `nil` when the summary is empty, when a boundary is not a finite number of minutes, and when
-    /// **a night's wake does not come after its own onset on the night clock** — an interval
-    /// containing noon, since the axis runs from the evening at the top to the morning at the foot and
-    /// so cannot represent a span that passes back through the top of its own frame. All three are
+    /// **any night's wake does not come after its own onset on the night clock** — an interval
+    /// containing noon, which the frame has no seam to cross. The predicate is
+    /// `SleepClockAxis.isDrawable`; what is decided here is only what a refused night *costs*, and on
+    /// this card it costs the whole chart rather than its own column. The five columns are one unit —
+    /// the anchor and the four nights it was scored against — so drawing four of five would change
+    /// what the two rules over them mean, and the anchor is one of the five. All three cases are
     /// corrupt rows rather than ordinary absences, and a caller with no layout draws no chart rather
     /// than a picture of a bad row. `SleepNeedBarLayout` refuses a non-positive scale on the same
     /// terms; the figure above this chart is a reading and is drawn either way.
     ///
     /// **The refused condition is about the interval and not about its length.** An eleven-to-one
     /// afternoon row is two hours long and is refused; a fifteen-hour night that began in the evening
-    /// is refused for the same reason, and it is the same comparison. What the axis cannot draw is a
-    /// night whose onset and wake are on opposite sides of midday, because the frame has no seam
-    /// there to cross.
+    /// is not, and it is the same comparison.
+    ///
+    /// The week version of this chart takes the opposite decision on the same predicate and for a
+    /// reason that is about its own shape rather than about the rule — see `TimeInBedWeek`.
     public init?(summary: SleepConsistencyScoring.Summary) {
         let nights = summary.bars.map { ($0.onsetMinutes, $0.wakeMinutes) }
         let rules = (summary.typicalOnsetMinutes, summary.typicalWakeMinutes)
 
         guard !nights.isEmpty,
-              nights.allSatisfy({ $0.0.isFinite && $0.1.isFinite && $0.1 > $0.0 }),
+              nights.allSatisfy({ SleepClockAxis.isDrawable(onset: $0.0, wake: $0.1) }),
               rules.0.isFinite, rules.1.isFinite, rules.1 > rules.0
         else { return nil }
 
-        // Widen, in whole hours, to hold every boundary the chart has to draw — the bars' and the two
-        // rules'. `floor`/`ceil` to the hour rather than to the exact minute, so the axis stays a
-        // round number even on the night that moved it, and so the ticks keep landing on readable
-        // times.
+        // Every boundary the chart has to draw — the bars' and the two rules' — so a mean that fell
+        // outside the bars' span moves the axis with them instead of being drawn off the edge. In
+        // practice it never does, since a circular mean of the four priors lies inside their arc and
+        // the priors are inside the axis; "in practice" is not a reason to leave a rule undrawable.
         let boundaries = nights.flatMap { [$0.0, $0.1] } + [rules.0, rules.1]
-        var start = Self.defaultAxisStartMinutes
-        var end = Self.defaultAxisEndMinutes
-        if let earliest = boundaries.min(), earliest < start {
-            start = (earliest / 60).rounded(.down) * 60
-        }
-        if let latest = boundaries.max(), latest > end {
-            end = (latest / 60).rounded(.up) * 60
-        }
-        guard end > start else { return nil }
-
-        let span = end - start
-        func fraction(_ minutes: Double) -> Double { (minutes - start) / span }
-
-        let divider = Double(max(1, Self.axisLabelCount - 1))
-        let labels = (0..<Self.axisLabelCount).map { index -> AxisLabel in
-            let position = Double(index) / divider
-            let minutes = start + position * span
-            return AxisLabel(
-                index: index,
-                fraction: position,
-                minutes: minutes,
-                text: Self.clockText(forNightClockMinutes: minutes))
-        }
+        guard let axis = SleepClockAxis(boundaries: boundaries) else { return nil }
 
         self.bars = summary.bars.map {
             Bar(
                 date: $0.date,
                 isAnchor: $0.isAnchor,
-                topFraction: fraction($0.onsetMinutes),
-                bottomFraction: fraction($0.wakeMinutes))
+                topFraction: axis.fraction($0.onsetMinutes),
+                bottomFraction: axis.fraction($0.wakeMinutes))
         }
-        self.axisLabels = labels
-        self.axisStartMinutes = start
-        self.axisEndMinutes = end
-        self.typicalOnsetFraction = fraction(rules.0)
-        self.typicalWakeFraction = fraction(rules.1)
-        self.typicalOnsetText = Self.clockText(forNightClockMinutes: rules.0)
-        self.typicalWakeText = Self.clockText(forNightClockMinutes: rules.1)
+        self.axis = axis
+        self.typicalOnsetFraction = axis.fraction(rules.0)
+        self.typicalWakeFraction = axis.fraction(rules.1)
+        self.typicalOnsetText = SleepClockAxis.clockText(forNightClockMinutes: rules.0)
+        self.typicalWakeText = SleepClockAxis.clockText(forNightClockMinutes: rules.1)
     }
 }
 

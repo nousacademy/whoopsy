@@ -47,6 +47,78 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
     /// The day's sleep need in seconds, or nil when the day has no classified night.
     public let sleepNeedSeconds: TimeInterval?
 
+    /// The night's time actually asleep — `SleepSession.totalTimeAsleepSeconds` — or nil when the day
+    /// has no classified night.
+    ///
+    /// **Read off the same `sleeps` row as `sleepNeedSeconds` above, and it exists because the two
+    /// durations are compared rather than only divided.** `sleepPerformance` below is their ratio, and
+    /// a ratio is lossy in exactly the way that matters here: it is a whole percent of a nine-hour
+    /// denominator, so recovering the duration from it lands up to three minutes out — measured over
+    /// the reference week, `9:17 × 81%` gives `7:31` where the night is `7:33`. A chart drawing that
+    /// derived figure would put a point under this page's own `HOURS OF SLEEP` card contradicting the
+    /// figure printed on it, about the same night. So the duration is carried, not reconstructed.
+    ///
+    /// **Ungated, like `respiratoryRate` and `sleepPerformance` below and unlike the need above it.**
+    /// The need's `> 0` guard is about the *denominator* — a row with no need stored cannot be divided
+    /// by — and there is no equivalent here: `totalTimeAsleepSeconds` is a sum of stored stage
+    /// durations, and a `SleepSession` is only ever built for a night the classifier could read, so a
+    /// zero would be a night with no sleep in it rather than a missing column. Over the bundled export
+    /// that is unreachable and asserted — all 910 imported nights carry a positive headline.
+    public let asleepSeconds: TimeInterval?
+
+    /// The night's slow-wave sleep in seconds, or nil when the day has no classified night.
+    ///
+    /// **`deepSleepSeconds` and `remSleepSeconds` are the only two fields here carried as a split
+    /// rather than as a total, and their total is deliberately not carried beside them.**
+    /// `SleepSession.restorativeSleepSeconds` is WHOOP's own sum of the two stages it calls
+    /// restorative, and that sum is what the `RESTORATIVE SLEEP (HOURS)` chart's axis is fitted to and
+    /// what its columns are labelled with — but the chart also draws the two stages as a stack, so it
+    /// needs the parts, and a third stored field holding their total would be a fourth number free to
+    /// disagree with the other three. The total is `deep + rem` and nothing else, so the figure above
+    /// a column and the two bands inside it cannot describe different nights.
+    /// `RestorativeSleepWeek.Point` is where that sum is taken.
+    ///
+    /// Both are read off the same `sleeps` row as `asleepSeconds` above, so **the two are absent
+    /// together** — a day either has a classified night with both stages reported or has neither
+    /// field. `SleepSession` stores each as a plain `TimeInterval` defaulted to `0`, so a night of
+    /// light sleep and no restorative sleep really does carry a zero here, and that zero is a reading
+    /// rather than a missing column: it is a night with no deep and no REM in it.
+    ///
+    /// **Ungated, like `asleepSeconds` above and unlike the need below it.** These are sums of staged
+    /// minutes off a night the classifier could read, so there is no reserved zero to filter — the
+    /// need's `> 0` guard is about a *denominator*, and nothing here divides.
+    public let deepSleepSeconds: TimeInterval?
+
+    /// The night's REM in seconds, or nil when the day has no classified night. The other half of the
+    /// pair described on `deepSleepSeconds` above, and absent with it.
+    public let remSleepSeconds: TimeInterval?
+
+    /// When the night began and when it ended, **on the night clock** — `SleepConsistencyMath`'s
+    /// noon-pivoted frame, where `0` is noon, `420` is 7 PM and `720` is midnight. Not minutes past
+    /// midnight, and the difference is twelve hours rather than a rounding: a reader who took `720`
+    /// for noon would place a midnight bedtime at midday. `SleepClockAxis.clockText` is the only
+    /// conversion back to a wall clock and must not be inlined.
+    ///
+    /// **It is the same pair of quantities, in the same frame, as `SleepConsistencyScoring.Bar`'s
+    /// `onsetMinutes` / `wakeMinutes`** — a night's two boundaries read off `SleepSession.startTime`
+    /// and `.endTime`, carried here as two fields so a week chart can place a night by *when it
+    /// happened* rather than by how much of it there was. The prefix is this file's convention for a
+    /// sleep field rather than the shorter pair the scoring types use, because beside `asleepSeconds`
+    /// a bare `wakeMinutes` would read as a second duration.
+    ///
+    /// **Absent together, structurally**: both come off one `sleeps` row, and `SleepSession` holds
+    /// `startTime` and `endTime` as plain `Date`s with no optional on either, so a day with a
+    /// classified night always has both and a day without one has neither.
+    ///
+    /// **Ungated, like the five fields around it.** There is no reserved zero to filter — nothing here
+    /// divides and no column defaults — so a gate could only drop a column the chart still has a
+    /// labelled day for. See `hasAnyMeasurement` for why neither field is in that list either.
+    public let sleepOnsetMinutes: Double?
+
+    /// When the night ended on the night clock — the other half of the pair described on
+    /// `sleepOnsetMinutes` above, and absent with it.
+    public let sleepWakeMinutes: Double?
+
     /// The night's sleep performance toward that need, as a whole percentage, or nil when the day has
     /// no classified night.
     ///
@@ -95,6 +167,11 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
         recoveryScore: Int?,
         restingHeartRate: Int?,
         sleepNeedSeconds: TimeInterval?,
+        asleepSeconds: TimeInterval? = nil,
+        deepSleepSeconds: TimeInterval? = nil,
+        remSleepSeconds: TimeInterval? = nil,
+        sleepOnsetMinutes: Double? = nil,
+        sleepWakeMinutes: Double? = nil,
         sleepPerformance: Int? = nil,
         hrvValueMs: Double? = nil,
         hrvMetric: HRVMetric? = nil,
@@ -106,6 +183,11 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
         self.recoveryScore = recoveryScore
         self.restingHeartRate = restingHeartRate
         self.sleepNeedSeconds = sleepNeedSeconds
+        self.asleepSeconds = asleepSeconds
+        self.deepSleepSeconds = deepSleepSeconds
+        self.remSleepSeconds = remSleepSeconds
+        self.sleepOnsetMinutes = sleepOnsetMinutes
+        self.sleepWakeMinutes = sleepWakeMinutes
         self.sleepPerformance = sleepPerformance
         self.hrvValueMs = hrvValueMs
         self.hrvMetric = hrvMetric
@@ -139,6 +221,18 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
     /// day carrying a performance necessarily carries a need. Kept for the reason the VO₂ estimate's
     /// is — the STRAIN & RECOVERY chart draws strain and recovery, and a sleep performance is drawn by
     /// neither, so it must not be able to justify either the tile's frame or its measured count.
+    ///
+    /// `deepSleepSeconds` and `remSleepSeconds` are excluded on that same intent and by the same
+    /// redundant argument, being read off that same night as well — and the reason is worth stating
+    /// rather than leaving to the pattern, because these two are the only fields here that are
+    /// *drawn* by a chart on another screen. That chart is `RESTORATIVE SLEEP (HOURS)` on the sleep
+    /// detail page, and this test belongs to the STRAIN & RECOVERY chart, which draws neither stage.
+    ///
+    /// `sleepOnsetMinutes` and `sleepWakeMinutes` join that list on the same intent and by the same
+    /// redundant argument — they are read off that same `sleeps` row as the need, so a slot carrying
+    /// them necessarily carries a need. They are the third pair here drawn by a chart on another
+    /// screen, `TIME IN BED`, and the argument is the deep/REM one restated: this test is the draw
+    /// test for a chart of strain and recovery, and two clock times are drawn by neither.
     public var hasAnyMeasurement: Bool {
         strain != nil || recoveryScore != nil || restingHeartRate != nil || sleepNeedSeconds != nil
     }
@@ -261,7 +355,8 @@ public struct MetricWeek: Equatable, Sendable {
                     strain: strainByDay[day],
                     recovery: recoveryByDay[day],
                     sleep: sleepByDay[day],
-                    maxHeartRate: maxHeartRate))
+                    maxHeartRate: maxHeartRate,
+                    calendar: calendar))
             day = calendar.date(byAdding: .day, value: -1, to: day) ?? day.addingTimeInterval(-86_400)
         }
         self.days = Array(slots.reversed())
@@ -329,7 +424,8 @@ public struct MetricWeek: Equatable, Sendable {
         strain: StrainScore?,
         recovery: RecoveryMetric?,
         sleep: SleepSession?,
-        maxHeartRate: Int?
+        maxHeartRate: Int?,
+        calendar: Calendar
     ) -> MetricDay {
         // Two of the six fields come off the one recovery row, so the flag is read once here rather
         // than twice below: an HRV and a resting heart rate are absent together when the row is a
@@ -363,6 +459,28 @@ public struct MetricWeek: Equatable, Sendable {
             // Sleep has no placeholder: an unclassifiable night has no row, so the row's presence is
             // the measurement. The `> 0` guard covers the narrower case of a row with no need stored.
             sleepNeedSeconds: sleep.flatMap { $0.targetSleepNeedSeconds > 0 ? $0.targetSleepNeedSeconds : nil },
+            // Passed straight through, like the respiratory rate and the performance below it: the
+            // night's own staged minutes need no gate, and one here could only drop a point the
+            // `HOURS OF SLEEP` card above the chart prints a figure for. See the property's comment.
+            asleepSeconds: sleep?.totalTimeAsleepSeconds,
+            // The split behind the rest of that same night, passed through the same way and for the
+            // same reason: they are two more sums of staged minutes, so a gate could only drop a
+            // band the chart on the sleep detail screen draws under a column it labels with their
+            // total. Their sum is taken by `RestorativeSleepWeek.Point`, not here — see the
+            // properties' comment for why the total is not a third field.
+            deepSleepSeconds: sleep?.deepSleepSeconds,
+            remSleepSeconds: sleep?.remSleepSeconds,
+            // The same night's two boundaries, converted out of the calendar frame and into the
+            // model's own on the way in — so the chart that draws them reads a number in the frame
+            // its axis is already in, and no view has to know the noon pivot. Passed through with no
+            // gate, like the three fields above and below: neither is optional on `SleepSession`, so
+            // the pair is whole or absent and a gate could only drop a column the frame still labels.
+            sleepOnsetMinutes: sleep.map {
+                SleepConsistencyMath.nightClockMinutes($0.startTime, calendar: calendar)
+            },
+            sleepWakeMinutes: sleep.map {
+                SleepConsistencyMath.nightClockMinutes($0.endTime, calendar: calendar)
+            },
             // Passed straight through, like the respiratory rate below and unlike the need above it.
             // The `> 0` guard on the need is about *this slot's* denominator, and applying it here as
             // well would drop a bar the SLEEP PERFORMANCE row above the chart still prints — while

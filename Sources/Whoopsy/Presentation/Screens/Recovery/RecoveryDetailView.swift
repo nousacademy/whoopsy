@@ -540,7 +540,7 @@ public struct RecoveryDetailView: View {
         guard let series = WeekBarSeries(recoveryWeek: week) else {
             return "Recovery for the last seven days, no measurement"
         }
-        return barWeekSentence(series, subject: "Recovery", counted: "days")
+        return series.spokenSentence(subject: "Recovery", counted: "days")
     }
 
     /// The sleep-performance week in one sentence.
@@ -554,30 +554,7 @@ public struct RecoveryDetailView: View {
         guard let series = WeekBarSeries(sleepPerformanceWeek: week) else {
             return "Sleep performance for the last seven days, no measurement"
         }
-        return barWeekSentence(series, subject: "Sleep performance", counted: "nights")
-    }
-
-    /// The half of a bar chart's sentence that both of them say the same way: how many of the seven
-    /// days carry a bar, and the span those bars cover.
-    ///
-    /// The counterpart of `lineWeekSentence`, and deliberately not the same function. A bar series is
-    /// whole percentages in one fixed unit, so the figures are printed as they are stored and the unit
-    /// is spoken; a line series carries its own `valueDecimals` and is rounded to it, so that sentence
-    /// cannot state a week at a resolution the drawing does not. One function serving both would have
-    /// to be told which it was looking at.
-    ///
-    /// The count is stated against the **bars drawn** and never against the week, for the reason the
-    /// line version states it against its points: a day can be unmeasured, and for the recovery bars
-    /// this count is also the only statement about the week's completeness — a column with no bar looks
-    /// the same whether its day was unmeasured or merely unremarkable.
-    private func barWeekSentence(_ series: WeekBarSeries, subject: String, counted: String) -> String {
-        let values = series.points.map(\.value)
-        guard let lowest = values.min(), let highest = values.max() else {
-            return "\(subject) for the last seven days, no measurement"
-        }
-        return "\(subject) for the last seven days, "
-            + "\(values.count) of \(MetricWeek.dayCount) \(counted) measured, "
-            + "from \(lowest) to \(highest) percent"
+        return series.spokenSentence(subject: "Sleep performance", counted: "nights")
     }
 
     /// The HRV week in one sentence, and it names the **quantity** in a way the other two have no

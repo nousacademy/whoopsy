@@ -37,9 +37,9 @@ public struct WeekBarSeries: Equatable, Sendable {
         /// Each bar in the colour of the recovery tier its own value falls in. The colour *is* the
         /// reading here, which is why the gridlines below it are the tier edges.
         case recoveryTier
-        /// Every bar in one colour, for a quantity this app has no bands for. Distinguishing bars by
-        /// colour where nothing distinguishes them would be an invitation to read a band that is not
-        /// there.
+        /// Every bar in one colour. The quantity *is* banded — see `gridEdges` — but the band is not
+        /// what this chart is about, and colouring by it would say the bars are a grade rather than a
+        /// week of hours. The gridlines carry the thresholds instead.
         case sleepPerformance
     }
 
@@ -51,12 +51,23 @@ public struct WeekBarSeries: Equatable, Sendable {
 
     /// The interior horizontal lines, as fractions of the 0–100 scale.
     ///
-    /// **Empty for a quantity with no bands, and that is a decision rather than an omission.** The
-    /// recovery chart grids at 34% and 67% because those are the numbers `RecoveryState.init(score:)`
-    /// bands on, so a reader can see the boundaries the colours come from. This app has no sleep
-    /// performance bands, so round quarters drawn under those bars would be lines at meaningful-
-    /// looking places that mean nothing — the thing the recovery chart's own gridlines are the
-    /// opposite of. A quantity without thresholds gets a chart without lines.
+    /// **Both charts grid, and each grids at the boundaries its own quantity is banded on.** The
+    /// recovery chart rules 34% and 67% because those are the numbers `RecoveryState.init(score:)`
+    /// bands on, so a reader can see the boundaries the bar colours come from. The sleep chart rules
+    /// 70% and 95%, which are `SleepBand.Metric.hoursVsNeeded`'s two boundaries.
+    ///
+    /// **The sleep chart was ruled at nothing until the reference for it was read again, and the
+    /// reason recorded here was wrong.** This comment used to say the app has no sleep-performance
+    /// bands, so round quarters under those bars would be lines at meaningful-looking places that mean
+    /// nothing. The premise is false and the same screen disproves it: `SleepDetailView`'s
+    /// `HOURS VS. NEEDED` row draws this exact percentage through `SleepBand` and colours it Poor,
+    /// Sufficient or Optimal, so the page was drawing one night's 57% as an orange row at the top and
+    /// a flat blue bar at the bottom. Gridding the bars at the boundaries the row is coloured by is
+    /// what stops the two from stating the same figure on two scales.
+    ///
+    /// **Not a colour, though, and that difference is deliberate.** Tiering the bars would say the
+    /// chart's subject is the grade; it is not — it is the week's hours, and the reference draws every
+    /// bar flat. The lines give a reader the thresholds; the bars give them the reading.
     public let gridEdges: [Double]
 
     /// The week's recovery scores, one bar per day that has one.
@@ -103,8 +114,35 @@ public struct WeekBarSeries: Equatable, Sendable {
 
         self.points = points
         self.palette = .sleepPerformance
-        // A quantity with no thresholds gets no lines. See `gridEdges`.
-        self.gridEdges = []
+        self.gridEdges = Self.sleepPerformanceTierEdges
+    }
+
+    /// The week in one sentence: how many of its columns carry a bar, and the span they cover.
+    ///
+    /// **It is on the series rather than on each card, because the rule is the same rule.** Three cards
+    /// now draw these bars — the Recovery page's pair and the sleep page's one — and the count's
+    /// definition is the part that would drift: it is stated against the **bars drawn** and never
+    /// against the week, because a column with no bar looks the same whether its day was unmeasured or
+    /// merely unremarkable, so the seven columns are otherwise the app's only silence about the week's
+    /// completeness. A second copy of that decision is a second chance to state it against the week.
+    ///
+    /// The two things a card still owns are the words, and they are not decoration: `subject` names the
+    /// quantity, and `counted` is the honest unit for it. The two cards on the Recovery page differ in
+    /// exactly one of them — one counts **days** and the other **nights** — and a reader comparing two
+    /// captions on one page should be able to tell which absence each is describing, since a day with no
+    /// score and a night with no session are different things.
+    ///
+    /// The figures are printed as they are stored, with no rounding and no `valueDecimals`, which is the
+    /// one place this parts from `WeekLineSeries`' sentence: a bar is a whole percentage in one fixed
+    /// unit by construction, so there is nothing here for a resolution to be got wrong at.
+    public func spokenSentence(subject: String, counted: String) -> String {
+        let values = points.map(\.value)
+        guard let lowest = values.min(), let highest = values.max() else {
+            return "\(subject) for the last seven days, no measurement"
+        }
+        return "\(subject) for the last seven days, "
+            + "\(values.count) of \(MetricWeek.dayCount) \(counted) measured, "
+            + "from \(lowest) to \(highest) percent"
     }
 
     /// The recovery chart's two interior lines: the red/yellow and yellow/green boundaries.
@@ -114,5 +152,17 @@ public struct WeekBarSeries: Equatable, Sendable {
     static let recoveryTierEdges: [Double] = [
         Double(RecoveryMetric.RecoveryState.yellowRange.lowerBound) / 100,
         Double(RecoveryMetric.RecoveryState.greenRange.lowerBound) / 100,
+    ]
+
+    /// The sleep chart's two interior lines: the Poor/Sufficient and Sufficient/Optimal boundaries.
+    ///
+    /// Read through `SleepBand.Metric.hoursVsNeeded`'s own bounds rather than typed as `0.70` and
+    /// `0.95`, for `recoveryTierEdges`' reason exactly: the same page colours a row by these numbers,
+    /// and a chart gridding at 70/95 while the row banded at 65/90 would be two boundaries for one
+    /// quantity. Note the metric is named explicitly — `SleepBand` carries three different pairs and
+    /// the scale is shared, so a bare `SleepBand.band(for:)` call elsewhere is not enough to say which.
+    static let sleepPerformanceTierEdges: [Double] = [
+        SleepBand.Metric.hoursVsNeeded.sufficientLowerBound / 100,
+        SleepBand.Metric.hoursVsNeeded.optimalLowerBound / 100,
     ]
 }

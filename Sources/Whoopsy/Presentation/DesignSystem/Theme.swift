@@ -146,6 +146,26 @@ public enum Theme {
     public static let sleepPerformance = Color(red: 0.42, green: 0.60, blue: 0.73)
     public static let strainRing = Color(red: 0.00, green: 0.68, blue: 1.00)
 
+    /// The sleep need's own line, its points and its value labels on the week chart that draws it
+    /// against the night's hours asleep.
+    ///
+    /// **A green of its own, and neither of the app's two existing greens will do.** `recoveryGreen`
+    /// is the recovery tier scale and `bandOptimal` is the sleep *band* scale, and both of them mean a
+    /// verdict — a figure that cleared a threshold. Sleep need carries no verdict: it is a requirement,
+    /// and on this chart it is one of two readings of the same unit rather than a grade of either. The
+    /// comment on `bandPoor` below already states the rule this would otherwise break — "two greens
+    /// that mean different things is the drift".
+    ///
+    /// The other lane is `sleepPerformance` and deliberately not a token of its own: that is the
+    /// colour this page's ring, its need card's sleep bar and its performance bars are already drawn
+    /// in, and the line is the same quantity a week at a time.
+    ///
+    /// Picked from the reference rather than sampled off it, like the need card's three tokens: this
+    /// mockup is not a file on disk, so there is nothing here to measure against. What it encodes is
+    /// the reference's *ordering* — the need reads brighter and warmer than the sleep it is measured
+    /// against — which is the part a reader can actually see.
+    public static let sleepNeedLine = Color(red: 0.16, green: 0.84, blue: 0.51)
+
     /// The Recovery detail page's three week line charts — heart-rate variability, resting heart
     /// rate and respiratory rate — for their lines, points and value labels.
     ///
@@ -200,6 +220,13 @@ public enum Theme {
     ///
     /// Picked rather than measured, like the three above it: the reference screenshot arrived as a
     /// pasted image with no pixel to sample.
+    ///
+    /// **The time-in-bed week chart reads this token too**, and on the same argument rather than a
+    /// borrowed one: its bars are also *when* a night happened rather than how much of it there was, so
+    /// the two charts on that page that place a night on a clock are one colour and the ones that
+    /// measure a quantity are the other. **`sleepConsistencyPriorBar` is not shared with it** — that
+    /// grey separates an anchor from the four nights it was *scored against*, and the week chart draws
+    /// no such comparison; its anchor is marked by the frame's own tinted column.
     public static let sleepConsistencyBar = Color(red: 0.50, green: 0.70, blue: 0.86)
     public static let sleepConsistencyPriorBar = Color(white: 0.30)
 

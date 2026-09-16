@@ -46,7 +46,8 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 analyze: container.analyzeSleepUseCase,
                 repository: container.sleepRepository,
                 napRepository: container.napRepository,
-                biometricRepository: container.biometricRepository
+                biometricRepository: container.biometricRepository,
+                analyzeSleepStress: container.analyzeSleepStressUseCase
             ),
             deviceDetailViewModel: DeviceDetailViewModel(
                 manage: container.manageBLEConnectionUseCase,

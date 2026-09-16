@@ -542,6 +542,18 @@ differs from this app's stress framing. **This app's convention — higher HRV, 
 physiologically standard one and is not changed on the strength of a hedged example.** But the
 disagreement is real and is recorded here so it is not rediscovered as a bug.
 
+**The model now runs over two windows, and every row above is unchanged by that.** `AnalyzeStressUseCase`
+scores the waking day; `AnalyzeSleepStressUseCase` scores a night's own in-bed span with the same
+activation, the same bands and the same constants — the same z-score, the same fixed 50/50 blend, the
+same `+1.0` offset, the same motion gate, the same 20-interval floor. So the divergences in the table
+above are the same divergences twice, not a second set. What does differ is the **baseline
+population**: the night model draws its fourteen days from prior *nights'* in-bed spans collapsed to one
+point each, because a night's beats are not a day's. The patent describes a 14-day baseline without
+saying which hours of it, and its own cadence ("every 1 or 5 minutes") is a throughout-the-day figure —
+so this is another instance of the app substituting a measurement it can take for one it cannot, not a
+narrowing of the divergence. Its minimum-history gate ("1–2 full days") is likewise not this app's
+three nights.
+
 **One thing this app may be missing.** `[0203]` describes the stress score being "regularized according
 to probable physical activities" and "brought closer to an average in proportion to a probability that
 the user is active". That is a *shrinkage* of the score toward a mean when the user is probably moving —

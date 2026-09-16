@@ -96,6 +96,51 @@ import SwiftUI
     /// renderer, so a rule left in a `body` is a rule nothing can assert. See `HoursOfSleepChartSeries`.
     public private(set) var hoursOfSleepSeries: HoursOfSleepChartSeries?
 
+    /// The night's within-sleep stress — the trace, the aggregate and the band breakdown — or `nil`.
+    ///
+    /// **`nil` on every night this app can currently show, and for the same reason
+    /// `hoursOfSleepSeries` is.** Nothing has ever written a `biometric_samples` row on this machine,
+    /// and the export carries no R-R series, so `AnalyzeSleepStressUseCase` finds nothing to score and
+    /// the card is absent. That is the card's *ordinary* state rather than a fault — see its own doc
+    /// comment, which lists the three situations `nil` covers.
+    ///
+    /// **It is stored rather than computed**, on the same rule the three windowed properties above
+    /// take: resolving it costs a read per prior night, so a computed one would re-issue fourteen
+    /// repository reads on every body evaluation.
+    public private(set) var sleepStress: SleepStressNight?
+
+    /// The seven days ending on the night shown, for the page's `Weekly Trends` chart — or `nil` before
+    /// the first load, on a failed one, and **whenever the read found nothing to plot**.
+    ///
+    /// **Built from the same read the three windowed cards above are taken over**, and that is the
+    /// whole reason it costs no query of its own: `resolveWindow` already holds
+    /// `RecoveryScoring.baselineWindowLookbackDays` (180) of nights ending on this day, which is more
+    /// than a week and is a superset of it. `MetricWeek` keeps the seven slots it is asked for and
+    /// ignores the rest, so handing it the wide read is what it is for — and a second read of the same
+    /// table over a narrower window would be a second chance for the chart and the cards above it to
+    /// describe different nights, which is the failure `resolveWindow` exists to prevent.
+    ///
+    /// **It is on the view model rather than a local in `load`, because of what it does to that read's
+    /// guard.** The window is guarded on `session`: with no night there is nothing for the three cards
+    /// to describe, so the read used to be skipped on a nightless day. This chart is not about the
+    /// night — it is about the week around it, and a reader who opens an empty today on an imported
+    /// history has six measured nights behind it. So the read is now unconditional and this is the
+    /// second consumer that justifies the change; a week hung off `window` would have inherited that
+    /// guard and drawn nothing on exactly the day the chart is most worth having.
+    ///
+    /// **Only `sleepPerformance` is populated, and the other fields' `nil` means *not asked for*.**
+    /// `MetricWeek` joins three histories and this screen passes one, so `strain` and `recoveryScore`
+    /// are `nil` on every slot — `RecoveryViewModel.week` carries the same narrowing and documents the
+    /// trap in full: on this type `nil` is the word for *nothing was measured*, so a view handed this
+    /// week and asked to plot strain would report every day of it as unmeasured. Nothing here plots
+    /// anything but the bars, and the fix if one ever needs a second series is to pass the second
+    /// history rather than to read through the `nil`.
+    ///
+    /// `nil` from the series rather than from here is what decides the card is absent: a week holding no
+    /// classified night produces `WeekBarSeries(sleepPerformanceWeek:) == nil`, on every night this
+    /// machine can show for a fresh install, and the section's heading goes with it.
+    public private(set) var week: MetricWeek?
+
     /// The night's need split into the parts the stored row can source, or `nil` when it can source
     /// none.
     ///
@@ -128,6 +173,11 @@ import SwiftUI
     private let analyze: AnalyzeSleepUseCase; private let repository: any SleepRepository
     private let napRepository: any NapRepository
 
+    /// The night model, which shares nothing with `analyze` but the samples it reads: this one scores
+    /// the window that use case discards, against a baseline drawn from prior *nights* rather than
+    /// prior days. See `AnalyzeSleepStressUseCase`.
+    private let analyzeSleepStress: AnalyzeSleepStressUseCase
+
     /// A fourth read, and a different table from the other three: the night's own window into
     /// `biometric_samples`, which is where the live `0x2A37` path writes. Held as the protocol rather
     /// than a concrete store for the same reason the other two are — the suite drives this with
@@ -138,12 +188,14 @@ import SwiftUI
         analyze: AnalyzeSleepUseCase,
         repository: any SleepRepository,
         napRepository: any NapRepository,
-        biometricRepository: any BiometricRepository
+        biometricRepository: any BiometricRepository,
+        analyzeSleepStress: AnalyzeSleepStressUseCase
     ) {
         self.analyze = analyze
         self.repository = repository
         self.napRepository = napRepository
         self.biometricRepository = biometricRepository
+        self.analyzeSleepStress = analyzeSleepStress
     }
 
     /// Loads the night the screen is showing by reading it — see
@@ -161,6 +213,12 @@ import SwiftUI
     public func load(for date: Date) async {
         isLoading = true
         defer { isLoading = false }
+        // Cleared before the reads, on `RecoveryViewModel.load`'s rule: the week is a window *ending on*
+        // the day being loaded, so a stale one is not merely old data — it is a chart labelled with the
+        // wrong dates and a highlighted column on the wrong day. The other properties here are single
+        // figures whose worst stale state is a wrong number under a correct heading; this one draws
+        // seven of them.
+        week = nil
         do {
             var stored = try await repository.getSleepSession(for: date)
             if Calendar.current.isDateInToday(date), stored == nil {
@@ -168,15 +226,31 @@ import SwiftUI
             }
             session = stored
             sleepConsistency = try await resolveConsistency(for: stored)
-            // One wide read, two resolutions off it. Both the typical-range card and the consistency
-            // card's window mean are taken over `RecoveryScoring.baselineWindow(before:in:)`, and
-            // reading it twice would be two reads that could come back describing different nights.
-            let window = try await resolveWindow(for: stored, on: date)
+            // One wide read, four consumers. Both the typical-range card and the consistency card's
+            // window mean are taken over `RecoveryScoring.baselineWindow(before:in:)`, the sleep-stress
+            // model takes the same narrowed window as its baseline, and the week chart takes the read
+            // whole — and reading it more than once would be two reads that could come back describing
+            // different nights.
+            //
+            // **Unconditional, where it used to be guarded on the night.** "With no night there is
+            // nothing to describe and the read would be spent for nothing" was true while the three
+            // cards above were its only consumers; the week chart is about the seven days rather than
+            // about the night, so an empty today on an imported history is a day it has six bars to
+            // draw for. See `week`.
+            let history = try await repository.getSleepHistory(
+                days: RecoveryScoring.baselineWindowLookbackDays, endingOn: date)
+            let window = resolveWindow(for: stored, on: date, from: history)
+            week = MetricWeek(endingOn: date, sleep: history)
             stageSummary = resolveStageSummary(from: window)
             consistencySummary = resolveConsistencySummary(from: window)
             typicalEfficiency = resolveTypicalEfficiency(from: window)
             timelineLanes = resolveTimelineLanes(for: stored)
             hoursOfSleepSeries = try await resolveHoursOfSleepSeries(for: stored)
+            // Resolved from `window` and not from a read of its own, so the prior nights its baseline
+            // is drawn from are the same nights the two "typical" cards above were taken over. The
+            // order matters in one direction only: `window` is resolved above, and this is the fourth
+            // thing taken from it.
+            sleepStress = try await resolveSleepStress(for: stored, from: window)
             // Read for the day the screen is showing, not for today. A nap is keyed on the day it was
             // taken, so paging the day stepper has to move this read with it — anchoring on `Date()`
             // would print one day's nap beside another day's night.
@@ -230,13 +304,16 @@ import SwiftUI
     /// allows. Anchored on the night's own day rather than `Date()`, so paging to an imported night
     /// asks for the nights before *that* one, exactly as `resolveConsistency` does.
     ///
-    /// Guarded on the session first: with no night there is nothing to describe and the read would be
-    /// spent for nothing.
-    private func resolveWindow(for session: SleepSession?, on date: Date) async throws -> Window? {
+    /// **It takes the history rather than reading it, and the read moved up into `load`.** It used to
+    /// fetch its own and guard on the session first — "with no night there is nothing to describe and
+    /// the read would be spent for nothing" — and that is no longer the whole truth: the week chart is
+    /// built from the same read and is about the seven days rather than about the night. Two consumers
+    /// and one read means the read cannot be inside a guard that only one of them needs. The guard on
+    /// the session stays, because the *window* is still only meaningful with a night in it.
+    private func resolveWindow(
+        for session: SleepSession?, on date: Date, from history: [SleepSession]
+    ) -> Window? {
         guard let session else { return nil }
-
-        let history = try await repository.getSleepHistory(
-            days: RecoveryScoring.baselineWindowLookbackDays, endingOn: date)
 
         return Window(
             session: session,
@@ -339,5 +416,30 @@ import SwiftUI
 
         return HoursOfSleepChartSeries(
             samples: samples, start: session.startTime, end: session.endTime)
+    }
+
+    /// The night's within-sleep stress, or `nil`.
+    ///
+    /// **It takes `window.priorNights` rather than reading a history**, and that is the whole reason
+    /// it is not a fourth sibling of the two resolvers above. The model builds a personal baseline from
+    /// previous nights' in-bed windows, and a baseline drawn from a different set of nights than the
+    /// bands one card up is a screen printing two "typical" figures that disagree with nothing on it to
+    /// say so — the failure `resolveWindow`'s doc comment exists to prevent. Handing the narrowed
+    /// window in also keeps the `before` rule in one place; this type does not re-derive it.
+    ///
+    /// **`nil` with no night**: with nothing to describe, the read would be spent for nothing, which is
+    /// the same guard the three resolvers above take. A `nil` from the use case itself covers three
+    /// further states — see its doc comment — and this screen treats all four alike, by drawing no
+    /// card.
+    ///
+    /// A read failure is **not** caught here, on `resolveHoursOfSleepSeries`' rule: a repository that
+    /// threw is a fault, not the ordinary absence that `nil` means, and it belongs in `load`'s `catch`.
+    private func resolveSleepStress(
+        for session: SleepSession?,
+        from window: Window?
+    ) async throws -> SleepStressNight? {
+        guard let session, let window else { return nil }
+        return try await analyzeSleepStress.execute(
+            for: session, priorNights: window.priorNights)
     }
 }

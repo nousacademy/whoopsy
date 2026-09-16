@@ -45,15 +45,40 @@ Apple Watch data; revise it once the import has run on a device for a few weeks.
 Both apply only to strap R-R intervals, in `Core/Math/HeartRateVariabilityMath.swift`
 (`filterRRIntervals`, `calculateRMSSD`, `calculateSDNN`, `calculatePNN50`).
 
-**Coverage, and why it is not yet a contiguous series.** The strap's Heart Rate characteristic sends
-several adjacent beats per notification (`BLE_PROTOCOL.md` §4), and `biometric_samples.rrIntervalsMs`
-holds that full per-notification list as of `v8`. It held only the first interval before that, so no
-stored R-R series predates `v8` and the column is empty in every existing database — nothing has been
-backfilled, deliberately, because a one-element series written as if it were the whole notification
-would misrepresent the capture. Two consequences stand: RMSSD computed over intervals that survived
-that thinning differences beats that were **never adjacent**, and the series is only contiguous within
-a notification rather than across the night. Both are open, and both are recorded here rather than
-left to look like properties of the model.
+### RMSSD is computed per contiguous run, and the seam between runs is not a difference
+
+A successive difference is only defined between two beats that were **actually adjacent**, and the
+only adjacency the schema can prove is the one inside a single notification: `biometric_samples.timestamp`
+is an *arrival* instant (`CLAUDE.md` records this), so two notifications' interval lists are joined by
+no known amount of time. `HeartRateVariabilityMath.calculateRMSSD(fromRuns:)` is therefore the entry
+point that takes the runs separately, differences each one on its own, and pools the squared
+differences:
+
+$$\text{RMSSD} = \sqrt{\frac{\sum_{\text{runs}} \sum_{i} (RR_{i+1} - RR_i)^2}{\sum_{\text{runs}} (n_{\text{run}} - 1)}}$$
+
+`calculateRMSSD(from:)` forwards to it as a single run, so a caller holding one contiguous series is
+unchanged. The difference is not academic: two runs of beats alternating ±40 ms about a 500 ms gap
+pool to **58.3 ms** across the seam against **40.0 ms** within the runs, and the inflated figure
+scores as *calmer* than the night was. Measured, that is 1.083 against 2.0 on a window whose own
+score is 2.0.
+
+**One consumer still has the defect**, and it is recorded rather than quietly fixed:
+`AnalyzeStressUseCase` gathers its intervals with `samples.compactMap(\.rrIntervalMs)` — one interval
+per notification — so the daytime Stress Monitor differences beats that were never adjacent. Fixing
+it moves the Stress Monitor's existing numbers, which is a change with its own justification and its
+own evidence; the within-sleep model (§5) is built on `fromRuns` and does not inherit it.
+
+### Coverage, and why it is not yet a contiguous series
+
+The strap's Heart Rate characteristic sends several adjacent beats per notification
+(`BLE_PROTOCOL.md` §4), and `biometric_samples.rrIntervalsMs` holds that full per-notification list as
+of `v8`. It held only the first interval before that, so no stored R-R series predates `v8` and the
+column is empty in every existing database — nothing has been backfilled, deliberately, because a
+one-element series written as if it were the whole notification would misrepresent the capture. The
+series is therefore contiguous **within** a notification and not across a night, which is why the
+per-run entry point above exists; the daytime model's single-interval thinning is the other half of
+the same limitation, and both are open and recorded here rather than left to look like properties of
+the model.
 
 ### The imported export is RMSSD, and that is an inference
 
@@ -953,14 +978,25 @@ this app used to fabricate — `4.2 / 1.8 / 1.6 / 0.4` hours, rows of which are 
 $52.5 / 22.5 / 20 / 5$, which naive rounding prints as $53 + 23 + 20 + 5 = 101$, a column
 contradicting the total printed above it.
 
-**The heart-rate-during-sleep line chart the reference puts above this block is not built, and must not
-be faked.** It is the largest element of that screen's mockup, and it is absent because of *where this
-app's data comes from* rather than because of the mathematics. The export carries no HR series (only a
+**The heart-rate-during-sleep line chart the reference puts above this block is built, and it draws
+no data on every night this app can currently show.** `HoursOfSleepChartSeries` reads
+`biometric_samples` over the night's own in-bed window and `HoursOfSleepChartView` draws it inside the
+`HOURS OF SLEEP` card, gated on nothing but the presence of samples — so the chart appears on exactly
+the nights the app was running with the strap connected. It draws no line because of *where this app's
+data comes from* rather than because of the mathematics: the export carries no HR series (only a
 per-cycle `Average HR (bpm)` / `Max HR (bpm)`, one figure for a whole day), so all 910 imported nights
-have none and no model can give them one — that is a property of the file. The obvious fallback is dead
-for the same class of reason: a hypnogram would at least put a shape on the axis, but an imported night
-has no per-epoch timeline to draw — `WhoopExportImporter` stores `sleepStages: []`, because the export
-reports stage totals and no timeline.
+have none and no model can give them one — that is a property of the file. The chart's `No Data` state
+sits in the chart's slot and speaks for the chart alone, because the card's headline above it is a real
+reading on every imported night and gating that on the trace would hide a measurement behind an
+absence. The obvious substitute is dead for the same class of reason: a hypnogram would at least put a
+shape on the axis, but an imported night has no per-epoch timeline to draw — `WhoopExportImporter`
+stores `sleepStages: []`, because the export reports stage totals and no timeline. `v12` stores one for
+a strap night, so the column exists; the producer still does not.
+
+The card's own types are named for the card and not for the quantity, and the quantity was not renamed
+with them: the series and its axis are `HoursOfSleepChart*` because they are drawn inside the
+`HOURS OF SLEEP` card and nowhere else, while their points stay `Point.bpm` and their labels stay
+`30/50/70/90`. A `bpm` payload under a name that says hours is a name that lies about a quantity.
 
 **A strap, however, does have a producer — two of them — and saying otherwise is the mistake this
 paragraph exists to prevent.** The live `0x2A37` path is implemented end to end (`WhoopBLEManager` →
@@ -1336,6 +1372,69 @@ rounding to the hour would move a measurement to a time nobody took it.
   strongest possible claim of calm, and it is the one thing this model must never say about a day it
   did not measure. Since `executeDay` returns `nil` rather than an empty `StressDay`, "no series" and
   "no score" are the same condition, and the tile's caption carries the absence in words.
+
+### The same model over a night: `AnalyzeSleepStressUseCase`
+
+The sleep detail screen's **SLEEP STRESS** card scores the window this model throws away. The waking
+window above exists to *exclude* sleep — where HRV is high and heart rate low, so a night scores as
+calm and drags the day's average down — and the night card is what reads the excluded hours with the
+same activation, the same three bands and the same scale, so the two are commensurable rather than two
+scales wearing one set of colours. `Domain/UseCases/AnalyzeSleepStressUseCase.swift` is the driver and
+`Domain/Entities/SleepStressNight.swift` the value; the entity is derived on read and stored nowhere,
+on the same reasoning as `StressDay` below.
+
+Four things differ from the daytime model, and each is a decision:
+
+- **The span is the night's own in-bed bounds** (`session.startTime ..< session.endTime`), never
+  `StressMath.wakingWindow`. That helper returns a range *within one calendar day*, and a sleep period
+  crosses midnight, so it cannot express one at all. A span longer than
+  `AnalyzeSleepStressUseCase.maximumNightSpanSeconds` (16 h) is **skipped, not clamped**: one export
+  row's `Sleep onset` is literally `00:00:00`, which stretches a night by up to six hours past the
+  sleep it contains, so the guard is a bound on the *read* (57,600 rows at the strap's ~1 Hz) rather
+  than a view about long sleepers. Clamping would describe the first sixteen hours of something that
+  is not a night and print the result as one.
+- **The baseline is drawn from prior nights, not prior days.** For each of the previous
+  `StressMath.baselineDays` nights, that night's own in-bed span is collapsed to one `(RMSSD, heart
+  rate)` point, and the baseline is the mean of those points. Sleeping and awake-resting baselines are
+  kept apart for this model's own reason: a night's beats are not a day's. It is **one bounded read
+  per night** rather than one wide read over the whole span, both because a wide read pulls in fourteen
+  days of *daytime* samples that are then discarded, and because it makes the night filtering a step
+  that can be got wrong rather than a property of the query. The floor is `StressMath.minimumBaselineDays`
+  (3) and is forwarded rather than restated, so this card and the Recovery screen cannot come to
+  disagree about how much history a baseline needs.
+- **Buckets are anchored on the span's start**, not on the first in-window sample as the day model
+  anchors them. The span here *is* the night, so anchoring on it is what guarantees no bucket runs past
+  `endTime` and scores time the session does not cover. Only whole buckets are scored, which is what
+  makes `windowCount × windowSeconds` a true statement about the night.
+- **The R-R series is read per run.** See §1's per-run RMSSD: the intervals are grouped one run per
+  notification and never concatenated, and a window whose pooled RMSSD is `0` is refused even when its
+  interval count clears `minimumRRIntervals`, because `calculateRMSSD` returns `0.0` when the cleaning
+  leaves fewer than two beats and a zero scores as *maximum* stress.
+
+`SleepStressNight` carries a `bands` array that is **always all three bands, including one the night
+never entered**. That is the one place in this app where a `0` is a reading rather than a reserved
+placeholder — a night with no high-stress window really did spend none of it high, and the card's
+headline is that same figure. The absence rule bites one level up: a night with no scored window has no
+`SleepStressNight` at all, so there is no card to draw three zeroes on. Shares are largest-remainder
+whole percents (`WholePercentMath`), for the reason §4 gives for the typical-range card: a printed
+column that sums to 101 is a column a reader can catch.
+
+**No comparison is drawn under the headline, and that is an absence rather than a missing feature.** A
+typical-night comparison would need each prior night's own high-band share, and a night's share needs
+that night's score, which needs *its* fourteen-night baseline — the recursion does not close. Scoring
+prior nights against tonight's baseline instead would produce a plausible-looking number that means
+nothing. `baselineNightCount` is printed in words at the foot of the card instead, so a reader can see
+how much history the figure rests on.
+
+**This card is unreachable on every night this machine can show**, for the same reason the Stress
+Monitor's tile is a dash: `biometric_samples` holds no rows in any database here and the export
+carries no R-R series at all, so all 910 imported nights have none permanently. It is also unreachable
+for a *new* user with a strap, because a score is a z-score and a z-score needs the three-night floor —
+unlike §4's typical-range card, which still draws shares on a thin window, there is nothing here to
+draw below it. `Tests/WhoopsyTestRunner` §15 drives the use case against synthetic tachograms for
+exactly this reason, which is §4's RSA-block shape and carries its caveat: the assertions are the
+model's plumbing and its rules, and **nothing in them is evidence that a real strap's beats produce a
+meaningful figure.**
 
 ### What this model cannot do
 

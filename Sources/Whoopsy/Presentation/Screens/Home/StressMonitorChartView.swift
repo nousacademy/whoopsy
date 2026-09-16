@@ -102,29 +102,12 @@ public struct StressMonitorChartView: View {
 
     /// WHOOP's three bands as a hard-edged vertical gradient.
     ///
-    /// Hard-edged rather than blended: the band edges are thresholds, and a soft ramp between them
-    /// would draw a gradual transition across a step. The stop locations are the edges divided by the
-    /// scale, so the fill changes colour at exactly the score where `band(forScore:)` changes band.
-    ///
-    /// This is also why the fill is a `Shape` rather than a `Path` built here: `path(in:)` receives the
-    /// frame, so these locations land on the score scale. A `Path` laid out in a `ZStack` would be
-    /// graded over its own bounding box instead, and a calm day and a wired day would put "high" in
-    /// different places on screen.
-    private var bandGradient: LinearGradient {
-        let highEdge = 1 - StressMath.mediumHighBandEdge / StressMath.maximumScore
-        let lowEdge = 1 - StressMath.lowMediumBandEdge / StressMath.maximumScore
-        return LinearGradient(
-            stops: [
-                .init(color: StressMath.Band.high.color, location: 0),
-                .init(color: StressMath.Band.high.color, location: highEdge),
-                .init(color: StressMath.Band.medium.color, location: highEdge),
-                .init(color: StressMath.Band.medium.color, location: lowEdge),
-                .init(color: StressMath.Band.low.color, location: lowEdge),
-                .init(color: StressMath.Band.low.color, location: 1),
-            ],
-            startPoint: .top,
-            endPoint: .bottom)
-    }
+    /// **Moved to `StressMath.Band.gradient`, and read from there.** The sleep detail screen's night
+    /// chart fills under the same three bands, and the argument this comment used to carry — that the
+    /// stops are the edges divided by the scale, so the fill changes colour exactly where
+    /// `band(forScore:)` changes band — is the argument for there being one of these rather than two.
+    /// See that property for the hard edge and for why the fill must be a `Shape` and not a `Path`.
+    private var bandGradient: LinearGradient { StressMath.Band.gradient }
 
     private var hourLabels: some View {
         GeometryReader { proxy in

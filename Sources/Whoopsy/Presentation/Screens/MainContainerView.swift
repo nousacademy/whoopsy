@@ -35,7 +35,8 @@ public struct MainContainerView: View {
                     analyze: container.analyzeSleepUseCase,
                     repository: container.sleepRepository,
                     napRepository: container.napRepository,
-                    biometricRepository: container.biometricRepository),
+                    biometricRepository: container.biometricRepository,
+                    analyzeSleepStress: container.analyzeSleepStressUseCase),
                 // Built here rather than inside the badge's `NavigationLink` destination: that
                 // closure is re-evaluated on each push, so a view model constructed in it would be a
                 // fresh one every time — losing the device subscription each push and starting
@@ -58,7 +59,8 @@ public struct MainContainerView: View {
                     analyze: container.analyzeSleepUseCase,
                     repository: container.sleepRepository,
                     napRepository: container.napRepository,
-                    biometricRepository: container.biometricRepository)
+                    biometricRepository: container.biometricRepository,
+                    analyzeSleepStress: container.analyzeSleepStressUseCase)
             ).tabItem { Label("Sleep", systemImage: "moon.fill") }
             RecoveryDashboardView(
                 viewModel: RecoveryViewModel(

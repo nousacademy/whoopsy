@@ -21,6 +21,7 @@ public final class DIContainer: @unchecked Sendable {
     public let calculateStrainUseCase: CalculateStrainUseCase
     public let analyzeSleepUseCase: AnalyzeSleepUseCase
     public let analyzeStressUseCase: AnalyzeStressUseCase
+    public let analyzeSleepStressUseCase: AnalyzeSleepStressUseCase
     public let manageBLEConnectionUseCase: ManageBLEConnectionUseCase
     public let syncHistoricalDataUseCase: SyncHistoricalDataUseCase
     public let exportLocalDataUseCase: ExportLocalDataUseCase
@@ -85,6 +86,15 @@ public final class DIContainer: @unchecked Sendable {
         // Derived on read, like the other no-schema metrics: nothing here writes, so pointing it at
         // any day is safe — which is what distinguishes it from the calculate use cases.
         self.analyzeStressUseCase = AnalyzeStressUseCase(
+            biometricRepository: biometricRepository
+        )
+
+        // The same no-schema bargain one line up, pointed at the window that model throws away. It
+        // reads `biometric_samples` and writes nothing, so like `analyzeStressUseCase` it is safe on
+        // any night — including every imported one, where it returns `nil` because the export carries
+        // no R-R series at all. `SleepRepository` is deliberately absent: the page's night set is
+        // handed in, so this use case cannot select a different history from the cards above it.
+        self.analyzeSleepStressUseCase = AnalyzeSleepStressUseCase(
             biometricRepository: biometricRepository
         )
 

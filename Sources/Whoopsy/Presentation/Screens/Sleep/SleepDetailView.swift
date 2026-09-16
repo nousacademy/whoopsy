@@ -41,8 +41,18 @@ import SwiftUI
 /// of this page**, which is the only consumer `sleeps.sleep_debt` has ever had and the reason that
 /// card's breakdown box exists at all.
 ///
-/// **The page ends with three more elements: the heart-rate chart, the typical-range card and the need
-/// card.** The chart draws the night's own `biometric_samples` across its in-bed window, or `No Data` —
+/// **The third of those rows has since come back as a card, and what changed is the producer rather
+/// than the appetite for the row.** `HIGH SLEEP STRESS` was a *banded percentage row* reading a column
+/// nothing wrote, which is why it printed nothing and was removed; `SLEEP STRESS` at the foot of this
+/// page is a card built on `AnalyzeSleepStressUseCase`, which derives the night's activation from the
+/// R-R series in `biometric_samples` and stores nothing at all. Those are the same two facts the
+/// removed row and its caption stated — there is no column, and nothing has written a sample for it —
+/// so the card is drawn only on a night that has a series and is **absent** everywhere else, which on
+/// this machine is every night. It is not a replacement for the row: the row could not be drawn at all
+/// without a value, and the card needs windows and a baseline before it has one either.
+///
+/// **The page ends with four more elements: the heart-rate chart, the typical-range card, the need
+/// card and the sleep-stress card.** The chart draws the night's own `biometric_samples` across its in-bed window, or `No Data` —
 /// and on this machine it is `No Data` on every night, because nothing has ever written one of those
 /// rows. That is the honest output rather than a failure; see `noSleepingData` for why the absence is
 /// worded the way it is. **The chart is not the card's subject** — it is drawn inside
@@ -58,6 +68,14 @@ import SwiftUI
 /// without markers when the window held fewer than `RecoveryScoring.minimumBaselineDays` nights. The
 /// need card is `needCard`, documented there; it is the reference's `HOURS VS. NEEDED` card and it
 /// prints a figure this page has already printed twice.
+///
+/// **A `Weekly Trends` section was added below all of that, and it is the one element on this page
+/// that is not about the night.** It plots the seven days ending on the night shown as sleep
+/// performance, and it is `RecoveryDetailView`'s own section drawn again — see `weeklyTrendsSection`
+/// for why the two screens share a drawing rather than each having one. The figure it plots is the one
+/// the ring at the top prints, a week at a time, which is also why it can be drawn on a day with no
+/// night at all: `SleepViewModel.week` is built from the read the three windowed cards above are taken
+/// over, and that read is no longer skipped when the day holds no session.
 ///
 /// **Two elements of the reference are omitted, for the reasons `RecoveryDetailView` gives.** The
 /// WHOOP wordmark is another company's brand in the one position that says whose app this is, and the
@@ -110,6 +128,16 @@ public struct SleepDetailView: View {
                 consistencyCard
 
                 efficiencyCard
+
+                sleepStressCard
+
+                weeklyTrendsSection
+
+                hoursVsNeededWeekCard
+
+                restorativeSleepWeekCard
+
+                timeInBedWeekCard
             }
             .padding()
         }
@@ -422,6 +450,199 @@ public struct SleepDetailView: View {
                 typicalEfficiencyPercent: viewModel.typicalEfficiency,
                 disturbanceCount: session.disturbanceCount,
                 timelineLanes: viewModel.timelineLanes)
+        }
+    }
+
+    // MARK: - The night's activation
+
+    /// The night's within-sleep stress, or nothing — **the page's last card**.
+    ///
+    /// **It closes the page rather than opening it, and that is a decision rather than an accident of
+    /// where it was appended.** The reference puts this card above the ring; every figure on it is a
+    /// *second* reading of a night whose hours, stages and efficiency are already stated above, and a
+    /// page that led with the share of it spent highly activated would be leading with its smallest
+    /// number. It goes after `efficiencyCard`, where a reader who has finished the night's headline
+    /// figures arrives at the one that says how the night was actually spent.
+    ///
+    /// **The gate is `sleepStress` and not `hasNight`, on `typicalRangeCard`'s rule**: a card with no
+    /// scored window has no headline, no trace and no shares, and three `0%` rows over an unnamed
+    /// total would be a drawn picture of a night that was never measured — the strongest possible claim
+    /// of calm. So no series, no card. That is also why there is no `No Data` panel here, which is the
+    /// opposite of the treatment `hoursOfSleepCard` gives its own chart: that card's headline is a real
+    /// reading and only its trace is missing, while this card has nothing at all without one.
+    ///
+    /// **It is `nil` on every night this app can currently show** — `biometric_samples` holds no rows
+    /// on this machine and the export carries no R-R series — so a screenshot of this page after the
+    /// card was added looks unchanged. That is the honest output and not a wiring failure; §15 of the
+    /// runner is what demonstrates the card by driving the use case against a synthetic fixture.
+    @ViewBuilder
+    private var sleepStressCard: some View {
+        if let night = viewModel.sleepStress {
+            SleepStressCard(night: night)
+        }
+    }
+
+    // MARK: - The week
+
+    /// The seven days ending on this night, as sleep performance — the page's `Weekly Trends` section,
+    /// and its last element.
+    ///
+    /// **It is the Recovery detail page's section, drawn again**, and that is deliberate rather than a
+    /// copy that drifted: the same `WeekBarChartView` around the same `WeekBarSeries`, the same
+    /// `SectionLabel` in the card's caption position, the same 17pt section heading. The two screens
+    /// already share the quantity — `SleepSession.sleepPerformancePercentage` is what this page's ring
+    /// prints and what the last chart on that page plots — so a second drawing of it here would be two
+    /// pictures of one figure.
+    ///
+    /// **The gate is the series, not the night.** `WeekBarSeries(sleepPerformanceWeek:)` is `nil` for a
+    /// week holding no classified night, and the heading is inside that condition rather than above it,
+    /// because a title with no section under it is the same empty-grid fabrication the charts refuse to
+    /// draw one level down. That is also why this section does **not** take `hasNight`: a day with no
+    /// night of its own can still have six measured nights behind it — a fresh install opens on exactly
+    /// that day — and the chart is about the week rather than about the night. See
+    /// `SleepViewModel.week`, which is where the read that makes that possible moved.
+    ///
+    /// **Its position is the user's instruction and is otherwise free.** Nothing above it is notched
+    /// toward it, unlike `breakdownCard`'s caret; it goes last because a week is context for the night
+    /// rather than a reading of it, and every card above states something about the night itself.
+    ///
+    /// **The reference's chevron is not drawn**, on `RecoveryDetailView.weekHeader`'s judgement: there
+    /// is no destination to give it, and a control that looks tappable and is not reads as broken —
+    /// the same reasoning that omits the `i` beside the reference's ring on this page.
+    @ViewBuilder
+    private var weeklyTrendsSection: some View {
+        if let week = viewModel.week, let series = WeekBarSeries(sleepPerformanceWeek: week) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Weekly Trends")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionLabel("Sleep Performance")
+                    WeekBarChartView(week: week, series: series)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassCard()
+                // The bars are `Shape`s and a `Path` has nothing to say to VoiceOver, so the card
+                // carries the week in words instead — the sentence is `WeekBarSeries`', shared with the
+                // Recovery page's two bar cards so the three cannot come to state a week differently.
+                // *Nights* and not *days*: the two absences this page's seven columns can mean are a
+                // night the classifier could not read and a day with no row at all, and this chart can
+                // only ever be describing the first.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(
+                    Text(series.spokenSentence(subject: "Sleep performance", counted: "nights")))
+            }
+        }
+    }
+
+    // MARK: - The week's two durations
+
+    /// The seven nights ending on this day, as the two durations the page has spent its whole length
+    /// comparing — the reference's `HOURS VS. NEEDED (HOURS)` card.
+    ///
+    /// **It is the last element on the page, on the user's instruction**, which puts it after the
+    /// performance bars rather than before them. That is not the reference's order — the reference
+    /// draws this card above its percentage one — and it is worth knowing why the order here is the
+    /// weaker of the two: the page now ends on a chart of the week, and the card that answers "how
+    /// did last night compare to what it needed" is the one three cards up. The position is free
+    /// otherwise; nothing above is notched toward it.
+    ///
+    /// **The gate is the series and not the night**, on `weeklyTrendsSection`'s rule directly above:
+    /// a day with no night of its own can still have six measured nights behind it, and a fresh
+    /// install opens on exactly that day. It is the same gate `Weekly Trends` takes, from the same
+    /// `SleepViewModel.week`, so the two sections appear and disappear together rather than one of
+    /// them drawing over a week the other found empty. They are not quite the same condition — this
+    /// card additionally needs both lanes, and the bars need only a classified night — but on every
+    /// week this app can build they agree, because a night with a need has a duration slept beside it.
+    ///
+    /// **It is the one card on this page whose subject is not the night and not a threshold.** The
+    /// breakdown rows at the top band their figures through `SleepBand`; this card has no bands and
+    /// shows none, because it is not grading the week, it is drawing the two numbers the grade came
+    /// from. The reference's chevron is not drawn, on the same judgement `weeklyTrendsSection` records.
+    @ViewBuilder
+    private var hoursVsNeededWeekCard: some View {
+        if let week = viewModel.week, let series = HoursVsNeededWeek(week: week) {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel("Hours vs. Needed (Hours)")
+                HoursVsNeededChartView(week: week, series: series)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+            // The lines are `Shape`s and a `Path` has nothing to say to VoiceOver, so the card carries
+            // the week in words. The sentence is `HoursVsNeededWeek`'s, so the count it states is the
+            // count of nights the drawing actually shows both lines for.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(series.spokenSentence))
+        }
+    }
+
+    // MARK: - The week's restorative sleep
+
+    /// The seven nights ending on this day, stacked into the two stages that make restorative sleep —
+    /// the reference's `RESTORATIVE SLEEP (HOURS)` card.
+    ///
+    /// **It is last on the page, directly under the hours-vs-needed card**, which is the reference's
+    /// own adjacency: the two cards are the same week drawn twice, once as what was slept against what
+    /// was needed and once as what that sleep was made of. The title names the sum in hours, matching
+    /// `HOURS VS. NEEDED (HOURS)` above it.
+    ///
+    /// **The title is not the typical-range card's `RESTORATIVE SLEEP` row, and the two are different
+    /// quantities about different windows.** That row is one night's deep-plus-REM printed as a
+    /// duration beside the window's mean of it — three cards up, inside a card about tonight. This is
+    /// seven nights with the split drawn and no comparison at all, which is why the title carries the
+    /// unit and the parenthesised window marker the reference gives it.
+    ///
+    /// **The gate is the series**, on this page's rule for the two cards above: a day with no night of
+    /// its own can still have six measured nights behind it, and a fresh install opens on exactly that
+    /// day. It reads the same `SleepViewModel.week` the weekly trends and the hours-vs-needed card read,
+    /// so the three appear and disappear together rather than one drawing over a week another found
+    /// empty. This one is the narrowest of the three — it additionally needs the two stage columns —
+    /// which is what `MetricDay`'s paired fields make structural.
+    @ViewBuilder
+    private var restorativeSleepWeekCard: some View {
+        if let week = viewModel.week, let series = RestorativeSleepWeek(week: week) {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel("Restorative Sleep (Hours)")
+                RestorativeSleepChartView(week: week, series: series)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+            // The bars are `Shape`s and a `Path` has nothing to say to VoiceOver, so the card carries
+            // the week in words. The sentence is `RestorativeSleepWeek`'s, and it states the totals
+            // rather than the split — see that type's comment for why the split is left to the legend.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(series.spokenSentence))
+        }
+    }
+
+    /// The week's seven nights as spans on a clock — the reference's `TIME IN BED` card.
+    ///
+    /// **Its two gates are two different questions, and only the outer one is about the week.**
+    /// `viewModel.week` is nil when the page has no week at all, which is the state its two siblings
+    /// above are in; `TimeInBedWeek(week:)` is nil when the week exists but carries no night this
+    /// chart can draw — a week of days with no classified night, which is every fresh install's week
+    /// and is not the same thing as a failed read. Both draw nothing rather than an empty frame.
+    ///
+    /// **It reads the same `viewModel.week` the three cards above it read**, so the four appear and
+    /// disappear together rather than one drawing over a week another found empty.
+    @ViewBuilder
+    private var timeInBedWeekCard: some View {
+        if let week = viewModel.week, let series = TimeInBedWeek(week: week) {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel("Time in Bed")
+                TimeInBedChartView(week: week, series: series)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+            // The seven spans are `Shape`s and the two figures on each are a `Text` inside an
+            // `.accessibilityHidden` view, so the card carries the week in words instead. The sentence
+            // is `TimeInBedWeek`'s; it names the anchor's two times, because a week's earliest bedtime
+            // and latest waketime would read as one long night.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(series.spokenSentence))
         }
     }
 

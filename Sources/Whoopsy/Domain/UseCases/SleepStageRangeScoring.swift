@@ -240,42 +240,18 @@ public enum SleepStageRangeScoring {
     /// Whole percents for a set of durations, **summing to exactly 100**, or `nil` when there is no
     /// total to divide by.
     ///
-    /// **The rule is largest remainder** — each share takes its floor, and the seats left over go to
-    /// the largest fractional parts — and it exists because the card prints the four percentages
-    /// *and* the total they are shares of, so a column that summed to 99 or 101 would contradict
-    /// itself on screen. That is not a corner: the export stores whole minutes, so the exact shares
-    /// land on fractions more often than not. The eight-hour night this app used to fabricate —
-    /// `4.2 / 1.8 / 1.6 / 0.4` hours, rows of which are still in `sleeps` — is `52.5 / 22.5 / 20 / 5`,
-    /// which naive rounding prints as `53 + 23 + 20 + 5 = 101`.
+    /// **A forwarder, and it is kept as one rather than deleted.** The rule moved to
+    /// `WholePercentMath` when the sleep screen's stress card needed the same arithmetic for its three
+    /// bands — one definition with two callers instead of the same rounding written twice — but this
+    /// name is the one the suite asserts and the one `SleepTypicalRangeCard`'s doc comment cites, so
+    /// it stays as the way *this* card reaches the rule. See `WholePercentMath.wholePercents(ofSeconds:)`
+    /// for the argument, the largest-remainder rule, and the `4.2 / 1.8 / 1.6 / 0.4` night that
+    /// naive rounding prints as `101`.
     ///
-    /// Ties break by position, so the result is reproducible rather than dependent on how a
-    /// dictionary or a sort happened to order equal remainders. The two properties a caller may rely
-    /// on, and both are asserted: every percent is within one of its exact share, and the four sum to
-    /// exactly 100 whenever the total is positive.
-    ///
-    /// Public because it is the rule the card's column is drawn from and this repo's suite has no
-    /// renderer — a rule written into a `View` is a rule nothing here can assert, which is why
-    /// `DayBarRules` is a type of its own for the same reason.
+    /// Public for the reason it always was: it is the rule the card's column is drawn from and this
+    /// repo's suite has no renderer — a rule written into a `View` is a rule nothing here can assert.
     public static func wholePercents(ofSeconds seconds: [TimeInterval]) -> [Int]? {
-        guard !seconds.isEmpty, seconds.allSatisfy({ $0.isFinite && $0 >= 0 }) else { return nil }
-        let total = seconds.reduce(0, +)
-        guard total > 0 else { return nil }
-
-        let exact = seconds.map { $0 / total * 100 }
-        var whole = exact.map { Int($0.rounded(.down)) }
-
-        // Every share lost at most one to its floor, so what is missing is at most one per row.
-        let unallocated = 100 - whole.reduce(0, +)
-        guard unallocated > 0 else { return whole }
-
-        let byRemainder = exact.indices.sorted { left, right in
-            let leftRemainder = exact[left] - Double(whole[left])
-            let rightRemainder = exact[right] - Double(whole[right])
-            if leftRemainder != rightRemainder { return leftRemainder > rightRemainder }
-            return left < right
-        }
-        for index in byRemainder.prefix(unallocated) { whole[index] += 1 }
-        return whole
+        WholePercentMath.wholePercents(ofSeconds: seconds)
     }
 
     /// The band for each stage, or an empty map when the window is too thin to be a baseline.
