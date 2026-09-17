@@ -49,7 +49,7 @@ strap.** Being specific about that is more useful than a feature list:
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-an 853-assertion test runner that pins the behaviour of all of them.
+an 870-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -155,7 +155,7 @@ works around. Add `CODE_SIGNING_ALLOWED=NO` to check compilation without a signi
 
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 15 sections, 853 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 15 sections, 870 assertions, and no
 test discovery:
 
 ```bash
@@ -168,7 +168,7 @@ deleted sources and the link fails) and hands the runner an absolute `#filePath`
 longer cares which directory you run it from. It ends with one machine-readable line:
 
 ```
-SUITE sections=1,...,15 assertions=853 failed=0 exit=0
+SUITE sections=1,...,15 assertions=870 failed=0 exit=0
 ```
 
 Read that line rather than the scrollback — the suite has no test discovery, so a section that

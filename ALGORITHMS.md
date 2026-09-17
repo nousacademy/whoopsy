@@ -439,10 +439,22 @@ A tier is computed from the **score**, so it is defined only for a measured day:
 This is the model for **strap-only** nights. It reads the accelerometer and heart-rate channels, so
 it is only as real as the R-R and accelerometer round-trip is — see the note below.
 
-1. **Awake**: High accelerometer variance (> 0.25g RMS) and HR above baseline.
-2. **Light Sleep**: Low movement, HR within $\pm 5\%$ of resting baseline.
-3. **Deep / SWS Sleep**: Zero movement, HR lowest of night (> 10% below daytime baseline), minimal autonomic volatility.
-4. **REM Sleep**: Minimal physical movement with bursty R-R interval fluctuations and moderate HR elevation.
+Each epoch is a stride of **30 samples** — nominally 30 seconds, but the stride is a count of samples
+and the span it covers is whatever those samples cover — classified by its mean heart rate against the
+profile's resting rate and its mean accelerometer magnitude against the line between a still strap and
+a moving one. `accelerationMagnitude` is $\lvert a \rvert$ in Gs, so **gravity is inside it**: a
+motionless strap reads $\approx 1.0$, not $0$, which is why the movement thresholds sit just above 1
+rather than near zero.
+
+1. **Awake**: mean acceleration $> 1.25$ G **or** mean heart rate $> 1.25 \times$ resting.
+2. **Deep / SWS**: mean heart rate $< 0.92 \times$ resting **and** mean acceleration $< 1.05$ G.
+3. **REM**: mean heart rate $> 1.05 \times$ resting **and** mean acceleration $< 1.05$ G.
+4. **Light**: everything else.
+
+These are the numbers in `AnalyzeSleepUseCase`, which is the only instantiation of this model, and
+`StressMath.motionCeiling` reuses the $1.25$ G line rather than re-deriving it. The awake test is a
+disjunction of a loose movement threshold and a heart-rate one, which makes it *easy* to be called
+awake and — the half that matters below — **impossible to be called awake while lying still**.
 
 HealthKit publishes stages directly from `sleepAnalysis` (AASM-derived), which is a measurement
 rather than a heuristic and is strictly better where it exists. `HealthSleepStage` already defines
@@ -451,6 +463,57 @@ the mapping — `asleepCore` and `asleepUnspecified` → light, `asleepDeep` →
 other stage. Nothing writes `sleeps` rows from it yet; the importer in §3's data path covers HRV and
 resting heart rate only. Until it does, this actigraphy model is what produces sleep sessions, and
 the two must not both claim the same night.
+
+### Where a night begins and ends
+
+The rules above classify epochs; they do not say which epochs are the night. That is a separate rule,
+`SleepOnsetMath`, and the strap path had none: a session's boundaries were its first and last sample,
+which are the edges of the **read window** (9 PM → 10 AM) — *when the strap might have been worn*,
+not the night. A strap put on at 7 PM reported a night beginning at 7 PM. The `TIME IN BED` card plots
+exactly this pair, and the export path has always supplied a real one from WHOOP's `Sleep onset` →
+`Wake onset`, so the detector is what makes the strap a producer of the same quantity rather than a
+second kind of thing.
+
+**Onset is the start of the first run of consecutive non-`awake` epochs whose own wall-clock span
+reaches ten minutes; wake is the end of the last such run.** A window with no qualifying run holds no
+night: `AnalyzeSleepUseCase` returns `nil` and writes nothing, on the discipline the subsection below
+already establishes. Awake epochs *between* the two ends are kept and counted as wake — that is WASO,
+and it is the correct content of the span — while awake epochs outside them are trimmed. The four
+stage sums and the disturbance count are recomputed over the retained epochs, so the span and the
+totals always describe the same set; §15's `asleep + awake = DURATION` identity is asserted against
+exactly that.
+
+**The run is measured in wall time, from the epochs' own timestamps, and never in a count of epochs.**
+A stride is 30 *samples*, which is 30 seconds only if the samples arrived a second apart — at a minute
+apart one epoch spans 29 minutes. Counting epochs would call twenty minutes of unbroken sleep "one
+epoch, not a night".
+
+The ten minutes is the actigraphy convention rather than a fitted value. The family is
+`SO1`/`SO5`/`SO10` — the first epoch of 1, 5 or 10 consecutive minutes scored sleep — and the
+ten-minute form is the most commonly applied operational definition. Busa et al. 2022, *Sensors*
+22(13):5041, drove all three against polysomnography and found the choice produced **no significant
+difference** in any sleep variable, so the constant is not load-bearing and the standard form ships
+without a fitting exercise. That is the same doctrine that puts `SleepNeedMath` at 6.40 over a
+marginally luckier 7.0. WHOOP's sleep-intention filings (§3.3 of `PATENTS.md`) corroborate the
+*structure* — a waking event ends a sleep period only when the wearer intends to stay awake, as
+distinct from "transitory stirring or other intermittent activity" — while disclosing no threshold, no
+variable and no model, so the shape is borrowed and nothing numeric is. **AASM's definition is
+deliberately not used**: it scores onset as the first epoch of any sleep stage, which is a definition
+for polysomnography, where a technologist scores EEG. Importing it into a threshold on a wrist
+accelerometer and a heart rate would give this rule an authority it has not earned.
+
+What the rule produces is polysomnography's **sleep period time** — first-asleep to last-asleep,
+$\text{SPT} = \text{TST} + \text{WASO}$ — which is what `SleepSession.sleepPeriodSeconds` already
+names.
+
+**What it cannot see is quiet wakefulness, and that is the half that matters.** A still, wakeful
+person satisfies neither half of the awake test above and so classifies as light sleep — and an hour
+of lying awake reading a phone is, to the classifier, one unbroken run of it. So quiet wakefulness
+satisfies `SO1`, `SO5` and `SO10` alike: **no run length fixes this.** The run guard buys robustness
+against a brief misclassification — one epoch of standing still in an otherwise awake evening — and
+buys nothing against the dominant error.
+This is the same low wake specificity (29–52%) the validation literature reports for every wrist-worn
+device, and it is a property of the sensor and the classifier rather than of the threshold.
 
 ### Imported nights are WHOOP's totals, not this classifier's output
 
@@ -518,6 +581,13 @@ ratio — the clamp is part of the answer, and the era decides what the answer i
 Actigraphy needs epochs to average, so a night whose window holds fewer than one full 30-second epoch
 ($30$ samples) is **not classified at all**. `AnalyzeSleepUseCase.execute(for:)` returns `nil` and
 writes nothing.
+
+**There is a second reason a night is absent, and it is not about sample count.** A window holding
+plenty of samples but no sustained run of sleep — a strap worn all evening, or a night of brief
+doze-offs that never reach the ten minutes the subsection above requires — holds no night either, and
+`SleepOnsetMath.sleepPeriod(of:)` returns `nil` for it. The two guards answer different questions and
+both are needed: `minimumEpochSamples` asks whether there is enough to average, the onset rule asks
+whether there is a night here at all. A window can fail either.
 
 There is no placeholder row here, unlike Recovery: `sleeps` has no reserved marker to write, and a
 session invented from literals would be indistinguishable from a measured night in every column.

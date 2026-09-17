@@ -40,17 +40,14 @@ public final class AnalyzeSleepUseCase: Sendable {
 
         guard samples.count >= Self.minimumEpochSamples else { return nil }
 
-        var lightSec: TimeInterval = 0
-        var deepSec: TimeInterval = 0
-        var remSec: TimeInterval = 0
-        var awakeSec: TimeInterval = 0
-        var disturbances = 0
-        var stages: [SleepStageSegment] = []
-
-        // Classify 30-second epochs
+        // Classify 30-second epochs. Stages are assigned here and **nothing is summed**: the sums are
+        // taken below, over the epochs the night actually holds, so a trim cannot leave a duration
+        // behind for an epoch it dropped.
         let epochDuration: TimeInterval = 30.0
         let strideSize = 30
         let restHR = Double(profile.restingHeartRate)
+
+        var epochs: [(start: Date, end: Date, stage: SleepStageType)] = []
 
         for i in stride(from: 0, to: samples.count, by: strideSize) {
             let epochSamples = Array(samples[i..<min(i + strideSize, samples.count)])
@@ -60,29 +57,64 @@ public final class AnalyzeSleepUseCase: Sendable {
             let avgEpochHR = Double(epochSamples.map { $0.heartRate }.reduce(0, +)) / Double(epochSamples.count)
             let avgAccel = Double(epochSamples.map { $0.accelerationMagnitude }.reduce(0, +)) / Double(epochSamples.count)
 
-            let startTime = firstEpochSample.timestamp
-            let endTime = lastEpochSample.timestamp
-
             let stage: SleepStageType
             if avgAccel > 1.25 || avgEpochHR > restHR * 1.25 {
                 stage = .awake
-                awakeSec += epochDuration
-                disturbances += 1
             } else if avgEpochHR < restHR * 0.92 && avgAccel < 1.05 {
                 stage = .deep
-                deepSec += epochDuration
             } else if avgEpochHR > restHR * 1.05 && avgAccel < 1.05 {
                 stage = .rem
-                remSec += epochDuration
             } else {
                 stage = .light
-                lightSec += epochDuration
             }
 
-            stages.append(SleepStageSegment(startTime: startTime, endTime: endTime, stage: stage))
+            epochs.append(
+                (start: firstEpochSample.timestamp, end: lastEpochSample.timestamp, stage: stage))
         }
 
-        guard let firstSample = samples.first, let lastSample = samples.last else { return nil }
+        // ── Where the night begins and ends ──────────────────────────────────────────────────────
+        //
+        // The window read above is 9 PM → 10 AM, which is *when the strap might have been worn* and not
+        // the night. A session's boundaries used to be its first and last sample, so a strap put on at
+        // 7 PM reported a night beginning at 7 PM — and the `TIME IN BED` card plots exactly this pair,
+        // which the export path supplies for real. `SleepOnsetMath` is what makes the strap a producer
+        // of the same quantity rather than a second kind of thing.
+        //
+        // A night whose epochs never hold a sustained run is **absent**: no session is invented and
+        // nothing is written. That is the same discipline as `minimumEpochSamples` above, and a
+        // separate guard because it answers a different question — that one asks whether there is
+        // enough to average, this one whether there is a night here at all.
+        guard let period = SleepOnsetMath.sleepPeriod(of: epochs.map {
+            SleepOnsetMath.Epoch(start: $0.start, end: $0.end, isAsleep: $0.stage != .awake)
+        }) else { return nil }
+
+        // The epochs the detected span contains. Awake epochs **between** the two ends are kept — that
+        // is wake inside the sleep period, not edge time — and only what falls outside the span goes.
+        let night = epochs.filter { $0.start < period.wake && $0.end > period.onset }
+        guard let firstEpoch = night.first, let lastEpoch = night.last else { return nil }
+
+        var lightSec: TimeInterval = 0
+        var deepSec: TimeInterval = 0
+        var remSec: TimeInterval = 0
+        var awakeSec: TimeInterval = 0
+        var disturbances = 0
+        var stages: [SleepStageSegment] = []
+
+        for epoch in night {
+            switch epoch.stage {
+            case .awake:
+                awakeSec += epochDuration
+                // A disturbance is a counted awake epoch, so a dropped one is not a disturbance — it
+                // was never in the night to disturb it.
+                disturbances += 1
+            case .deep: deepSec += epochDuration
+            case .rem: remSec += epochDuration
+            case .light: lightSec += epochDuration
+            }
+
+            stages.append(
+                SleepStageSegment(startTime: epoch.start, endTime: epoch.end, stage: epoch.stage))
+        }
 
         // The cycle that ran into this night. `strains` is keyed on `startOfDay(wakeOnset)`, and the
         // cycle ending on morning D is keyed D — so a night keyed D+1 follows the strain row keyed D.
@@ -145,8 +177,10 @@ public final class AnalyzeSleepUseCase: Sendable {
 
         let session = SleepSession(
             date: morningDate,
-            startTime: firstSample.timestamp,
-            endTime: lastSample.timestamp,
+            // The detected span, not the window's edges. These are the retaining epochs' own
+            // boundaries, which by construction are `period.onset` and `period.wake`.
+            startTime: firstEpoch.start,
+            endTime: lastEpoch.end,
             targetSleepNeedSeconds: targetSleepNeedSeconds,
             lightSleepSeconds: lightSec,
             deepSleepSeconds: deepSec,

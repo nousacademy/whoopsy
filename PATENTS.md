@@ -51,7 +51,7 @@ it — and the disclosed **anchors are physiological measurements this app canno
 | :--- | :--- | :--- | :--- |
 | **Strain** | Full: HRR → piecewise weight → integrate → normalise → arctan → ×21 | The user's **anaerobic threshold** and **creatine-phosphate threshold** | a fixed 50/60/70/80/90 %HRR grid |
 | **Recovery HRV** | HRV over a short window inside the **last slow-wave-sleep episode before waking** | sleep staging | a whole-night RMSSD |
-| **Sleep staging** | nothing — deferred to a trained classifier | the classifier | actigraphy + heart-rate dip |
+| **Sleep staging** | nothing — deferred to a trained classifier | the classifier | actigraphy + heart-rate dip, and a sustained-run rule for where the night starts and ends |
 | **Sleep need** | `Baseline + f1(strain) + f2(debt) − Naps` | the baseline and the debt term | a fitted linear coefficient |
 | **Stress** | `α·f(motion)·[w·HR + (1−w)·HRV]` or an HRRR quantile | a trained distribution and a motion-conditioned context | z-scores against a flat baseline |
 | **VO₂ max** | a plurality of regression / GPS models selected by what data is available, with a precedence order | a GPS-tracked run, a clinical measurement, or a trained regression over sleep PPG | one cited heart-rate ratio (`15.3 × HRmax / HRrest`) |
@@ -435,6 +435,16 @@ stay awake". **No probability cutoff, no confidence value, no numeric rule.** Th
 in the document are unrelated: a 100% LED duty cycle, "1-2 hours" for REM onset, "24 hours" for the
 circadian period, a 75% sleep-performance worked example, and "90%–95%" for sleep achieved during an
 opportunity.
+
+**[app]** The app now detects where a night begins and ends (`SleepOnsetMath`, on the strap path), and
+the rule shares this disclosure's *structure* while citing nothing numeric from it: a run of sleep must
+persist for ten minutes before the night is taken to have started, and the night ends at the last such
+run — which is the same line claim 1 draws between a waking event and "transitory stirring or other
+intermittent activity". The ten minutes is the actigraphy `SO1`/`SO5`/`SO10` convention, not this
+document's, because this document has no threshold to take. So the divergence has **narrowed** from
+*not computing the quantity at all* to *computing it by a citable rule of this app's own*; it has not
+closed, because the disclosed rule is a probabilistic analysis over day-of-week, season, location and
+per-variable weights, and the app has no inputs for any of them.
 
 ### 3.4 The typical range has no patent basis
 
