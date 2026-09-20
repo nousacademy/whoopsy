@@ -23,7 +23,8 @@ regression from a change you meant.
 | Host build | `swift build` | `Build complete!` |
 | Suite | build + run the runner — recipe in `CLAUDE.md` §Tests; the scratch path matters | **the assertion count and all `[n/N]` section headers**. Record the count. |
 | iOS build | `xcodebuild -scheme WhoopsyApp … CODE_SIGNING_ALLOWED=NO` | `** BUILD SUCCEEDED **` |
-| Which screens you have actually seen | screenshot, or "not verified" | be honest; most tabs cannot be screenshotted (see §4) |
+| Data present | `sqlite3 <db> "select count(*) from <table>;"` | the row count the change is about — see §7 |
+| Which screens you have actually seen | screenshot, or "not verified" | be honest; most tabs cannot be screenshotted, and a screenshot is not the standard here (§7) |
 
 **The assertion count must not go down.** A dropped assertion is a deleted guarantee, and it is the
 only signal this suite gives you — it has no test discovery, so a section that stops running looks
@@ -68,9 +69,15 @@ without measuring?** If yes, it renders `—`. Then:
 
 ## 2. A new screen that writes, or that picks a day
 
-**`CalculateRecoveryUseCase` and `CalculateStrainUseCase` write unconditionally and overwrite.** The
-day-keyed tables are primary-keyed on `date`, so pointing either at a past day is an UPDATE that
-zeroes whatever the import put there.
+**Neither calculate use case checks what is already stored.** `CalculateRecoveryUseCase` and
+`CalculateStrainUseCase` recompute from `biometric_samples` and `save` the result, and GRDB's `save`
+is INSERT-or-UPDATE *by primary key* — so pointing either at a day that already holds a row is an
+overwrite, not a no-op.
+
+They do **not** write unconditionally, and saying they do misreads the guard: both return `nil` and
+write **no row** when they produced no measurement, which is why an imported past day is safe — an
+imported day has no samples by construction, so both come back empty. The damage needs a day holding
+**both** stored samples and a stored row, which in practice means a strap day the user paged back to.
 
 - `grep -rn "Calculate.*UseCase" Sources/Whoopsy/Presentation/Screens/<New>/` — any hit must be
   reachable **only** for a day that is today *and* holds no measurement.
@@ -129,19 +136,42 @@ as broken. If you add a chevron, wire it or leave it out.
 
 ## 7. Verify in a way that cannot lie to you
 
-Each of these has produced a false green in this repo:
+**The standard is two things: the suite passes, and the data the change is about is present.** Not a
+simulator walkthrough — this repo has no renderer in its runner, `simctl` cannot tap, and most of what
+a UI change does is behind a tap. So the verification is:
+
+```bash
+make build                                       # host — a green iOS build is not a green host build
+make test                                        # read the summary line, not the scrollback
+make ios                                         # the real iOS path, separately
+sqlite3 ~/Library/Application\ Support/whoopsy.sqlite \
+  "select (select count(*) from recoveries), (select count(*) from sleeps), (select count(*) from strains);"
+```
+
+The last one is the "is the data present" half, and it is the half a passing suite does not tell you:
+**§6 opens the real developer database and writes no rows**, so a green run is silent about whether
+the day your change draws has anything in it at all.
+
+Each of these has produced a false green here:
 
 | Trap | What actually happened | Do this |
 | :--- | :--- | :--- |
-| **The runner's exit code** | An uncaught throw inside its `Task` prints no failure; the process idles out the `RunLoop` and exits **0** | Check the `[n/N]` headers **and** the `✅ ALL WHOOPSY TESTS PASSED` banner, never `$?` |
+| **The runner's exit code** | An uncaught throw inside its `Task` prints no failure; the process idles out the `RunLoop` and exits **0** | Check the `[n/N]` headers **and** the `✅ ALL WHOOPSY TESTS PASSED SUCCESSFULLY!` banner, never `$?` |
 | **The assertion count** | A section that stops running is indistinguishable from one that passed | Compare against the §0 baseline; a drop is a regression |
-| **`swift build` "Build complete!"** | An incremental no-op also says that | If you doubt it, confirm the artifact: `strings <built binary> \| grep "<a new literal>"`. Note the real code is in `WhoopsyApp.debug.dylib`, not `WhoopsyApp` |
-| **The simulator screenshot** | Installing the wrong build directory, or a stale bundle already on the device, shows the **old** app — a screenshot that "proves" a screen the build does not contain | Verify the bundle you installed contains the change, and `simctl uninstall` before installing |
-| **A screenshot as proof of data** | `simctl` cannot tap, so only tap-free screens can be captured, and a fresh install renders **dashes** because nothing has written to it | A screenshot proves layout and the honest-empty state. It does not prove a populated tile, an interaction, or anything behind a tap. Say which you have |
-| **The empty-database read** | `sleeps`/`recoveries`/`strains` at 0 rows ⇒ every screen renders `—` and looks broken | On a fresh simulator, import the export (More → Settings) and page the day stepper back — the export ends **2026-08-22**, so today is always a dash. `sqlite3 <container>/Library/Application\ Support/whoopsy.sqlite "select count(*) from sleeps;"` is the quick truth |
+| **`swift build` "Build complete!"** | An incremental no-op also says that | If you doubt it, confirm the artifact: `strings .build/debug/WhoopsyApp \| grep "<a new literal>"`. That binary is the whole program — a `WhoopsyApp.debug.dylib` beside it is an Xcode/iOS artefact, not what `swift build` writes |
+| **A read that returns 0 rows and no error** | `sleeps`/`recoveries`/`strains` empty ⇒ every screen renders `—`, which looks like the feature is broken rather than unmeasured | Count the rows before you interpret a screenshot. On the simulator the number is real only after an import (More → Settings) — the export ends **2026-08-22**, so today is always a dash |
+
+If you *are* taking screenshots, two more traps apply, and they are about the image rather than the
+code. A stale bundle already on the device shows the **old** app — a screenshot that "proves" a screen
+the build does not contain — so install the bundle you just built. And **never `simctl uninstall` to
+force a cold start: it drops the data container and takes the imported export with it.** The sequence
+that works is `terminate` → confirm it succeeded → `install` → `launch`; `terminate` exits non-zero
+with *"found nothing to terminate"* when the app is not running, and installing over a running app
+replaces the bundle on disk while the live process keeps executing the old one.
 
 Then, to check you did not break a neighbour: `swift build`, the full suite, the iOS build, and the
 `architecture-doc-sync` skill for the docs.
 
-**Say what you did not verify.** "The suite covers the populated path; the screenshot proves only the
-empty one" is worth more than an implied all-clear, because the next session will believe you.
+**Say what you did not verify.** "The suite covers the populated path; the count is from the imported
+export, not from a strap" is worth more than an implied all-clear, because the next session will
+believe you.

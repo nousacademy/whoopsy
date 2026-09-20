@@ -55,14 +55,30 @@ public final class AnalyzeSleepUseCase: Sendable {
                   let lastEpochSample = epochSamples.last else { continue }
 
             let avgEpochHR = Double(epochSamples.map { $0.heartRate }.reduce(0, +)) / Double(epochSamples.count)
-            let avgAccel = Double(epochSamples.map { $0.accelerationMagnitude }.reduce(0, +)) / Double(epochSamples.count)
+
+            // Motion, when the epoch measured any. `accelerationMagnitude` is `nil` on a notification
+            // that carried no accelerometer, which is every sample the live `0x2A37` path produces —
+            // so the two motion tests below are made only over the epochs that can make them.
+            let motions = epochSamples.compactMap(\.accelerationMagnitude)
+            let avgAccel: Double? =
+                motions.isEmpty ? nil : motions.reduce(0, +) / Double(motions.count)
+
+            // **An absent motion reading drops the motion test rather than failing it**, which is the
+            // opposite of what `StressMath.isResting` does with the same absence, and deliberately
+            // so. There the gate exists to assert stillness, so unmeasured cannot pass; here the two
+            // tests sit *beside* a heart-rate band that can decide alone, and the substituted `0.0`
+            // these fields used to carry was already satisfying both of them — a fabricated free-fall
+            // reading classified as still, so every existing night staged on heart rate anyway. This
+            // makes that behaviour explicit instead of accidental, and the heart rate keeps the vote.
+            let motionIsElevated = avgAccel.map { $0 > StressMath.motionCeiling } ?? false
+            let motionIsQuiet = avgAccel.map { $0 < 1.05 } ?? true
 
             let stage: SleepStageType
-            if avgAccel > 1.25 || avgEpochHR > restHR * 1.25 {
+            if motionIsElevated || avgEpochHR > restHR * 1.25 {
                 stage = .awake
-            } else if avgEpochHR < restHR * 0.92 && avgAccel < 1.05 {
+            } else if avgEpochHR < restHR * 0.92 && motionIsQuiet {
                 stage = .deep
-            } else if avgEpochHR > restHR * 1.05 && avgAccel < 1.05 {
+            } else if avgEpochHR > restHR * 1.05 && motionIsQuiet {
                 stage = .rem
             } else {
                 stage = .light

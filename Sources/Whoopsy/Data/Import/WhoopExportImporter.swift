@@ -28,6 +28,7 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
     private let sleepRepository: any SleepRepository
     private let strainRepository: any StrainRepository
     private let napRepository: any NapRepository
+    private let workoutRepository: any WorkoutRepository
     private let userProfileRepository: any UserProfileRepository
     private let calendar: Calendar
 
@@ -36,6 +37,7 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
         sleepRepository: any SleepRepository,
         strainRepository: any StrainRepository,
         napRepository: any NapRepository,
+        workoutRepository: any WorkoutRepository,
         userProfileRepository: any UserProfileRepository,
         calendar: Calendar = .current
     ) {
@@ -43,6 +45,7 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
         self.sleepRepository = sleepRepository
         self.strainRepository = strainRepository
         self.napRepository = napRepository
+        self.workoutRepository = workoutRepository
         self.userProfileRepository = userProfileRepository
         self.calendar = calendar
     }
@@ -65,19 +68,30 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
         Bundle.module.url(forResource: "sleeps", withExtension: "csv")
     }
 
+    /// The bundled `workouts.csv`, whose unique contribution is its `HR Zone 1 %`…`5 %` block.
+    ///
+    /// Same `Bundle.module` rule again, and the same narrow reading: this file is imported for its
+    /// zone block and its workout windows, and nothing in it is a night or a day-level score.
+    public static func bundledWorkoutsURL() -> URL? {
+        Bundle.module.url(forResource: "workouts", withExtension: "csv")
+    }
+
     /// Imports the export that shipped with the app.
     ///
     /// This is where `Bundle.module` is touched, and it is deliberately only reachable from a
     /// user-initiated action — see `bundledExportURL()`.
     ///
-    /// **Two files, one button.** The naps are imported first and folded into the summary, so the
-    /// person who pressed the button gets one report rather than two. The cycle file is the one they
-    /// asked for and the one whose absence is an error; a build without `sleeps.csv` imports no naps
-    /// and reports `0` for them — see `importBundledNaps()`.
+    /// **Three files, one button.** The naps and the workouts are imported first and folded into the
+    /// summary, so the person who pressed the button gets one report rather than three. The cycle file
+    /// is the one they asked for and the one whose absence is an error; a build without `sleeps.csv`
+    /// or `workouts.csv` imports none of those and reports `0` for them — see
+    /// `importBundledNaps()` and `importBundledWorkouts()`.
     public func importBundledExport() async throws -> WhoopImportSummary {
         guard let url = Self.bundledExportURL() else { throw WhoopExportError.notBundled }
         let napsWritten = try await importBundledNaps()
-        return try await importExport(at: url).recordingNapsWritten(napsWritten)
+        let workoutsWritten = try await importBundledWorkouts()
+        return try await importExport(at: url)
+            .recordingSideFiles(naps: napsWritten, workouts: workoutsWritten)
     }
 
     public func importExport(at url: URL) async throws -> WhoopImportSummary {
@@ -117,6 +131,113 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
             written += 1
         }
         return written
+    }
+
+    // MARK: - Workouts
+
+    /// The workouts out of the bundled `workouts.csv`, or `0` when this build does not carry that
+    /// file.
+    ///
+    /// Same rule as the naps and for the same reason: a missing side file is not an error. The cycle
+    /// file is the import; these are a file's worth of extra rows the app was not shipping at all
+    /// until the strain page needed their zone block.
+    @discardableResult
+    func importBundledWorkouts() async throws -> Int {
+        guard let url = Self.bundledWorkoutsURL() else { return 0 }
+        return try await importWorkouts(at: url)
+    }
+
+    /// The workouts in `workouts.csv`.
+    ///
+    /// Unlike `importNaps` this has nothing to filter: every row of that file is a workout, and the
+    /// 45 whose five zone percentages are all zero are low-intensity sessions rather than absences.
+    @discardableResult
+    public func importWorkouts(at url: URL) async throws -> Int {
+        try await importWorkoutRows(WhoopExportParser.parseWorkouts(at: url))
+    }
+
+    /// Rows written, which on this export is 673. Idempotent by construction: the session's id is
+    /// derived from its own two instants, so a second run updates the same 673 rows — see
+    /// `workoutID(startingAt:endingAt:)` for why a `UUID()` here would write 673 more every press.
+    @discardableResult
+    func importWorkoutRows(_ rows: [WhoopExportRow]) async throws -> Int {
+        var written = 0
+        for row in rows {
+            guard let workout = Self.makeWorkout(from: row) else { continue }
+            try await workoutRepository.save(workout)
+            written += 1
+        }
+        return written
+    }
+
+    /// A workout row as a session, or `nil` when the row cannot be one.
+    ///
+    /// **Every measured field is required and none is defaulted**, which is measured rather than
+    /// assumed: all 673 rows of the bundled file carry a start, an end, an `Activity Strain`, a
+    /// `Max HR` and an `Average HR`, so requiring them costs nothing on this file and refuses a
+    /// malformed row instead of writing one. That matters because `WorkoutSession`'s heart-rate fields
+    /// are non-optional `Int`s: an empty cell would have to become either a `0` bpm — a fabricated
+    /// reading, on a session the ACTIVITIES card would then draw as a real one — or a dropped row.
+    /// Dropping it is the honest answer, and it is why this is an optional.
+    ///
+    /// **The name is the one field that is not required**, and the reason it is not is that a name is
+    /// not a measurement: `row.activityName` reaching `WorkoutSession` as `nil` is a row that says
+    /// nothing about what the session was, which the screen renders as WHOOP's own word for an
+    /// uncategorised activity. A row refused over a missing name would delete a real workout from the
+    /// day over a string.
+    ///
+    /// The zone block is **not** required either: `hrZonePercents` is optional on the session because
+    /// `nil` and `[0, 0, 0, 0, 0]` are different answers there — an absent block draws a dash and a
+    /// measured `0:00` draws a `0:00`.
+    static func makeWorkout(from row: WhoopExportRow) -> WorkoutSession? {
+        guard let start = row.workoutStart, let end = row.workoutEnd, end > start,
+            let strain = row.workoutStrain,
+            let averageHeartRate = row.averageHeartRate,
+            let maxHeartRate = row.maxHeartRate,
+            let id = workoutID(startingAt: start, endingAt: end)
+        else { return nil }
+
+        return WorkoutSession(
+            id: id,
+            startedAt: start,
+            endedAt: end,
+            strain: strain,
+            averageHeartRate: averageHeartRate,
+            maxHeartRate: maxHeartRate,
+            route: [],
+            splits: [],
+            source: Self.sourceLabel,
+            activityName: row.activityName,
+            hrZonePercents: row.hrZonePercents)
+    }
+
+    /// A workout's stable identity: its two instants, to the second, packed into a `UUID`.
+    ///
+    /// **It cannot be the ISO string `napID` uses**, because `GRDBWorkoutRepository.makeSessions`
+    /// skips any row whose `id` is not a UUID — a string id is silently discarded, so the import
+    /// would write 673 rows and read every one of them back as nothing. And it cannot be a fresh
+    /// `UUID()`, because GRDB's `save` is INSERT-or-UPDATE *by primary key* and a new id per run
+    /// writes 673 more rows every time the button is pressed.
+    ///
+    /// The two unix seconds go in as two big-endian 64-bit halves. Start alone would be enough — all
+    /// 673 `Workout start time` values in the bundled file are distinct — but the end is carried too
+    /// so that an edited or re-exported record gets its own row rather than overwriting a different
+    /// session's. Measured over the file, no two rows share a start *or* a start-and-end pair, so
+    /// this cannot merge two workouts on this export.
+    ///
+    /// It is deterministic rather than merely unique, which is the property that makes the import
+    /// idempotent: the same row of the same file yields the same id on every run, on every device.
+    static func workoutID(startingAt start: Date, endingAt end: Date) -> UUID? {
+        var bytes = [UInt8](repeating: 0, count: 16)
+        let startSeconds = UInt64(bitPattern: Int64(start.timeIntervalSince1970.rounded()))
+        let endSeconds = UInt64(bitPattern: Int64(end.timeIntervalSince1970.rounded()))
+        for index in 0..<8 {
+            let shift = UInt64(8 * (7 - index))
+            bytes[index] = UInt8((startSeconds >> shift) & 0xFF)
+            bytes[8 + index] = UInt8((endSeconds >> shift) & 0xFF)
+        }
+        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+                           bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
     }
 
     /// The whole import, over rows that are already parsed — the seam the tests drive directly, so

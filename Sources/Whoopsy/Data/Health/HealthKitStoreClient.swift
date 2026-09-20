@@ -52,8 +52,6 @@ public actor HealthKitStoreClient: HealthStoreClient {
             return HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN)
         case .restingHeartRate:
             return HKObjectType.quantityType(forIdentifier: .restingHeartRate)
-        case .stepCount:
-            return HKObjectType.quantityType(forIdentifier: .stepCount)
         }
     }
 
@@ -65,8 +63,6 @@ public actor HealthKitStoreClient: HealthStoreClient {
             return HKUnit.secondUnit(with: .milli)
         case .restingHeartRate:
             return HKUnit.count().unitDivided(by: .minute())
-        case .stepCount:
-            return HKUnit.count()
         }
     }
 
@@ -121,42 +117,6 @@ public actor HealthKitStoreClient: HealthStoreClient {
                             end: sample.endDate)
                     } ?? []
                 continuation.resume(returning: values)
-            }
-            store.execute(query)
-        }
-    }
-
-    /// `HKStatisticsQuery`, not `HKSampleQuery`: a cumulative metric is only meaningful summed, and
-    /// letting HealthKit do the addition avoids pulling a day's several hundred step samples across
-    /// the continuation to add them up here.
-    ///
-    /// `sumQuantity` is nil exactly when the window holds no samples, which maps straight onto the
-    /// protocol's `nil` — so "nothing measured" and "measured zero" stay distinguishable.
-    public func dailyTotal(
-        _ metric: HealthQuantityMetric, from start: Date, to end: Date
-    ) async throws -> Double? {
-        guard isAvailable else {
-            throw HealthStoreUnavailableError(reason: unavailableReason ?? "Health data unavailable.")
-        }
-        guard let type = Self.quantityType(for: metric), let unit = Self.unit(for: metric) else {
-            throw HealthStoreUnavailableError(
-                reason: "This device does not support \(metric.rawValue).")
-        }
-
-        let predicate = HKQuery.predicateForSamples(
-            withStart: start, end: end, options: [.strictStartDate])
-
-        return try await withCheckedThrowingContinuation { continuation in
-            let query = HKStatisticsQuery(
-                quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum
-            ) { _, statistics, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                // `statistics` itself is not Sendable either, so only the Double crosses back.
-                let sum = statistics?.sumQuantity()?.doubleValue(for: unit)
-                continuation.resume(returning: sum)
             }
             store.execute(query)
         }

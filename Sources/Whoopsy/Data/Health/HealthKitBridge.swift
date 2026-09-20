@@ -1,7 +1,7 @@
 import Foundation
 
-/// The app's single HealthKit entry point: the importer writes days into local storage, two
-/// read-throughs answer on demand without storing anything, and the write-side export stub below
+/// The app's single HealthKit entry point: the importer writes days into local storage, one
+/// read-through answers on demand without storing anything, and the write-side export stub below
 /// still has no caller.
 ///
 /// It lives beside the rest of the health types rather than in `Data/Exporters/`. It spent its life
@@ -44,19 +44,6 @@ public final class HealthKitBridge: HealthKitSyncing, Sendable {
 
     public func importRecentHealthData(days: Int) async throws -> HealthImportSummary {
         try await importer.importRecent(days: days)
-    }
-
-    /// Steps are read straight through to the store rather than imported and stored. They are the one
-    /// quantity here that is a daily *sum* over a window instead of a row the app can file under a day
-    /// key, and a store read is exact where a copy would go stale the moment the phone logged more.
-    ///
-    /// Any failure becomes `nil` — see the protocol's note on why this does not throw.
-    public func stepCount(on date: Date) async -> Int? {
-        guard store.isAvailable else { return nil }
-        let total = try? await store.dailyTotal(
-            .stepCount, from: date.startOfDay, to: date.endOfDay)
-        guard let total else { return nil }
-        return Int(total.rounded())
     }
 
     public func exportHeartRateSample(bpm: Int, timestamp: Date) async throws {

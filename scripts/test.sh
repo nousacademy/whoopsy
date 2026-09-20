@@ -11,7 +11,7 @@
 #
 # The runner prints one machine-readable line at the end:
 #
-#   SUITE sections=1,...,15 assertions=816 failed=0 exit=0
+#   SUITE sections=1,...,15 assertions=941 failed=0 exit=0
 #
 # Read that line rather than the `✓` scrollback. This suite has no test discovery, so a section that
 # stopped running looks exactly like one that passed — `sections=` is the field that catches it, and

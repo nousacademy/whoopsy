@@ -35,9 +35,27 @@ public struct BiometricSample: Identifiable, Equatable, Sendable {
     /// field and is not fixed here; see the note in `ALGORITHMS.md` §1.
     public var rrIntervalMs: Double? { rrIntervalsMs?.first }
 
-    public let accelerometerX: Double // in Gs (±4G)
-    public let accelerometerY: Double
-    public let accelerometerZ: Double
+    /// The strap's three accelerometer axes in Gs, or `nil` when the notification carried no motion.
+    ///
+    /// **All three are present together or none is.** The strap sends the triplet as one record, so a
+    /// partial triplet is not a state any producer can be in — which is why
+    /// ``accelerationMagnitude`` returns `nil` unless all three are there rather than summing
+    /// whichever arrived.
+    ///
+    /// The scale is `1/4096` g/LSB over a signed `int16`, and **that pair is a ±8 g full scale**
+    /// (32767 / 4096 = 7.9998 g). The range is worth stating beside the sensitivity because the two
+    /// are inseparable: ±4 g would be 8192 LSB/g, exactly half, and would leave the top bit of every
+    /// sample unused. The gyro's `2000/32768` deg/s/LSB is the same pairing at ±2000 dps.
+    ///
+    /// **`0.0` is not the absent value, and the difference is not cosmetic.** Gravity is inside the
+    /// magnitude, so a motionless worn strap reads ≈1.0 G; `0.0` is free fall, which is unreachable
+    /// on a body. Worse, it lands on the *still* side of every movement threshold in this app — so a
+    /// fabricated zero does not read as "no motion was measured", it reads as "measured, and
+    /// perfectly still". A confidently wrong reading of the strap's stillness is the one answer the
+    /// sleep classifier and the stress model must never be handed.
+    public let accelerometerX: Double?
+    public let accelerometerY: Double?
+    public let accelerometerZ: Double?
     public let skinTemperatureCelsius: Double?
     public let spO2Percentage: Double?
     public let isOnBody: Bool
@@ -56,9 +74,9 @@ public struct BiometricSample: Identifiable, Equatable, Sendable {
         heartRate: Int,
         rrIntervalsMs: [Double]? = nil,
         rrIntervalMs: Double? = nil,
-        accelerometerX: Double = 0.0,
-        accelerometerY: Double = 0.0,
-        accelerometerZ: Double = 0.0,
+        accelerometerX: Double? = nil,
+        accelerometerY: Double? = nil,
+        accelerometerZ: Double? = nil,
         skinTemperatureCelsius: Double? = nil,
         spO2Percentage: Double? = nil,
         isOnBody: Bool = true,
@@ -79,8 +97,19 @@ public struct BiometricSample: Identifiable, Equatable, Sendable {
         self.rawSequenceNumber = rawSequenceNumber
     }
 
-    /// Accelerometer magnitude vector |a| = sqrt(x^2 + y^2 + z^2)
-    public var accelerationMagnitude: Double {
-        sqrt(pow(accelerometerX, 2) + pow(accelerometerY, 2) + pow(accelerometerZ, 2))
+    /// Accelerometer magnitude vector |a| = sqrt(x² + y² + z²) in Gs, or `nil` when the sample
+    /// carries no motion.
+    ///
+    /// At rest this reads ≈1.0 G rather than 0, because gravity is inside it — see the axis fields
+    /// above for why that makes a substituted zero a reading of stillness rather than an absence.
+    ///
+    /// `nil` unless **all three** axes are present. A magnitude summed over a partial triplet would
+    /// be arithmetic on a sensor reading that does not exist, and there is no producer that can
+    /// create one: the strap's motion record carries the three axes together.
+    public var accelerationMagnitude: Double? {
+        guard let x = accelerometerX, let y = accelerometerY, let z = accelerometerZ else {
+            return nil
+        }
+        return sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2))
     }
 }

@@ -6,23 +6,21 @@ import Foundation
 /// importer and its tests can be compiled and exercised on a machine with no HealthKit store, and
 /// so a protocol the Data layer depends on does not leak framework types into its signature.
 ///
-/// Most of these are **scalar readings** — one value per sample, which is what `quantitySamples`
-/// returns. `stepCount` is not: steps accumulate through the day and only their **sum over a
-/// window** means anything, so a per-sample read of it would hand back a few hundred fragments
-/// nobody can use. It is read through `dailyTotal(_:from:to:)` instead.
+/// **Both cases are scalar readings** — one value per sample, which is what `quantitySamples`
+/// returns. `stepCount` used to be the exception and is gone: steps accumulate through the day, so
+/// only their sum over a window means anything, and the strap now produces that sum itself off its
+/// own motion stream (`TrackStepsUseCase`). Deleting the case also shrank `readTypes`, which is the
+/// consent prompt — a scope asked for because something reads it, and nothing here does any more.
 public enum HealthQuantityMetric: String, CaseIterable, Sendable {
     /// The only HRV quantity Apple exposes. There is no RMSSD type in HealthKit.
     case heartRateVariabilitySDNN
     case restingHeartRate
-    /// Cumulative, not a reading — see the type comment. Summed, never sampled.
-    case stepCount
 
     /// The unit this metric is stored in, for documentation and for import conversion.
     public var unitDescription: String {
         switch self {
         case .heartRateVariabilitySDNN: return "ms"
         case .restingHeartRate: return "count/min"
-        case .stepCount: return "count"
         }
     }
 }
@@ -98,18 +96,6 @@ public protocol HealthStoreClient: Sendable {
     func quantitySamples(
         _ metric: HealthQuantityMetric, from start: Date, to end: Date
     ) async throws -> [HealthQuantitySample]
-
-    /// The **sum** of a cumulative metric over a window — how many steps were taken between `start`
-    /// and `end`.
-    ///
-    /// Returns `nil`, not `0`, when the window holds no samples. The two are different claims: a day
-    /// with no step data means HealthKit has nothing for it (or the user declined, which HealthKit
-    /// will not disclose), while a measured zero steps is a real — if sedentary — day. Collapsing them
-    /// would put a confident "0 steps" on a day nobody measured, which is the same failure the rest of
-    /// this codebase renders as a dash.
-    func dailyTotal(
-        _ metric: HealthQuantityMetric, from start: Date, to end: Date
-    ) async throws -> Double?
 
     func sleepSegments(from start: Date, to end: Date) async throws -> [HealthSleepSegment]
 }

@@ -84,19 +84,30 @@ public struct DeviceDetailView: View {
             if viewModel.supportsSync {
                 Label("Protocol implemented", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(Theme.recoveryGreen)
-                Text("Commands are framed with the WHOOP 4.0 envelope recorded in BLE_PROTOCOL.md.")
+                // **The envelope named here is the selected model's own**, because there are now two
+                // of them and the sentence used to name the 4.0 unconditionally. A 5.0 framed with the
+                // 4.0's envelope is not a message that strap rejects — it is a different one — so a
+                // caption that named the wrong envelope would be describing the exact mistake the two
+                // builders exist to make unreachable.
+                Text("Commands are framed with the WHOOP \(viewModel.protocolEnvelopeName) envelope recorded in BLE_PROTOCOL.md.")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
-                // Said plainly rather than left to the docs: the envelope matches two independent
-                // reverse-engineering references and its checksums are pinned by published vectors,
-                // but no frame this app builds has ever been seen by a strap.
-                Text("That envelope has not been validated against real hardware yet, so a strap may still ignore what this app sends.")
+                // Said plainly rather than left to the docs: the two envelopes match independent
+                // reverse-engineering references and their checksums are pinned by published vectors,
+                // but no frame this app builds has ever been seen by a strap. The 5.0's sentence is a
+                // different one — see `DeviceDetailViewModel.protocolCaveat`.
+                Text(viewModel.protocolCaveat)
                     .font(.caption)
                     .foregroundStyle(Theme.textMuted)
             } else {
-                Label("Protocol not implemented", systemImage: "exclamationmark.triangle.fill")
+                // Unreachable from the picker, which offers exactly three models and all three are
+                // now implemented on both sides. It renders for a generation with **no envelope at
+                // all** — the standard `0x2A37` strap and the simulator — which is a different fact
+                // from the one this branch used to carry: it used to mean "readable but not writable",
+                // and that state no longer exists for any model the user can select.
+                Label("No proprietary protocol", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(Theme.recoveryYellow)
-                Text("This build can only frame WHOOP 4.0 packets. The 5.0 and 5.0 MG envelopes are documented but not built, so no command is sent to a strap with this model selected.")
+                Text("This model has no WHOOP packet envelope, so nothing is framed for it and only the standard heart-rate service is read.")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
             }

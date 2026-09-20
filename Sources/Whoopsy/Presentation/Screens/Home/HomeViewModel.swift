@@ -21,11 +21,21 @@ import SwiftUI
     /// The sessions recorded on the selected day, earliest first. Empty when there are none.
     public var workouts: [WorkoutSession] = []
 
-    /// HealthKit's step total for the selected day, or `nil` when it has no number to show.
+    /// The strap's step total for the selected day, or `nil` when it measured no motion for it.
     ///
-    /// A daily *sum* rather than a reading the app stores, so it is read on demand and never filed
-    /// under a day key. `nil` covers every HealthKit failure at once, including a denial — HealthKit
-    /// does not disclose read-permission status, so those cases are indistinguishable from here.
+    /// **Read from `StepRepository` and from nowhere else**, which is the change this property
+    /// records: steps used to be the one value on Home that came from HealthKit — a daily *sum*, the
+    /// single quantity that is not a reading the app could file under a day key, so it was read on
+    /// demand through `HKStatisticsQuery(.cumulativeSum)` and never stored. That made it the one tile
+    /// needing a permission this app could not verify was granted, and HealthKit never discloses
+    /// read-permission status, so a denial, an empty day and a device with no source were all the same
+    /// dash. The strap is now the producer: `TrackStepsUseCase` accumulates the count off the 100 Hz
+    /// motion stream and writes one row per day, and this reads it.
+    ///
+    /// `nil` is the absence rule's ordinary case — a day the strap did not measure has **no row at
+    /// all**, not a reserved zero — and the view renders it `—`. A *measured* day of no walking is a
+    /// real `0` and renders as a figure; `StepCount.hasMeasurement` is the test that separates them,
+    /// and it is the same test the writer gates on.
     public var steps: Int?
 
     /// The selected day's daytime activation — the aggregate and the windows behind it — or `nil`
@@ -67,7 +77,7 @@ import SwiftUI
     private let strainRepository: any StrainRepository
     private let workoutRepository: any WorkoutRepository
     private let userProfileRepository: any UserProfileRepository
-    private let healthKit: any HealthKitSyncing
+    private let stepRepository: any StepRepository
     private let analyzeStress: AnalyzeStressUseCase
     private let manage: ManageBLEConnectionUseCase
     private let streamUseCase: StreamBiometricsUseCase
@@ -80,7 +90,7 @@ import SwiftUI
         strainRepository: any StrainRepository,
         workoutRepository: any WorkoutRepository,
         userProfileRepository: any UserProfileRepository,
-        healthKit: any HealthKitSyncing,
+        stepRepository: any StepRepository,
         analyzeStress: AnalyzeStressUseCase,
         manage: ManageBLEConnectionUseCase,
         streamUseCase: StreamBiometricsUseCase
@@ -90,7 +100,7 @@ import SwiftUI
         self.strainRepository = strainRepository
         self.workoutRepository = workoutRepository
         self.userProfileRepository = userProfileRepository
-        self.healthKit = healthKit
+        self.stepRepository = stepRepository
         self.analyzeStress = analyzeStress
         self.manage = manage
         self.streamUseCase = streamUseCase
@@ -147,6 +157,14 @@ import SwiftUI
             async let slPrevious = sleepRepository.getSleepSession(for: previousDay)
             async let w = workoutRepository.getWorkouts(for: date)
             async let st = analyzeStress.executeDay(for: date)
+            // One day each, read rather than computed. These sit with the other repository reads
+            // rather than in the HealthKit pair's old position outside the `do`: a step row is stored
+            // data, so a read that fails is a real error the same way a failed recovery read is, and
+            // the screen's banner is the honest place for it. Outside, a throw would have had to be
+            // swallowed with `try?` and the tile would then have drawn a dash — the same thing it draws
+            // for a day the strap never measured, which is a state it can be in and this is not.
+            async let stepsToday = stepRepository.getStepCount(for: date)
+            async let stepsYesterday = stepRepository.getStepCount(for: previousDay)
             // Seven days ending on the selected one. The history window is inclusive at both ends and
             // runs from `endingOn - days`, so these come back holding up to eight days; `MetricWeek`
             // keeps the seven slots it was asked for and ignores the rest rather than being handed a
@@ -164,6 +182,13 @@ import SwiftUI
             previousDaySleep = try await slPrevious
             workouts = try await w
             stressDay = try await st
+            // The absence gate, applied as the row becomes the tile's number. `hasMeasurement` is
+            // `measuredSeconds > 0` — the same comparison `TrackStepsUseCase` makes before it writes,
+            // which is the rule: a writer persists only when it produced a measurement, and the test
+            // it uses is the one its readers use. A *measured* day of no walking is a real `0` and
+            // passes through as one; a row holding no measured span draws a dash.
+            steps = try await stepsToday.flatMap(Self.measuredSteps)
+            previousDaySteps = try await stepsYesterday.flatMap(Self.measuredSteps)
             metricWeek = MetricWeek(
                 endingOn: date,
                 strain: try await strainHistory,
@@ -174,13 +199,6 @@ import SwiftUI
             errorMessage = error.localizedDescription
         }
 
-        // Outside the `do` on purpose. HealthKit answers `nil` for every one of its failure modes —
-        // denied, no source, no samples, store unavailable — so there is no error here to report and
-        // nothing for the reader to act on. Raising one would put an error banner over a day the user
-        // simply did not carry their phone on.
-        steps = await healthKit.stepCount(on: date)
-        previousDaySteps = await healthKit.stepCount(on: previousDay)
-
         task?.cancel()
         task = Task { [weak self, streamUseCase] in
             for await sample in streamUseCase.execute() {
@@ -188,6 +206,17 @@ import SwiftUI
                 self?.heartRate = sample.heartRate
             }
         }
+    }
+
+    /// A stored step row as the tile reads it: the count, or `nil` when the row holds no measurement.
+    ///
+    /// Static and shared by the day and its predecessor so the two tiles cannot come to gate
+    /// differently — the same reason `MetricChange` was lifted out of this screen. The gate itself is
+    /// `StepCount.measuredStepCount`, forwarded rather than restated: the strain detail page's `STEPS`
+    /// row reads the same rows, and two copies of the ternary are two chances to write it the other
+    /// way round.
+    private static func measuredSteps(_ count: StepCount) -> Int? {
+        count.measuredStepCount
     }
 
     // MARK: - The month calendar

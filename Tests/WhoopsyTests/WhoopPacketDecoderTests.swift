@@ -28,7 +28,7 @@ final class WhoopPacketDecoderTests: XCTestCase {
             0x72, 0x03,             // RR = 882ms
             0x00, 0x00,             // Ax
             0x00, 0x00,             // Ay
-            0x00, 0x20,             // Az = 8192 (1.0g)
+            0x00, 0x10,             // Az = 4096 (1.0g at 1/4096 g/LSB, a ±8 g full scale)
             0x42, 0x0E,             // Temp = 3650 (36.5C)
             98                      // SpO2
         ])

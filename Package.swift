@@ -27,8 +27,8 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift")
             ],
             path: "Sources/Whoopsy",
-            // The two files the importer reads. `journal_entries.csv` and `workouts.csv` are still
-            // not read by anything and would add 375 KB to the app for no reason.
+            // The three files the importer reads. `journal_entries.csv` is still not read by
+            // anything and would add 283 KB to the app for no reason.
             //
             // **`sleeps.csv` is bundled for its eight nap records and nothing else**, which is why it
             // was not bundled before `v11`. It is not superseded by `physiological_cycles.csv` — the
@@ -39,6 +39,14 @@ let package = Package(
             // is the point: this file is read *only* for naps, and `parseNaps` requires the `Nap`
             // column so that pointing it at the cycle file fails loudly rather than finding none.
             //
+            // **`workouts.csv` is bundled for its zone block**, which is in no other file: its 673
+            // rows are the only producer of the strain page's `HEART RATE ZONES 1-3` / `4-5` rows, and
+            // they carry a workout's own window, strain and heart rates besides. It repeats columns
+            // the cycle file already has — `Cycle start time`, `Cycle timezone`, the two heart rates —
+            // which is why it shares a row type and a date walk with it rather than adding a fourth.
+            // `parseWorkouts` requires `Workout start time` / `Workout end time`, so pointing it at
+            // either sleep file throws instead of importing nothing and reporting success.
+            //
             // Declared here rather than in the Xcode project's resource phase, so the lookup goes
             // through `Bundle.module` and resolves identically under `swift build`, the test runner,
             // and the app. `Bundle.main` never found these files and never would have: the app
@@ -46,6 +54,7 @@ let package = Package(
             resources: [
                 .process("Data/Resources/physiological_cycles.csv"),
                 .process("Data/Resources/sleeps.csv"),
+                .process("Data/Resources/workouts.csv"),
             ]
         ),
         .executableTarget(

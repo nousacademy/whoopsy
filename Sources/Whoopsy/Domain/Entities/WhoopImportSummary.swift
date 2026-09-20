@@ -26,6 +26,14 @@ public struct WhoopImportSummary: Sendable, Equatable {
     /// one figure here a reader might otherwise assume was a typo.
     public let napsWritten: Int
 
+    /// Workout rows written, out of the bundled `workouts.csv`.
+    ///
+    /// A fifth table, and like `napsWritten` not a day count — a day can hold several workouts. On
+    /// this export it is 673 against 910 nights, and unlike the naps these are **not** a curiosity:
+    /// they are the only producer of the strain page's two `HEART RATE ZONES` rows, so a zero here is
+    /// why those rows would be dashes on every day.
+    public let workoutsWritten: Int
+
     /// Distinct days that received at least one row. A set count, not derivable from the three
     /// above — which is why the importer passes it in rather than the summary computing it.
     public let daysWritten: Int
@@ -71,6 +79,7 @@ public struct WhoopImportSummary: Sendable, Equatable {
         daysWritten: Int = 0,
         strainOnlyDays: Int = 0,
         napsWritten: Int = 0,
+        workoutsWritten: Int = 0,
         firstDay: String = "",
         lastDay: String = ""
     ) {
@@ -85,16 +94,19 @@ public struct WhoopImportSummary: Sendable, Equatable {
         self.daysWritten = daysWritten
         self.strainOnlyDays = strainOnlyDays
         self.napsWritten = napsWritten
+        self.workoutsWritten = workoutsWritten
         self.firstDay = firstDay
         self.lastDay = lastDay
     }
 
-    /// The same summary with the nap count filled in.
+    /// The same summary with the two side files' counts filled in.
     ///
-    /// The naps come out of a second file and are walked before the cycle import runs, so the count
-    /// exists before the summary does and has to be folded in afterwards rather than passed down
-    /// through the cycle walk, which knows nothing about naps.
-    public func recordingNapsWritten(_ count: Int) -> WhoopImportSummary {
+    /// The naps and the workouts come out of their own files and are walked *before* the cycle import
+    /// runs, so those counts exist before the summary does and are folded in afterwards rather than
+    /// passed down through the cycle walk, which knows about neither. One method rather than two, so
+    /// there is no ordering in which a caller can complete the summary and then find the other file
+    /// unrecorded.
+    public func recordingSideFiles(naps: Int, workouts: Int) -> WhoopImportSummary {
         WhoopImportSummary(
             rowsInExport: rowsInExport,
             rowsEmpty: rowsEmpty,
@@ -106,7 +118,8 @@ public struct WhoopImportSummary: Sendable, Equatable {
             duplicateExportRows: duplicateExportRows,
             daysWritten: daysWritten,
             strainOnlyDays: strainOnlyDays,
-            napsWritten: count,
+            napsWritten: naps,
+            workoutsWritten: workouts,
             firstDay: firstDay,
             lastDay: lastDay)
     }
@@ -146,6 +159,9 @@ public struct WhoopImportSummary: Sendable, Equatable {
         // Naps are not days and must never be added to `daysWritten`. "and 8 naps" is a genuine
         // addition to what was imported, stated as its own thing.
         if napsWritten > 0 { text += " Plus \(napsWritten) naps." }
+        // Workouts are not days either — several share one — and they are stated after the naps
+        // because a workout day is a day already counted above, carrying extra rows on it.
+        if workoutsWritten > 0 { text += " Plus \(workoutsWritten) workouts." }
         return text
     }
 }

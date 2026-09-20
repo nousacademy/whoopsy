@@ -1,10 +1,10 @@
 # Whoopsy Mathematical & Physiological Algorithms Specification
 
-This document details the open mathematical models implemented in Whoopsy for computing **Recovery**, **Strain**, **Heart Rate Variability (HRV)**, **Sleep Staging**, **Sleep Need**, **Stress Monitor** and **VO₂ Max**.
+This document details the open mathematical models implemented in Whoopsy for computing **Recovery**, **Strain**, **Heart Rate Variability (HRV)**, **Sleep Staging**, **Sleep Need**, **Stress Monitor**, **VO₂ Max** and **Steps**.
 
-§6 is the exception among them in a different sense than it used to be: it is the only model here whose constant is **not** this app's own and is not fitted to anything this app can see — it is quoted from a published method and cited — and it is the only one whose output the screen labels as an **estimate** rather than a measurement. It also still records WHOOP's own three-tier model and why none of that is implemented.
+Two sections are exceptions to the rest, in opposite directions. §6 is the only model whose constant is **not** this app's own and is not fitted to anything this app can see — it is quoted from a published method and cited — and it is the only one whose output the screen labels as an **estimate** rather than a measurement. It also still records WHOOP's own three-tier model and why none of that is implemented. §7 is the reverse case: WHOOP publishes no step model at all, so there is nothing to cite and nothing to fit against, and its two fitted constants are stated as this app's own calibration.
 
-Three sources feed these models. The **WHOOP strap** supplies high-frequency telemetry over BLE (heart rate, R-R intervals, accelerometer, skin temperature, SpO2). **Apple HealthKit** supplies daily aggregates: SDNN, resting heart rate, staged sleep, and a daily step total — and, since the VO₂ MAX panel began deriving its own figure, no longer a VO₂ max, because this app no longer asks to read one. A **WHOOP data export**, imported once through Settings, supplies three years of the same daily aggregates WHOOP itself computed (HRV, resting heart rate, SpO2, skin temperature, respiratory rate, sleep stage totals) — plus WHOOP's own finished Recovery and Strain scores. Which source can feed which model is a real constraint, not a preference — §2, §4 and §5 state where it binds, and §1 and §3 state what the export does and does not decide.
+Two sources feed these models, and the split matters because one of them carries a permission this app cannot verify. The **WHOOP strap** supplies high-frequency telemetry over BLE (heart rate, R-R intervals, accelerometer, skin temperature, SpO2) **and the step count** (§7), which is accumulated from that accelerometer rather than read from HealthKit. **Apple HealthKit** supplies daily aggregates: SDNN, resting heart rate and staged sleep — and, since the VO₂ MAX panel began deriving its own figure and steps moved onto the strap, neither a VO₂ max nor a step total, because this app no longer asks to read either. A **WHOOP data export**, imported once through Settings, supplies three years of the same daily aggregates WHOOP itself computed (HRV, resting heart rate, SpO2, skin temperature, respiratory rate, sleep stage totals) — plus WHOOP's own finished Recovery and Strain scores. Which source can feed which model is a real constraint, not a preference — §2, §4, §5 and §7 state where it binds, and §1 and §3 state what the export does and does not decide.
 
 ---
 
@@ -112,11 +112,13 @@ ambiguous. Revisit only after the never-mix rule is replaced.
 
 ## 2. Daily & Activity Strain (0.0 – 21.0 Scale)
 
-Strain is a continuous, non-linear metric reflecting both cardiovascular and muscular load. Whoopsy uses a modified **Borg-scale exponential integration model**:
+Strain is a continuous, non-linear metric reflecting both cardiovascular and muscular load. Whoopsy uses a modified **Borg-scale exponential integration model**, over the cardiovascular term alone:
 
-$$\text{Total Load} = w_{\text{cardio}} \cdot \sum_{z=1}^5 w_z \Delta t_z + w_{\text{muscular}} \cdot V_{\text{normalized}}$$
+$$\text{Total Load} = \sum_{z=1}^5 w_z \Delta t_z$$
 
 $$\text{Daily Strain} = 21 \times \left(1 - e^{-k \cdot \text{Total Load}}\right)$$
+
+**There is no second term.** WHOOP's muscular load lives in a separate granted patent family (`PATENTS.md` §1.4) and nothing here computes it: no `V_normalized`, no `w_muscular`, and no `w_cardio` either, since a single summed term needs no weight. Total Load is the zone integral and nothing else.
 
 ### Zone Weights ($w_z$)
 Heart rate is classified into 5 personalized zones based on Heart Rate Reserve ($\text{HRR} = \text{Max HR} - \text{Resting HR}$):
@@ -140,9 +142,10 @@ ceiling and a full day contributes a few hundred seconds of zone time instead of
 
 Because $21 \times (1 - e^{-k \cdot \text{Load}})$ saturates, under-integration does not produce an
 obviously broken output — it produces a *plausible low number* (a wrong 3.4 rather than an error),
-which is worse than no reading at all. HealthKit also has no accelerometer type, so the muscular term
-has no input whatsoever. Strain therefore remains strap-driven, and a HealthKit strain path would
-require a different algorithm over `HKWorkout` windows rather than this one fed with coarser data.
+which is worse than no reading at all. HealthKit also has no accelerometer type — though that costs
+this model nothing, since the integrator has no muscular term to feed with one. Strain therefore
+remains strap-driven, and a HealthKit strain path would require a different algorithm over `HKWorkout`
+windows rather than this one fed with coarser data.
 
 ### Imported strain days are WHOOP's number, not this formula's output
 
@@ -162,6 +165,44 @@ produced it. Two consequences follow.
   imported rows carry `averageHeartRate` and `maxHeartRate` — real measurements from the same row —
   but `StrainScore.zones` is empty for every one of them, and `StrainDashboardView` renders that
   absence rather than a stand-in.
+
+### Zone time on the strain detail page is WHOOP's measurement, read out of `workouts.csv`
+
+The strain detail page draws two zone rows, `HEART RATE ZONES 1-3` and `HEART RATE ZONES 4-5` — the
+page's other two rows are not zones and are not this section's subject — and they are
+**the one place in this app a zone figure reaches a screen** — so it is worth being exact about what
+they are and are not. They are not the zone integral above, and they are not a `%HRR` classification
+of anything this app measured. They are WHOOP's own `HR Zone 1 %`…`HR Zone 5 %` columns out of
+`workouts.csv`, one block per logged workout.
+
+**Percentages are the file's unit, and the conversion is one multiplication.** A workout's zone
+seconds are
+
+$$\text{zoneSeconds}(a \dots b) = \frac{1}{100}\sum_{z=a}^{b} \text{pct}_z \;\times\; (\text{end} - \text{start})$$
+
+and a day's two rows are the sum of those over its workouts:
+`WorkoutZoneTime.aggregate(_:)`. The percentages are stored rather than the seconds (`v14`'s
+`hr_zone_percents`), so the file's own resolution is preserved and no derived duration is baked into
+a row — `endedAt − startedAt` is already there.
+
+Three properties of the data decide what the card may draw, and each is measured over the bundled
+file rather than assumed:
+
+* **The five sum to at most 100** (exactly 100 on 146 of the 673 rows) and often sum well below it.
+  The remainder is time below zone 1, which WHOOP publishes no column for. So zones 1–3 plus zones
+  4–5 is deliberately **not** the workout's duration, and neither row's figure excludes the other's.
+* **Forty-five of the 673 rows are `0` in every band** — a workout that never reached zone 1. Those
+  are *measurements*, and they must draw `0:00` rather than the dash an absent block draws. That is
+  why the block is `[Double]?` and never a defaulted five-element array: `nil` says *unmeasured* and
+  `[0, 0, 0, 0, 0]` says *measured, and none of it in zone*.
+* **A workout the app recorded itself has no block at all**, because the live path writes no
+  percentages. Its rows are dashes, which is the same answer the CSV's absence gives.
+
+**The resolution is minutes at best and the card prints it that way.** Rounding a workout's own
+percentage to a whole second would claim two more digits of precision than the producer had, so the
+rows go through `Double.formattedCompactHoursMinutes()` — `0:34`, not `0:34:12`. That rounding is also
+what `MetricChange` compares the two columns on, so a figure and its baseline a few seconds apart
+print alike and read as the same, which is the honest reading of two `0:25`s.
 
 ### Days with no measurement
 
@@ -455,6 +496,18 @@ These are the numbers in `AnalyzeSleepUseCase`, which is the only instantiation 
 `StressMath.motionCeiling` reuses the $1.25$ G line rather than re-deriving it. The awake test is a
 disjunction of a loose movement threshold and a heart-rate one, which makes it *easy* to be called
 awake and — the half that matters below — **impossible to be called awake while lying still**.
+
+**An epoch that carried no accelerometer drops the two motion tests rather than failing them.** The
+channel is `nil`, not $0.0$: `BiometricSample.accelerationMagnitude` is an optional and is `nil`
+unless the notification carried all three axes, which is every sample the live `0x2A37` path
+produces because nothing in the BLE layer decodes a motion payload. So such an epoch can be called
+awake on heart rate alone, and neither the deep band's nor the rem band's stillness requirement can
+refuse it — the heart rate keeps the vote. This is the opposite of what the same absence does in §5,
+and deliberately: there the gate exists to *assert* stillness, so an unmeasured window cannot pass
+it. The substituted $0.0$ these fields used to carry satisfied both motion tests outright — a
+fabricated free-fall reading is below every threshold — so no existing night stages differently; the
+rule is now explicit rather than accidental. It matters because $0.0$ G is free fall and unreachable
+on a body at rest: a motionless worn strap reads $\approx 1.0$ G, with gravity inside the magnitude.
 
 HealthKit publishes stages directly from `sleepAnalysis` (AASM-derived), which is a measurement
 rather than a heuristic and is strictly better where it exists. `HealthSleepStage` already defines
@@ -1322,6 +1375,15 @@ inside the accelerometer magnitude, so a motionless strap reads ~1.0 G rather th
 the line sits just above 1 instead of near zero, and it is the same line `AnalyzeSleepUseCase` already
 draws between an awake and a sleeping epoch, reused rather than re-derived.
 
+**Stillness here must be shown, not assumed, so a window whose samples carry no accelerometer at all
+is refused.** `StressMath.isResting(magnitudes:)` takes the optionals and answers `false` for a
+window in which none of them is present, which is every window the live `0x2A37` path produces — so
+that path yields no eligible window and the tile is `—`. §4 answers the same absence the other way
+round, and the difference is the whole reason there are two entry points: this gate's purpose is to
+assert stillness, so unmeasured cannot pass it, while sleep's motion tests sit beside a heart-rate
+band that can decide alone. Exertion is the one thing this model separates from stress, and without
+motion it cannot tell a workout from an argument.
+
 The first gate is load-bearing rather than tidy. `HeartRateVariabilityMath.calculateRMSSD` returns
 **0.0** when it has fewer than two usable intervals, and a zero RMSSD is not "no reading" — it
 describes a perfectly metronomic heart, which this model scores as **maximum stress**. A window
@@ -1388,7 +1450,8 @@ in three situations it cannot tell apart from the data it holds:
 
 - the day has no samples at all (the common case on an imported day, and always on a strap-less
   install — see the coverage note below);
-- its samples contain no still window with enough beats;
+- its samples contain no still window with enough beats — and a window no sample of which carries an
+  accelerometer is not still, it is unmeasured;
 - fewer than 3 days of history exist to build a baseline from.
 
 Each is "no measurement", not a low score, so all three report the same way. `StressScore` has no
@@ -1567,7 +1630,7 @@ the RHR panel drawn beside it** — one day, one rate, one pair of figures. That
 structural, not a convention: `makeDay` hoists the gated rate into one local and both fields read it.
 
 The HealthKit read-through that used to back this panel is **gone** — `vo2MaxReadings(days:endingOn:)`
-is removed from `HealthKitSyncing`, and `HealthKitQuantityMetric.vo2Max` with it, which also drops
+is removed from `HealthKitSyncing`, and `HealthQuantityMetric.vo2Max` with it, which also drops
 `HKQuantityTypeIdentifierVO2Max` from the consent prompt's `readTypes`. This app no longer asks for
 permission to read a quantity it does not use.
 
@@ -1752,3 +1815,126 @@ Two limits on the model this app *does* now ship, stated here so they are not di
   (Gellish), which exists and currently has no callers — is a separate change: it would move every
   Karvonen zone boundary and therefore every strain score, so it needs its own measurement and its own
   guard rather than being folded in here.
+---
+
+## 7. Steps, from the strap's own accelerometer
+
+WHOOP publishes no step model — `PATENTS.md` records no step algorithm among the filings, and the
+export carries no step column either, so there is nothing here to recover and nothing to fit against.
+**This is therefore a calibration, not a recovery of WHOOP's function**, in the same voice as §4's
+sleep need and §5's stress thresholds: the shape follows the conventional pedometer literature, and
+the two fitted constants are this app's own. **This app's step count will not agree with the WHOOP
+app's**, and a disagreement is not evidence that either is wrong.
+
+### The input, and why it is not the raw magnitude
+
+The strap gives three axes in g at 100 Hz (`BLE_PROTOCOL.md` §6, layouts R10 and R21). A wrist at rest
+reads **≈1.0 g on whichever axis gravity happens to point down** — so a threshold on `|a|` measures
+posture rather than motion, and a strap worn on a still arm all day would read as continuously
+"above zero". The detector therefore removes a **per-axis trailing mean** first and judges the
+magnitude of what is left:
+
+```
+linear_k   = a_k − mean(a_k over the last gravityWindowSeconds)      for each axis
+magnitude  = |linear|                                                 (the Euclidean norm)
+```
+
+That is the whole of the signal conditioning. There is no band-pass filter and no per-axis scaling:
+the two generations carry **the same two scales** (`1/4096` g/LSB, `BLE_PROTOCOL.md` §6), so one
+threshold means the same thing on a 4.0 and a 5.0 MG, which is the fact that lets this be one model
+rather than one per strap.
+
+### The rule
+
+A step is a **local maximum** of `magnitude` that clears an adaptive level:
+
+```
+level   = max(minimumPeakAmplitudeG, mean(magnitude) + thresholdSigmas × sd(magnitude))
+accepted = peak > magnitude before it
+        && peak > magnitude after it
+        && peak > level
+        && seconds − lastStepSeconds >= minimumStepIntervalSeconds
+```
+
+Two properties of that level are the design rather than a detail:
+
+- **It is adaptive, so a hard walk and a gentle one both count.** A fixed threshold would count every
+  step of a run and none of a stroll. §16 asserts this directly: the same waveform at 20× the
+  amplitude returns the same count.
+- **It has a floor, so noise is not a step.** `mean + 1σ` scales with the signal, and a signal of
+  noise has a mean and a spread of the same order — so a purely adaptive rule would accept the
+  largest excursions of a resting wrist's sensor noise. `minimumPeakAmplitudeG` is what refuses them.
+
+### Constants
+
+| Constant | Value | Basis |
+| :--- | :--- | :--- |
+| `cadenceBandHz` | `0.5...3.0` | Conventional walking and running cadence: 30–180 steps/min. The other two are derived from it |
+| `minimumStepIntervalSeconds` | `1/3` s | `1 / cadenceBandHz.upperBound` — a **180 step-per-minute ceiling**. Derived rather than written beside it, so a cadence the band admits cannot be refused by an interval outside it |
+| `thresholdWindowSeconds` | `2.0` s | `1 / cadenceBandHz.lowerBound` — one period of the slowest cadence the band admits, so the window always spans a complete stride |
+| `gravityWindowSeconds` | `1.0` s | Long enough to average out a stride, short enough to follow a turning arm |
+| `thresholdSigmas` | `1.0` | **This app's own** — one of the two a capture would fit |
+| `minimumPeakAmplitudeG` | `0.05` g | **This app's own** — the other. A bump train's peak is attenuated by roughly `0.85 ×` its amplitude by the gravity window, so 0.05 g admits a genuine ~0.06 g arm swing and refuses a resting wrist |
+
+The two fitted constants are the ones a capture against a real wrist would move. The band and the
+interval ceiling are conventional figures, not measurements this app made.
+
+### Why the count is accumulated and not computed on read
+
+A full day at 100 Hz × 3 axes is **≈26 million samples**, so a detector run on read would re-walk a
+day's motion to redraw one tile. `StepAccumulator` is therefore **incremental**: it holds only the
+gravity ring, the last accepted peak instant and the running count, takes batches as they arrive, and
+the count is **stored** in a day-keyed row (`v13`'s `stepCounts`). It carries the two things a
+relaunch needs — `baselineStepCount` and `measuredSeconds` — so a process that starts at noon
+continues the morning's count rather than restarting it, and reports only the coverage it actually
+has.
+
+**Filter state is per-process and is not persisted.** A relaunch starts the gravity and threshold
+windows empty, so the first second of motion after a relaunch is judged against a partial window and
+can miss a step that a continuous process would have counted. That is the honest cost of not
+persisting filter state, and it is bounded by the two windows above.
+
+### Where the samples come from, and why the day key differs per transport
+
+One `MotionBatch` type carries the motion from both generations and both transports, so the
+accumulator and the detector have one input and no per-strap branch:
+
+| Frame | Generation | Layout | Transport |
+| :--- | :--- | :--- | :--- |
+| `0x2B` / 43 | 4.0 | R10, 1910 bytes | **live only** |
+| 43 | 5.0 / MG | R21, 1244 bytes | live |
+| 47 | 5.0 / MG | R21, 1244 bytes | **banked** (drained from flash) |
+
+The layouts are in `BLE_PROTOCOL.md` §6 and are **frame-absolute**; the decoder subtracts the
+profile's payload origin. Only R21 carries the strap's own clock, which `MotionBatch.timestampIsFromStrap`
+makes explicit: a **live** record is keyed on its arrival instant (for a 100 Hz stream, arrival *is*
+the measurement instant), while a **banked** record is keyed on its own unix stamp and is refused
+rather than filed under the day it was fetched. The wrong-day hazard is the same one `RTC_LOST` poses
+to the heart-rate drain, and it is why the stamp is read rather than substituted.
+
+**All three rows are wired, and none of them has been exercised.** `WhoopBLEManager` sends the motion
+enable on connect — three frames for a 4.0, two for a 5.0/MG — so the live record arrives while the
+app is connected and running. The banked row arrives through `BLE_PROTOCOL.md` §4's drain, which asks
+the strap for its flash history and acknowledges each batch; `HistoricalDrainSession` owns the batch
+structure and `MotionPayloadDecoder` owns the payload, so a banked record produces **the same
+`MotionBatch`** the live path does — which is the whole reason the accumulator and the detector have
+no per-strap branch. What is identical between them is the type they produce; what differs is the day
+key, per the paragraph above.
+
+**The 4.0 is the generation whose step path is live-only**, and that is a fact about its flash rather
+than about this app: its high-rate layout is live-stream only, and its flash holds the 1 Hz
+accelerometer rollup that cannot carry a cadence. So a 4.0 counts steps while the app runs and is
+connected, and a window it missed comes back coarser rather than absent. The 5.0/MG banks the full
+100 Hz buffer, so its count survives the app not being there.
+
+The implementation status of both legs is `BLE_PROTOCOL.md` §3 and §6; what a green suite does and
+does not prove about them is the paragraph below.
+
+### What this model cannot do
+
+It counts **steps**, and nothing else — there is no stride length, no distance and no cadence
+estimate. It is also **unexercised against hardware**: no strap has been connected to this machine,
+`biometric_samples` holds 0 rows in every database here, and the export carries no motion at all. The
+suite asserts the arithmetic against synthetic waveforms with known counts and both layouts against
+hand-built frames; **a passing run is not evidence that a real wrist's motion produces a count that
+matches a pedometer**, and no screenshot should be offered as such.

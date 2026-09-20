@@ -33,6 +33,14 @@ public final class WhoopBLEDeviceRepositoryImpl: WhoopBLEDeviceRepository, @unch
         }
     }
 
+    public var motionStream: AsyncStream<MotionBatch> {
+        if isMockMode {
+            return mockBleManager!.motionStream
+        } else {
+            return realBleManager!.motionStream
+        }
+    }
+
     public func startScanning() async throws {
         if isMockMode {
             mockBleManager!.startScanning()
@@ -85,14 +93,65 @@ public final class WhoopBLEDeviceRepositoryImpl: WhoopBLEDeviceRepository, @unch
         manager.sendCommand(cmdData)
     }
 
-    public func requestHistoricalSync(from startDate: Date, to endDate: Date) async throws {
-        let s = UInt32(startDate.timeIntervalSince1970)
-        let e = UInt32(endDate.timeIntervalSince1970)
-        guard !isMockMode, let manager = realBleManager, let profile = manager.currentProfile,
-              let cmd = WhoopPacketEncoder.requestHistoricalSync(
-                  profile: profile, seq: manager.commandSequence.next(), startEpoch: s, endEpoch: e)
-        else { return }
-        manager.sendCommand(cmd)
+    /// Runs a drain to its conclusion and reports what it did.
+    ///
+    /// **This is the call the whole Phase-3 wiring exists for, and its shape is the point: it awaits.**
+    /// The request frame is built by `WhoopCommandFrames` from the profile's own table — the 4.0 gets
+    /// `0x16`, the 5.0 and MG get their own byte under their own envelope — and then the manager's
+    /// drain loop owns everything until the strap says it is done. Nothing here polls and nothing here
+    /// guesses; the `HistoricalSyncOutcome` is read off the finished session.
+    ///
+    /// Two refusals are stated rather than swallowed. Mock mode and an unbuildable profile both mean
+    /// **nothing was sent**, which is `WhoopSyncError.noCommandPath` rather than a quiet return: a
+    /// caller that printed "complete" over either would be reporting a sync that never started.
+    public func requestHistoricalSync(from startDate: Date, to endDate: Date) async throws -> HistoricalSyncOutcome {
+        guard !isMockMode, let manager = realBleManager else {
+            throw WhoopSyncError.noCommandPath(generation: "simulated")
+        }
+        let generation = manager.getCurrentDevice()?.hardwareGeneration ?? .whoop4
+        guard let profile = manager.currentProfile, profile.canTransmitCommands else {
+            throw WhoopSyncError.noCommandPath(generation: generation.rawValue)
+        }
+
+        // **The dates stop here, and that is the correction rather than a simplification.** Neither
+        // generation's request carries a window — both send a single `00` byte — so there is no field
+        // on the wire for this pair to reach. It was previously encoded as an eight-byte
+        // `[u32 start][u32 end]` payload, which was this app's own invention; see
+        // `WhoopPacketEncoder.requestHistoricalSync`. A bounded drain is a read-pointer seek
+        // (`0x21`), not a request body.
+        guard let session = await manager.drainHistoricalData() else {
+            throw WhoopSyncError.noCommandPath(generation: generation.rawValue)
+        }
+
+        let outcome = HistoricalSyncOutcome(
+            recordCount: session.recordCount,
+            batchCount: session.batchCount,
+            ending: Self.ending(for: session.finishReason)
+        )
+
+        // An ending this side caused is thrown rather than returned, because the two callers that
+        // exist both want the same thing from it: a sentence saying the sync did not finish. The
+        // counts travel with the error so the message can say how far it got.
+        guard outcome.ending.isStrapConfirmed else {
+            throw WhoopSyncError.endedWithoutConfirmation(
+                records: outcome.recordCount, batches: outcome.batchCount)
+        }
+        return outcome
+    }
+
+    /// Maps the BLE layer's finish reason onto the domain's.
+    ///
+    /// `nil` — a session that ended without recording why — becomes `.aborted`, which is the only
+    /// ending that claims nothing about the strap.
+    private static func ending(
+        for reason: HistoricalDrainSession.FinishReason?
+    ) -> HistoricalSyncOutcome.Ending {
+        switch reason {
+        case .complete: return .strapReportedComplete
+        case .liveEdge: return .caughtUpToLiveEdge
+        case .idleTimeout: return .idleTimeout
+        case .aborted, nil: return .aborted
+        }
     }
 
     public func refreshStrapModel() async {

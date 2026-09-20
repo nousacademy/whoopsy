@@ -56,6 +56,32 @@ import SwiftUI
         protocols.supportsProprietarySync(model)
     }
 
+    /// What the sync caption calls the envelope, e.g. `4.0`. Falls back to the model's own name when
+    /// the catalog frames nothing, which only happens on the branch that prints no caption.
+    public var protocolEnvelopeName: String {
+        protocols.protocolEnvelopeName(model) ?? model.rawValue
+    }
+
+    /// The honest caveat under that caption — **and it differs per generation, because the two have
+    /// different open questions rather than the same one twice.**
+    ///
+    /// The 4.0's is unvalidatedness alone: the envelope matches two independent references and its
+    /// checksums are pinned by published vectors, but no frame it builds has been seen by a strap. The
+    /// 5.0's has a second, more specific blocker — §7 Q6, the command characteristic's authenticated
+    /// SMP bond, which nothing in this project establishes is completable from a third-party iOS app.
+    /// One generic sentence for both would hide the reason a 5.0 sync is the more likely of the two to
+    /// do nothing, which is the one thing this caption exists to say.
+    public var protocolCaveat: String {
+        switch model {
+        case .whoop4:
+            return "That envelope has not been validated against real hardware yet, so a strap may still ignore what this app sends."
+        case .whoop5, .whoop5MG:
+            return "Two things are unproven here. The envelope has never been validated against real hardware, and this model's command characteristic needs an authenticated bond that no third-party app in this project has established — so a 5.0 is the strap most likely to ignore what this app sends."
+        case .standardBleHR, .simulator:
+            return ""
+        }
+    }
+
     /// The battery reading, or `nil` when there is not one.
     ///
     /// `WhoopDevice.batteryPercentage` is not optional and defaults to `100`, which `WhoopBLEManager`

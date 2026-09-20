@@ -102,8 +102,32 @@ public enum StressMath {
     }
 
     /// Whether a window is still enough to be scored at all.
-    public static func isResting(motionMagnitude: Double) -> Bool {
-        motionMagnitude <= motionCeiling
+    ///
+    /// **An unmeasured window cannot pass this gate, and that asymmetry is the point.** The gate's
+    /// whole purpose is to assert stillness, so a window whose samples carry no accelerometer has
+    /// not been shown to be still — and this is the model's only exertion filter, which is exactly
+    /// what a run or a bike ride would otherwise slip past. `nil` is therefore `false` rather than
+    /// "unknown, so allow it": refusing the window costs a reading, while admitting one files a
+    /// workout as activation. Where a missing measurement is instead allowed to *drop a test* rather
+    /// than fail one — `AnalyzeSleepUseCase`'s staging, which falls back to its heart-rate bands —
+    /// the absence is spelled out at that call site rather than smuggled in here.
+    public static func isResting(motionMagnitude: Double?) -> Bool {
+        guard let motionMagnitude else { return false }
+        return motionMagnitude <= motionCeiling
+    }
+
+    /// Whether a set of samples is still enough to be scored, averaged over the ones that measured
+    /// motion.
+    ///
+    /// This is the form the two use cases call, and it exists so the mean and the gate cannot be
+    /// taken over different populations: averaging `[Double?]` by hand invites a `compactMap` in one
+    /// place and a `?? 0` in another, and those two disagree about exactly the windows this rule is
+    /// about. A set with **no** measured sample is not resting, for the reason above — and an empty
+    /// set is the same answer, since nothing was measured so nothing was shown to be still.
+    public static func isResting(magnitudes: [Double?]) -> Bool {
+        let measured = magnitudes.compactMap { $0 }
+        guard !measured.isEmpty else { return false }
+        return isResting(motionMagnitude: measured.reduce(0, +) / Double(measured.count))
     }
 
     /// A window's activation, in standard deviations of the personal baseline.

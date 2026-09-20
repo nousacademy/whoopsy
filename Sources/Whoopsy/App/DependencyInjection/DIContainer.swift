@@ -14,6 +14,7 @@ public final class DIContainer: @unchecked Sendable {
     public let napRepository: any NapRepository
     public let userProfileRepository: any UserProfileRepository
     public let workoutRepository: any WorkoutRepository
+    public let stepRepository: any StepRepository
 
     // Use Cases
     public let streamBiometricsUseCase: StreamBiometricsUseCase
@@ -27,6 +28,10 @@ public final class DIContainer: @unchecked Sendable {
     public let exportLocalDataUseCase: ExportLocalDataUseCase
     public let saveWorkoutUseCase: SaveWorkoutUseCase
     public let generateCoachInsightsUseCase: GenerateCoachInsightsUseCase
+    /// The strap's step counter. **Long-running rather than call-and-return** — see
+    /// `TrackStepsUseCase` — so it is started once from `MainContainerView`'s app-level task and not
+    /// from any screen's load.
+    public let trackStepsUseCase: TrackStepsUseCase
     public let preferencesRepository: any AppPreferencesRepository
     public let healthKitSync: any HealthKitSyncing
     public let whoopExportImport: any WhoopExportImporting
@@ -56,6 +61,7 @@ public final class DIContainer: @unchecked Sendable {
         self.napRepository = GRDBNapRepository(db: db)
         self.userProfileRepository = GRDBUserProfileRepository(db: db)
         self.workoutRepository = GRDBWorkoutRepository(db: db)
+        self.stepRepository = GRDBStepRepository(db: db)
 
         self.streamBiometricsUseCase = StreamBiometricsUseCase(
             bleRepository: bleRepository,
@@ -118,6 +124,10 @@ public final class DIContainer: @unchecked Sendable {
         // a day's sessions back.
         self.saveWorkoutUseCase = SaveWorkoutUseCase(repository: workoutRepository)
         self.generateCoachInsightsUseCase = GenerateCoachInsightsUseCase()
+        self.trackStepsUseCase = TrackStepsUseCase(
+            bleRepository: bleRepository,
+            stepRepository: stepRepository
+        )
         self.preferencesRepository = UserDefaultsAppPreferencesRepository()
         // The same repositories the strap path writes through, so an import and a strap run land in
         // one table under one day key rather than two stores that can disagree.
@@ -132,6 +142,7 @@ public final class DIContainer: @unchecked Sendable {
             sleepRepository: sleepRepository,
             strainRepository: strainRepository,
             napRepository: napRepository,
+            workoutRepository: workoutRepository,
             userProfileRepository: userProfileRepository)
     }
 }

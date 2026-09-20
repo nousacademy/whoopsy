@@ -7,10 +7,11 @@ description: Use before building or changing any view that shows a number, chart
 
 A mockup is a picture of a value, not evidence that the value exists. This codebase has twice built a
 piece of UI against data that was not there: the Stress Monitor chart renders `—` on every imported
-day because the export carries no R-R series at all, and the Recovery screen prints "At baseline"
-for every stored day because the two delta fields it reads are never written to the database and
-never restored from it. Neither is a drawing bug. Both were discoverable before the first line of
-view code, and this skill is how.
+day because the export carries no R-R series at all, and the Recovery screen used to print "At
+baseline" for every stored day because the two delta fields behind it are never written to the
+database and never restored from it — that false claim is fixed and the screen draws a dash now, but
+the **feature** is still absent, which is the distinction this skill is about. Neither was a drawing
+bug. Both were discoverable before the first line of view code, and this skill is how.
 
 The rule is that every figure on a screen traces to a producer. A producer is a stored column, a
 value computed on read from stored columns, or a live read from the strap or HealthKit. Anything
@@ -55,11 +56,13 @@ it is not something to work around.
 | … — `Day Strain` | **933**/935, **0–19.8** | WHOOP's own score, verbatim | Zone breakdowns, a HR series — the export has neither |
 | … — `Recovery score %` | 910/935, 1–99 | *(nothing — see below)* | — |
 | … — an R-R interval series | **absent** | — | **Any HRV-derived stress window.** The Stress Monitor is `—` on every imported day by construction |
-| … — step counts | **absent** | — | Steps, from any imported day. HealthKit only |
+| … — step counts | **absent** | — | Steps, from any imported day. `stepCounts` — the strap's own accelerometer, live or drained — is the only producer; the HealthKit step path is deleted at every layer and a display-time read-through would put the phone's count where a dash belongs |
 | … — a VO₂ max | **absent** | — | **WHOOP's VO₂ max**, from any imported day. The app computes its own by a different model — see below |
-| `sleeps.csv`, `journal_entries.csv`, `workouts.csv` | 918/3403/673 rows | *(nothing — unbundled and read by nothing)* | — |
+| `sleeps.csv` | **bundled**, 918 rows | The **8 nap rows** it alone carries (`WhoopExportParser.parseNaps` → `importNaps`) | Everything else in it: its other 910 rows are the same 910 nights the cycle file already carries, so they are a second writer for days the cycle import owns |
+| `workouts.csv` | **bundled**, 673 rows | Its **`HR Zone 1 %`…`5 %` block** and its **`Activity name` column** — neither is in any other file (`WhoopExportParser.parseWorkouts` → `importWorkouts`, and the zone figures and the row's label on Home) | Everything else in it: it repeats columns the cycle file already carries, so like `sleeps.csv` it is a second writer for days the cycle import owns |
+| `journal_entries.csv` | 3403 rows | *(nothing — unbundled, and read by nothing)* | Every column in it: no parser has ever been pointed at the file |
 | `biometric_samples` (strap) | only days the app ran with the strap on | Everything, from a worn day | Any day before the install |
-| HealthKit | runtime | Steps (a `dailyTotal` sum), HRV, RHR, respiratory rate | Anything else, without permission — and permission is never disclosed. **No longer VO₂ max**: that read-through was deleted, and the consent prompt no longer asks for it |
+| HealthKit | runtime | HRV, RHR | Anything else, without permission — and permission is never disclosed. **No longer VO₂ max or steps**: both read-throughs were deleted, and the consent prompt no longer asks for either |
 | Computed on read | — | Sleep Need (from baseline + yesterday's strain), the stress series, `MetricWeek` baselines, **the VO₂ max estimate** | A value whose inputs are absent |
 
 Two of these are easy to get wrong. `Recovery score %` is present, well-populated, and **written
@@ -107,7 +110,7 @@ Each of these was shipped, or nearly was. Check the change against every row.
 | Class | Instance | The tell |
 | :--- | :--- | :--- |
 | **Defaulted field on a stored row** | `WhoopDevice.batteryPercentage` is non-optional and `WhoopBLEManager` writes a literal `100` at discovery | A readout showing a confident "100%" for a strap that is not connected. Gate on `connectionState == .connected` |
-| **Computed but never persisted** | `RecoveryMetric.rhrBaselineDeltaBpm` and `.hrvBaselineDeltaMs` are scored by `RecoveryScoring` and passed to the entity, but `RecoveryRecord` has neither column and `makeMetric` maps neither | A delta that exists on a live-computed day and is `nil` on every stored one. `RecoveryDashboardView.zText` rendered that `nil` as "At baseline" — a positive claim about the reading, produced by a field that was never loaded — and now renders a dash instead. The field is still not persisted, so the delta feature is still absent; the false claim is not |
+| **Computed but never persisted** | `RecoveryMetric.rhrBaselineDeltaBpm` and `.hrvBaselineDeltaMs` are scored by `RecoveryScoring` and passed to the entity, but `RecoveryRecord` has neither column and `makeMetric` maps neither | A delta that exists on a live-computed day and is `nil` on every stored one. The Recovery screen's delta text rendered that `nil` as "At baseline" — a positive claim about the reading, produced by a field that was never loaded — and draws a dash now. The field is still not persisted, so the delta feature is still absent; the false claim is not. **This is the class's hardest case: fixing the claim did not fix the gap, and a row that reads "handled" because the screen looks right is the next instance of it** |
 | **Plausible constant for a missing sensor** | `AnalyzeSleepUseCase` once wrote a literal `14.4` rpm; `GRDBSleepRepository` once handed back `respiratoryRate: 14.0` | A number with no measurement behind it. The strap has no respiratory *sensor*; since `RespiratoryRateMath` it derives one from the R-R series, and that derivation is `nil` on any night the beats cannot support |
 | **A whole row out of literals** | The four-literal night (`4.2/1.8/1.6/0.4` hours) written when a night could not be classified | Rows of exactly those values in `sleeps`. An unclassifiable night must write **no row** |
 | **`?? 0` on an optional column** | `WhoopExportImporter`'s `row.energyKcal ?? 0`, `row.averageHeartRate ?? 0`, `row.maxHeartRate ?? 0` | Unreachable on this export (all three are non-empty on the same 933 rows) but latent. Note the backfill for `v7` tests `source IS NULL` partly because of it |

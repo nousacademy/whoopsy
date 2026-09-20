@@ -1,3 +1,4 @@
+import CoreBluetooth
 import Foundation
 import Whoopsy
 
@@ -110,22 +111,27 @@ print("==================================================")
 // references' own published frames. These are checkable with no strap, and they are the assertions
 // that fail if the arithmetic or the frame layout moves.
 
-// **Hoisted above §1's gate, deliberately.** `syntheticFive` is built here and read by
-// §2 as well, so gating §1 alone would put it out of §2's scope. It is a pure value with no
-// I/O, so building it on a run that skipped both sections costs nothing.
+// **Hoisted above §1's gate, deliberately.** The 5.0 hello frame is built here and read by §2 as
+// well, so gating §1 alone would put it out of §2's scope. It is a pure value with no I/O, so building
+// it on a run that skipped both sections costs nothing.
 
-// A hand-built 5.0-shaped profile, so the encoder's refusal is asserted against a real profile value
-// rather than against `nil`. `headerChecksum` is the field the builder switches on.
-let syntheticFive = WhoopProtocolProfile(
-    generation: .whoop5,
-    headerChecksum: .crc16ModbusOverHeader,
-    innerOrigin: 8,
-    innerPrefixBytes: 3,
-    packetTypes: WhoopProtocolProfile.PacketTypes(
-        command: 35, commandResponse: 36, historicalData: 47, event: 48, metadata: 49))
+// The 5.0 `CLIENT_HELLO`, the one published 5.0 frame in hand: a static sixteen bytes from the
+// reference, quoted byte for byte in `BLE_PROTOCOL.md` §2.1. Every field below is asserted against it
+// rather than against this app's own arithmetic, because a vector computed by the code under test is
+// not a vector.
+let hello50 = Data([
+    0xAA, 0x01, 0x08, 0x00, 0x00, 0x01, 0xE6, 0x71,
+    0x23, 0x01, 0x91, 0x01, 0x36, 0x3E, 0x5C, 0x8D,
+])
+
+// The decoder is hoisted with it, and for the same reason: it is stateless by construction — zero
+// stored properties, which is what makes it `Sendable` without a lock — so one instance serves every
+// section and there is nothing for a second to isolate. §1 reads the 5.0 hello through it and §2 reads
+// the 4.0 frames; a per-section copy would be the same object twice.
+let decoder = WhoopPacketDecoder()
 
 if sectionEnabled(1) {
-    print("\n[1/15] Testing CRC Algorithms & Framing...")
+    print("\n[1/17] Testing CRC Algorithms & Framing...")
 
     // The 4.0 header CRC8 is over the two length bytes only, poly 0x07. Both values are the references'
     // own, quoted in §2.1.
@@ -133,13 +139,10 @@ if sectionEnabled(1) {
     assertTest(CRCUtils.crc8(Data([0x10, 0x00])) == 0x57, "crc8([0x10, 0x00]) == 0x57 (reference vector)")
 
     // The 5.0 `CLIENT_HELLO` is a static 16-byte frame, so it validates the CRC16-Modbus over the first
-    // six header bytes *and* the CRC32 over the inner record in one. Neither is wired to a frame this
-    // build can build — `profile(for:)` returns nil for both 5.0 generations — but the arithmetic being
-    // correct is what makes the eventual envelope a matter of framing rather than of checksums.
-    let hello50 = Data([
-        0xAA, 0x01, 0x08, 0x00, 0x00, 0x01, 0xE6, 0x71,
-        0x23, 0x01, 0x91, 0x01, 0x36, 0x3E, 0x5C, 0x8D,
-    ])
+    // six header bytes *and* the CRC32 over the inner record in one. The two assertions here pin the
+    // arithmetic; the block further down hands the same sixteen bytes to the decoder and asserts the
+    // *envelope*, which is a different claim — the CRC functions agreeing with the reference about two
+    // substrings is what makes the envelope a question of framing rather than of checksums.
     assertTest(
         CRCUtils.crc16Modbus(hello50.subdata(in: 0..<6)) == 0x71E6,
         "crc16Modbus(5.0 hello[0..<6]) == 0x71E6 (reference vector)")
@@ -200,26 +203,91 @@ if sectionEnabled(1) {
     assertTest(seqValues.last == 0, "Command sequence wraps at 256 rather than overflowing")
     assertTest(Set(seqValues).count == 256, "Command sequence produces 256 distinct values before repeating")
 
-    // The envelope is selected by generation, and refusing is the default.
+    // The envelope is selected by generation, and **reading and writing are still answered
+    // separately** — but both answers are now yes for all three straps, and the separation is carried
+    // by *which table* answers rather than by whether one exists.
     //
-    // `WhoopProtocolProfile.profile(for:)` is the choke point the whole generation-aware path rests on: it
-    // answers nil for every envelope this build has not implemented, and every command writer refuses on
-    // nil. The property worth pinning is the refusal, because the failure it prevents is silent — the
-    // packet-type numberings do not overlap between generations, so a 4.0-framed command written to a 5.0
-    // strap is a *different message* rather than a rejected one.
+    // `WhoopProtocolProfile.profile(for:)` is the choke point the generation-aware path rests on. What
+    // is pinned below is that the three straps transmit through **two different tables** — the 4.0
+    // through `commandOpcodes`, the 5.0 and MG through `syncOpcodes` — and that neither table is a
+    // fallback for the other. The failure this prevents is silent: a 4.0-framed command on a 5.0 strap
+    // is a *different message* rather than a rejected one, and one documented 4.0 opcode is a
+    // destructive flash erase.
     assertTest(WhoopProtocolProfile.profile(for: .whoop4) == .whoop4, "whoop4 has a profile")
-    for generation in [WhoopHardwareGeneration.whoop5, .whoop5MG, .standardBleHR, .simulator] {
+    assertTest(
+        WhoopProtocolProfile.profile(for: .whoop5) == .whoop5,
+        "whoop5 has a profile — this build can validate its inbound frames")
+    assertTest(
+        WhoopProtocolProfile.profile(for: .whoop5MG) == .whoop5MG,
+        "whoop5MG has a profile, and one that names its own generation")
+    for generation in [WhoopHardwareGeneration.standardBleHR, .simulator] {
         assertTest(
             WhoopProtocolProfile.profile(for: generation) == nil,
-            "\(generation.rawValue) has no profile — this build cannot frame for it")
+            "\(generation.rawValue) has no profile — it frames no proprietary envelope at all")
     }
+    assertTest(
+        WhoopProtocolProfile.whoop4.canTransmitCommands
+            && WhoopProtocolProfile.whoop5.canTransmitCommands
+            && WhoopProtocolProfile.whoop5MG.canTransmitCommands,
+        "All three straps can transmit — the drain is implemented on both generations")
+    // **The one that matters, and the one that is easy to lose.** `canTransmitCommands` is now true
+    // for three profiles, so it no longer says anything about *which* opcodes a profile carries. What
+    // keeps the two generations apart is that each table is answered by its own envelope: the 4.0 has
+    // `commandOpcodes` and no 5.0 set, the 5.0 and MG are the other way round. A build that filled the
+    // 4.0's table on a 5.0 "so the drain works there too" would satisfy every assertion above it.
+    assertTest(
+        WhoopProtocolProfile.whoop4.commandOpcodes != nil
+            && WhoopProtocolProfile.whoop4.syncOpcodes == nil,
+        "The 4.0 transmits through commandOpcodes and carries no 5.0 set")
+    assertTest(
+        WhoopProtocolProfile.whoop5.commandOpcodes == nil
+            && WhoopProtocolProfile.whoop5MG.commandOpcodes == nil,
+        "Neither 5.0 profile carries the 4.0 command set — the two are not interchangeable")
+    assertTest(
+        WhoopProtocolProfile.whoop5.syncOpcodes != nil
+            && WhoopProtocolProfile.whoop5MG.syncOpcodes != nil,
+        "Both 5.0 profiles carry the 5.0 opcode set, established from the references rather than assumed")
+    // The bytes themselves, pinned as literals so a table edited to match 4.0's numbering fails here
+    // rather than building a frame a strap would accept and act on.
+    let fiveOpcodes = WhoopProtocolProfile.whoop5.syncOpcodes
+    assertTest(
+        fiveOpcodes?.hello == 0x91 && fiveOpcodes?.setClock == 0x92 && fiveOpcodes?.getClock == 0x93,
+        "The 5.0 hello and clock pair read 0x91/0x92/0x93 rather than 4.0's bytes")
+    assertTest(
+        fiveOpcodes?.requestHistoricalSync == 0x16 && fiveOpcodes?.historicalDataResult == 0x17,
+        "The 5.0 drain pair is 0x16/0x17 — the same numbering as the 4.0's, in the other envelope")
+    assertTest(
+        fiveOpcodes?.startRawData == 0x51 && fiveOpcodes?.stopRawData == 0x52
+            && fiveOpcodes?.toggleIMUModeLive == 0x6A && fiveOpcodes?.toggleIMUModeHistorical == 0x69,
+        "The 5.0 raw-data and IMU opcodes are its own set, not the 4.0's 0x3F/0x6B")
+    assertTest(
+        WhoopProtocolProfile.whoop5MG.syncOpcodes == fiveOpcodes,
+        "The MG shares the 5.0's opcode set — one envelope, one table, and no MG-specific bytes")
+
     let catalog = WhoopProtocolCatalog()
-    assertTest(catalog.supportsProprietarySync(.whoop4), "Catalog reports sync implemented for 4.0")
-    for generation in [WhoopHardwareGeneration.whoop5, .whoop5MG, .standardBleHR, .simulator] {
+    for generation in [WhoopHardwareGeneration.whoop4, .whoop5, .whoop5MG] {
+        assertTest(
+            catalog.supportsProprietarySync(generation),
+            "Catalog reports sync implemented for \(generation.rawValue)")
+    }
+    for generation in [WhoopHardwareGeneration.standardBleHR, .simulator] {
         assertTest(
             !catalog.supportsProprietarySync(generation),
-            "Catalog reports sync not implemented for \(generation.rawValue)")
+            "Catalog reports sync not implemented for \(generation.rawValue) — it is not a WHOOP strap")
     }
+    // The caption's name is read off the profile's own checksum variant, so it cannot name an
+    // envelope the builder would not write. Pinned as literals because a caption is user-facing text.
+    assertTest(
+        catalog.protocolEnvelopeName(.whoop4) == "4.0",
+        "The 4.0's envelope is named 4.0 for the sync caption")
+    assertTest(
+        catalog.protocolEnvelopeName(.whoop5) == "5.0"
+            && catalog.protocolEnvelopeName(.whoop5MG) == "5.0",
+        "Both 5.0 profiles name the 5.0 envelope — one envelope, and the MG is not a third")
+    assertTest(
+        catalog.protocolEnvelopeName(.standardBleHR) == nil
+            && catalog.protocolEnvelopeName(.simulator) == nil,
+        "A generation with no envelope gets no name rather than a caption naming someone else's")
 
     // The three models the user can choose, derived from the cases rather than listed beside them — a
     // hardcoded list is one that a new case silently fails to join.
@@ -228,11 +296,125 @@ if sectionEnabled(1) {
         "The selectable models are exactly the three straps, 5.0 and MG distinct")
 
     assertTest(
-        WhoopPacketEncoder.pingCommand(profile: syntheticFive, seq: 1) == nil,
-        "Encoder refuses to build a frame under an envelope it has no builder for")
+        WhoopPacketEncoder.pingCommand(profile: .whoop5, seq: 1) == nil,
+        "Encoder refuses to build a frame under an envelope it has no command opcodes for")
     assertTest(
-        WhoopPacketEncoder.hapticAlarmCommand(profile: syntheticFive, seq: 1) == nil,
-        "Every command builder refuses the unimplemented envelope")
+        WhoopPacketEncoder.hapticAlarmCommand(profile: .whoop5, seq: 1) == nil,
+        "Every command builder refuses the read-only envelope")
+    assertTest(
+        WhoopPacketEncoder.enableLiveTelemetry(profile: .whoop5, seq: 1) == nil
+            && WhoopPacketEncoder.requestHistoricalSync(profile: .whoop5, seq: 1) == nil,
+        "The telemetry and drain builders refuse it too — every builder, not the two that were sampled")
+    assertTest(
+        WhoopPacketEncoder.pingCommand(profile: .whoop5MG, seq: 1) == nil,
+        "The MG is refused on the same grounds rather than on a name check")
+    assertTest(
+        WhoopPacketEncoder.buildPacket(
+            profile: .whoop5, type: 35, seq: 1, cmd: 0x91, payload: Data([0x01])) == nil,
+        "The encoder refuses even a 5.0 frame whose opcode is the one the reference documents")
+
+    // MARK: The 5.0 / MG envelope
+    //
+    // This block is anchored on the one published 5.0 frame in hand — the static sixteen-byte
+    // `CLIENT_HELLO` quoted in `BLE_PROTOCOL.md` §2.1 — and everything below is asserted against those
+    // bytes rather than against this app's own encoder, which cannot build a 5.0 frame and must not.
+    // That is the difference between this block and the CRC vectors above it: those pin two functions,
+    // this pins a *slice*, and a slice is where an offset error lives.
+
+    let decodedHello = decoder.decodeProprietaryFrame(data: hello50, profile: .whoop5)
+    assertTest(decodedHello != nil, "The published 5.0 CLIENT_HELLO decodes under the 5.0 envelope")
+    if let decodedHello {
+        assertTest(
+            decodedHello.generation == .whoop5,
+            "A frame read under the 5.0 profile names the 5.0, so it cannot be filed against a 4.0")
+        // The inner record begins at offset 8, not 4 — the four-byte shift. Reading `cmd` at 4.0's
+        // offset would take the crc16's high byte (`0x71`) as the opcode.
+        assertTest(
+            decodedHello.type == WhoopProtocolProfile.whoop5.packetTypes.command,
+            "Inner type is the profile's command type — 0x23 and 35 are one byte, not two numberings")
+        assertTest(decodedHello.seq == 1, "Inner seq is 1, read at byte 9 rather than byte 5")
+        assertTest(decodedHello.cmd == 0x91, "Inner cmd is 0x91, the hello's own opcode")
+        assertTest(
+            decodedHello.payload == Data([0x01]),
+            "The payload is the single byte past the three-byte inner prefix, not the inner record")
+    }
+    assertTest(
+        decoder.decodeProprietaryFrame(data: hello50, profile: .whoop5MG)?.generation == .whoop5MG,
+        "The same envelope read under the MG profile names the MG — one envelope, two generations")
+
+    // The declared length is at a different offset under each envelope, and this is the assertion that
+    // fails if anyone tidies the two profiles onto one. 5.0 spends byte 1 on a format byte, so a decoder
+    // that reads `data[1]` and `data[2]` reads the hello's length as 0x0801 — 2049 — and then rejects a
+    // sixteen-byte frame for being 2049 bytes short. The failure is a total loss of 5.0 traffic rather
+    // than a wrong field, which is why it is worth a literal.
+    assertTest(
+        WhoopProtocolProfile.whoop4.lengthFieldOffset == 1
+            && WhoopProtocolProfile.whoop5.lengthFieldOffset == 2,
+        "The declared length sits at byte 1 under 4.0 and byte 2 under 5.0")
+    let helloMisread = Int(hello50[1]) | (Int(hello50[2]) << 8)
+    assertTest(
+        helloMisread == 0x0801,
+        "4.0's length offset reads the hello as declaring 2049 bytes, not 8")
+
+    // The frame-size rule, and the identity that makes one decoder serve both envelopes: the two
+    // documented forms — 4.0's `length + 4` and 5.0's `declLength + 8` — are `innerOrigin + declared`.
+    // The sweep is accumulated into one assertion because fifteen of them would be fifteen lines of the
+    // same sentence; the failures it collects are what makes it discriminating.
+    assertTest(
+        WhoopProtocolProfile.whoop4.frameByteCount(declaredLength: 1247) == 1251
+            && WhoopProtocolProfile.whoop5.frameByteCount(declaredLength: 8) == 16
+            && WhoopProtocolProfile.whoop5.frameByteCount(declaredLength: 8) == hello50.count,
+        "4.0's `length + 4` and 5.0's `declLength + 8` are the same rule, and it sizes the real hello")
+    assertTest(
+        WhoopProtocolProfile.whoop4.innerByteCount(declaredLength: 1247) == 1243
+            && WhoopProtocolProfile.whoop5.innerByteCount(declaredLength: 8) == 4,
+        "The inner record is `declaredLength - 4` under both — which is the hello's four inner bytes")
+    var sizeRuleFailures: [String] = []
+    for profile in [WhoopProtocolProfile.whoop4, .whoop5, .whoop5MG] {
+        for declared in [8, 124, 1244, 2140, 1247] {
+            let whole = profile.frameByteCount(declaredLength: declared)
+            let inner = profile.innerByteCount(declaredLength: declared)
+            if whole != profile.innerOrigin + declared
+                || inner + profile.innerOrigin + WhoopProtocolProfile.checksumTrailerBytes != whole {
+                sizeRuleFailures.append("\(profile.generation.rawValue)/\(declared)")
+            }
+        }
+    }
+    assertTest(
+        sizeRuleFailures.isEmpty,
+        "Every documented record size obeys the one rule under all three profiles: \(sizeRuleFailures)")
+
+    // What the CRC16 covers, which is not what the CRC8 covers. These three bytes are read by no other
+    // check — not the start of frame, not the length, not the inner record — so a frame carrying a
+    // flipped one is refused *only* if the checksum input reaches back to byte 0. A checksum taken over
+    // `frame[2..<6]`, which is what "over the length and the header bytes" would mean if anyone
+    // generalised the 4.0 rule, accepts all three.
+    for index in [1, 4, 5] {
+        var tampered = hello50
+        tampered[index] ^= 0x01
+        let accepted = decoder.decodeProprietaryFrame(data: tampered, profile: .whoop5) != nil
+        assertTest(
+            !accepted,
+            "Flipping header byte \(index) is refused — the crc16 input starts at the start of frame")
+    }
+    do {
+        // The payload CRC32 covers `frame[8 ..< declLength + 4]`, the inner record. Flipping its last
+        // byte must be refused, and the byte is the payload's — which is what makes this the assertion
+        // that the trailer is found relative to the inner origin rather than at a fixed offset.
+        var tampered = hello50
+        tampered[11] ^= 0x01
+        assertTest(
+            decoder.decodeProprietaryFrame(data: tampered, profile: .whoop5) == nil,
+            "Flipping the hello's last inner byte is refused by the payload crc32")
+    }
+    do {
+        // And the reverse direction: the hello under the 4.0 envelope. `length` would be read as 0x0801
+        // and the 4.0 header CRC8 — over what it thinks are the two length bytes — would not match
+        // either, so this is refused twice over.
+        assertTest(
+            decoder.decodeProprietaryFrame(data: hello50, profile: .whoop4) == nil,
+            "The 5.0 hello is refused under the 4.0 envelope — the envelope discriminates, not the type")
+    }
 
     // Which model a strap is: a stored choice, never overridden by the guess.
     //
@@ -253,12 +435,279 @@ if sectionEnabled(1) {
     assertTest(
         WhoopBLEManager.resolvedGeneration(stored: nil, advertisedName: "WHOOP Strap") == .whoop4,
         "An unnamed strap falls back to 4.0 — the heuristic cannot read a name it was never given")
+
+    // MARK: Length-driven reassembly across notifications
+    //
+    // `BLE_PROTOCOL.md` §4 named this as the remaining half of the framing problem, and it is the gate
+    // on every motion record this app wants. A notification carries at most `MTU − 3` bytes; the
+    // 5.0/MG type-47 buffer is 1244 or 2140 bytes on that document's least-verifiable source, and the
+    // 4.0 live IMU frame is 1921, published and hardware-verified. Before this, the decoder was handed
+    // *one* notification and
+    // returned `nil` for anything longer, and the manager dropped that `nil` on the floor — so a large
+    // frame was not rejected, it was never seen at all.
+    let reassemblyProfile = WhoopProtocolProfile.whoop4
+
+    // The bound is pinned with its basis, in the shape of the other constant assertions: changing it
+    // means deleting the sentence that says where it came from.
+    assertTest(
+        WhoopFrameReassembler.maximumFrameBytes == 4096,
+        "The reassembly bound is 4096 — above the largest documented record (2140 declared + 4)")
+
+    // A frame long enough to be genuinely split, built by the encoder so the two halves cannot drift
+    // apart. The payload is 1240 bytes, the 5.0/MG IMU buffer's documented size, and it is generated
+    // rather than constant so that it *contains* 0xAA bytes — a payload of one repeated value would
+    // pass a boundary scan that never had to reject a false start.
+    let longPayload = Data((0..<1240).map { UInt8($0 % 251) })
+    assertTest(longPayload.contains(0xAA), "The long fixture payload contains a byte equal to the start of frame")
+    let longFrame = WhoopPacketEncoder.buildPacket(
+        profile: reassemblyProfile,
+        type: reassemblyProfile.packetTypes.historicalData,
+        seq: 0x11,
+        cmd: 0x00,
+        payload: longPayload)!
+    assertTest(
+        longFrame.count == 1251,
+        "The long frame is 1251 bytes (3 prefix + 1240 payload + 8) — past what one notification carries")
+
+    // `Data` slices inherit the indices of the buffer they came from, and a scan written against one
+    // reads the wrong bytes once the head is trimmed — so every fragment below is rebuilt as a fresh,
+    // zero-based `Data`, which is what a notification actually is.
+    func fragment(_ bytes: Data, _ range: Range<Int>) -> Data { Data(Array(bytes[range])) }
+
+    // 1. **Every split point, not one chosen split.** A reassembler that only works when the cut
+    // happens to fall outside a field is a reassembler that works on the fixture. This walks all 1250
+    // of them, which is also what proves the buffer resumes from the frame's own start rather than
+    // from where the last notification ended.
+    var splitFailures: [Int] = []
+    for cut in 1..<longFrame.count {
+        var reassembler = WhoopFrameReassembler()
+        let head = reassembler.append(fragment(longFrame, 0..<cut), profile: reassemblyProfile)
+        let tail = reassembler.append(fragment(longFrame, cut..<longFrame.count), profile: reassemblyProfile)
+        let ok = head.isEmpty && tail.count == 1
+            && tail[0].payload == longPayload
+            && tail[0].type == reassemblyProfile.packetTypes.historicalData
+        if !ok { splitFailures.append(cut) }
+    }
+    assertTest(
+        splitFailures.isEmpty,
+        "A frame split across two notifications reassembles at all 1250 boundaries (failed: \(splitFailures.prefix(5)))")
+
+    // 2. **Byte at a time** — the worst case a real link can present, and the one where a scan that
+    // consumed optimistically would discard the frame on its first partial read.
+    var drip = WhoopFrameReassembler()
+    var dripFrames: [WhoopRawFrame] = []
+    for index in 0..<longFrame.count {
+        dripFrames += drip.append(fragment(longFrame, index..<(index + 1)), profile: reassemblyProfile)
+    }
+    assertTest(dripFrames.count == 1, "A frame delivered one byte per notification still reassembles exactly once")
+    assertTest(dripFrames.first?.payload == longPayload, "The byte-at-a-time frame's payload is intact")
+    assertTest(drip.bufferedByteCount == 0, "Nothing is left buffered once the frame completed")
+
+    // 3. **Two frames in one notification.** A notification is a byte stream, not a frame: it can
+    // carry a whole frame plus the head of the next, and after a gap it can complete several at once.
+    var packed = WhoopFrameReassembler()
+    let packedFrames = packed.append(longFrame + longFrame, profile: reassemblyProfile)
+    assertTest(packedFrames.count == 2, "Two frames arriving in one notification both come back")
+    assertTest(packed.bufferedByteCount == 0, "Both frames are consumed, leaving nothing buffered")
+
+    // 4. **Leading noise is discarded, not prepended.** Bytes before a start of frame are the tail of
+    // one that was lost; holding them would move every field in the next frame.
+    var noisy = WhoopFrameReassembler()
+    let noisyFrames = noisy.append(Data([0x01, 0x02, 0x03]) + longFrame, profile: reassemblyProfile)
+    assertTest(noisyFrames.count == 1, "Garbage before a frame does not stop it decoding")
+    assertTest(noisyFrames.first?.payload == longPayload, "The frame behind the noise is byte-identical")
+
+    var pureNoise = WhoopFrameReassembler()
+    assertTest(
+        pureNoise.append(Data([0x01, 0x02, 0x03]), profile: reassemblyProfile).isEmpty
+            && pureNoise.bufferedByteCount == 0,
+        "Bytes containing no start of frame are discarded rather than buffered")
+
+    // 5. **A `0xAA` inside a payload is not a boundary, and its declared length is meaningless.**
+    // The payload is crafted so the false start declares a *plausible* size rather than an absurd one
+    // — the case a length sanity check alone lets through, and the reason the decoder's checksums are
+    // what decide rather than this type's arithmetic.
+    let falseBoundaryPayload = Data([0xAA, 0x08, 0x00, 0xAA, 0x08, 0x00, 0xAA])
+    let falseBoundaryFrame = WhoopPacketEncoder.buildPacket(
+        profile: reassemblyProfile,
+        type: reassemblyProfile.packetTypes.event,
+        seq: 0x05,
+        cmd: 0x00,
+        payload: falseBoundaryPayload)!
+    var falseBoundary = WhoopFrameReassembler()
+    let falseBoundaryFrames = falseBoundary.append(falseBoundaryFrame, profile: reassemblyProfile)
+    assertTest(falseBoundaryFrames.count == 1, "A 0xAA inside a payload does not split the frame carrying it")
+    assertTest(
+        falseBoundaryFrames.first?.payload == falseBoundaryPayload,
+        "The frame with an embedded 0xAA decodes with its payload intact")
+
+    // 6. **A false boundary that declares an impossible length is skipped, and the real frame behind
+    // it survives.** `0xAA FF FF` declares 65535, which is past `maximumFrameBytes`; the byte below it
+    // declares 1, which could not hold the inner record's own prefix. Neither may park the scan.
+    var absurd = WhoopFrameReassembler()
+    let absurdFrames = absurd.append(Data([0xAA, 0xFF, 0xFF]) + longFrame, profile: reassemblyProfile)
+    assertTest(absurdFrames.count == 1, "An over-long declared length is skipped as a false boundary")
+    var undersized = WhoopFrameReassembler()
+    assertTest(
+        undersized.append(Data([0xAA, 0x01, 0x00]) + longFrame, profile: reassemblyProfile).count == 1,
+        "A declared length below the profile's minimum is skipped as a false boundary")
+
+    // 7. **A partial frame is held, not emitted and not discarded.** This is the state the whole type
+    // exists to carry, and `bufferedByteCount` is the only way to see it — its doc comment says so.
+    var holding = WhoopFrameReassembler()
+    assertTest(
+        holding.append(fragment(longFrame, 0..<500), profile: reassemblyProfile).isEmpty,
+        "Half a frame produces no frame")
+    assertTest(holding.bufferedByteCount == 500, "Half a frame is held whole, not partially consumed")
+    let completed = holding.append(fragment(longFrame, 500..<longFrame.count), profile: reassemblyProfile)
+    assertTest(completed.count == 1 && completed[0].payload == longPayload, "The held head completes with its tail")
+
+    // 8. **`reset()` drops the partial frame.** A new connection is a new byte stream: bytes held
+    // across one would be prepended to the next connection's first frame and shift every field in it.
+    // The tail alone must therefore yield nothing rather than completing the frame it once belonged to.
+    var resetting = WhoopFrameReassembler()
+    _ = resetting.append(fragment(longFrame, 0..<500), profile: reassemblyProfile)
+    resetting.reset()
+    assertTest(resetting.bufferedByteCount == 0, "reset() empties the buffer")
+    let afterReset = resetting.append(fragment(longFrame, 500..<longFrame.count), profile: reassemblyProfile)
+    assertTest(
+        afterReset.allSatisfy { $0.payload != longPayload },
+        "A frame's tail cannot complete a frame whose head was dropped by reset()")
+
+    // 9. **The reassembler does not accept what the decoder refuses.** It decides boundaries and
+    // nothing else; a candidate failing either checksum is evidence the 0xAA it started on was a
+    // payload byte. Corrupting the frame's payload without moving its declared length is the case
+    // that separates the two — the length still says a frame is here, and only the checksum disagrees.
+    var corruptedFrame = longFrame
+    corruptedFrame[600] = corruptedFrame[600] &+ 1
+    var corrupting = WhoopFrameReassembler()
+    assertTest(
+        corrupting.append(corruptedFrame, profile: reassemblyProfile).isEmpty,
+        "A frame failing its payload checksum yields no frame and is walked past")
+    assertTest(corrupting.bufferedByteCount == 0, "Nothing is left held after a checksum failure is consumed")
+
+    // 10. **The 5.0 envelope reassembles too, and its length sits at a different offset.** This is the
+    // case the reassembler exists for on the strap the user has two of: §6's type-47 buffer is 1244
+    // bytes for the 6-axis IMU record, ~40× a notification, and it is unreachable until a frame
+    // spanning notifications comes back whole. It is also the assertion that
+    // fails if the length offset stays a literal 1 — a 5.0 frame read that way declares 0x01xx and is
+    // never completed.
+    //
+    // The frame is **hand-built to §2's table rather than produced by the encoder**, and that is the
+    // point rather than a workaround: the encoder refuses this envelope, and a frame it built would be
+    // checked against the same offsets it was written with — the self-referential assertion §2.1
+    // records as having hidden a wrong CRC input for months.
+    func fiveFrame(inner: [UInt8]) -> Data {
+        let declared = inner.count + WhoopProtocolProfile.checksumTrailerBytes
+        var frame: [UInt8] = [0xAA, 0x01, 0, 0, 0x00, 0x01, 0, 0]
+        frame[2] = UInt8(declared & 0xFF)
+        frame[3] = UInt8((declared >> 8) & 0xFF)
+        let crc16 = CRCUtils.crc16Modbus(Data(frame[0..<6]))
+        frame[6] = UInt8(crc16 & 0xFF)
+        frame[7] = UInt8((crc16 >> 8) & 0xFF)
+        frame.append(contentsOf: inner)
+        // `[4..6]` are the two header bytes §2 labels and does not specify; `00 01` is what the one
+        // published 5.0 frame carries, and the crc16 above covers them either way.
+        let crc32 = CRCUtils.crc32(Data(inner))
+        frame.append(contentsOf: [
+            UInt8(crc32 & 0xFF), UInt8((crc32 >> 8) & 0xFF),
+            UInt8((crc32 >> 16) & 0xFF), UInt8((crc32 >> 24) & 0xFF),
+        ])
+        return Data(frame)
+    }
+    let imuInner = [UInt8(47), 0, 0x2F] + (0..<1244).map { UInt8($0 % 251) }
+    let imuFrame = fiveFrame(inner: imuInner)
+    assertTest(
+        imuFrame.count == 1259,
+        "The 5.0 IMU frame is 1259 bytes: 8 header + (3 prefix + 1244 payload) + 4 trailer")
+    assertTest(
+        imuFrame[2] == 0xE3 && imuFrame[3] == 0x04,
+        "Its declared length sits at bytes 2 and 3 — 1251, where 4.0's offset would read byte 1's `01`")
+    assertTest(
+        WhoopProtocolProfile.whoop5.frameByteCount(declaredLength: 1251) == imuFrame.count,
+        "The frame-sizing rule agrees with the hand-built frame, which is a different construction")
+    do {
+        let decoded = decoder.decodeProprietaryFrame(data: imuFrame, profile: .whoop5)
+        assertTest(
+            decoded?.type == 47 && decoded?.payload.count == 1244,
+            "The hand-built frame decodes as a type-47 record carrying its 1244-byte payload")
+    }
+    var fiveSplitFailures: [String] = []
+    for split in 1..<imuFrame.count {
+        var subject = WhoopFrameReassembler()
+        var got = subject.append(fragment(imuFrame, 0..<split), profile: .whoop5)
+        got += subject.append(fragment(imuFrame, split..<imuFrame.count), profile: .whoop5)
+        if got.count != 1 || got[0].payload.count != 1244 {
+            fiveSplitFailures.append("\(split)")
+        }
+    }
+    assertTest(
+        fiveSplitFailures.isEmpty,
+        "A 5.0 type-47 frame reassembles at all \(imuFrame.count - 1) of its boundaries, not one chosen "
+            + "split: \(fiveSplitFailures.prefix(4))")
+    do {
+        var byteAtATime = WhoopFrameReassembler()
+        var helloCount = 0
+        for index in 0..<hello50.count {
+            helloCount += byteAtATime.append(fragment(hello50, index..<(index + 1)), profile: .whoop5).count
+        }
+        assertTest(
+            helloCount == 1 && byteAtATime.bufferedByteCount == 0,
+            "The 16-byte 5.0 hello delivered a byte per notification arrives exactly once")
+    }
+    do {
+        // The envelope discriminates at the reassembler too, though **not by refusing** — and the
+        // distinction is worth pinning because it is the shape a reader would assume wrong. Handed the
+        // 4.0 profile these bytes declare 0x0801 at that offset, so the reassembler believes a
+        // 2053-byte frame is in flight and holds all sixteen bytes waiting for it. Nothing is handed
+        // up, which is the property that matters, but nothing is discarded either: the buffer sits at
+        // sixteen bytes until `reset()`. That is the whole reason `WhoopBLEManager` takes the profile
+        // from the *resolved* generation and never guesses one — a mis-set model leaves a strap's
+        // traffic accumulating in a buffer instead of decoding.
+        var wrongEnvelope = WhoopFrameReassembler()
+        let got = wrongEnvelope.append(hello50, profile: .whoop4)
+        assertTest(got.isEmpty, "The 5.0 hello under the 4.0 profile yields no frame")
+        assertTest(
+            wrongEnvelope.bufferedByteCount == hello50.count,
+            "Those bytes are held rather than discarded — the reassembler thinks 2053 bytes are coming")
+    }
+
+    // The 4.0 identifiers, pinned against the **reference literals** rather than against
+    // `WhoopGATTConstants` — the same distinction the CRC block above is built on, and here it is the
+    // only thing that can see the defect at all.
+    //
+    // A wrong base half does not fail as a decode error, so it never reaches a single assertion below
+    // this point: the scan filters on a service the strap does not advertise, the peripheral is never
+    // discovered, and every framing, checksum and envelope assertion in this file still passes. That is
+    // precisely how the `…82A5-4E40-1CA360B95B30` half sat here unremarked — the suite was green, and a
+    // real scan would have found nothing. These literals are noop's `docs/BLE_REVERSE_ENGINEERING.md`
+    // line for line, which is also where the five roles come from; `BLE_PROTOCOL.md` §1 carries the
+    // provenance and the list of clients that agree.
+    let whoop4Base = "8D6D-82B8-614A-1C8CB0F8DCC6"
+    assertTest(
+        WhoopGATTConstants.whoop4ServiceUUID == CBUUID(string: "61080001-\(whoop4Base)"),
+        "The 4.0 service is 61080001-\(whoop4Base) (reference UUID)")
+    assertTest(
+        WhoopGATTConstants.whoop4CommandUUID == CBUUID(string: "61080002-\(whoop4Base)")
+            && WhoopGATTConstants.whoop4ResponseUUID == CBUUID(string: "61080003-\(whoop4Base)")
+            && WhoopGATTConstants.whoop4EventsUUID == CBUUID(string: "61080004-\(whoop4Base)"),
+        "The 4.0 command, response and event characteristics carry that same base half")
+    // The data-stream characteristic is the one a drain reads from, so it is called out separately
+    // rather than folded into the line above.
+    assertTest(
+        WhoopGATTConstants.whoop4DataStreamUUID == CBUUID(string: "61080005-\(whoop4Base)"),
+        "The 4.0 data-stream characteristic carries that same base half")
+    // The scan list is what discovery actually filters on, so a correct service UUID that is missing
+    // from it is just as undiscoverable as a wrong one — and just as quiet.
+    assertTest(
+        WhoopGATTConstants.scannableServiceUUIDs.contains(WhoopGATTConstants.whoop4ServiceUUID)
+            && WhoopGATTConstants.scannableServiceUUIDs.contains(WhoopGATTConstants.whoop5ServiceUUID),
+        "The scan list carries both proprietary service families")
 }
 
 // MARK: - 2. Packet Decoder Tests
 if sectionEnabled(2) {
-    print("\n[2/15] Testing WHOOP Packet Decoder...")
-    let decoder = WhoopPacketDecoder()
+    print("\n[2/17] Testing WHOOP Packet Decoder...")
 
     // Test Standard SIG Heart Rate Frame
     let sigData = Data([0x10, 72, 0x50, 0x03]) // 72 BPM, 848 in 1/1024s (~828ms)
@@ -347,11 +796,14 @@ if sectionEnabled(2) {
         decoder.decodeProprietaryFrame(data: lyingLength, profile: envelopeProfile) == nil,
         "A frame declaring a length beyond its own size is refused")
 
-    // 5. The envelope itself. A profile this build cannot slice is refused rather than parsed with 4.0's
-    // offsets — the same property `profile(for:)` enforces one level up, asserted here at the decoder.
+    // 5. The envelope itself. A 4.0 frame read under the 5.0 envelope is refused rather than parsed
+    // with the wrong offsets — the property that makes the envelope, and not the type byte, the thing
+    // that separates the generations. It is refused for a mundane reason: the 5.0 declared length
+    // lives at `[2..4]`, so a 4.0 frame's `lengthLow` is read as the 5.0 length's high half and the
+    // frame comes out absurdly long.
     assertTest(
-        decoder.decodeProprietaryFrame(data: wellFormed, profile: syntheticFive) == nil,
-        "The decoder refuses an envelope it has no offsets for")
+        decoder.decodeProprietaryFrame(data: wellFormed, profile: .whoop5) == nil,
+        "The decoder refuses a 4.0 frame under the 5.0 envelope")
 
     // The standard Heart Rate characteristic (0x2A37) carries a *repeated* R-R field, and everything
     // downstream of the R-R series rests on this decoder returning all of it, in wire order. Until `v8`
@@ -406,7 +858,7 @@ if sectionEnabled(2) {
 
 // MARK: - 3. Mathematical & HRV Algorithms
 if sectionEnabled(3) {
-    print("\n[3/15] Testing HRV (RMSSD, SDNN, pNN50) & Artifact Rejection...")
+    print("\n[3/17] Testing HRV (RMSSD, SDNN, pNN50) & Artifact Rejection...")
     let rawRR: [Double] = [800.0, 805.0, 810.0, 795.0, 1500.0, 802.0, 808.0]
     let cleaned = HeartRateVariabilityMath.filterRRIntervals(rawRR)
     assertTest(!cleaned.contains(1500.0), "Ectopic beat (1500ms) successfully rejected by filter")
@@ -423,7 +875,7 @@ if sectionEnabled(3) {
 
 // MARK: - 4. Strain & Zone Accumulator
 if sectionEnabled(4) {
-    print("\n[4/15] Testing Strain Integrator & Karvonen Zones...")
+    print("\n[4/17] Testing Strain Integrator & Karvonen Zones...")
     let zones = StrainAccumulatorMath.computeZones(maxHR: 190, restHR: 50)
     assertTest(zones.count == 5, "Computed 5 distinct Heart Rate Zones")
     assertTest(zones[0].lowerBpm == 120, "Zone 1 threshold calculated via HRR: \(zones[0].lowerBpm)")
@@ -441,7 +893,7 @@ if sectionEnabled(4) {
 
 // MARK: - 5. Recovery Baseline Model
 if sectionEnabled(5) {
-    print("\n[5/15] Testing Recovery z-Score Baseline Model...")
+    print("\n[5/17] Testing Recovery z-Score Baseline Model...")
     let greenRecovery = BaselineStatisticsMath.computeRecoveryScore(
         todayHrv: 85.0,
         baselineHrvMean: 65.0,
@@ -467,7 +919,7 @@ if sectionEnabled(5) {
 
 // MARK: - 6. End-to-End Clean Architecture & Local Data Sovereignty
 //
-// Sections 6–15 live in `runMainSections` rather than in this `Task`'s own body, and the reason
+// Sections 6–16 live in `runMainSections` rather than in this `Task`'s own body, and the reason
 // is the exit code. A `Task { }`'s error is observed by nobody: an uncaught throw leaves the process
 // to idle out the `RunLoop` and exit 0, which reads exactly like a suite that ran and passed. Catching
 // one level out is what puts a throw on the exit code.
@@ -481,7 +933,7 @@ Task {
     }
 }
 
-/// Sections 6–15 — everything that needs a live DI container, a database or the bundled export, and
+/// Sections 6–16 — everything that needs a live DI container, a database or the bundled export, and
 /// therefore everything worth being able to skip.
 ///
 /// `WHOOPSY_SECTIONS=13` runs §13 and nothing else. `WHOOPSY_SECTIONS=13,15` runs those two. Adding a
@@ -489,7 +941,7 @@ Task {
 func runMainSections() async throws {
     // MARK: - 6. End-to-End Clean Architecture & Local Data Sovereignty
     if sectionEnabled(6) {
-        print("\n[6/15] Testing DI Container, Use Cases & Data Sovereignty Export...")
+        print("\n[6/17] Testing DI Container, Use Cases & Data Sovereignty Export...")
         let container = DIContainer(useMockBLE: true)
 
         // Calculate Recovery UseCase. As with Sleep below, this runs against the shared dev database and
@@ -534,56 +986,68 @@ func runMainSections() async throws {
 
     // MARK: - 7. Persistence Schema, Round-Trip & Day-Key Integrity
     if sectionEnabled(7) {
-        print("\n[7/15] Testing migrations, biometric round-trip and day-keyed writes...")
+        print("\n[7/17] Testing migrations, biometric round-trip and day-keyed writes...")
         await runPersistenceTests()
     }
 
     // MARK: - 8. HRV Metric Isolation & Baseline Guards
     if sectionEnabled(8) {
-        print("\n[8/15] Testing HRV metric isolation, baseline guards and formatters...")
+        print("\n[8/17] Testing HRV metric isolation, baseline guards and formatters...")
         runScoringAndFormatterTests()
     }
 
     // MARK: - 9. HealthKit Import (hermetic: fixture store + in-memory database)
     if sectionEnabled(9) {
-        print("\n[9/15] Testing HealthKit import attribution, skipping and idempotency...")
+        print("\n[9/17] Testing HealthKit import attribution, skipping and idempotency...")
         await runHealthKitImportTests()
     }
 
     // MARK: - 10. Days with no data
     if sectionEnabled(10) {
-        print("\n[10/15] Testing no-data days store zeros, and zeros never enter a baseline...")
+        print("\n[10/17] Testing no-data days store zeros, and zeros never enter a baseline...")
         await runNoDataDayTests()
     }
 
     // MARK: - 11. WHOOP export import (real CSV, in-memory database)
     if sectionEnabled(11) {
-        print("\n[11/15] Testing the WHOOP export import against the real file...")
+        print("\n[11/17] Testing the WHOOP export import against the real file...")
         await runWhoopExportImportTests()
     }
 
     // MARK: - 12. Choosing a day
     if sectionEnabled(12) {
-        print("\n[12/15] Testing that a chosen day is read, and an imported day is never overwritten...")
+        print("\n[12/17] Testing that a chosen day is read, and an imported day is never overwritten...")
         await runDaySelectionTests()
     }
 
     // MARK: - 13. Sleep Need
     if sectionEnabled(13) {
-        print("\n[13/15] Testing that a night's Sleep Need follows the previous day's Strain...")
+        print("\n[13/17] Testing that a night's Sleep Need follows the previous day's Strain...")
         await runSleepNeedTests()
     }
 
     // MARK: - 14. The Home screen's sources
     if sectionEnabled(14) {
-        print("\n[14/15] Testing recorded workouts, HealthKit steps, the Stress Monitor, the recovery ring tiers and the seven-day MetricWeek join...")
+        print("\n[14/17] Testing recorded workouts, HealthKit steps, the Stress Monitor, the recovery ring tiers and the seven-day MetricWeek join...")
         await runHomeSourceTests()
     }
 
     // MARK: - 15. The typical range
     if sectionEnabled(15) {
-        print("\n[15/15] Testing the sleep stage typical range, its whole-percent column, its absence rules, the night's heading, the hours-vs-needed card, the sleep-efficiency card and the within-sleep stress model...")
+        print("\n[15/17] Testing the sleep stage typical range, its whole-percent column, its absence rules, the night's heading, the hours-vs-needed card, the sleep-efficiency card and the within-sleep stress model...")
         await runTypicalRangeTests()
+    }
+
+    // MARK: - 16. Steps from the strap
+    if sectionEnabled(16) {
+        print("\n[16/17] Testing the pedometer, both motion layouts, the step accumulator and the strap's step storage...")
+        await runStepTests()
+    }
+
+    // MARK: - 17. Heart-rate zone time out of workouts.csv
+    if sectionEnabled(17) {
+        print("\n[17/17] Testing the workouts parser, the derived workout id, the hr_zone_percents round trip, the day's zone aggregate and the export's zone properties...")
+        await runWorkoutZoneTests()
     }
 
     print("\n==================================================")
@@ -746,6 +1210,30 @@ func runPersistenceTests() async {
         assertTest(absent?.skinTemp == nil, "Absent skin temperature stays nil (not fabricated)")
         assertTest(absent?.spo2Percentage == nil, "Absent SpO2 stays nil")
         assertTest(absent?.rrIntervalMs == nil, "Absent R-R stays nil")
+        // The accelerometer is the one absence with a *physical* meaning rather than a missing one:
+        // the column is NULL because nothing measured motion, and the repository's mapper used to
+        // read it back as `?? 0` — handing every downstream reader a strap reported as being in free
+        // fall, which the sleep classifier and the stress model both read as motionless. The two
+        // assertions below are the read path and the entity, in that order.
+        assertTest(
+            absent?.accelX == nil && absent?.accelY == nil && absent?.accelZ == nil,
+            "Absent accelerometer stays nil in the column (a substituted 0 is a free-fall reading)")
+
+        // Read through the repository rather than the manager, because the mapper is where the
+        // fabrication actually was: `GRDBBiometricRepository.makeSample` is the only place a NULL
+        // accel column became a number, and a round trip through `LocalDatabaseManager` alone would
+        // not touch it. Own in-memory database, so this stays off the developer's file.
+        let mapperRepo = GRDBBiometricRepository(db: LocalDatabaseManager(inMemory: true))
+        try await mapperRepo.saveSamples([
+            BiometricSample(timestamp: wallClock, heartRate: 59)
+        ])
+        let mappedBack = try await mapperRepo.getSamples(
+            from: wallClock.addingTimeInterval(-60), to: wallClock.addingTimeInterval(60))
+        assertTest(
+            mappedBack.first?.accelerationMagnitude == nil,
+            "…and the mapper returns it as a `nil` magnitude rather than a magnitude of zero, which "
+                + "is a claim that the strap was measured motionless (got "
+                + "\(mappedBack.first?.accelerationMagnitude.map { "\($0)" } ?? "nil"))")
     } catch {
         assertTest(false, "Biometric round-trip threw: \(error)")
     }
@@ -1138,7 +1626,6 @@ func runScoringAndFormatterTests() {
 struct FixtureHealthStore: HealthStoreClient {
     var hrv: [HealthQuantitySample] = []
     var restingHeartRate: [HealthQuantitySample] = []
-    var steps: [HealthQuantitySample] = []
 
     var isAvailable: Bool { true }
     var unavailableReason: String? { nil }
@@ -1159,26 +1646,11 @@ struct FixtureHealthStore: HealthStoreClient {
         switch metric {
         case .heartRateVariabilitySDNN: all = hrv
         case .restingHeartRate: all = restingHeartRate
-        case .stepCount: all = []
         }
         return all.filter { $0.start >= start && $0.start <= end }
     }
 
     func sleepSegments(from start: Date, to end: Date) async throws -> [HealthSleepSegment] { [] }
-
-    /// The daily sum the real store computes with `HKStatisticsQuery(.cumulativeSum)`.
-    ///
-    /// Summed over the same window the caller asked for, so a wrong range shows up as a wrong total
-    /// rather than being masked. `nil` when the window holds nothing, which is the protocol's
-    /// contract — **not** `0`, which is a day the user did not walk.
-    func dailyTotal(
-        _ metric: HealthQuantityMetric, from start: Date, to end: Date
-    ) async throws -> Double? {
-        guard metric == .stepCount else { return nil }
-        let inWindow = steps.filter { $0.start >= start && $0.start <= end }
-        guard !inWindow.isEmpty else { return nil }
-        return inWindow.reduce(0) { $0 + $1.value }
-    }
 }
 
 struct NoSleepSource: SleepRepository {
@@ -1693,6 +2165,7 @@ func runWhoopExportImportTests() async {
         sleepRepository: sleepRepository,
         strainRepository: strainRepository,
         napRepository: napRepository,
+        workoutRepository: GRDBWorkoutRepository(db: db),
         userProfileRepository: GRDBUserProfileRepository(db: db),
         calendar: dayCalendar)
 
@@ -1955,6 +2428,7 @@ func runWhoopExportImportTests() async {
                 sleepRepository: GRDBSleepRepository(db: crossingDB),
                 strainRepository: GRDBStrainRepository(db: crossingDB),
                 napRepository: crossingRepository,
+                workoutRepository: GRDBWorkoutRepository(db: crossingDB),
                 userProfileRepository: GRDBUserProfileRepository(db: crossingDB),
                 calendar: dayCalendar
             ).importNaps(at: syntheticURL)
@@ -2062,6 +2536,7 @@ func runDaySelectionTests() async {
             sleepRepository: sleepRepository,
             strainRepository: strainRepository,
             napRepository: napRepository,
+            workoutRepository: GRDBWorkoutRepository(db: db),
             userProfileRepository: profile,
             calendar: Calendar.current
         ).importExport(at: csvURL)
@@ -2193,7 +2668,9 @@ func runDaySelectionTests() async {
                     biometricRepository: strapThatRecordedNothing,
                     strainRepository: strainRepository,
                     userProfileRepository: profile),
-                repository: strainRepository)
+                repository: strainRepository,
+                workoutRepository: GRDBWorkoutRepository(db: db),
+                stepRepository: GRDBStepRepository(db: db))
         }
         await strainViewModel.load(for: lastStrainDay)
 
@@ -2497,13 +2974,35 @@ func runSleepNeedTests() async {
                     BiometricSample(
                         timestamp: base.addingTimeInterval(Double(epoch * 30 + offset) * spacing),
                         heartRate: kind.heartRate,
-                        accelerometerX: kind.accel)
+                        // The triplet, because the magnitude is `nil` unless all three axes are
+                        // present — the strap sends them together and a partial one is not a state
+                        // any producer can be in.
+                        accelerometerX: kind.accel, accelerometerY: 0, accelerometerZ: 0)
                 }
             }
         }
 
-        let deep = (heartRate: 45, accel: 0.0)
+        // `deep` carries **1.0 G and not 0.0**, which is the assertion this fixture makes about the
+        // sensor rather than about the classifier: gravity is inside the magnitude, so a motionless
+        // worn strap reads ≈1.0 and a `0.0` is free fall, unreachable on a body. The stage is `deep`
+        // either way — both values are below the 1.05 quiet line — so reverting this to `0.0` is
+        // invisible in `deepSleepSeconds` and visible only in the two assertions below, which are the
+        // one place in the suite that states what a still strap actually reads. Nothing here is
+        // day-keyed, so the anchor is any instant.
+        let deep = (heartRate: 45, accel: 1.0)
         let awake = (heartRate: 80, accel: 2.0)
+        let gravityBase = Date()
+
+        assertTest(
+            abs((night([deep], from: gravityBase, spacing: 60).first?.accelerationMagnitude ?? -1) - 1.0)
+                < 0.0001,
+            "A still epoch's magnitude is its gravity shell — ≈1.0 G, not the free-fall 0.0 the "
+                + "entity's initialiser used to supply (got "
+                + "\(night([deep], from: gravityBase, spacing: 60).first?.accelerationMagnitude ?? -1))")
+        assertTest(
+            BiometricSample(timestamp: gravityBase, heartRate: 50).accelerationMagnitude == nil,
+            "…and a sample that carried no accelerometer has no magnitude at all, rather than a "
+                + "magnitude of zero — which is a measurement of stillness no sensor made")
 
         // ── The rule itself, with no classifier in the way ───────────────────────────────────────
         //
@@ -2630,6 +3129,64 @@ func runSleepNeedTests() async {
                     + "those two moving together")
         } catch {
             assertTest(false, "The onset trim threw: \(error)")
+        }
+
+        // ── The same night, with no accelerometer at all ─────────────────────────────────────────
+        //
+        // Every sample the live `0x2A37` path constructs carries no motion, so this is the shape of a
+        // real strap night rather than a hypothetical one — and the classifier must stage it exactly
+        // as it staged the fixture above. **That equality is the whole assertion**, because the
+        // entity's old `0.0` default was already satisfying both motion tests by accident: a
+        // fabricated free-fall reading is below the 1.05 quiet line, so the heart-rate bands have
+        // been deciding these nights all along. What changed is that the absence is now stated rather
+        // than spelled as a physically impossible measurement — so if the two fixtures ever disagree,
+        // the degradation broke rather than the model.
+        do {
+            let calendar = Calendar.current
+            let morning = calendar.startOfDay(for: Date())
+            let db = LocalDatabaseManager(inMemory: true)
+            let base = morning.addingTimeInterval(-10 * 3600)
+
+            // The same ten/four/ten shape, built with no `accelerometer*` argument at all.
+            let withoutMotion: [BiometricSample] = [awake, awake, awake, awake, awake, awake, awake,
+                awake, awake, awake, deep, deep, deep, deep, awake, awake, awake, awake, awake, awake,
+                awake, awake, awake, awake]
+                .enumerated()
+                .flatMap { epoch, kind in
+                    (0..<30).map { offset in
+                        BiometricSample(
+                            timestamp: base.addingTimeInterval(
+                                Double(epoch * 30 + offset) * 60),
+                            heartRate: kind.heartRate)
+                    }
+                }
+            assertTest(
+                withoutMotion.allSatisfy { $0.accelerationMagnitude == nil },
+                "The fixture really carries no accelerometer on any sample, so what follows is about "
+                    + "the absence and not about a value that happens to be still")
+
+            let session = try await AnalyzeSleepUseCase(
+                biometricRepository: OvernightBiometricStore(samples: withoutMotion),
+                sleepRepository: GRDBSleepRepository(db: db),
+                strainRepository: GRDBStrainRepository(db: db),
+                userProfileRepository: GRDBUserProfileRepository(db: db)
+            ).execute(for: morning)
+
+            assertTest(
+                session?.startTime == base.addingTimeInterval(18_000)
+                    && session?.endTime == base.addingTimeInterval(25_140),
+                "A night with no motion is still detected where its heart rate says it is: the "
+                    + "motionless-epoch test cannot be made, so the elevated-heart-rate test and the "
+                    + "heart-rate bands decide the staging alone (got "
+                    + "\(session.map { "\($0.startTime.timeIntervalSince(base))–\($0.endTime.timeIntervalSince(base))" } ?? "nil") s)")
+            assertTest(
+                session?.deepSleepSeconds == 120 && session?.awakeSeconds == 0,
+                "…and it stages **identically** to the same night carrying a real gravity shell — the "
+                    + "calibration the fabricated `0.0` had been producing by accident, kept while the "
+                    + "fabrication is removed (got "
+                    + "\(session.map { "\($0.deepSleepSeconds) s deep, \($0.awakeSeconds) s awake" } ?? "nil"))")
+        } catch {
+            assertTest(false, "The motionless-night fixture threw: \(error)")
         }
 
         // ── A window with no sustained run is absent, and writes nothing ─────────────────────────
@@ -2914,6 +3471,7 @@ func runSleepNeedTests() async {
             sleepRepository: exportSleepRepository,
             strainRepository: GRDBStrainRepository(db: exportDB),
             napRepository: GRDBNapRepository(db: exportDB),
+            workoutRepository: GRDBWorkoutRepository(db: exportDB),
             userProfileRepository: GRDBUserProfileRepository(db: exportDB),
             calendar: Calendar.current
         ).importExport(at: csvURL)
@@ -3409,22 +3967,6 @@ struct DaytimeBiometricStore: BiometricRepository {
     func clearAllBiometricData() async throws {}
 }
 
-/// A `HealthKitSyncing` that answers with nothing — the honest shape of a denied authorization, an
-/// empty day, and a phone with no source for the quantity, which HealthKit does not let a caller
-/// tell apart.
-///
-/// The remaining read-through answers `nil` here, and that is what makes the dash on a fresh
-/// install a *tested* state rather than an observed one.
-struct NoStepsHealthKit: HealthKitSyncing {
-    var isAvailable: Bool { true }
-    var unavailableReason: String? { nil }
-    func requestAuthorization() async -> Bool { true }
-    func importRecentHealthData(days: Int) async throws -> HealthImportSummary {
-        .empty(daysRequested: days)
-    }
-    func stepCount(on date: Date) async -> Int? { nil }
-}
-
 /// The Home screen's four new data sources, each asserted at the layer that can get it wrong.
 ///
 /// The screen itself is not asserted here — it is a view, and its dashes follow from these values
@@ -3463,7 +4005,8 @@ func runHomeSourceTests() async {
         splits: [
             WorkoutSplit(elapsed: 300, strain: 1.1),
             WorkoutSplit(elapsed: 600, strain: 2.4),
-        ])
+        ],
+        activityName: "Yoga")
 
     do {
         try await repository.save(workout)
@@ -3478,6 +4021,13 @@ func runHomeSourceTests() async {
             assertTest(
                 read.route.map(\.id) == workout.route.map(\.id),
                 "…and the route points keep their own identities, so a point is addressable")
+            // The field that fails if it is added to the record but not to `WorkoutRecord.CodingKeys`:
+            // that record declares them, so an unlisted property is written under its own name and the
+            // column does not exist — and the write is the loud half, not the read.
+            assertTest(
+                read.activityName == "Yoga",
+                "…and the `v15` activity name it was saved with (got "
+                    + "\(read.activityName.map { "'\($0)'" } ?? "nil"))")
         }
 
         // The primary-key rule from CLAUDE.md: `date` is snapped to `startOfDay`, so a read keyed on a
@@ -3504,6 +4054,13 @@ func runHomeSourceTests() async {
         assertTest(
             both.map(\.startedAt) == both.map(\.startedAt).sorted(),
             "…earliest first")
+        // A session with no name stays `nil` rather than defaulting to a word: `nil` is what a
+        // live-recorded workout really has, and the screen draws it as WHOOP's own term for an
+        // uncategorised activity rather than as the dash an unmeasured figure gets — a name is not a
+        // measurement, so the absence vocabulary here is the label's, not the value column's.
+        assertTest(
+            both.first(where: { $0.id == second.id })?.activityName == nil,
+            "…and a session saved without a name reads back `nil` rather than defaulting to a word")
 
         let latest = try await repository.latest()
         assertTest(latest?.id == second.id, "`latest()` returns the most recent session by start time")
@@ -3603,40 +4160,14 @@ func runHomeSourceTests() async {
         assertTest(false, "The nap persistence round trip threw: \(error)")
     }
 
-    // ---- HealthKit steps: a daily sum, and `nil` when there is no sum ----
-
-    do {
-        let day = calendar.startOfDay(for: Date())
-        let hrvRepository = GRDBRecoveryRepository(db: db)
-        let sleepRepository = GRDBSleepRepository(db: db)
-        let profileRepository = GRDBUserProfileRepository(db: db)
-
-        func step(_ value: Double, atHour hour: Int) -> HealthQuantitySample {
-            let start = calendar.date(byAdding: .hour, value: hour, to: day)!
-            return HealthQuantitySample(value: value, start: start, end: start.addingTimeInterval(60))
-        }
-
-        let store = FixtureHealthStore(steps: [
-            step(1_200, atHour: 9), step(1_500, atHour: 13), step(1_447, atHour: 19),
-            // Tomorrow, so the window is proven to bound at both ends rather than summing everything.
-            step(99_999, atHour: 25),
-        ])
-        let bridge = HealthKitBridge(
-            store: store, recoveryRepository: hrvRepository, sleepRepository: sleepRepository,
-            userProfileRepository: profileRepository)
-
-        let total = await bridge.stepCount(on: day)
-        assertTest(total == 4_147, "Steps are summed over the day and match the mockup's own figure (\(total.map(String.init) ?? "nil"))")
-
-        // The window is the point: a store that ignored it would return 104,146.
-        assertTest(total != 104_146, "…and the next day's samples are excluded, so the read is bounded")
-
-        let empty = await bridge.stepCount(on: calendar.date(byAdding: .day, value: -400, to: day)!)
-        assertTest(
-            empty == nil,
-            "A day with no step samples is `nil`, not 0 — 0 is a day the user did not walk, and the "
-                + "two are not the same claim")
-    }
+    // ---- HealthKit steps are gone ----
+    //
+    // The block that stood here drove `FixtureHealthStore` → `HealthKitBridge.stepCount(on:)` and
+    // asserted a day with no samples was `nil` rather than `0`. Steps are the strap's now — see §16,
+    // which owns the same absence pair against `stepCounts` and the repository that reads it — and
+    // the whole HealthKit read-through went with the case: `HealthQuantityMetric` no longer has a
+    // `stepCount`, `HealthStoreClient` no longer has a `dailyTotal`, and the consent prompt's
+    // `readTypes` is one quantity shorter for it.
 
     // ---- The VO₂ MAX estimate: derived on read, and `nil` rather than 0 ----
     //
@@ -3769,6 +4300,28 @@ func runHomeSourceTests() async {
             && !StressMath.isResting(motionMagnitude: 2.0),
         "Motion separates a still window from a moving one at \(StressMath.motionCeiling) G")
 
+    // **An unmeasured window is not a resting one, and this is the assertion that says so.** The
+    // tempting reading of a missing accelerometer is "no evidence of movement, so score it" — which
+    // is what the entity's old `0.0` default produced, and why a window the strap never measured
+    // motion for used to pass the model's only exertion filter. `false` is the answer that costs a
+    // reading instead of filing a workout as stress.
+    assertTest(
+        !StressMath.isResting(motionMagnitude: nil),
+        "A window with no accelerometer reading is **refused**, not assumed still — the gate exists "
+            + "to assert stillness and an unmeasured window has none to assert")
+    assertTest(
+        !StressMath.isResting(magnitudes: []),
+        "…and a window holding no samples at all is refused for the same reason: nothing was "
+            + "measured, so nothing was shown to be still")
+    assertTest(
+        !StressMath.isResting(magnitudes: [nil, nil, nil]),
+        "…including a window whose samples are all present and none of which carries a magnitude")
+    assertTest(
+        StressMath.isResting(magnitudes: [1.0, 1.0, nil])
+            && !StressMath.isResting(magnitudes: [1.0, 2.0, nil]),
+        "…and the mean is taken over the samples that did measure motion, so a partial reading "
+            + "neither dilutes a still window toward zero nor drags a moving one toward it")
+
     // The same input must score the same. Nothing here is derived from `Date()` or from a sample
     // order that the caller could vary.
     let baseline = BaselineStatisticsMath.baseline(
@@ -3866,7 +4419,10 @@ func runHomeSourceTests() async {
                     timestamp: start.addingTimeInterval(Double(index)),
                     heartRate: heartRate,
                     rrIntervalMs: index.isMultiple(of: 2) ? low : high,
-                    accelerometerZ: 1.0)
+                    // The whole triplet: a partial one leaves the magnitude `nil` and the window is
+                    // refused as unmeasured, which would make every assertion below about the motion
+                    // gate instead of about the model. `Z` alone carries the gravity shell.
+                    accelerometerX: 0, accelerometerY: 0, accelerometerZ: 1.0)
             }
         }
 
@@ -3898,6 +4454,53 @@ func runHomeSourceTests() async {
         assertTest(
             noWindow == nil,
             "A day whose samples hold no still window scores nothing, even with a full baseline")
+
+        // ── The same day, with no accelerometer on any sample ────────────────────────────────────
+        //
+        // This is the live `0x2A37` path's permanent shape: the BLE layer decodes a heart rate and
+        // its R-R series and no motion payload at all, so `accelerationMagnitude` is `nil` on every
+        // sample a real strap produces today. The model's one exertion filter cannot be satisfied by
+        // a window nothing measured, so **the day scores nothing** — the tile renders `—`, and the
+        // chart draws no series.
+        //
+        // That is a visible consequence and it is the honest one: without motion the model cannot
+        // separate a raised heart rate from work, so a number produced anyway would be a reading
+        // missing its only discriminating input. Note it is the **opposite** answer to the one the
+        // sleep classifier gives the same absence, and deliberately so — there the missing motion
+        // test sits beside a heart-rate band that can decide alone, here the gate *is* the decision.
+        func motionlessWindow(on offset: Int, atHour hour: Int = 9, rmssd: Double, heartRate: Int)
+            -> [BiometricSample]
+        {
+            let day = calendar.date(byAdding: .day, value: offset, to: Date().startOfDay)!
+            guard let start = calendar.date(byAdding: .hour, value: hour, to: day) else { return [] }
+            let low = 800 - rmssd / 2
+            let high = 800 + rmssd / 2
+            return (0..<40).map { index in
+                BiometricSample(
+                    timestamp: start.addingTimeInterval(Double(index)),
+                    heartRate: heartRate,
+                    rrIntervalMs: index.isMultiple(of: 2) ? low : high)
+            }
+        }
+
+        var motionlessSamples: [BiometricSample] = []
+        for (offset, rmssd) in [(-5, 44.0), (-4, 47.0), (-3, 50.0), (-2, 53.0), (-1, 56.0)] {
+            motionlessSamples += motionlessWindow(on: offset, rmssd: rmssd, heartRate: 60)
+        }
+        assertTest(
+            motionlessSamples.allSatisfy { $0.accelerationMagnitude == nil },
+            "The fixture really carries no accelerometer on any sample, so the assertion below is "
+                + "about the absence rather than about a window that happens to be still")
+
+        let motionlessDay = try await AnalyzeStressUseCase(
+            biometricRepository: DaytimeBiometricStore(
+                samples: motionlessSamples + motionlessWindow(on: 0, rmssd: 30.0, heartRate: 68))
+        ).execute(for: Date())
+        assertTest(
+            motionlessDay == nil,
+            "…and a day that would otherwise score high produces **nothing** — no eligible window, no "
+                + "series, no chart — because the motion gate cannot be passed by a window nothing "
+                + "measured (got \(motionlessDay.map { $0.averageScore.formattedOneDecimal() } ?? "nil"))")
 
         // Three baseline days is the floor; two must not produce a score. Read from a day far enough
         // back that only part of the fixture's history falls inside the 14-day baseline window.
@@ -4427,7 +5030,7 @@ func runHomeSourceTests() async {
                 strainRepository: GRDBStrainRepository(db: monthDB),
                 workoutRepository: GRDBWorkoutRepository(db: monthDB),
                 userProfileRepository: GRDBUserProfileRepository(db: monthDB),
-                healthKit: NoStepsHealthKit(),
+                stepRepository: GRDBStepRepository(db: monthDB),
                 analyzeStress: AnalyzeStressUseCase(biometricRepository: EmptyBiometricStore()),
                 manage: ManageBLEConnectionUseCase(
                     bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
@@ -4494,7 +5097,7 @@ func runHomeSourceTests() async {
                 strainRepository: GRDBStrainRepository(db: db),
                 workoutRepository: repository,
                 userProfileRepository: GRDBUserProfileRepository(db: db),
-                healthKit: NoStepsHealthKit(),
+                stepRepository: GRDBStepRepository(db: db),
                 analyzeStress: AnalyzeStressUseCase(biometricRepository: EmptyBiometricStore()),
                 manage: ManageBLEConnectionUseCase(
                     bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
@@ -4564,6 +5167,7 @@ func runHomeSourceTests() async {
             sleepRepository: sleepRepository,
             strainRepository: strainRepository,
             napRepository: GRDBNapRepository(db: importedDB),
+            workoutRepository: GRDBWorkoutRepository(db: importedDB),
             userProfileRepository: GRDBUserProfileRepository(db: importedDB),
             calendar: calendar
         ).importExport(at: csvURL)
@@ -4597,7 +5201,7 @@ func runHomeSourceTests() async {
                 strainRepository: strainRepository,
                 workoutRepository: GRDBWorkoutRepository(db: importedDB),
                 userProfileRepository: GRDBUserProfileRepository(db: importedDB),
-                healthKit: NoStepsHealthKit(),
+                stepRepository: GRDBStepRepository(db: importedDB),
                 analyzeStress: AnalyzeStressUseCase(biometricRepository: EmptyBiometricStore()),
                 manage: ManageBLEConnectionUseCase(
                     bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
@@ -6108,6 +6712,7 @@ func runTypicalRangeTests() async {
             sleepRepository: exportSleepRepository,
             strainRepository: GRDBStrainRepository(db: exportDB),
             napRepository: GRDBNapRepository(db: exportDB),
+            workoutRepository: GRDBWorkoutRepository(db: exportDB),
             userProfileRepository: GRDBUserProfileRepository(db: exportDB),
             calendar: Calendar.current
         ).importExport(at: csvURL)
@@ -7298,6 +7903,7 @@ func runTypicalRangeTests() async {
             sleepRepository: exportSleepRepository,
             strainRepository: GRDBStrainRepository(db: exportDB),
             napRepository: GRDBNapRepository(db: exportDB),
+            workoutRepository: GRDBWorkoutRepository(db: exportDB),
             userProfileRepository: GRDBUserProfileRepository(db: exportDB),
             calendar: Calendar.current
         ).importExport(at: csvURL)
@@ -7448,19 +8054,25 @@ func runTypicalRangeTests() async {
         }
 
         /// One notification: one arrival instant, one pulse reading, one contiguous run of beats.
+        ///
+        /// `motion` is the **magnitude**, so it is carried on one axis with the other two at zero —
+        /// and it defaults to 1.0 rather than 0, because 0 G is free fall and a fixture that meant "a
+        /// strap lying still" must say so with the gravity shell it really has. That default was 0.0
+        /// until the accel fields became optional, and it was doing the same job through the
+        /// fabricated free-fall value: this fixture is a *resting* strap unless it says otherwise.
+        /// The triplet is all-or-nothing, so a partial one would leave the magnitude `nil` and every
+        /// window here would be refused as unmeasured — the gate would be what the block measured.
         func notification(
             at time: Date,
             heartRate: Int,
             intervals: [Double],
-            motion: Double = 0
+            motion: Double = 1.0
         ) -> BiometricSample {
             BiometricSample(
                 timestamp: time,
                 heartRate: heartRate,
                 rrIntervalsMs: intervals,
-                // Gravity is inside the magnitude, so a motionless strap reads ~1.0 G and anything
-                // above `StressMath.motionCeiling` is a strap being moved.
-                accelerometerX: motion)
+                accelerometerX: motion, accelerometerY: 0, accelerometerZ: 0)
         }
 
         // ── The arithmetic, which needs no use case at all ───────────────────────────────────────
@@ -8315,6 +8927,2057 @@ func runTypicalRangeTests() async {
                     + "chart's per-column `nil` reads through — and the pair is absent *together*, "
                     + "because both are read off the one night row")
         }
+    }
+}
+
+// MARK: - 16. Steps from the strap
+
+/// The pedometer, both motion layouts, the accumulator, the day-keyed store, the two opcodes that must
+/// never be transmitted, and the strain page's panel.
+///
+/// **Nothing here is evidence about hardware, and a passing run must not be described as the path
+/// working.** `biometric_samples` holds 0 rows in every database on this machine and no motion batch
+/// has ever been decoded from a strap, so this section proves the arithmetic, the two layouts, the
+/// storage rules and the panel — and it says nothing about whether a 4.0 accepts an enable sequence,
+/// whether a 5.0 completes the command characteristic's bond, or whether a wrist's motion produces a
+/// count that matches a pedometer. `BLE_PROTOCOL.md` §7 is the capture plan that would settle those.
+func runStepTests() async {
+
+    // MARK: The pedometer
+
+    /// A walking waveform: `leadInSeconds` of a still wrist, then `bumps` acceleration transients on
+    /// the x axis `periodSeconds` apart, then a tail long enough for the last peak's falling edge.
+    ///
+    /// **A bump train rather than a sine, and the count is why.** `|sin|` at 2 Hz peaks four times a
+    /// second, and the 1/3 s refractory rejects every other one, so a sine's count is an artefact of
+    /// that interaction rather than a property of the detector. Isolated Gaussian bumps 0.5 s apart are
+    /// one unambiguous local maximum each — σ is 4 samples, so the separation is 6σ of the bump and the
+    /// peaks never merge.
+    ///
+    /// **The lead-in is not decoration either.** `Detector` judges a peak against a threshold window
+    /// that *includes the sample under test* and appends after the verdict, so a bump arriving into an
+    /// empty window faces a level of ≈0.9–0.99 × its own peak and passes by a few percent, whatever the
+    /// threshold rule is — an assertion that asserts nothing. Two seconds of still wrist fills the 2 s
+    /// window first, which drops the level to the 0.05 g floor.
+    ///
+    /// The x axis reads `1.0 + the bump` and the gravity window also holds the previous bump, so a
+    /// peak arrives at ≈0.85 × `amplitudeG` rather than at `amplitudeG`. That factor is why the two
+    /// floor fixtures are 0.1 g and 0.02 g and not 0.06 g: the pair has to straddle 0.05 g with room on
+    /// both sides rather than sit on it.
+    func bumpTrain(
+        bumps: Int, amplitudeG: Double, periodSeconds: Double = 0.5
+    ) -> [StepDetectionMath.Sample] {
+        let interval = 0.01
+        let leadInSeconds = 2.0
+        let sigma = 0.04
+        let total = leadInSeconds + Double(max(bumps - 1, 0)) * periodSeconds + 0.4
+        let count = Int((total / interval).rounded()) + 1
+        return (0..<count).map { index in
+            let seconds = Double(index) * interval
+            var x = 1.0
+            for bump in 0..<bumps {
+                let distance = seconds - (leadInSeconds + Double(bump) * periodSeconds)
+                x += amplitudeG * exp(-(distance * distance) / (2 * sigma * sigma))
+            }
+            return StepDetectionMath.Sample(seconds: seconds, xG: x, yG: 0, zG: 0)
+        }
+    }
+
+    let walking = bumpTrain(bumps: 20, amplitudeG: 0.3)
+    assertTest(
+        StepDetectionMath.countSteps(in: walking, sampleRateHz: 100) == 20,
+        "Twenty 0.3 g bumps half a second apart count twenty steps — one per peak, none merged and "
+            + "none rejected by the 1/3 s refractory")
+    assertTest(
+        StepDetectionMath.countSteps(in: bumpTrain(bumps: 20, amplitudeG: 6.0), sampleRateHz: 100) == 20,
+        "The same waveform at 20× the amplitude counts the same twenty, because the level is adaptive "
+            + "— a fixed threshold would count all of them here and none of them at 0.3 g")
+    assertTest(
+        StepDetectionMath.countSteps(in: bumpTrain(bumps: 20, amplitudeG: 0.1), sampleRateHz: 100) == 20,
+        "At 0.1 g the peaks are ≈0.085 g and `mean + 1σ` has fallen under `minimumPeakAmplitudeG`, so "
+            + "the floor is what admits them — this is the assertion a floor raised too high fails")
+    assertTest(
+        StepDetectionMath.countSteps(in: bumpTrain(bumps: 20, amplitudeG: 0.02), sampleRateHz: 100) == 0,
+        "At 0.02 g the same waveform counts nothing, and the adaptive term alone would admit it: "
+            + "`mean + 1σ` scales with the signal and sits near 0.007 g there, so this is "
+            + "`minimumPeakAmplitudeG` refusing the peaks rather than the spread")
+    let still = (0..<1000).map {
+        StepDetectionMath.Sample(seconds: Double($0) * 0.01, xG: 1.0, yG: 0, zG: 0)
+    }
+    assertTest(
+        StepDetectionMath.countSteps(in: still, sampleRateHz: 100) == 0,
+        "A still wrist counts nothing: gravity is removed per axis, so a constant 1.0 g leaves a zero "
+            + "residual rather than a signal sitting at the ±1 g full scale")
+    assertTest(
+        StepDetectionMath.countSteps(
+            in: bumpTrain(bumps: 2, amplitudeG: 0.3, periodSeconds: 0.2), sampleRateHz: 100) == 1,
+        "Two genuine peaks 0.2 s apart count once — the second is inside "
+            + "`minimumStepIntervalSeconds`, so this is the refractory rejecting it rather than two "
+            + "maxima merging into one")
+    assertTest(
+        StepDetectionMath.minimumStepIntervalSeconds == 1.0 / 3.0,
+        "The refractory interval is 1/3 s, a 180 step-per-minute ceiling")
+    assertTest(
+        StepDetectionMath.minimumStepIntervalSeconds
+            == 1.0 / StepDetectionMath.cadenceBandHz.upperBound,
+        "…and it is derived from the band's upper edge (3.0 Hz) rather than written down beside it, so "
+            + "a cadence the band admits cannot be rejected by an interval outside it")
+    assertTest(
+        StepDetectionMath.thresholdWindowSeconds == 2.0
+            && StepDetectionMath.thresholdWindowSeconds
+                == 1.0 / StepDetectionMath.cadenceBandHz.lowerBound,
+        "The adaptive threshold's window is 2 s — one period of the band's lower edge (0.5 Hz), so it "
+            + "always spans a complete stride at any cadence the band admits")
+    assertTest(
+        StepDetectionMath.gravityWindowSeconds == 1.0,
+        "The gravity estimate is a one-second trailing mean — long enough to average out a stride, "
+            + "short enough to follow a turning arm")
+    assertTest(
+        StepDetectionMath.minimumPeakAmplitudeG == 0.05 && StepDetectionMath.thresholdSigmas == 1.0,
+        "The two constants a capture would fit are 0.05 g and 1σ — this app's own calibration, since "
+            + "WHOOP publishes no step model, so they are the pair the fixtures above straddle")
+
+    // MARK: Both layouts, against hand-built frames
+
+    let receivedAt = Date(timeIntervalSince1970: 1_800_000_000)
+
+    /// A 5.0 frame of `payloadBytes` bytes carrying `type`, hand-built to §2's envelope.
+    ///
+    /// **Written in frame coordinates on purpose.** A helper that derived its payload origin from
+    /// `WhoopProtocolProfile` would share that arithmetic with the decoder, so a wrong
+    /// `innerPrefixBytes` would move both and the fixture would pass — the self-referential assertion
+    /// this runner has already been burned by once. The origin is asserted against the profile
+    /// separately below, and the decoder stays the only side that subtracts it.
+    func fiveFrame(type: UInt8, payloadBytes: Int) -> [UInt8] {
+        // What the declared length counts: the three inner-record prefix bytes, the payload, and the
+        // four-byte CRC32 trailer.
+        let declared = 3 + payloadBytes + 4
+        var frame = [UInt8](repeating: 0, count: 8 + declared)
+        frame[0] = 0xAA
+        frame[1] = 0x01
+        frame[2] = UInt8(declared & 0xFF)
+        frame[3] = UInt8((declared >> 8) & 0xFF)
+        frame[4] = 0x00   // the two header bytes §2 labels and does not specify; `00 01` is what the
+        frame[5] = 0x01   // one published 5.0 frame carries, and the crc16 below covers them anyway
+        frame[8] = type
+        frame[9] = 0x42   // seq
+        frame[10] = 0x00  // cmd
+        return frame
+    }
+
+    /// A 4.0 frame of `payloadBytes` bytes carrying `type`, hand-built to §2's envelope.
+    func fourFrame(type: UInt8, payloadBytes: Int) -> [UInt8] {
+        let declared = 3 + payloadBytes + 4
+        var frame = [UInt8](repeating: 0, count: 4 + declared)
+        frame[0] = 0xAA
+        frame[1] = UInt8(declared & 0xFF)
+        frame[2] = UInt8((declared >> 8) & 0xFF)
+        frame[3] = CRCUtils.crc8(Data([frame[1], frame[2]]))
+        frame[4] = type
+        frame[5] = 0x11   // seq
+        frame[6] = 0x00   // cmd
+        return frame
+    }
+
+    /// The header CRC16 over `[0..<6)` and the trailer CRC32 over the inner record.
+    func sealFive(_ frame: inout [UInt8]) {
+        let crc16 = CRCUtils.crc16Modbus(Data(frame[0..<6]))
+        frame[6] = UInt8(crc16 & 0xFF)
+        frame[7] = UInt8((crc16 >> 8) & 0xFF)
+        let innerEnd = frame.count - 4
+        let crc32 = CRCUtils.crc32(Data(frame[8..<innerEnd]))
+        frame[innerEnd] = UInt8(crc32 & 0xFF)
+        frame[innerEnd + 1] = UInt8((crc32 >> 8) & 0xFF)
+        frame[innerEnd + 2] = UInt8((crc32 >> 16) & 0xFF)
+        frame[innerEnd + 3] = UInt8((crc32 >> 24) & 0xFF)
+    }
+
+    /// The trailer CRC32 alone — the 4.0's header CRC8 is set when the frame is made.
+    func sealFour(_ frame: inout [UInt8]) {
+        let innerEnd = frame.count - 4
+        let crc32 = CRCUtils.crc32(Data(frame[4..<innerEnd]))
+        frame[innerEnd] = UInt8(crc32 & 0xFF)
+        frame[innerEnd + 1] = UInt8((crc32 >> 8) & 0xFF)
+        frame[innerEnd + 2] = UInt8((crc32 >> 16) & 0xFF)
+        frame[innerEnd + 3] = UInt8((crc32 >> 24) & 0xFF)
+    }
+
+    /// Writes one lane of 100 little-endian `i16`s at a **frame** offset.
+    func writeLane(_ frame: inout [UInt8], frameOffset: Int, raw: [Int16]) {
+        for (index, value) in raw.enumerated() {
+            let at = frameOffset + index * 2
+            let bits = UInt16(bitPattern: value)
+            frame[at] = UInt8(bits & 0xFF)
+            frame[at + 1] = UInt8(bits >> 8)
+        }
+    }
+
+    func writeUInt32(_ frame: inout [UInt8], frameOffset: Int, _ value: UInt32) {
+        frame[frameOffset] = UInt8(value & 0xFF)
+        frame[frameOffset + 1] = UInt8((value >> 8) & 0xFF)
+        frame[frameOffset + 2] = UInt8((value >> 16) & 0xFF)
+        frame[frameOffset + 3] = UInt8((value >> 24) & 0xFF)
+    }
+
+    func writeUInt16(_ frame: inout [UInt8], frameOffset: Int, _ value: UInt16) {
+        frame[frameOffset] = UInt8(value & 0xFF)
+        frame[frameOffset + 1] = UInt8(value >> 8)
+    }
+
+    // The raw values are chosen so each scale is exercised exactly once: every one of these is a
+    // power-of-two denominator over its full scale, so the expected figures below are exact doubles
+    // and can be pinned as literals rather than to a tolerance.
+    var ax = [Int16](repeating: 0, count: 100)
+    ax[0] = 4096        //  1.0 g
+    ax[5] = 1000        //  0.244140625 g
+    ax[6] = 2000        //  0.48828125 g
+    ax[99] = -2048      // -0.5 g
+    var ay = [Int16](repeating: 0, count: 100)
+    ay[0] = 2048        //  0.5 g
+    var az = [Int16](repeating: 0, count: 100)
+    az[0] = 1024        //  0.25 g
+    var gx = [Int16](repeating: 0, count: 100)
+    gx[0] = -16384      // -1000 dps
+    var gy = [Int16](repeating: 0, count: 100)
+    gy[0] = 8192        //  500 dps
+    var gz = [Int16](repeating: 0, count: 100)
+    gz[99] = 16384      //  1000 dps
+
+    var r21 = fiveFrame(type: WhoopProtocolProfile.whoop5.packetTypes.historicalData, payloadBytes: 1244)
+    assertTest(r21.count == 1259, "The hand-built R21 frame is 1259 bytes: 8 header + (3 + 1244) + 4")
+    writeLane(&r21, frameOffset: 28, raw: ax)
+    writeLane(&r21, frameOffset: 228, raw: ay)
+    writeLane(&r21, frameOffset: 428, raw: az)
+    writeLane(&r21, frameOffset: 640, raw: gx)
+    writeLane(&r21, frameOffset: 840, raw: gy)
+    writeLane(&r21, frameOffset: 1040, raw: gz)
+    writeUInt32(&r21, frameOffset: 15, 1_700_000_000)
+    writeUInt16(&r21, frameOffset: 19, 16384)   // 16384/32768 s = 0.5 s
+    sealFive(&r21)
+
+    let r21Decoded = decoder.decodeProprietaryFrame(data: Data(r21), profile: .whoop5)
+    assertTest(
+        r21Decoded?.type == 47 && r21Decoded?.payload.count == 1244,
+        "The hand-built R21 frame validates under the 5.0 envelope and carries a 1244-byte payload")
+    let banked = r21Decoded.flatMap { MotionPayloadDecoder.decode(frame: $0, receivedAt: receivedAt) }
+    assertTest(banked != nil, "…and decodes into a motion batch")
+
+    assertTest(
+        WhoopProtocolProfile.whoop5.innerOrigin + WhoopProtocolProfile.whoop5.innerPrefixBytes == 11,
+        "R21's offsets are frame-absolute from byte 11 — 8 of envelope plus the 3 prefix bytes — which "
+            + "is the subtraction the decoder does and this fixture deliberately does not")
+    assertTest(
+        banked?.accelerometerG.x.first == 1.0 && banked?.accelerometerG.x[99] == -0.5,
+        "`ax` reads 4096 raw as 1.0 g at the head of its lane and -2048 as -0.5 g at the end: a wrong "
+            + "origin, a wrong scale or a reversed byte order each move one of these two")
+    assertTest(
+        banked?.accelerometerG.x[5] == 0.244140625 && banked?.accelerometerG.x[6] == 0.48828125,
+        "…and the two samples in the lane's middle are the values written there, which is what pins "
+            + "the lane's internal alignment rather than only its two ends")
+    assertTest(
+        banked?.accelerometerG.y.first == 0.5 && banked?.accelerometerG.z.first == 0.25,
+        "`ay` and `az` are read from their own frame offsets: 228 and 428, not 228 and 428 of anything "
+            + "else — the three accelerometer lanes abut, so a lane read one slot wide would take its "
+            + "neighbour's first sample")
+    assertTest(
+        banked?.gyroscopeDps?.x.first == -1000.0 && banked?.gyroscopeDps?.z[99] == 1000.0,
+        "The gyroscope lanes use the second scale — 2000/32768 deg/s per LSB, so -16384 raw is -1000 "
+            + "dps where the accelerometer's scale would have called it -4.0 g")
+    assertTest(
+        banked?.gyroscopeDps?.y.first == 500.0,
+        "…and 8192 raw is 500 dps, which is not a value the accelerometer's scale can produce from it")
+    assertTest(
+        banked?.start == Date(timeIntervalSince1970: 1_700_000_000.5)
+            && banked?.timestampIsFromStrap == true,
+        "The record's own clock is read: unix seconds at frame 15 with the 1/32768 s fraction at 19, "
+            + "so 1700000000 + 16384/32768 is 1700000000.5, and it is marked as the strap's")
+    assertTest(
+        banked?.start != receivedAt,
+        "…and it is not the arrival instant: the fixture's `receivedAt` is a deliberately distant "
+            + "2000000000, so a decoder that substituted it — the wrong-day failure a banked record "
+            + "exists to avoid — fails here rather than passing silently")
+    assertTest(
+        banked?.sampleIntervalSeconds == 0.01 && banked?.accelerometerG.x.count == 100,
+        "One hundred samples an interval of 0.01 s apart: one second of motion at 100 Hz")
+    assertTest(
+        banked?.generation == .whoop5,
+        "The batch carries the frame's generation, which is what the banked path and the live path "
+            + "share rather than differing on")
+
+    // The decoy. §6's `ax` is at frame 28; read as payload-relative it would be payload 28 = frame 39,
+    // whose pair straddles the lane's samples 5 and 6 — so a decoder that forgot the origin reads a
+    // plausible number out of the wrong place and this fixture can tell the two apart. Without these
+    // two samples carrying different values, both readings would be 0 and the assertion would pass
+    // whichever one the decoder did.
+    let decoy = Int16(bitPattern: UInt16(r21[39]) | (UInt16(r21[40]) << 8))
+    assertTest(
+        decoy == -12285 && Double(decoy) * MotionPayloadDecoder.accelerometerGPerLSB != 1.0,
+        "A decoder reading §6's `ax` offset as payload-relative would take frame 39's pair — \(decoy) "
+            + "raw, ≈\(Double(decoy) * MotionPayloadDecoder.accelerometerGPerLSB) g — where the "
+            + "frame-absolute reading gives 1.0, so this fixture separates the two readings")
+
+    var r10ax = [Int16](repeating: 0, count: 100)
+    r10ax[0] = 4096     //  1.0 g
+    r10ax[3] = 3000     //  0.732421875 g
+    r10ax[4] = 4000     //  0.9765625 g
+    r10ax[99] = -4096   // -1.0 g
+    var r10ay = [Int16](repeating: 0, count: 100)
+    r10ay[0] = 2048     //  0.5 g
+    var r10az = [Int16](repeating: 0, count: 100)
+    r10az[0] = -1024    // -0.25 g
+    var r10gx = [Int16](repeating: 0, count: 100)
+    r10gx[99] = -16384  // -1000 dps
+    var r10gy = [Int16](repeating: 0, count: 100)
+    r10gy[0] = 8192     //  500 dps
+    let r10gz = [Int16](repeating: 0, count: 100)
+
+    var r10 = fourFrame(type: WhoopProtocolProfile.whoop4.packetTypes.realtimeRawData, payloadBytes: 1910)
+    assertTest(
+        r10.count == 1921,
+        "The hand-built R10 frame is 1921 bytes: 4 header + (3 + 1910) + 4 — the 4.0's type-43 record "
+            + "declaring 1917, which counts the inner record plus its trailer")
+    writeLane(&r10, frameOffset: 89, raw: r10ax)
+    writeLane(&r10, frameOffset: 289, raw: r10ay)
+    writeLane(&r10, frameOffset: 489, raw: r10az)
+    writeLane(&r10, frameOffset: 692, raw: r10gx)
+    writeLane(&r10, frameOffset: 892, raw: r10gy)
+    writeLane(&r10, frameOffset: 1092, raw: r10gz)
+    sealFour(&r10)
+
+    assertTest(
+        WhoopProtocolProfile.whoop4.innerOrigin + WhoopProtocolProfile.whoop4.innerPrefixBytes == 7,
+        "R10's offsets are frame-absolute from byte 7 — 4 of envelope plus the 3 prefix bytes, a "
+            + "different origin from the 5.0's for the same three-byte inner prefix")
+    assertTest(
+        WhoopPacketEncoder.buildPacket(
+            profile: .whoop4, type: 0x2B, seq: 0x11, cmd: 0x00,
+            payload: Data(Array(r10[7..<(r10.count - 4)]))).map { Array($0) } == r10,
+        "The hand-built 4.0 frame is byte-identical to `buildPacket`'s, which is a different "
+            + "construction whose CRC layout §1 pins to §2.1's published vectors — so the fixture's "
+            + "envelope is evidenced rather than a second opinion about it")
+
+    let r10Decoded = decoder.decodeProprietaryFrame(data: Data(r10), profile: .whoop4)
+    assertTest(
+        r10Decoded?.type == 43 && r10Decoded?.payload.count == 1910,
+        "The hand-built R10 frame validates under the 4.0 envelope carrying its 1910-byte payload")
+    let live = r10Decoded.flatMap { MotionPayloadDecoder.decode(frame: $0, receivedAt: receivedAt) }
+    assertTest(
+        live?.accelerometerG.x.first == 1.0 && live?.accelerometerG.x[3] == 0.732421875
+            && live?.accelerometerG.x[4] == 0.9765625 && live?.accelerometerG.x[99] == -1.0,
+        "R10's `ax` lane at frame 89 reads 1.0, 0.732421875, 0.9765625 and -1.0 g at indices 0, 3, 4 "
+            + "and 99 — four literals that fail if the origin is out by the seven bytes that separate "
+            + "the two layouts")
+    assertTest(
+        live?.accelerometerG.y.first == 0.5 && live?.accelerometerG.z.first == -0.25,
+        "…and `ay` and `az` at 289 and 489 carry their own signs, so a lane read from the wrong offset "
+            + "is caught rather than accidentally agreeing")
+    assertTest(
+        live?.gyroscopeDps?.x[99] == -1000.0 && live?.gyroscopeDps?.y.first == 500.0,
+        "…and the two gyroscope lanes read the same 2000/32768 scale the 5.0's do, which is the fact "
+            + "that lets one pedometer and one threshold serve both generations")
+    assertTest(
+        live?.start == receivedAt && live?.timestampIsFromStrap == false,
+        "The 4.0's live record carries no timestamp this app can read, so `start` is the arrival "
+            + "instant and `timestampIsFromStrap` says so — the one place the two generations key a day "
+            + "differently, made explicit rather than implied")
+    assertTest(
+        live?.generation == .whoop4,
+        "…and the batch carries the 4.0's generation")
+
+    // The 4.0's decoy: the origin is 7, so a payload-relative read of frame 89 would take frame 96 —
+    // the high byte of `ax[3]` and the low byte of `ax[4]`, which is why those two carry 3000 and
+    // 4000 rather than the zeros the rest of the lane holds.
+    let r10Decoy = Int16(bitPattern: UInt16(r10[96]) | (UInt16(r10[97]) << 8))
+    assertTest(
+        r10Decoy == -24565 && Double(r10Decoy) * MotionPayloadDecoder.accelerometerGPerLSB != 1.0,
+        "A payload-relative read of R10's `ax` would take frame 96's pair — \(r10Decoy) raw, "
+            + "≈\(Double(r10Decoy) * MotionPayloadDecoder.accelerometerGPerLSB) g — where the "
+            + "frame-absolute reading gives 1.0")
+
+    // MARK: Exact lengths
+
+    for wrong in [1243, 1245] {
+        var frame = fiveFrame(type: 47, payloadBytes: wrong)
+        sealFive(&frame)
+        let decoded = decoder.decodeProprietaryFrame(data: Data(frame), profile: .whoop5)
+        assertTest(
+            decoded != nil
+                && decoded.flatMap { MotionPayloadDecoder.decode(frame: $0, receivedAt: receivedAt) }
+                    == nil,
+            "A 5.0 type-47 record carrying \(wrong) payload bytes passes both envelope checksums and "
+                + "is then refused by the layout: R21's 1244 is exact, not a minimum, so a record that "
+                + "is one byte short is not walked off its own end and one that is long is not truncated")
+    }
+    for wrong in [1909, 1911] {
+        var frame = fourFrame(type: 0x2B, payloadBytes: wrong)
+        sealFour(&frame)
+        let decoded = decoder.decodeProprietaryFrame(data: Data(frame), profile: .whoop4)
+        assertTest(
+            decoded != nil
+                && decoded.flatMap { MotionPayloadDecoder.decode(frame: $0, receivedAt: receivedAt) }
+                    == nil,
+            "A 4.0 type-43 record carrying \(wrong) payload bytes is refused the same way: R10's 1910 "
+                + "is exact")
+    }
+
+    // MARK: The generation dispatch
+
+    var fourTypeFortySeven = fourFrame(
+        type: WhoopProtocolProfile.whoop4.packetTypes.historicalData, payloadBytes: 1244)
+    sealFour(&fourTypeFortySeven)
+    let asFour = decoder.decodeProprietaryFrame(data: Data(fourTypeFortySeven), profile: .whoop4)
+    assertTest(
+        asFour?.type == 47,
+        "A 4.0-envelope type-47 record is a valid frame — the type numbering is shared between the "
+            + "two generations, which is why the envelope and not the type byte is the discriminator")
+    assertTest(
+        asFour.flatMap { MotionPayloadDecoder.decode(frame: $0, receivedAt: receivedAt) } == nil,
+        "…and it decodes to no motion at all: under the 4.0 profile type 47 is the flash heart-rate "
+            + "record, not a motion lane, so the generation decides before any length is looked at")
+    var fourTypeFortyThree = fourFrame(type: 0x2B, payloadBytes: 1244)
+    sealFour(&fourTypeFortyThree)
+    let asFourRaw = decoder.decodeProprietaryFrame(data: Data(fourTypeFortyThree), profile: .whoop4)
+    assertTest(
+        asFourRaw?.type == 43
+            && asFourRaw.flatMap { MotionPayloadDecoder.decode(frame: $0, receivedAt: receivedAt) } == nil,
+        "The same 1244 payload under the 4.0 profile is refused too: the 4.0 walks R10 at 1910 bytes, "
+            + "so a length that fits R21 does not by itself select R21 — which is the assertion that "
+            + "fails if a per-generation difference ever collapses into a fallback")
+
+    var liveR21 = r21
+    liveR21[8] = WhoopProtocolProfile.whoop5.packetTypes.realtimeRawData
+    sealFive(&liveR21)   // the type byte is inside the CRC32's input, so the frame is re-sealed
+    let liveBatch = decoder.decodeProprietaryFrame(data: Data(liveR21), profile: .whoop5)
+        .flatMap { MotionPayloadDecoder.decode(frame: $0, receivedAt: receivedAt) }
+    assertTest(
+        liveBatch == banked,
+        "A live type-43 record and a banked type-47 one carrying the same bytes decode to equal "
+            + "batches — one layout over two transports, which is what lets a walk's steps and a "
+            + "drained night's reach one accumulator and one stored row")
+    assertTest(
+        decoder.decodeProprietaryFrame(data: Data(liveR21), profile: .whoop5MG)
+            .flatMap { MotionPayloadDecoder.decode(frame: $0, receivedAt: receivedAt) }?
+            .generation == .whoop5MG,
+        "…and the same bytes under the MG profile yield an MG batch: the two 5.0 cases are separate "
+            + "because the reference does not settle whether they agree on the wire")
+
+    var metadata = fiveFrame(type: 49, payloadBytes: 1244)
+    sealFive(&metadata)
+    assertTest(
+        decoder.decodeProprietaryFrame(data: Data(metadata), profile: .whoop5)
+            .flatMap { MotionPayloadDecoder.decode(frame: $0, receivedAt: receivedAt) } == nil,
+        "A type-49 metadata record is not motion, and is refused even at the motion layout's own "
+            + "length — so the type is read rather than the length alone")
+    let motionless = WhoopRawFrame(
+        generation: .simulator, type: 43, seq: 0, cmd: 0, payload: Data(repeating: 0, count: 1244))
+    assertTest(
+        MotionPayloadDecoder.decode(frame: motionless, receivedAt: receivedAt) == nil,
+        "A frame from a generation with no proprietary envelope decodes to no motion whatever its "
+            + "length, because the layout is chosen by the profile and there is none to choose")
+
+    // MARK: The accumulator
+
+    let xs = walking.map(\.xG)
+    let ys = walking.map(\.yG)
+    let zs = walking.map(\.zG)
+
+    var whole = StepAccumulator(sampleRateHz: 100)
+    whole.accept(
+        accelerometerXG: xs, accelerometerYG: ys, accelerometerZG: zs,
+        sampleIntervalSeconds: 0.01, startSeconds: 0)
+    assertTest(whole.stepCount == 20, "The accumulator counts the same twenty steps the detector does")
+    assertTest(
+        whole.stepCount == StepDetectionMath.countSteps(in: walking, sampleRateHz: 100),
+        "…and its count equals the whole-array convenience's, because that convenience drives this "
+            + "same state machine — a second implementation is what this assertion would catch")
+    assertTest(
+        whole.measuredSeconds == Double(xs.count) * 0.01,
+        "The measured span is the batch's own sample time — \(xs.count) samples 0.01 s apart")
+
+    // The same samples in two batches, the second's clock continuing the first's. An accumulator that
+    // reset its filter per batch, or ignored `startSeconds`, would differ here and nowhere else.
+    var split = StepAccumulator(sampleRateHz: 100)
+    let half = xs.count / 2
+    split.accept(
+        accelerometerXG: Array(xs[0..<half]), accelerometerYG: Array(ys[0..<half]),
+        accelerometerZG: Array(zs[0..<half]), sampleIntervalSeconds: 0.01, startSeconds: 0)
+    split.accept(
+        accelerometerXG: Array(xs[half...]), accelerometerYG: Array(ys[half...]),
+        accelerometerZG: Array(zs[half...]), sampleIntervalSeconds: 0.01,
+        startSeconds: Double(half) * 0.01)
+    assertTest(
+        split.stepCount == whole.stepCount,
+        "Two batches carrying one waveform count what one batch of it counts: the filter state is the "
+            + "accumulator's and survives the batch boundary, and `startSeconds` is what places the "
+            + "second batch on the same clock as the first")
+    assertTest(
+        abs(split.measuredSeconds - whole.measuredSeconds) < 1e-9,
+        "…and the two spans sum to the one — within a nanosecond, because each batch's span is its "
+            + "own rounded product and the sum of two rounded products need not be the rounded sum")
+
+    var resumed = StepAccumulator(sampleRateHz: 100, baselineStepCount: 5049, measuredSeconds: 3600)
+    assertTest(
+        resumed.stepCount == 5049,
+        "A resumed accumulator reports the stored day's count before any motion arrives — which is "
+            + "what makes a relaunch mid-day continue the count rather than restart it")
+    resumed.accept(
+        accelerometerXG: xs, accelerometerYG: ys, accelerometerZG: zs,
+        sampleIntervalSeconds: 0.01, startSeconds: 0)
+    assertTest(
+        resumed.stepCount == 5049 + 20,
+        "…and adds this process's steps on top of it rather than replacing them")
+    assertTest(
+        resumed.measuredSeconds == 3600 + Double(xs.count) * 0.01,
+        "…and its measured span likewise, so the day's coverage is the stored figure plus what this "
+            + "process watched — a day the app saw for an hour reports an hour")
+
+    var refusing = StepAccumulator(sampleRateHz: 100, baselineStepCount: 100, measuredSeconds: 60)
+    refusing.accept(
+        accelerometerXG: [1, 1, 1], accelerometerYG: [1, 1], accelerometerZG: [1, 1, 1],
+        sampleIntervalSeconds: 0.01, startSeconds: 0)
+    assertTest(
+        refusing.stepCount == 100 && refusing.measuredSeconds == 60,
+        "A batch whose axes disagree in length is refused outright — no steps and no measured time, "
+            + "so it is absent rather than half-present, where truncating to the shortest axis would "
+            + "count a partial stride as a whole one and hide the defect")
+    refusing.accept(
+        accelerometerXG: [], accelerometerYG: [], accelerometerZG: [],
+        sampleIntervalSeconds: 0.01, startSeconds: 0)
+    assertTest(
+        refusing.measuredSeconds == 60,
+        "An empty batch contributes nothing, including no measured time")
+    refusing.accept(
+        accelerometerXG: [1], accelerometerYG: [1], accelerometerZG: [1],
+        sampleIntervalSeconds: 0, startSeconds: 0)
+    assertTest(
+        refusing.measuredSeconds == 60,
+        "A batch whose spacing is zero is refused as well: it cannot be placed on a clock, and "
+            + "counting its samples at any assumed rate would invent the time they cover")
+
+    var resetting = StepAccumulator(sampleRateHz: 100, baselineStepCount: 42, measuredSeconds: 600)
+    resetting.accept(
+        accelerometerXG: xs, accelerometerYG: ys, accelerometerZG: zs,
+        sampleIntervalSeconds: 0.01, startSeconds: 0)
+    assertTest(resetting.stepCount == 42 + 20, "A reset fixture counts on top of its baseline")
+    resetting.reset()
+    assertTest(
+        resetting.stepCount == 42,
+        "`reset()` clears the detector and keeps the baseline: the day's stored count is not this "
+            + "process's to drop, and a day boundary needs a new accumulator — which is what makes the "
+            + "baseline a `let` rather than something a rollover could zero by accident")
+    assertTest(
+        resetting.measuredSeconds == 600 + Double(xs.count) * 0.01,
+        "…and the measured span is untouched by it, because the span is the day's coverage and not "
+            + "filter state")
+
+    // MARK: The v13 round trip
+
+    let stepDB = LocalDatabaseManager(inMemory: true)
+    let stepRepository = GRDBStepRepository(db: stepDB)
+    let calendar = Calendar.current
+    let day = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+    func dayOffset(_ days: Int) -> Date {
+        calendar.date(byAdding: .day, value: days, to: day) ?? day
+    }
+
+    do {
+        // Written at a raw 09:37, which is the shape a live write has: `saveStepCount` snaps it.
+        try await stepRepository.saveStepCount(
+            StepCount(date: day.addingTimeInterval(9 * 3600 + 37 * 60), stepCount: 5049,
+                      measuredSeconds: 3600))
+        try await stepRepository.saveStepCount(
+            StepCount(date: dayOffset(1), stepCount: 6100, measuredSeconds: 1200))
+        try await stepRepository.saveStepCount(
+            StepCount(date: dayOffset(2), stepCount: 5200, measuredSeconds: 1800))
+
+        let stored = try await stepRepository.getStepCount(for: day)
+        assertTest(
+            stored?.stepCount == 5049 && stored?.measuredSeconds == 3600,
+            "The round trip carries both columns through unchanged: 5049 steps over 3600 measured "
+                + "seconds comes back as itself")
+        assertTest(stored?.date == day, "…and under the day's `startOfDay`, not the instant written")
+        assertTest(stored?.hasMeasurement == true, "…and reads back as a measurement")
+        assertTest(
+            try await stepRepository.getStepCount(for: dayOffset(-1)) == nil,
+            "A row written at 09:37 is not found on the day before it")
+        assertTest(
+            try await stepRepository.getStepCount(for: dayOffset(3)) == nil,
+            "…nor on the day after — the day-snap rule every other day-keyed table in this app is "
+                + "guarded by, and steps are day-keyed too")
+
+        let history = try await stepRepository.getStepCountHistory(days: 3, endingOn: dayOffset(2))
+        assertTest(
+            history.map(\.stepCount) == [5049, 6100, 5200],
+            "The window's rows come back oldest first — the order `RecoveryScoring.baselineWindow` "
+                + "requires, since it takes the trailing thirty of them")
+        assertTest(
+            history.map(\.date) == [day, dayOffset(1), dayOffset(2)],
+            "…and inclusive at both ends: three days back from the third day reaches the first, so "
+                + "the span is four days' worth of slots read as three days of window")
+        let bounded = try await stepRepository.getStepCountHistory(days: 3, endingOn: day)
+        assertTest(
+            bounded.map(\.stepCount) == [5049],
+            "A window ending on the first day carries only it — the upper bound is real, so a read "
+                + "anchored on an old day does not run on to the present")
+
+        assertTest(
+            try await stepRepository.getStepCount(for: dayOffset(6)) == nil,
+            "A day with no row is `nil` — there is no reserved zero, so 'not measured' and 'measured "
+                + "zero' are different answers rather than the same one")
+        try await stepRepository.saveStepCount(
+            StepCount(date: dayOffset(7), stepCount: 0, measuredSeconds: 0))
+        let unmeasured = try await stepRepository.getStepCount(for: dayOffset(7))
+        assertTest(
+            unmeasured != nil && unmeasured?.hasMeasurement == false,
+            "A row holding no measured span reads back unmeasured, which is reader tolerance for a "
+                + "row no writer produces rather than a state anything depends on")
+        try await stepRepository.saveStepCount(
+            StepCount(date: dayOffset(8), stepCount: 0, measuredSeconds: 600))
+        let measuredZero = try await stepRepository.getStepCount(for: dayOffset(8))
+        assertTest(
+            measuredZero?.stepCount == 0 && measuredZero?.hasMeasurement == true,
+            "…while a measured day of no walking is a real `0`: the two rows above hold the same "
+                + "count and are different answers, which is the whole reason `measuredSeconds` is the "
+                + "column the gate reads and the count is not")
+    } catch {
+        assertTest(false, "The step store threw: \(error)")
+    }
+
+    // MARK: The two opcodes that must never be transmitted
+
+    /// Every opcode a profile transmits, by field name.
+    ///
+    /// **Both tables, and every field of each.** This used to read `commandOpcodes` alone, which was
+    /// complete while the 4.0 was the only generation with a set — and became a hole the moment the
+    /// 5.0 got one, because the sweep below would then have run over an *empty* dictionary for two of
+    /// the three straps and passed vacuously. The failure mode is exactly the one the block exists to
+    /// prevent: a destructive opcode added to `SyncOpcodes` and never checked.
+    ///
+    /// The keys are prefixed because the two tables share field *names* while holding different bytes —
+    /// `requestHistoricalSync` is `0x16` in both, `setClock` is `0x0A` against `0x92` — so an unprefixed
+    /// merge would silently drop one of a colliding pair.
+    func transmittedOpcodes(_ profile: WhoopProtocolProfile) -> [String: UInt8] {
+        var table: [String: UInt8] = [:]
+        if let four = profile.commandOpcodes {
+            table["4.0.liveTelemetry"] = four.liveTelemetry
+            table["4.0.hapticAlarm"] = four.hapticAlarm
+            table["4.0.ping"] = four.ping
+            table["4.0.requestHistoricalSync"] = four.requestHistoricalSync
+            table["4.0.toggleIMUMode"] = four.toggleIMUMode
+            table["4.0.sendRealtimeMotion"] = four.sendRealtimeMotion
+            table["4.0.enableOpticalData"] = four.enableOpticalData
+            table["4.0.setClock"] = four.setClock
+            table["4.0.abortHistoricalTransmits"] = four.abortHistoricalTransmits
+            table["4.0.setReadPointer"] = four.setReadPointer
+            table["4.0.getDataRange"] = four.getDataRange
+            table["4.0.historicalDataResult"] = four.historicalDataResult
+        }
+        if let five = profile.syncOpcodes {
+            table["5.0.hello"] = five.hello
+            table["5.0.requestHistoricalSync"] = five.requestHistoricalSync
+            table["5.0.historicalDataResult"] = five.historicalDataResult
+            table["5.0.getDataRange"] = five.getDataRange
+            table["5.0.stopRawData"] = five.stopRawData
+            table["5.0.startRawData"] = five.startRawData
+            table["5.0.toggleIMUModeLive"] = five.toggleIMUModeLive
+            table["5.0.toggleIMUModeHistorical"] = five.toggleIMUModeHistorical
+            table["5.0.setClock"] = five.setClock
+            table["5.0.getClock"] = five.getClock
+            table["5.0.abortHistoricalTransmits"] = five.abortHistoricalTransmits
+            table["5.0.setReadPointer"] = five.setReadPointer
+        }
+        return table
+    }
+
+    assertTest(
+        transmittedOpcodes(.whoop4).count == 12,
+        "The 4.0's table is enumerated and non-empty, so the two assertions below are not passing on "
+            + "an empty dictionary. Twelve is the count of `CommandOpcodes`' fields; a field added to "
+            + "the type and not to `transmittedOpcodes` fails here")
+    // The counterpart, and it is the assertion that would have caught the hole above rather than the
+    // one that was already covered: a 5.0 profile must hand back a full table too. **Twelve is the
+    // count of `SyncOpcodes`' fields, and it is twelve rather than the ten this type landed with** —
+    // see the block below, which is where the two it was missing came from. A field added to that type
+    // and not listed here fails.
+    assertTest(
+        transmittedOpcodes(.whoop5).count == 12
+            && transmittedOpcodes(.whoop5MG).count == 12,
+        "A 5.0 profile hands back its own twelve opcodes — the `SyncOpcodes` fields — and not the "
+            + "empty dictionary it used to hand back before that table existed. **It does not hand "
+            + "back the 4.0's twelve beside them**, because `commandOpcodes` is `nil` for both 5.0 "
+            + "profiles: the two tables are for different envelopes and are not interchangeable, "
+            + "which is why this is twelve and not twenty-four")
+    // **The two opcodes the 5.0 table was missing, and the reason they are asserted by number rather
+    // than only counted.** The table landed at ten entries on the stated basis that this generation
+    // publishes no byte for the 4.0's `abortHistoricalTransmits` or its `setReadPointer`. Both are
+    // published, both under the same number the 4.0 uses — so the omission was not a conservative
+    // default and the substitution it caused was not a smaller claim. `abortHistoricalTransmits` is
+    // the one that mattered: without it the drain's only stop had no byte to send and `0x52
+    // STOP_RAW_DATA` stood in, which stops the producer and leaves the drain running while the app
+    // reports a stopped sync.
+    //
+    // These are written as literals rather than read back off the profile, because a table asserting
+    // its own values is the self-referential shape this file's CRC block exists to warn about.
+    assertTest(
+        WhoopProtocolProfile.whoop5.syncOpcodes?.abortHistoricalTransmits == 0x14
+            && WhoopProtocolProfile.whoop5MG.syncOpcodes?.abortHistoricalTransmits == 0x14,
+        "Both 5.0 profiles carry `0x14 ABORT_HISTORICAL_TRANSMITS` — the same number the 4.0 uses, "
+            + "under the other envelope. The reference that establishes this set marks ID 20 supported "
+            + "for this generation, so a table without it is short by a published byte rather than "
+            + "cautious")
+    assertTest(
+        WhoopProtocolProfile.whoop5.syncOpcodes?.setReadPointer == 0x21
+            && WhoopProtocolProfile.whoop5MG.syncOpcodes?.setReadPointer == 0x21,
+        "…and `0x21 SET_READ_POINTER` likewise, carried and never sent: the reference groups it with "
+            + "forced trim as an operation that mutates history ownership and cannot substitute for "
+            + "the per-batch acknowledgement, which is this drain's own rule stated from the other "
+            + "side")
+    assertTest(
+        WhoopCommandFrames.abortHistoricalTransmits(profile: .whoop4, seq: 3)?[6] == 0x14
+            && WhoopCommandFrames.abortHistoricalTransmits(profile: .whoop5, seq: 3)?[10] == 0x14,
+        "…and the façade sends that byte to a 5.0 rather than `0x52`, which is the assertion that "
+            + "fails if the substitution is ever reinstated. The two frames differ in envelope and "
+            + "agree on the opcode, which is what having a real 5.0 abort means")
+
+    let forbidden: [UInt8: String] = [
+        0x19: "0x19 FORCE_TRIM, a flash erase",
+        0x9A: "0x9A TOGGLE_PERSISTENT_R21, which forces the optical engine on across reboots",
+    ]
+    for profile in [WhoopProtocolProfile.whoop4, .whoop5, .whoop5MG] {
+        let table = transmittedOpcodes(profile)
+        for opcode in forbidden.keys.sorted() {
+            assertTest(
+                !table.values.contains(opcode),
+                "No \(profile.generation) command table transmits \(forbidden[opcode]!). The drain is "
+                    + "non-destructive by design and needs no trim — issuing one to clear a backlog "
+                    + "destroys history that has not been drained — and a strap left with the optical "
+                    + "engine forced on burns battery until it is rebooted")
+        }
+    }
+
+    // The motion opcodes are the ones the live 4.0 step path hangs on, so they are pinned by value
+    // rather than only swept for two forbidden bytes. A table that carried the right *names* and the
+    // wrong numbers would satisfy every assertion above.
+    do {
+        let opcodes = WhoopProtocolProfile.whoop4.commandOpcodes
+        assertTest(
+            opcodes?.toggleIMUMode == 0x6A && opcodes?.sendRealtimeMotion == 0x3F
+                && opcodes?.enableOpticalData == 0x6B,
+            "The 4.0's motion enable group is 0x6A TOGGLE_IMU_MODE, 0x3F SEND_R10_R11_REALTIME and "
+                + "0x6B ENABLE_OPTICAL_DATA, from BLE_PROTOCOL.md §6 — got "
+                + "\(opcodes.map { "\($0.toggleIMUMode)/\($0.sendRealtimeMotion)/\($0.enableOpticalData)" } ?? "no table")")
+        assertTest(
+            opcodes?.setClock == 0x0A && opcodes?.abortHistoricalTransmits == 0x14
+                && opcodes?.setReadPointer == 0x21 && opcodes?.getDataRange == 0x22
+                && opcodes?.historicalDataResult == 0x17,
+            "The 4.0's drain group is 0x0A SET_CLOCK, 0x14 ABORT_HISTORICAL_TRANSMITS, 0x21 "
+                + "SET_READ_POINTER, 0x22 GET_DATA_RANGE and 0x17 HISTORICAL_DATA_RESULT, from "
+                + "BLE_PROTOCOL.md §4 — these are the bytes the ACK loop and the clock set are built "
+                + "from, and a transposed pair among them is a command that does something else")
+
+        // The enable sequence, as the manager sends it: three frames on enable, one on stop, in order.
+        let enableFrames = WhoopPacketEncoder.motionEnableSequence(
+            profile: .whoop4, seq: 0x10, enable: true)
+        assertTest(
+            enableFrames.count == 3,
+            "The 4.0 IMU enable is three frames — the toggle, then the realtime record, then the "
+                + "optical enable — got \(enableFrames.count)")
+        // Each frame is `AA lenLo lenHi crc8 type seq cmd [payload…] crc32×4`, so the opcode sits at
+        // byte 6, the sequence at byte 5, and a payload starts at byte 7. Reading the sequence off the
+        // bytes rather than trusting the builder is the point: it is what makes the ordering and the
+        // per-frame seq assertions below statements about the wire rather than about this app.
+        let enableOpcodes = enableFrames.map { $0[6] }
+        assertTest(
+            enableOpcodes == [0x6A, 0x3F, 0x6B],
+            "The sequence is ordered toggle → realtime → optical, so a strap cannot be asked for a "
+                + "100 Hz record before its IMU is on — got \(enableOpcodes.map { String(format: "0x%02X", $0) })")
+        assertTest(
+            enableFrames.map { $0[5] } == [0x10, 0x11, 0x12],
+            "Each frame in the sequence carries its own inner seq, because a shared one would say "
+                + "three records were one — got \(enableFrames.map { $0[5] })")
+        // All three carry a payload, and the byte counts are `4 + 3 + payload + 4`: 12 for the two
+        // one-byte forms, 13 for the two-byte one. **The two that used to be sent bare are one change
+        // here and the toggle's width is the other** — every implemented client gives all three a body,
+        // so 11 is the one length no source produces. See `WhoopPacketEncoder.motionEnableSequence`'s
+        // doc comment for which client each payload comes from.
+        assertTest(
+            enableFrames[0].count == 12 && enableFrames[0][7] == 0x01,
+            "The 0x6A toggle carries ONE byte on the 4.0 — 13 would be §6's two-byte `[1, 1]`, which "
+                + "belongs to the optical and persistent toggles and not to this one. OpenStrap's "
+                + "`TWO_BYTE_TOGGLES` names those four opcodes and excludes `0x6A`; noop's 4.0 branch "
+                + "sends `[0x01]` while giving its 5/MG the two-byte form — got "
+                + "\(enableFrames[0].count) bytes with payload "
+                + "\(Array(enableFrames[0].dropFirst(7).prefix(2)))")
+        assertTest(
+            enableFrames[1].count == 12 && enableFrames[1][7] == 0x01
+                && enableFrames[2].count == 13 && enableFrames[2][7] == 0x01 && enableFrames[2][8] == 0x01,
+            "0x3F carries `[01]` and 0x6B carries `[01, 01]`, both from the references' running "
+                + "clients rather than composed here: noop's `sendR10R11Realtime` is documented "
+                + "`[0x01]`=on and verified on-device, and OpenStrap's `cmd_enable_optical` sends "
+                + "`[REVISION_1, enable]` as a two-byte payload by its own header's convention. A "
+                + "bodyless 0x3F starts no live record — got \(enableFrames[1].count) and "
+                + "\(enableFrames[2].count) bytes, where 11 would mean no payload at all")
+        // The stop form's width is asserted for the same reason the enable form's is: `[0x01, 0x00]`
+        // is the two-byte shape this builder used to send, and it is the 5/MG's (`[0x01, 0x00]` under
+        // noop's `== .whoop5` branch), so a 13-byte stop on a 4.0 is a 5/MG frame wearing a 4.0
+        // envelope. OpenStrap's stop is `b"\x00"`, one byte, like its enable.
+        let stopFrames = WhoopPacketEncoder.motionEnableSequence(profile: .whoop4, seq: 0x10, enable: false)
+        assertTest(
+            stopFrames.count == 1 && stopFrames[0].count == 12 && stopFrames[0][7] == 0x00,
+            "Stopping is the IMU toggle alone — the other two are enable verbs with no documented "
+                + "counterpart, and inventing one would be inventing a wire format — and it is one "
+                + "byte `[00]`, not the 5/MG's `[01, 00]`: got \(stopFrames.count) frame(s), "
+                + "\(stopFrames.first?.count ?? 0) bytes")
+        // **This is a claim about the 4.0 builder, not about a 5.0 strap.** It used to read as the
+        // latter, which was true when the 5.0 had no builder at all — and a 5.0 now does, so the
+        // sentence had to move with the code rather than keep describing a strap whose enable exists
+        // three blocks below. What is asserted here is only that this file refuses to frame one.
+        assertTest(
+            WhoopPacketEncoder.motionEnableSequence(profile: .whoop5, seq: 0x10, enable: true).isEmpty
+                && WhoopPacketEncoder.motionEnableSequence(profile: .whoop5MG, seq: 0x10, enable: true).isEmpty,
+            "The **4.0 builder** refuses a 5.0 or MG profile rather than framing a 4.0 toggle for one: "
+                + "all-or-nothing, because a partially-applied enable is a strap with its IMU on and "
+                + "nothing being emitted, which burns battery and produces no steps. That a 5.0 does "
+                + "get an enable sequence is a different claim, made of a different builder, in the "
+                + "5.0 blocks below")
+    }
+
+    // MARK: The strain page's panel
+
+    let panelDB = LocalDatabaseManager(inMemory: true)
+    let panelWorkouts = GRDBWorkoutRepository(db: panelDB)
+    let panelStrain = GRDBStrainRepository(db: panelDB)
+    let panelSteps = GRDBStepRepository(db: panelDB)
+    let anchor = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+    func anchorOffset(_ days: Int) -> Date {
+        calendar.date(byAdding: .day, value: days, to: anchor) ?? anchor
+    }
+
+    /// One workout on `day`, starting at `hour` and running `minutes`, carrying `zonePercents`.
+    ///
+    /// `nil` percents model a session this app recorded itself — the live path writes no zone block,
+    /// which is the state the card has to draw a dash for.
+    func panelSession(
+        day: Date, hour: Int, minutes: Int, zonePercents: [Double]?
+    ) -> WorkoutSession {
+        let start = calendar.date(byAdding: .hour, value: hour, to: day) ?? day
+        return WorkoutSession(
+            id: UUID(),
+            startedAt: start,
+            endedAt: start.addingTimeInterval(Double(minutes) * 60),
+            strain: 5.0,
+            averageHeartRate: 120,
+            maxHeartRate: 160,
+            route: [],
+            splits: [],
+            source: WhoopExportImporter.sourceLabel,
+            hrZonePercents: zonePercents)
+    }
+
+    let panelViewModel = await MainActor.run {
+        StrainViewModel(
+            calculate: CalculateStrainUseCase(
+                biometricRepository: EmptyBiometricStore(),
+                strainRepository: panelStrain,
+                userProfileRepository: GRDBUserProfileRepository(db: panelDB)),
+            repository: panelStrain,
+            workoutRepository: panelWorkouts,
+            stepRepository: panelSteps)
+    }
+
+    /// `StrainDetailView.formatDuration`, reproduced here because it is private to the card and the
+    /// runner has no renderer — the same reason `SleepEfficiencyCard`'s strings are asserted as
+    /// statics rather than through a screenshot.
+    let panelDuration: (Double) -> String = { $0.rounded().formattedCompactHoursMinutes() }
+
+    do {
+        // Three days strictly before the anchor, each with one workout. Their zone time is what the
+        // anchor's two rows are read against, and the day the anchor is on is deliberately not in its
+        // own baseline: including it would move the 1–3 mean from 1,500 s to 1,635 s, so this is the
+        // assertion that fails if `baselineWindow(before:in:)`'s anchor is ever dropped.
+        //
+        // The middle day's block is all zeroes on purpose. It is a measured workout that never reached
+        // zone 1 — 45 rows of the bundled export are exactly that — and it must contribute a real
+        // `0` to the mean rather than dropping out of the window as an absence.
+        try await panelWorkouts.save(
+            panelSession(day: anchorOffset(-11), hour: 9, minutes: 60,
+                zonePercents: [60, 20, 10, 5, 5]))       // 1–3: 3,240 s   4–5:   360 s
+        try await panelWorkouts.save(
+            panelSession(day: anchorOffset(-12), hour: 9, minutes: 30,
+                zonePercents: [0, 0, 0, 0, 0]))          // 1–3:     0 s   4–5:     0 s
+        try await panelWorkouts.save(
+            panelSession(day: anchorOffset(-13), hour: 9, minutes: 30,
+                zonePercents: [50, 10, 10, 20, 10]))     // 1–3: 1,260 s   4–5:   540 s
+
+        // The anchor's own day: **two** workouts, which is the case the day sum exists for.
+        try await panelWorkouts.save(
+            panelSession(day: anchor, hour: 10, minutes: 30,
+                zonePercents: [50, 20, 10, 5, 0]))       // 1–3: 1,440 s   4–5:    90 s
+        try await panelWorkouts.save(
+            panelSession(day: anchor, hour: 18, minutes: 20,
+                zonePercents: [25, 25, 0, 25, 25]))      // 1–3:   600 s   4–5:   600 s
+
+        await panelViewModel.load(for: anchor)
+        let workouts = await MainActor.run { panelViewModel.workouts }
+        let zoneTime = await MainActor.run { panelViewModel.zoneTime }
+        let zone1to3Baseline = await MainActor.run { panelViewModel.zone1to3Baseline }
+        let zone4to5Baseline = await MainActor.run { panelViewModel.zone4to5Baseline }
+
+        assertTest(
+            workouts.count == 2,
+            "The day's two workouts both read back, earliest first — the array, not an optional, "
+                + "because several sessions on one day is normal (got \(workouts.count))")
+        assertTest(
+            zoneTime?.zone1to3Seconds == 2_040 && zoneTime?.zone4to5Seconds == 690,
+            "…and the panel's two rows are the day's **sum** over them: 1,440 + 600 = 2,040 s in "
+                + "zones 1–3 and 90 + 600 = 690 s in 4–5. A reader that took only the first session "
+                + "would print 1,440 and 90 (got \(zoneTime?.zone1to3Seconds ?? -1) and "
+                + "\(zoneTime?.zone4to5Seconds ?? -1))")
+        assertTest(
+            panelDuration(zoneTime?.zone1to3Seconds ?? 0) == "0:34"
+                && panelDuration(zoneTime?.zone4to5Seconds ?? 0) == "0:11",
+            "…drawn as `0:34` and `0:11` — the two rows' figures through the card's own formatter, "
+                + "which rounds to the minute before printing: the figure is WHOOP's percentage of a "
+                + "span, so its resolution is minutes at best")
+        assertTest(
+            zone1to3Baseline == 1_500 && zone4to5Baseline == 300,
+            "…against the window's mean over the three days before it — 1,500 s and 300 s, not the "
+                + "1,635 s that including the anchor's own two workouts would produce. The all-zero "
+                + "day is inside that mean as a real 0, which is what keeps a day of no zone 1–3 time "
+                + "in the window rather than out of it (got \(zone1to3Baseline ?? -1) and "
+                + "\(zone4to5Baseline ?? -1))")
+
+        let panelMarker = MetricChange.between(
+            current: zoneTime?.zone1to3Seconds, previous: zone1to3Baseline,
+            higherIsBetter: true, formatted: panelDuration)
+        assertTest(
+            panelMarker?.verdict == .better && panelMarker?.direction == .up,
+            "A day above its baseline draws the better verdict and an up marker — more zone time is "
+                + "the good direction, which is what `higherIsBetter` is passed for rather than left "
+                + "to the view")
+        assertTest(
+            panelMarker?.previousText == panelDuration(1_500),
+            "…and the marker's second column is the baseline's own digits through the card's one "
+                + "formatter, so the figure compared and the figure printed are one string")
+
+        // **The duration formatter's rounding is why the comparison is made on it.** 1,504 s and
+        // 1,500 s are four seconds apart and both print `0:25`; a row drawing `0:25` over `0:25` with
+        // an up arrow beside it is a row contradicting itself, so the verdict is `.same` and the
+        // glyph is the neutral one. This is the case a raw-seconds comparison gets wrong.
+        let roundedMarker = MetricChange.between(
+            current: 1_504, previous: 1_500, higherIsBetter: true, formatted: panelDuration)
+        assertTest(
+            roundedMarker?.verdict == .same && roundedMarker?.direction == nil
+                && roundedMarker?.previousText == "0:25",
+            "Two figures that print alike are the same as far as the screen is concerned: 1,504 s "
+                + "against 1,500 s is `.same` with no direction, because `MetricChange` compares the "
+                + "**formatted** pair and both read `0:25`")
+
+        // A day whose only workout is one this app recorded itself — the shape of every session the
+        // live path writes. It carries no zone block, so both rows draw a dash while the card itself is
+        // still drawn, because the day does hold a workout. That is the user's rule: fill a row from
+        // the CSV where the field exists and dash it where it does not.
+        //
+        // It is put on a day that *has* a baseline, deliberately. Withholding the second column here is
+        // the card's own `zoneTime != nil` guard doing it and not a missing mean, and the two are
+        // indistinguishable from a dash alone — the thin day below is the case where the mean is
+        // genuinely absent, and asserting both pins which half withholds what.
+        let noBlock = anchorOffset(-1)
+        try await panelWorkouts.save(
+            panelSession(day: noBlock, hour: 9, minutes: 30, zonePercents: nil))
+        await panelViewModel.load(for: noBlock)
+        let noBlockZoneTime = await MainActor.run { panelViewModel.zoneTime }
+        let noBlockWorkouts = await MainActor.run { panelViewModel.workouts }
+        let noBlockBaseline = await MainActor.run { panelViewModel.zone1to3Baseline }
+        assertTest(
+            noBlockWorkouts.count == 1 && noBlockZoneTime == nil,
+            "A day the app recorded itself holds a workout and no zone time — the live path writes no "
+                + "percentages, so there is nothing for the two rows to read")
+        assertTest(
+            noBlockBaseline == 1_500,
+            "…while the view model still computes a mean for it, 1,500 s over the three days inside "
+                + "its own 30-day window — so the card's second column is withheld by `zone1to3Baseline`'s "
+                + "own `zoneTime != nil` guard and not by a missing baseline. Asserting the pair pins "
+                + "which half withholds what, which a dash on its own cannot: this day has a workout and "
+                + "a baseline and draws two dashes, and the thin day below has a figure and no baseline")
+
+        // Two days of zone data behind it: below `minimumBaselineDays`, so the mean is withheld while
+        // the day's own figure stands. The day's own workout is saved with them — without it the day
+        // would be empty and the assertion below would pass for the wrong reason, which is the shape
+        // the step fixture this replaced had.
+        let thin = anchorOffset(-20)
+        try await panelWorkouts.save(
+            panelSession(day: thin, hour: 9, minutes: 30, zonePercents: [40, 20, 10, 20, 10]))
+        for offset in [-21, -22] {
+            try await panelWorkouts.save(
+                panelSession(day: anchorOffset(offset), hour: 9, minutes: 30,
+                    zonePercents: [50, 10, 10, 20, 10]))
+        }
+        await panelViewModel.load(for: thin)
+        let thinZoneTime = await MainActor.run { panelViewModel.zoneTime }
+        let thinBaseline = await MainActor.run { panelViewModel.zone1to3Baseline }
+        assertTest(
+            thinZoneTime != nil && thinBaseline == nil,
+            "A day with two days of zone data behind it shows its own figure and withholds the mean — "
+                + "`minimumBaselineDays` is three, and a mean of two printed as 'your average' would "
+                + "present a pair of workouts as a baseline")
+
+        // A day with no workout at all: the card is **absent**, not four dashes. This is the gate the
+        // user set — no workout, no panel — and it is the one assertion here that stands in for a
+        // screenshot the runner cannot take.
+        let restDay = anchorOffset(-6)
+        await panelViewModel.load(for: restDay)
+        let restWorkouts = await MainActor.run { panelViewModel.workouts }
+        assertTest(
+            restWorkouts.isEmpty,
+            "A day with no workout reads back an empty array, which is what hides the card: the four "
+                + "rows describe a workout, so a day without one has nothing for them to say")
+
+        // A measured `0:00` is drawn as `0:00` and is **not** the same as an absent block — the pair
+        // the bundled file's 45 all-zero rows depend on.
+        await panelViewModel.load(for: anchorOffset(-12))
+        let zeroZoneTime = await MainActor.run { panelViewModel.zoneTime }
+        assertTest(
+            zeroZoneTime != nil && zeroZoneTime?.zone1to3Seconds == 0
+                && panelDuration(zeroZoneTime?.zone1to3Seconds ?? 0) == "0:00",
+            "A workout that never reached zone 1 is a real `0:00` rather than a dash: the day's zone "
+                + "block exists and reads zero, which is a different answer from no block at all")
+        assertTest(
+            WorkoutZoneTime.aggregate([panelSession(day: restDay, hour: 9, minutes: 30, zonePercents: nil)]) == nil,
+            "…and the aggregate is `nil` when none of the day's workouts carries a block, in either "
+                + "direction: a sum over an empty set would produce the `0:00` that means *measured "
+                + "and never in zone 1* where the truth is *unmeasured*")
+
+        assertTest(
+            MetricChange.between(
+                current: nil, previous: 1_500, higherIsBetter: true,
+                formatted: panelDuration) == nil
+                && MetricChange.between(
+                    current: 2_040, previous: nil, higherIsBetter: true,
+                    formatted: panelDuration) == nil,
+            "A row with a missing side draws no marker at all, in either direction: `MetricChange`'s "
+                + "`nil` is reserved for a missing side, which is what keeps a dashed row from "
+                + "carrying a comparison of nothing — and it is why the card's one unproduced row, "
+                + "`STRENGTH ACTIVITY TIME`, is a literal at the call site with no marker to draw")
+
+        // MARK: The card's STEPS row
+        //
+        // The fourth row is the one figure on this card **this app measured itself** — the two zone
+        // rows above it are WHOOP's own numbers out of a CSV, and `STRENGTH ACTIVITY TIME` has no
+        // producer at all. It reads `stepCounts`, the strap's accelerometer, through
+        // `StrainViewModel.steps`/`.stepsBaseline`.
+        //
+        // **Nothing here is evidence about a strap.** No database on this machine holds a
+        // `stepCounts` row and the export carries no steps, so these rows are written by the test —
+        // they prove the read, the gate and the window, and nothing about whether a strap answers.
+        // The reference's `5,049` over `5,169` is unreachable without one.
+        //
+        // `StrainDetailView.format` is private and locale-dependent in its grouping separator, so it
+        // is reproduced here as a closure and **never asserted against a string literal** — only ever
+        // compared with itself, which is exactly what `MetricChange` does with it. Asserting
+        // `"8,431"` would be a test that fails on a device whose locale groups with a space.
+        let panelCount: (Double) -> String = { $0.formatted(.number.grouping(.automatic)) }
+
+        // Three measured days behind everything below, well clear of the workout days so the window
+        // each assertion reads is the one stated in its message.
+        for (offset, count) in [(-42, 8_000), (-41, 7_000), (-40, 6_000)] {
+            try await panelSteps.saveStepCount(
+                StepCount(
+                    date: anchorOffset(offset), stepCount: count, measuredSeconds: 3_600))
+        }
+        // The anchor's neighbour: a measured day of walking.
+        try await panelSteps.saveStepCount(
+            StepCount(date: anchorOffset(-1), stepCount: 8_431, measuredSeconds: 5_400))
+        // A **measured** day of no walking — worn, and unwalked. A real `0`, not a dash.
+        try await panelSteps.saveStepCount(
+            StepCount(date: anchorOffset(-3), stepCount: 0, measuredSeconds: 3_600))
+        // A row holding no measured span, which no writer produces but the entity documents as
+        // constructible and its readers are expected to refuse. It carries a large count on purpose:
+        // a reader that went through the row rather than through `hasMeasurement` would pull 9,999
+        // into the mean below and print 6,199 where the answer is 5,250.
+        try await panelSteps.saveStepCount(
+            StepCount(date: anchorOffset(-2), stepCount: 9_999, measuredSeconds: 0))
+
+        await panelViewModel.load(for: anchorOffset(-1))
+        let stepsDay = await MainActor.run { panelViewModel.steps }
+        let stepsBaseline = await MainActor.run { panelViewModel.stepsBaseline }
+        assertTest(
+            stepsDay == 8_431,
+            "The STEPS row's figure is the day's stored count — read back through the repository, "
+                + "which is the whole path this app has for it (got "
+                + "\(stepsDay.map(String.init) ?? "nil"))")
+        assertTest(
+            stepsBaseline == 5_250,
+            "…and its second column is the window's mean over the four measured days before it: "
+                + "8,000, 7,000, 6,000 and the **measured zero**, which is 21,000 ÷ 4 = 5,250. Both "
+                + "halves of that are load-bearing: the zero is inside the mean as a real reading "
+                + "rather than dropped as an absence, and the unmeasured row *inside the same "
+                + "window* contributes nothing — counting its 9,999 would print 6,199, which is a "
+                + "figure assembled out of a span nothing measured "
+                + "(got \(stepsBaseline.map(String.init) ?? "nil"))")
+
+        // The marker, which is the assertion that `higherIsBetter: true` is the direction this row is
+        // read in — more steps is the good way round, and the reference draws its own below-average
+        // day with a down marker.
+        assertTest(
+            MetricChange.between(
+                current: Double(8_431), previous: Double(5_250),
+                higherIsBetter: true, formatted: panelCount)?.verdict == .better
+                && MetricChange.between(
+                    current: 0, previous: Double(7_000),
+                    higherIsBetter: true, formatted: panelCount)?.verdict == .worse,
+            "A day above its step average draws the better verdict and one below draws worse — "
+                + "including the measured `0`, which is compared as a figure rather than left with "
+                + "no marker at all, which is what a missing side gets")
+
+        // The measured zero, which is the case the whole `measuredSeconds` field exists for — and the
+        // window's lower edge, since exactly three measured days behind it is a mean.
+        await panelViewModel.load(for: anchorOffset(-3))
+        let zeroSteps = await MainActor.run { panelViewModel.steps }
+        let zeroStepsBaseline = await MainActor.run { panelViewModel.stepsBaseline }
+        assertTest(
+            zeroSteps == 0 && zeroStepsBaseline == 7_000,
+            "A measured day of no walking reaches the row as a real `0`, read against a mean of "
+                + "21,000 ÷ 3 = 7,000 — which is `minimumBaselineDays` exactly, so the floor is "
+                + "crossed here and not one day later. It is the counterpart of every other absence "
+                + "rule in this app: the strap was worn and the user did not walk, which is a "
+                + "different answer from a strap that was on the charger (got "
+                + "\(zeroSteps.map(String.init) ?? "nil") and "
+                + "\(zeroStepsBaseline.map(String.init) ?? "nil"))")
+
+        // An unmeasured row, beside a window that does hold a mean. Asserting the pair pins which
+        // half withholds what, which a dash on its own cannot — the same shape as the zone block's
+        // no-block day above.
+        await panelViewModel.load(for: anchorOffset(-2))
+        let unmeasuredSteps = await MainActor.run { panelViewModel.steps }
+        let unmeasuredBaseline = await MainActor.run { panelViewModel.stepsBaseline }
+        assertTest(
+            unmeasuredSteps == nil && unmeasuredBaseline == 5_250,
+            "A row with no measured span draws a dash even though it holds a count, and the mean "
+                + "beside it is still computed — so the card's second column is withheld by "
+                + "`stepsBaseline`'s own `viewModel.steps != nil` guard and not by a missing baseline "
+                + "(got \(unmeasuredSteps.map(String.init) ?? "nil") and "
+                + "\(unmeasuredBaseline.map(String.init) ?? "nil"))")
+
+        // A day with no row at all, which is the strap path's ordinary absence — a day it was not
+        // worn writes nothing rather than writing a zero.
+        await panelViewModel.load(for: anchorOffset(-4))
+        let absentSteps = await MainActor.run { panelViewModel.steps }
+        assertTest(
+            absentSteps == nil,
+            "…and a day with no `stepCounts` row at all draws the same dash from the other side: "
+                + "`getStepCount` answers `nil` rather than a reserved-zero row, which is the absence "
+                + "shape every metric in this app now shares (got "
+                + "\(absentSteps.map(String.init) ?? "nil"))")
+
+        // The floor's other edge. Three measured days is a mean — asserted just above on the measured
+        // zero's own day — and one day is not.
+        await panelViewModel.load(for: anchorOffset(-41))
+        let thinSteps = await MainActor.run { panelViewModel.steps }
+        let thinStepsBaseline = await MainActor.run { panelViewModel.stepsBaseline }
+        assertTest(
+            thinSteps == 7_000 && thinStepsBaseline == nil,
+            "A day with a single measured day behind it shows its own figure and withholds the mean: "
+                + "`minimumBaselineDays` is three, and one day printed as 'your average' would "
+                + "present a single day's walking as a baseline (got "
+                + "\(thinSteps.map(String.init) ?? "nil") and "
+                + "\(thinStepsBaseline.map(String.init) ?? "nil"))")
+    } catch {
+        assertTest(false, "The panel's reads threw: \(error)")
+    }
+
+    // MARK: The published 5.0 command frame
+
+    /// `AA 01 0C 00 00 01 E7 41 23 F1 6A 01 01 00 00 00 58 E9 61 FC`, from `BLE_PROTOCOL.md` §2.1.
+    ///
+    /// **The only test vector either generation's command path has, and it is worth more than every
+    /// other assertion in this section.** Everything else in the two builders is internally consistent
+    /// arithmetic — a CRC16 that agrees with the decoder's, a length that agrees with the profile's —
+    /// and self-consistency is exactly the trap `CLAUDE.md` records against the 4.0's original
+    /// checksum assertions, where a wrong polynomial, a wrong byte order *and* a wrong input all
+    /// passed. This frame came from a capture somebody else took, so a wrong polynomial, a wrong
+    /// coverage, a wrong length offset, or the two reserved header bytes computed instead of copied
+    /// each move a byte here and nowhere else.
+    let publishedFiveCommand = Data([
+        0xAA, 0x01, 0x0C, 0x00, 0x00, 0x01, 0xE7, 0x41, 0x23, 0xF1,
+        0x6A, 0x01, 0x01, 0x00, 0x00, 0x00, 0x58, 0xE9, 0x61, 0xFC,
+    ])
+
+    func hex(_ bytes: Data) -> String {
+        bytes.map { String(format: "%02X", $0) }.joined(separator: " ")
+    }
+
+    do {
+        let built = WhoopPacketEncoder5.buildPacket(
+            profile: .whoop5, type: 35, seq: 0xF1, cmd: 0x6A,
+            payload: Data([0x01, 0x01, 0x00, 0x00, 0x00]))
+        assertTest(
+            built == publishedFiveCommand,
+            "The 5.0 builder reproduces §2.1's published command frame byte-for-byte — got "
+                + "\(built.map(hex) ?? "nil"), want \(hex(publishedFiveCommand))")
+
+        let staticHello = Data([
+            0xAA, 0x01, 0x08, 0x00, 0x00, 0x01, 0xE6, 0x71, 0x23, 0x01,
+            0x91, 0x01, 0x36, 0x3E, 0x5C, 0x8D,
+        ])
+        assertTest(
+            WhoopPacketEncoder5.hello(profile: .whoop5, seq: 1) == staticHello
+                && WhoopPacketEncoder5.hello(profile: .whoop5MG, seq: 1) == staticHello,
+            "…and the sixteen-byte static CLIENT_HELLO does too, under both 5.0 profiles: a declared "
+                + "length of 8, a crc16 of 0x71E6 and a one-byte `0x01` payload, none of which the "
+                + "command frame's arithmetic pins — got "
+                + "\(WhoopPacketEncoder5.hello(profile: .whoop5, seq: 1).map(hex) ?? "nil")")
+
+        // The other direction: the app's decoder has to read the published bytes back as the fields
+        // the builder was asked for. Without this the two could agree on a framing that means
+        // something else entirely — the frame would round-trip and the *offsets* would be wrong.
+        let decodedPublished = decoder.decodeProprietaryFrame(
+            data: publishedFiveCommand, profile: .whoop5)
+        assertTest(
+            decodedPublished?.type == 35 && decodedPublished?.seq == 0xF1
+                && decodedPublished?.cmd == 0x6A
+                && decodedPublished?.payload == Data([0x01, 0x01, 0x00, 0x00, 0x00]),
+            "…and the decoder reads that same frame back as type 35, seq 0xF1, cmd 0x6A and the "
+                + "five-byte parameter block, so both halves of this app are pinned to a third party's "
+                + "bytes rather than only to each other")
+
+        // The counterpart to §1's four "each 4.0 builder refuses a 5.0 profile" assertions, and the
+        // one that was missing while the 5.0 opcode table did not exist. Every entry point is here
+        // because a single shared gate is a claim about the gate, not about the entries.
+        assertTest(
+            WhoopPacketEncoder5.buildPacket(profile: .whoop4, type: 35, seq: 1, cmd: 0x6A) == nil
+                && WhoopPacketEncoder5.hello(profile: .whoop4, seq: 1) == nil
+                && WhoopPacketEncoder5.setClock(profile: .whoop4, seq: 1, epochSeconds: 0) == nil
+                && WhoopPacketEncoder5.getClock(profile: .whoop4, seq: 1) == nil
+                && WhoopPacketEncoder5.getDataRange(profile: .whoop4, seq: 1) == nil
+                && WhoopPacketEncoder5.historicalSyncRequest(profile: .whoop4, seq: 1) == nil
+                && WhoopPacketEncoder5.historicalDataAck(
+                    profile: .whoop4, seq: 1, token: Data(repeating: 0, count: 8)) == nil
+                && WhoopPacketEncoder5.motionEnableSequence(profile: .whoop4, seq: 1).isEmpty,
+            "The 5.0 builder refuses a 4.0 profile on **every** entry point, not merely on the one "
+                + "`buildPacket` gate they share: 4.0 opcodes under a 5.0 envelope are a different "
+                + "message rather than a rejected one, and the two tables share field names while "
+                + "holding different bytes, so a builder that read the other table would produce a "
+                + "frame this app cannot even decode")
+    }
+
+    // MARK: The 5.0 enable sequence, read off the bytes
+
+    do {
+        let enable = WhoopPacketEncoder5.motionEnableSequence(profile: .whoop5, seq: 0x20)
+        assertTest(
+            enable.count == 2,
+            "The 5.0 IMU enable is two frames — start raw data, then the toggle — got \(enable.count)")
+        // Under this envelope the inner record starts at byte 8, so `cmd` is byte 10: 8 header bytes
+        // then `type`, `seq`, `cmd`. That is four bytes later than the 4.0's byte 6, and it is the
+        // offset a reader porting the 4.0 block above would get wrong.
+        assertTest(
+            enable.map { $0[10] } == [0x51, 0x6A],
+            "The sequence is `0x51 START_RAW_DATA` then `0x6A TOGGLE_IMU_MODE` — the producer before "
+                + "the sensor it reads — with the opcodes read off the frame rather than trusted from "
+                + "the builder: got \(enable.map { String(format: "0x%02X", $0[10]) })")
+        assertTest(
+            enable.map { $0[9] } == [0x20, 0x21],
+            "Each frame carries its own inner seq, because a shared one would say two records were one "
+                + "— got \(enable.map { $0[9] })")
+        assertTest(
+            enable.allSatisfy { $0[8] == 35 } && enable.allSatisfy { $0[0] == 0xAA && $0[1] == 0x01 },
+            "…and both are command-typed under the 5.0 envelope, rather than one of them being a "
+                + "4.0-framed record that happens to sit in the same array")
+        // Sizes: declaredLength = 3 + payload + 4, and the frame is 8 + declaredLength. So a bare
+        // frame is 15 bytes and the five-byte toggle payload makes 20 — which is exactly §2.1's frame.
+        assertTest(
+            enable[0].count == 15,
+            "`0x51` is sent bare — 15 bytes — because the reference names the opcode and stops, and an "
+                + "invented payload would be an invented wire format. Got \(enable[0].count)")
+        assertTest(
+            enable[1].count == 20
+                && Array(enable[1][11..<16]) == [0x01, 0x01, 0x00, 0x00, 0x00],
+            "The `0x6A` toggle carries §2.1's published five-byte enable payload `01 01 00 00 00`, "
+                + "which reconciles §6's two-byte shorthand `[1, 1]` with the frame actually captured "
+                + "— got \(Array(enable[1].dropFirst(11)))")
+
+        // **The published frame is the enable's second half.** Running the sequence one seq earlier
+        // makes its toggle frame byte-identical to §2.1's capture, which is what says the published
+        // payload is the enable form rather than this app's reading of one — and it is the same
+        // fixture, not a second copy of the bytes.
+        let publishedSequence = WhoopPacketEncoder5.motionEnableSequence(
+            profile: .whoop5, seq: 0xF0)
+        assertTest(
+            publishedSequence.count == 2 && publishedSequence[1] == publishedFiveCommand,
+            "Run at seq 0xF0, the enable's second frame **is** §2.1's published frame — got "
+                + "\(publishedSequence.count == 2 ? hex(publishedSequence[1]) : "\(publishedSequence.count) frames")")
+
+        let stop = WhoopPacketEncoder5.motionEnableSequence(profile: .whoop5, seq: 0x20, enable: false)
+        assertTest(
+            stop.count == 2 && stop.map { $0[10] } == [0x52, 0x6A],
+            "Stopping is the same two verbs the other way round — `0x52` then the toggle — so the "
+                + "producer is released before the IMU is switched and neither direction leaves the "
+                + "sensor running with nothing consuming it. Got "
+                + "\(stop.map { String(format: "0x%02X", $0[10]) })")
+        assertTest(
+            stop[1].count == 20 && Array(stop[1][11..<16]) == [0x01, 0x00, 0x00, 0x00, 0x00],
+            "…and the toggle's stop form is the published enable payload with its flag cleared, not a "
+                + "second invented payload: byte 0 stays `01` and byte 1 is §6's `0` — got "
+                + "\(Array(stop[1].dropFirst(11)))")
+        assertTest(
+            WhoopPacketEncoder5.motionEnableSequence(profile: .whoop5MG, seq: 0x20).count == 2
+                && WhoopPacketEncoder5.motionEnableSequence(profile: .whoop5MG, seq: 0x20)[1]
+                    == enable[1],
+            "The MG follows the 5.0 frame for frame, because §2 gives the two one envelope: a "
+                + "generation-specific difference between them here would be a difference nobody "
+                + "documented")
+    }
+
+    // MARK: The drain session
+
+    /// The continuation token. Eight arbitrary bytes — what matters is where they come from and that
+    /// they come back unchanged, not what they are.
+    let token = Data([0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88])
+
+    let drainNow = Date(timeIntervalSince1970: 1_800_000_000)
+
+    /// A timestamp far from `drainNow`, so a marker carrying it is never the live edge.
+    let oldEpoch: UInt32 = 1_700_000_000
+
+    /// A 5.0 metadata marker of `payloadBytes` bytes: `unix` at payload 0 (frame 11), a zero subsecond
+    /// at payload 4, and the token at payload 6 — which is **frame 17**, the offset §4 writes as
+    /// payload `[6,14)` for this generation.
+    ///
+    /// Built by the real encoder and read back through the real decoder, so the session is fed a frame
+    /// this app actually produced. A `WhoopRawFrame` assembled by hand would let the token's offset and
+    /// the session's agree while both were wrong about the envelope.
+    func fiveMarker(cmd: UInt8, unix: UInt32, payloadBytes: Int) -> WhoopRawFrame? {
+        var payload = [UInt8](repeating: 0, count: max(payloadBytes, 4))
+        payload[0] = UInt8(unix & 0xFF)
+        payload[1] = UInt8((unix >> 8) & 0xFF)
+        payload[2] = UInt8((unix >> 16) & 0xFF)
+        payload[3] = UInt8((unix >> 24) & 0xFF)
+        for (offset, byte) in token.enumerated() where 6 + offset < payload.count {
+            payload[6 + offset] = byte
+        }
+        guard let framed = WhoopPacketEncoder5.buildPacket(
+            profile: .whoop5, type: WhoopProtocolProfile.whoop5.packetTypes.metadata, seq: 0x01,
+            cmd: cmd, payload: Data(payload))
+        else { return nil }
+        return decoder.decodeProprietaryFrame(data: framed, profile: .whoop5)
+    }
+
+    /// The 4.0 counterpart, whose token sits at payload **10** — §4's `inner[13:21]`, and the same
+    /// frame byte 17. `unix` is written into the leading bytes only so a reader that reached for the
+    /// 5.0's field on this generation has something plausible to trip over.
+    func fourMarker(cmd: UInt8, payloadBytes: Int, unix: UInt32 = 0) -> WhoopRawFrame? {
+        var payload = [UInt8](repeating: 0, count: max(payloadBytes, 4))
+        payload[0] = UInt8(unix & 0xFF)
+        payload[1] = UInt8((unix >> 8) & 0xFF)
+        payload[2] = UInt8((unix >> 16) & 0xFF)
+        payload[3] = UInt8((unix >> 24) & 0xFF)
+        for (offset, byte) in token.enumerated() where 10 + offset < payload.count {
+            payload[10 + offset] = byte
+        }
+        guard let framed = WhoopPacketEncoder.buildPacket(
+            profile: .whoop4, type: WhoopProtocolProfile.whoop4.packetTypes.metadata, seq: 0x02,
+            cmd: cmd, payload: Data(payload))
+        else { return nil }
+        return decoder.decodeProprietaryFrame(data: framed, profile: .whoop4)
+    }
+
+    // **§4 states the token twice and the two statements are one field**, which is the whole reason a
+    // single session type serves both generations. The assertion is on the derivation rather than on
+    // the number, so an edit that hardcodes either generation's payload offset fails here.
+    assertTest(
+        HistoricalDrainSession.continuationTokenFrameOffset == 17
+            && WhoopProtocolProfile.whoop4.innerOrigin + 13 == 17
+            && WhoopProtocolProfile.whoop5.innerOrigin
+                + WhoopProtocolProfile.whoop5.innerPrefixBytes + 6 == 17,
+        "The token is frame byte 17 on both generations — the 4.0's `inner[13:21]` is 4 + 13 and the "
+            + "5.0's payload `[6,14)` is 11 + 6 — because the two payload origins are four bytes "
+            + "apart. A reader built on either offset literally is correct for exactly one strap")
+
+    do {
+        let start = fiveMarker(cmd: 1, unix: oldEpoch, payloadBytes: 14)
+        let end = fiveMarker(cmd: 2, unix: oldEpoch, payloadBytes: 14)
+        let complete = fiveMarker(cmd: 3, unix: oldEpoch, payloadBytes: 14)
+        assertTest(
+            start != nil && end != nil && complete != nil,
+            "The three 5.0 metadata markers frame and decode — a failure here would make every "
+                + "assertion below it vacuous, which is why it stands on its own")
+
+        if let start, let end, let complete {
+            var session = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+
+            let t1 = drainNow.addingTimeInterval(3)
+            assertTest(
+                session.accept(start, now: t1) == .none && session.recordCount == 0
+                    && session.batchCount == 0,
+                "HISTORY_START is informational — §4 says ignore it — so it is neither a record nor a "
+                    + "batch and nothing is sent back")
+            assertTest(
+                session.lastActivity == t1,
+                "…and it still counts as activity, which is what keeps a strap mid-history from idling "
+                    + "out while it is working")
+
+            let t2 = drainNow.addingTimeInterval(6)
+            assertTest(
+                session.accept(end, now: t2) == .acknowledge(token: token) && session.batchCount == 1,
+                "HISTORY_END asks for the token back: the action carries the eight bytes at frame 17 "
+                    + "and nothing else, and it is the only frame in the loop that is answered")
+            assertTest(
+                session.recordCount == 0,
+                "…and it is not a record, so the batch count and the record count are separate "
+                    + "figures rather than two names for one")
+
+            let t3 = drainNow.addingTimeInterval(9)
+            assertTest(
+                session.accept(complete, now: t3) == .finish && session.finishReason == .complete,
+                "HISTORY_COMPLETE stops the drain and carries no token — §4 is explicit that it is not "
+                    + "a batch and that answering it is answering a question the strap did not ask")
+            assertTest(
+                session.accept(end, now: t3) == .none && session.batchCount == 1,
+                "…and a finished session ignores everything after it, so a late batch cannot reopen a "
+                    + "drain the strap has already declared complete")
+        }
+    }
+
+    do {
+        var counter = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+        var recordFrame = fiveFrame(
+            type: WhoopProtocolProfile.whoop5.packetTypes.historicalData, payloadBytes: 1244)
+        sealFive(&recordFrame)
+        let record = decoder.decodeProprietaryFrame(data: Data(recordFrame), profile: .whoop5)
+        assertTest(record != nil, "A type-47 record frames and decodes for the counter below")
+        if let record {
+            let t1 = drainNow.addingTimeInterval(3)
+            assertTest(
+                counter.accept(record, now: t1) == .none && counter.recordCount == 1
+                    && counter.batchCount == 0,
+                "A banked type-47 record is a record rather than a batch: counted, never "
+                    + "acknowledged, because the ack answers the HISTORY_END that closes the batch and "
+                    + "not the records inside it")
+
+            // The live 43 stream shares the connection with a 5.0 drain, and counting it as activity
+            // would leave the idle watchdog unable to fire on a strap that stopped answering.
+            var liveFrame = fiveFrame(
+                type: WhoopProtocolProfile.whoop5.packetTypes.realtimeRawData, payloadBytes: 1244)
+            sealFive(&liveFrame)
+            let live = decoder.decodeProprietaryFrame(data: Data(liveFrame), profile: .whoop5)
+            assertTest(
+                live != nil && counter.accept(live!, now: t1.addingTimeInterval(30)) == .none
+                    && counter.recordCount == 1 && counter.lastActivity == t1,
+                "A live type-43 frame is neither a record nor activity: it is a different "
+                    + "conversation, and letting it re-arm the window would keep a drain that has "
+                    + "stopped answering from ever timing out")
+        }
+    }
+
+    do {
+        // A marker one byte short of holding a token. §4's point is that a *wrong* token is worse
+        // than none — it leaves the strap re-sending while this app believes it answered — so a short
+        // marker must produce no acknowledgement at all rather than a padded or truncated one.
+        let shortFive = fiveMarker(cmd: 2, unix: oldEpoch, payloadBytes: 13)
+        let shortFour = fourMarker(cmd: 2, payloadBytes: 17)
+        assertTest(
+            shortFive != nil && shortFour != nil,
+            "A 13-byte 5.0 marker and a 17-byte 4.0 one each frame and decode — one byte short of the "
+                + "14 and 18 their tokens need, which is what makes the pair below about the token "
+                + "rather than about a frame that failed to validate")
+        if let shortFive, let shortFour {
+            var five = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            var four = HistoricalDrainSession(profile: .whoop4, startedAt: drainNow)
+            assertTest(
+                five.accept(shortFive, now: drainNow) == .none && five.batchCount == 1,
+                "A 5.0 HISTORY_END with no room for a token is still a batch and still gets no "
+                    + "acknowledgement: a padded token would be eight invented bytes sent to a strap "
+                    + "that would take them for a cursor")
+            assertTest(
+                four.accept(shortFour, now: drainNow) == .none && four.batchCount == 1,
+                "…and the same holds one generation over, at the other token offset — so neither "
+                    + "reader is relying on the frame being long enough")
+        }
+    }
+
+    do {
+        // The same token, from the other generation's marker, with §4's other derivation of it.
+        let fourEnd = fourMarker(cmd: 2, payloadBytes: 18)
+        assertTest(fourEnd != nil, "A hand-built 4.0 HISTORY_END validates under the 4.0 envelope")
+        if let fourEnd {
+            var session = HistoricalDrainSession(profile: .whoop4, startedAt: drainNow)
+            assertTest(
+                session.accept(fourEnd, now: drainNow) == .acknowledge(token: token),
+                "…and its token comes back from the same eight frame bytes the 5.0's does, though §4 "
+                    + "writes one as `inner[13:21]` and the other as payload `[6,14)`: this is the "
+                    + "assertion that fails if anyone re-derives the offset per generation")
+
+            // The 4.0's live edge. §4 publishes this generation's marker layout no further than the
+            // token, so the field the 5.0 reads is not a timestamp here — and the marker below
+            // deliberately carries a *plausible* one in that position, so a reader that reached for
+            // the 5.0's rule would end this drain two seconds after it started.
+            let plausible = fourMarker(
+                cmd: 2, payloadBytes: 18, unix: UInt32(drainNow.timeIntervalSince1970))
+            assertTest(
+                plausible != nil
+                    && session.accept(plausible!, now: drainNow) == .acknowledge(token: token),
+                "A 4.0 never trips the live edge, even with a fresh timestamp sitting in the bytes the "
+                    + "5.0 reads: the drain ends on HISTORY_COMPLETE or the idle window, which is the "
+                    + "conservative direction — a 4.0 that stopped early would lose the history behind "
+                    + "the batch it stopped on")
+        }
+    }
+
+    do {
+        let epochs = UInt32(drainNow.timeIntervalSince1970)
+        let window = HistoricalDrainSession.liveEdgeWindowSeconds
+        assertTest(
+            window == 5,
+            "The live-edge window is five seconds")
+
+        func liveEdge(_ offset: TimeInterval) -> HistoricalDrainSession.DrainAction? {
+            var session = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            guard let marker = fiveMarker(
+                cmd: 2, unix: UInt32(Int64(epochs) + Int64(offset)), payloadBytes: 14)
+            else { return nil }
+            return session.accept(marker, now: drainNow)
+        }
+
+        assertTest(
+            liveEdge(4) == .acknowledgeAndFinish(token: token),
+            "A batch stamped four seconds ahead of the phone ends the drain: that is the strap having "
+                + "caught up with the present, so there is nothing behind it left to fetch — and the "
+                + "acknowledgement still goes out, because the strap is waiting for it either way")
+        assertTest(
+            liveEdge(-4) == .acknowledgeAndFinish(token: token),
+            "…and so is one stamped four seconds behind. **Two-sided on purpose**: a strap whose RTC "
+                + "is wrong is wrong in both directions, and a one-sided window on a fast strap would "
+                + "end the drain early and silently lose everything behind it")
+        assertTest(
+            liveEdge(6) == .acknowledge(token: token) && liveEdge(-6) == .acknowledge(token: token),
+            "…while six seconds out on either side is an ordinary batch, which is what places the "
+                + "boundary at the constant rather than somewhere near it")
+        assertTest(
+            liveEdge(4) != liveEdge(6),
+            "The two verdicts above are genuinely different actions rather than two spellings of one")
+    }
+
+    do {
+        let fourIdle = drainNow.addingTimeInterval(8)
+        var four = HistoricalDrainSession(profile: .whoop4, startedAt: drainNow)
+        var five = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+        assertTest(
+            four.idleTimeoutSeconds == 8 && five.idleTimeoutSeconds == 60
+                && HistoricalDrainSession(profile: .whoop5MG, startedAt: drainNow)
+                    .idleTimeoutSeconds == 60,
+            "The idle window is the generation's own — 8 s for the 4.0 and 60 s for the 5.0 and the "
+                + "MG — read off the profile rather than passed in, so a caller cannot pair a 5.0 "
+                + "window with a 4.0 drain. Both are reported figures from §4 and neither is measured")
+        assertTest(
+            !four.checkIdleTimeout(now: drainNow.addingTimeInterval(7.9)) && four.finishReason == nil,
+            "A tenth of a second short of the 4.0's window the drain is still running")
+        assertTest(
+            four.checkIdleTimeout(now: fourIdle) && four.finishReason == .idleTimeout,
+            "…and at eight seconds it stops with the reason **recorded** rather than inferred: 'the "
+                + "strap said it was done' and 'we gave up waiting' are different facts about the same "
+                + "drain, and a screen reporting a sync needs to tell them apart")
+        assertTest(
+            !four.checkIdleTimeout(now: drainNow.addingTimeInterval(600)),
+            "A finished session does not time out twice: the reason is set once, so a caller polling "
+                + "it in a loop sees a single transition rather than one per tick")
+        assertTest(
+            !five.checkIdleTimeout(now: fourIdle),
+            "The same eight seconds does not time out a 5.0, whose window is sixty — the pair is what "
+                + "says the window came off the profile rather than being a constant this app holds")
+        assertTest(
+            five.checkIdleTimeout(now: drainNow.addingTimeInterval(60))
+                && five.finishReason == .idleTimeout,
+            "…and sixty seconds does")
+
+        // Re-arming: the window measures from the last activity, not from the start.
+        var rearmed = HistoricalDrainSession(profile: .whoop4, startedAt: drainNow)
+        if let marker = fourMarker(cmd: 2, payloadBytes: 18) {
+            _ = rearmed.accept(marker, now: drainNow.addingTimeInterval(7))
+        }
+        assertTest(
+            !rearmed.checkIdleTimeout(now: drainNow.addingTimeInterval(14)),
+            "A batch at seven seconds re-arms the window, so fourteen seconds from the start is seven "
+                + "from the last frame and the drain runs on — without the re-arm this is a timeout, "
+                + "and a drain that gave up between two batches of a slow strap would report a partial "
+                + "history as a complete one")
+        assertTest(
+            rearmed.checkIdleTimeout(now: drainNow.addingTimeInterval(15.1)),
+            "…and it does time out at fifteen, which is eight seconds after that batch")
+    }
+
+    do {
+        // A drain the strap finished, then disconnected. `CLAUDE.md`'s rule for `conclude(_:)`: the
+        // session's own reason wins, because a completed sync reported as an interrupted one prints
+        // its record count as what was fetched before giving up.
+        var finished = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+        if let complete = fiveMarker(cmd: 3, unix: oldEpoch, payloadBytes: 14) {
+            _ = finished.accept(complete, now: drainNow)
+        }
+        finished.abort()
+        assertTest(
+            finished.finishReason == .complete && finished.isFinished,
+            "A drain the strap declared complete stays complete when the link then drops — `abort()` "
+                + "cannot relabel it — and an idle timeout cannot either, since a finished session "
+                + "answers `false` to the poll")
+    }
+
+    // MARK: The generation-agnostic dispatch
+
+    do {
+        let fourEnable = WhoopCommandFrames.motionEnableSequence(profile: .whoop4, seq: 0x30)
+        let fiveEnable = WhoopCommandFrames.motionEnableSequence(profile: .whoop5, seq: 0x30)
+        assertTest(
+            fourEnable.count == 3 && fiveEnable.count == 2,
+            "The façade routes by envelope rather than by whichever opcode table is non-`nil`: three "
+                + "frames for the 4.0 and two for the 5.0, which is what makes the manager's enable "
+                + "call site generation-agnostic — got \(fourEnable.count) and \(fiveEnable.count)")
+        assertTest(
+            fourEnable.map { $0[6] } == [0x6A, 0x3F, 0x6B]
+                && fiveEnable.map { $0[10] } == [0x51, 0x6A],
+            "…and each sequence is its own builder's: the 4.0's opcodes sit at frame byte 6 and the "
+                + "5.0's at byte 10, four bytes apart, because the two envelopes put the inner record "
+                + "at different origins. A router that reached for the wrong table could not produce "
+                + "both of these shapes")
+
+        let fourRequest = WhoopCommandFrames.historicalSyncRequest(profile: .whoop4, seq: 1)
+        let fiveRequest = WhoopCommandFrames.historicalSyncRequest(profile: .whoop5, seq: 1)
+        assertTest(
+            fourRequest?[6] == 0x16 && fiveRequest?[10] == 0x16,
+            "Both generations' drain request is `0x16 SEND_HISTORICAL_DATA` — the same byte, written "
+                + "in different radixes by the two references — so this is the one drain opcode the "
+                + "4.0's correction and the 5.0's table agree on")
+        // **The body is one `00` byte on both, and this block used to pin an eight-byte window.**
+        // Four sources agree and this app was alone against them: noop's implemented
+        // `send(.sendHistoricalData, payload: [0x00])`, noop's command doc ("observed working in
+        // device captures on 41.17.6.0"), OpenStrap's `build_command(…, b"\x00")`, and the captured
+        // vector `aa0800a823041600c7c25288` that same file annotates `0x16 [00]`.
+        //
+        // **The two whole-frame lengths are not equal, and that is the pair worth pinning**: 12 and 16
+        // differ by exactly the four extra header bytes the 5.0 envelope spends on its declared length
+        // and CRC16. Both are `header + 3 + 1 + 4`, so an eight-byte body puts them at 19 and 23 — and
+        // the lengths are what catch a body that changed width on only one of the two builders.
+        assertTest(
+            fourRequest.map { Array($0[7..<8]) } == [0x00] && fourRequest?.count == 12
+                && fiveRequest.map { Array($0[11..<12]) } == [0x00] && fiveRequest?.count == 16,
+            "…carrying a single `00` at each envelope's own payload origin, and nothing else. The "
+                + "eight-byte `[u32 start][u32 end]` window this used to assert was this app's own "
+                + "invention: the only eight-byte start/end-shaped value either reference holds is "
+                + "`HISTORY_END`'s token, which noop calls opaque. A body of 1 byte is the whole "
+                + "difference — got \(fourRequest?.count ?? -1) and \(fiveRequest?.count ?? -1) bytes "
+                + "against 12 and 16")
+
+        let fourAck = WhoopCommandFrames.historicalDataAck(
+            profile: .whoop4, seq: 2, token: token)
+        let fiveAck = WhoopCommandFrames.historicalDataAck(
+            profile: .whoop5, seq: 2, token: token)
+        assertTest(
+            fourAck?[6] == 0x17 && fiveAck?[10] == 0x17
+                && fourAck.map { Array($0[7..<16]) } == [0x01] + Array(token)
+                && fiveAck.map { Array($0[11..<20]) } == [0x01] + Array(token),
+            "The ACK is `[0x01] + the token` on both — the success status byte then the eight bytes "
+                + "the marker carried, at each envelope's own origin. **Without this frame the strap "
+                + "re-sends the same batch forever**, which is why the request byte above waited for "
+                + "the loop rather than the other way round")
+        assertTest(
+            WhoopCommandFrames.historicalDataAck(profile: .whoop5, seq: 2, token: Data([0x01])) == nil
+                && WhoopCommandFrames.historicalDataAck(
+                    profile: .whoop4, seq: 2, token: Data(repeating: 0, count: 9)) == nil,
+            "…and a token that is not eight bytes is refused rather than padded or truncated: a short "
+                + "one would be a different record rather than a rejected ACK")
+
+        // The drain's abort is asserted in §16's table block, where the two generations are compared
+        // against each other and against the published numbers — it is one byte on both generations,
+        // so it is a claim about the tables rather than about the façade.
+    }
+
+    do {
+        // 1_700_000_000 = 0x6553F100, so the wire reads 00 F1 53 65 little-endian.
+        let epochBytes: [UInt8] = [0x00, 0xF1, 0x53, 0x65]
+        let fourClock = WhoopCommandFrames.setClockFrames(
+            profile: .whoop4, seq: 4, epochSeconds: 1_700_000_000)
+        let fiveClock = WhoopCommandFrames.setClockFrames(
+            profile: .whoop5, seq: 4, epochSeconds: 1_700_000_000)
+        assertTest(
+            fourClock.count == 2 && fourClock[0].count == 19 && fourClock[1].count == 20,
+            "The 4.0 takes two clock forms and **both are sent** — an 8-byte payload and a 9-byte one, "
+                + "so 19 and 20 bytes — because a wrong-length set is acknowledged but not latched and "
+                + "each is a no-op on the other's firmware. Published clients disagree on the length, "
+                + "which is what makes sending both safer than choosing. Got "
+                + "\(fourClock.map(\.count))")
+        assertTest(
+            fourClock.count == 2
+                && Array(fourClock[0][7..<11]) == epochBytes
+                && Array(fourClock[1][7..<11]) == epochBytes,
+            "…and the two forms agree on the four bytes they share: the epoch, little-endian, at each "
+                + "one's payload origin")
+        assertTest(
+            fourClock.count == 2 && fourClock[0][5] == 4 && fourClock[1][5] == 5,
+            "…as two records rather than one sent twice, which is what the differing seq says")
+        assertTest(
+            fiveClock.count == 1 && fiveClock[0].count == 23
+                && Array(fiveClock[0][11..<15]) == epochBytes
+                && Array(fiveClock[0][15..<19]) == [0x00, 0x00, 0x00, 0x00],
+            "The 5.0 takes one form and gets one frame: `0x92` with `[u32 epoch LE][u32 0]`, where "
+                + "the 4.0's newer form spends the second word on a subsecond unit this app never sets")
+        assertTest(
+            WhoopCommandFrames.clockReadBack(profile: .whoop4, seq: 5) == nil
+                && WhoopCommandFrames.clockReadBack(profile: .whoop5, seq: 5)?[10] == 0x93,
+            "The clock's read-back exists on one generation only — neither reference gives the 4.0 "
+                + "one, so asking gets `nil` rather than a command this app invented. **Sending it is "
+                + "not checking it**: nothing in this app decodes the reply, so no path here may claim "
+                + "a clock latched; what the pair buys is that a capture sees both sides of it")
+    }
+}
+
+// MARK: - 17. Heart-rate zone time out of `workouts.csv`
+
+/// The strain page's two `HEART RATE ZONES` rows, and the file they are read out of.
+///
+/// **What this section is evidence for, and what it is not.** It reads a CSV that ships inside the
+/// app bundle, derives a stable identity for each of its 673 rows, stores five percentages in a JSON
+/// text column and sums them by day. It touches no BLE path and no heart rate: the figures on the
+/// screen are WHOOP's own zone percentages out of WHOOP's own export, scaled by each workout's span.
+/// `biometric_samples` holds **0 rows** in every database on this machine, so a passing run here is
+/// not evidence that a strap produces a zone, and no screenshot may be offered as one.
+///
+/// The section is built around three things a wrong implementation gets silently right elsewhere:
+/// the parser's refusal to read the wrong file, the id's determinism (a `UUID()` writes 673 more rows
+/// on every press and reads back perfectly well), and the difference between a measured `0:00` and an
+/// absent block — the bundled file holds 45 rows of the first kind.
+func runWorkoutZoneTests() async {
+    let workoutsURL = whoopExportURL().deletingLastPathComponent()
+        .appendingPathComponent("workouts.csv")
+
+    // MARK: The parser
+
+    let rows = (try? WhoopExportParser.parseWorkouts(at: workoutsURL)) ?? []
+    assertTest(
+        rows.count == 673,
+        "The bundled `workouts.csv` parses to its 673 rows — every one of which is a workout, so "
+            + "unlike the naps there is nothing to filter (got \(rows.count))")
+    assertTest(
+        rows.allSatisfy { $0.workoutStart != nil && $0.workoutEnd != nil },
+        "Every row carries both instants: `parseWorkouts` requires `Workout start time` and "
+            + "`Workout end time` as columns, and a row whose cells were empty would leave the "
+            + "importer with a start and no end rather than with a parse failure")
+    assertTest(
+        rows.allSatisfy { $0.hrZonePercents.map(\.count) == 5 || $0.hrZonePercents == nil },
+        "…and the zone block is **five values or none** on every row, which is `zonePercents()`'s "
+            + "whole rule: a row short by even one cell reads as no block at all rather than as a "
+            + "partial set summing to a confident figure")
+
+    // The file's own resolution, asserted as a property rather than as a count so a device time zone
+    // that merges two day keys cannot break it. The five sum to **at most** 100 and often well below
+    // it — the remainder is time below zone 1, which WHOOP publishes no column for — so a reader that
+    // treated the pair as the workout's whole duration is wrong in a way nothing on screen says.
+    let blocks = rows.compactMap(\.hrZonePercents)
+    assertTest(
+        blocks.allSatisfy { block in block.allSatisfy { $0 >= 0 && $0 <= 100 } },
+        "Every zone percentage in the file is within 0…100 — the guard on a figure that will be "
+            + "multiplied by a span and drawn as a duration")
+    assertTest(
+        blocks.allSatisfy { $0.reduce(0, +) <= 100.0 + 1e-9 },
+        "…and the five sum to at most 100 on every row, so zone 1–3 plus zone 4–5 can never exceed "
+            + "the workout they are drawn against")
+    assertTest(
+        blocks.contains { $0.reduce(0, +) < 100.0 },
+        "…and at least one row is a **strict** shortfall, which is what keeps the tail of each "
+            + "workout — the part below zone 1 — a fact about the file rather than a case someone "
+            + "imagined")
+    let allZeroBlocks = blocks.filter { $0.allSatisfy { $0 == 0 } }
+    assertTest(
+        !allZeroBlocks.isEmpty,
+        "…and \(allZeroBlocks.count) rows read `0` in every band. Those are **measured workouts that "
+            + "never reached zone 1**, not absences: they must draw a real `0:00` and a dash for them "
+            + "would be a different claim about the day")
+
+    // The parser's refusal is the assertion that fails if the two column sets are ever merged.
+    // `requiredColumns` includes `Wake onset`, which this file does not carry, so pointing the cycle
+    // parser here — or this one at the cycle file — has to throw rather than read the whole file,
+    // filter to zero rows and report a successful import of nothing.
+    let wrongFileThrew: Bool
+    do {
+        _ = try WhoopExportParser.parseWorkouts(at: whoopExportURL())
+        wrongFileThrew = false
+    } catch WhoopExportError.missingColumns(let names) {
+        wrongFileThrew = names.contains("Workout start time") && names.contains("Workout end time")
+    } catch {
+        wrongFileThrew = false
+    }
+    assertTest(
+        wrongFileThrew,
+        "`parseWorkouts` pointed at `physiological_cycles.csv` throws `missingColumns` naming the two "
+            + "workout columns — the failure shape that makes a mis-wired bundle a loud error instead "
+            + "of an import of nothing that reports success")
+
+    // MARK: The activity name, and the glyph it draws
+
+    // The name is the one field of this file the app reads **without requiring it** — the reasoning is
+    // on `WhoopExportRow.activityName`. These assertions are shaped by that: the column is present on
+    // every row here, so the data never exercises the fallback and it has to be asserted directly.
+    let names = rows.compactMap(\.activityName)
+    assertTest(
+        names.count == rows.count && names.allSatisfy { !$0.isEmpty },
+        "All \(rows.count) rows carry a non-empty `Activity name` — the column is present on this "
+            + "file, which is what makes reading it without requiring it free (got \(names.count))")
+    let distinctNames = Set(names)
+    assertTest(
+        distinctNames.count == 21,
+        "…in \(distinctNames.count) distinct names, read as a property rather than as a list so a "
+            + "device time zone cannot break it. The screen's whole change is that most of these 673 "
+            + "rows now draw their own name where one shared label stood")
+
+    // **A wrong SF Symbol name is not an error** — it draws an empty chip, which is indistinguishable
+    // from a glyph that loaded slowly and from one this build's iOS is too old for. Nothing else in
+    // this suite can see `ActivityGlyph`'s table, so this block is the whole of its coverage, and it
+    // asserts over the names the file actually holds rather than over a list typed a second time.
+    assertTest(
+        distinctNames.allSatisfy { !ActivityGlyph.symbol(for: $0).isEmpty },
+        "Every one of the file's \(distinctNames.count) names resolves to a non-empty symbol, so no "
+            + "imported row can draw a blank chip")
+    assertTest(
+        !ActivityGlyph.symbol(for: nil).isEmpty
+            && !ActivityGlyph.symbol(for: "").isEmpty
+            && !ActivityGlyph.symbol(for: "   ").isEmpty
+            && !ActivityGlyph.symbol(for: "Paintball").isEmpty
+            && !ActivityGlyph.symbol(for: "Some Sport Invented Later").isEmpty,
+        "…and so does every input the table does not hold — `nil`, which is a session this app "
+            + "recorded itself and every row written before `v15`; an empty and a whitespace-only "
+            + "name; `Paintball`, the one bundled name with no entry of its own; and a name a future "
+            + "export might add")
+    assertTest(
+        ActivityGlyph.symbol(for: "Activity") == ActivityGlyph.symbol(for: nil)
+            && ActivityGlyph.symbol(for: "Other") == ActivityGlyph.symbol(for: nil),
+        "WHOOP's own two words for an uncategorised activity take the fallback rather than a glyph of "
+            + "their own — 208 rows of this file are named `Activity` or `Other`, and neither is an "
+            + "activity a table could name. They draw exactly what every workout row drew before this "
+            + "change, which is what keeps an unrecognised activity a missing nicety rather than a "
+            + "regression")
+    assertTest(
+        ActivityGlyph.symbol(for: "walking") == ActivityGlyph.symbol(for: "Walking")
+            && ActivityGlyph.symbol(for: "  Walking  ") == ActivityGlyph.symbol(for: "Walking"),
+        "…and the lookup is case- and whitespace-insensitive, so a future export that changes a "
+            + "name's casing or pads a cell lands on the same glyph instead of silently falling back")
+    assertTest(
+        ActivityGlyph.symbol(for: "Walking") == "figure.walk"
+            && ActivityGlyph.symbol(for: "Yoga") == "figure.yoga"
+            && ActivityGlyph.symbol(for: "Ice Skating") == "figure.skating"
+            && ActivityGlyph.symbol(for: "Yard Work/Gardening") == "leaf.fill",
+        "…and the table names the symbols it means, pinned **by literal** — the two halves of the "
+            + "mapping are otherwise unobservable, since a name that resolves to a symbol that does "
+            + "not exist is still non-empty. `Ice Skating` is the one that pins the deployment "
+            + "target: SF Symbols' `figure.ice.skating` is iOS 18 and would draw nothing here")
+
+    // MARK: The derived id, driven through the real import
+
+    // **The assertions here are made on what comes back out of the database, not on the id helper.**
+    // That is the stronger form and it is also the only one available: `makeWorkout` and `workoutID`
+    // are `internal`, and widening them for a test would put the id's arithmetic on the module's
+    // surface. Every property below is observable through `importWorkouts(at:)` and a read.
+    let db = LocalDatabaseManager(inMemory: true)
+    let repository = GRDBWorkoutRepository(db: db)
+    let importer = WhoopExportImporter(
+        recoveryRepository: GRDBRecoveryRepository(db: db),
+        sleepRepository: GRDBSleepRepository(db: db),
+        strainRepository: GRDBStrainRepository(db: db),
+        napRepository: GRDBNapRepository(db: db),
+        workoutRepository: repository,
+        userProfileRepository: GRDBUserProfileRepository(db: db))
+
+    let day = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+
+    do {
+        let firstWrite = try await importer.importWorkouts(at: workoutsURL)
+        assertTest(
+            firstWrite == rows.count,
+            "All \(rows.count) parsed rows are written — `makeWorkout` refuses a row missing any of "
+                + "its five required fields, and none is missing on this file, so the optional costs "
+                + "no rows here and is a guard rather than a filter (got \(firstWrite))")
+
+        let imported = try await repository.getWorkoutHistory(days: 4_000, endingOn: Date())
+        assertTest(
+            imported.count == rows.count,
+            "…and all \(rows.count) read back. **This is the assertion that fails if anyone reaches "
+                + "for the string id `SleepNap` uses**: `GRDBWorkoutRepository.makeSessions` skips any "
+                + "row whose `id` is not a UUID, so a string id would write 673 rows, read back none, "
+                + "and report a successful import of nothing (got \(imported.count))")
+        assertTest(
+            Set(imported.map(\.id)).count == imported.count,
+            "No two workouts share an id. The id packs the row's start and end unix seconds, so this "
+                + "is the file's own distinctness doing real work — a duplicated pair would silently "
+                + "merge two sessions onto one row")
+
+        let secondWrite = try await importer.importWorkouts(at: workoutsURL)
+        let afterSecond = try await repository.getWorkoutHistory(days: 4_000, endingOn: Date())
+        assertTest(
+            secondWrite == rows.count && afterSecond.count == imported.count,
+            "…and a **second import writes no additional rows**: it reports \(secondWrite) rows "
+                + "written and the table still holds \(afterSecond.count). GRDB's `save` is "
+                + "INSERT-or-UPDATE *by primary key*, so a fresh `UUID()` per run would append 673 "
+                + "more rows every press of the button and read back perfectly well")
+
+        assertTest(
+            afterSecond.allSatisfy { $0.source == WhoopExportImporter.sourceLabel },
+            "Every imported session carries the importer's own `source`, which `save` used to drop — "
+                + "without it an imported session and a live-recorded one are the same row")
+
+        let zoned = afterSecond.filter { $0.hrZonePercents != nil }
+        assertTest(
+            zoned.count == blocks.count,
+            "\(zoned.count) of the \(afterSecond.count) rows carry a zone block and "
+                + "\(afterSecond.count - zoned.count) do not — every parsed block reached the column, "
+                + "and the whole file's blocks are the ones that arrived")
+        assertTest(
+            zoned.contains { $0.hrZonePercents?.allSatisfy { $0 == 0 } == true },
+            "…and a row whose five percentages are all `0` reads back as `[0, 0, 0, 0, 0]` rather "
+                + "than as `nil`: a measured workout that never reached zone 1 is a real `0:00` on "
+                + "the card, and the column has to keep that distinct from an absent block")
+        assertTest(
+            zoned.allSatisfy { $0.zone1to3Seconds != nil && $0.zone4to5Seconds != nil }
+                && zoned.allSatisfy {
+                    ($0.zone1to3Seconds ?? 0) + ($0.zone4to5Seconds ?? 0) <= $0.durationSeconds + 1
+                },
+            "…and no imported workout's two zone figures exceed its own span, which is the check "
+                + "that the percentages are scaled by the session's duration and not by anything else")
+
+        let named = afterSecond.filter { $0.activityName != nil }
+        assertTest(
+            named.count == rows.count,
+            "The name survives the storage path: \(named.count) of \(afterSecond.count) sessions read "
+                + "back with an `activityName`. **This is the assertion that fails if the field is "
+                + "dropped anywhere along it** — `save` not passing it into the record, `makeSessions` "
+                + "not passing it back out, or a `CodingKeys` case naming a column the migration did "
+                + "not create (which throws at the write rather than reading back empty)")
+        assertTest(
+            Set(afterSecond.compactMap(\.activityName)) == distinctNames,
+            "…and they are the file's own names, set-for-set — \(distinctNames.count) distinct names "
+                + "parsed and the same \(Set(afterSecond.compactMap(\.activityName)).count) read back, "
+                + "so no row's name was dropped, defaulted, or swapped for another row's")
+    } catch {
+        assertTest(false, "The import round trip threw: \(error)")
+    }
+
+    // MARK: The v14 round trip on a session this app recorded
+
+    do {
+        // A day the export does not cover, so the read below holds the live session and nothing else
+        // — the whole point being to see what a day with no zone block at all aggregates to.
+        let liveDay = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 1_000_000_000))
+        let live = WorkoutSession(
+            startedAt: liveDay.addingTimeInterval(18 * 3600),
+            endedAt: liveDay.addingTimeInterval(18 * 3600 + 1200),
+            strain: 4.0, averageHeartRate: 110, maxHeartRate: 140,
+            route: [], splits: [])
+        try await repository.save(live)
+
+        let readBack = try await repository.getWorkouts(for: liveDay)
+        assertTest(
+            readBack.count == 1 && readBack[0].id == live.id
+                && readBack[0].hrZonePercents == nil && readBack[0].zone1to3Seconds == nil,
+            "A session stored with no zone block reads back `nil` and not `[0, 0, 0, 0, 0]` — an "
+                + "absent block draws a dash where a measured all-zero one draws `0:00`, and a "
+                + "default here would collapse the two into the fabricated zero every absence rule "
+                + "in this app exists to prevent (got "
+                + "\(readBack.first.map { $0.hrZonePercents.map(String.init(describing:)) ?? "nil" } ?? "no row"))")
+        assertTest(
+            WorkoutZoneTime.aggregate(readBack) == nil,
+            "…and a day whose only workout carries no block aggregates to `nil` rather than to "
+                + "`0:00` — the live-recording path is the ordinary case on this card, and the user's "
+                + "rule for it is a dash rather than a figure")
+    } catch {
+        assertTest(false, "The `v14` round trip threw: \(error)")
+    }
+
+    // MARK: The window's own edges, on the new overload
+
+    /// One day's aggregate, dated `offset` days from the anchor.
+    func aggregateDay(_ offset: Int) -> WorkoutZoneTime {
+        let date = Calendar.current.date(byAdding: .day, value: offset, to: day) ?? day
+        return WorkoutZoneTime(
+            date: date, zone1to3Seconds: 600, zone4to5Seconds: 60)
+    }
+
+    let series = (-40...0).map(aggregateDay).sorted { $0.date < $1.date }
+    let window = RecoveryScoring.baselineWindow(before: day, in: series)
+    assertTest(
+        window.count == RecoveryScoring.baselineWindowDays,
+        "The window is capped at `baselineWindowDays` — \(series.count) days of history come back as "
+            + "\(window.count), so the cap is applied rather than the whole read being averaged")
+    assertTest(
+        window.allSatisfy { $0.date < day },
+        "…and it is **strictly before** the anchor on the calendar day: 40 days of history land on "
+            + "1–30 days back, and the anchor's own day is not one of them. A window containing its "
+            + "own day is the defect that printed an HRV baseline taken over a different set of days "
+            + "than the score above it")
+    assertTest(
+        RecoveryScoring.baselineWindow(before: day, in: [WorkoutZoneTime]()).isEmpty
+            && RecoveryScoring.baselineWindow(before: day, in: [aggregateDay(-50)]).count == 1,
+        "An empty series has an empty window, and one day fifty days back is still in it — the window "
+            + "is the last thirty days **that have rows**, not the last thirty calendar days")
+    assertTest(
+        RecoveryScoring.baselineWindow(before: day, in: Array(series.suffix(3))).count == 2,
+        "Three days of zone history — the anchor's own plus the two before it — is a window of two, "
+            + "below `minimumBaselineDays`, which is what withholds the mean on the screen rather than "
+            + "printing a pair of workouts as an average")
+
+    // MARK: The step path's second screen
+
+    // **The strap step path reaches two screens, and this is the one §16 does not cover.** §16's panel
+    // block asserts the strain card's `STEPS` row — the figure, the mean, the measured zero and both
+    // absences — off the same `stepCounts` table this block reads. What is asserted here is that the
+    // *other* reader agrees: Home's tile, which is a different view model, a different property and a
+    // different gate on the same repository. §14 asserts the tile's **absence** on an imported day,
+    // which is the other half.
+    //
+    // The two blocks are deliberately not merged. A shared fixture would prove the two screens read
+    // one table and would stop proving that either screen's own gate is wired — `HomeViewModel.steps`
+    // and `StrainViewModel.steps` are separate properties that could each go through
+    // `StepCount.measuredStepCount` while one of them forgot to.
+    let homeDB = LocalDatabaseManager(inMemory: true)
+    let stepDay = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+    do {
+        try await GRDBStepRepository(db: homeDB).saveStepCount(
+            StepCount(date: stepDay, stepCount: 8_431, measuredSeconds: 5400))
+
+        let home = await MainActor.run {
+            HomeViewModel(
+                recoveryRepository: GRDBRecoveryRepository(db: homeDB),
+                sleepRepository: GRDBSleepRepository(db: homeDB),
+                strainRepository: GRDBStrainRepository(db: homeDB),
+                workoutRepository: GRDBWorkoutRepository(db: homeDB),
+                userProfileRepository: GRDBUserProfileRepository(db: homeDB),
+                stepRepository: GRDBStepRepository(db: homeDB),
+                analyzeStress: AnalyzeStressUseCase(biometricRepository: EmptyBiometricStore()),
+                manage: ManageBLEConnectionUseCase(
+                    bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
+                streamUseCase: StreamBiometricsUseCase(
+                    bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
+                    biometricRepository: GRDBBiometricRepository(db: homeDB)))
+        }
+        await home.load(for: stepDay)
+        let steps = await MainActor.run { home.steps }
+        assertTest(
+            steps == 8_431,
+            "Home's STEPS tile populates from a stored `stepCounts` row — the tile's positive half, "
+                + "beside §16's assertion of the same table on the strain card's `STEPS` row, so the "
+                + "two screens are pinned to agree (got \(steps.map(String.init) ?? "nil"))")
+
+        // The counterpart, and the reason `StepCount.hasMeasurement` is `measuredSeconds > 0`: a row
+        // that a *measured* day of no walking produced is a real `0`, and it must reach the tile as a
+        // figure rather than as the dash an unmeasured day draws.
+        let measuredZeroDay = Calendar.current.date(byAdding: .day, value: -1, to: stepDay) ?? stepDay
+        try await GRDBStepRepository(db: homeDB).saveStepCount(
+            StepCount(date: measuredZeroDay, stepCount: 0, measuredSeconds: 3600))
+        await home.load(for: measuredZeroDay)
+        let zeroSteps = await MainActor.run { home.steps }
+        assertTest(
+            zeroSteps == 0,
+            "…and a measured zero reaches it as `0` rather than as a dash — the row exists with "
+                + "measured time on it, so the day was worn and unwalked, which is a different answer "
+                + "from a strap that was on the charger")
+    } catch {
+        assertTest(false, "The step path's screen-level round trip threw: \(error)")
     }
 }
 

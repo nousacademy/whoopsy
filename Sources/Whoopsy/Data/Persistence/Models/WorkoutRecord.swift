@@ -27,9 +27,25 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
     public let maxHeartRate: Int
 
     /// Where the row came from, when that is worth recording — see `RecoveryRecord.source`. A
-    /// workout recorded here carries no source; the column exists so an import from the export's
-    /// `workouts.csv` (unbundled and unread today) can be told apart from a measured session later.
+    /// workout recorded here carries no source; a row imported from the export's `workouts.csv`
+    /// carries `WhoopExportImporter.sourceLabel`, which is what tells the two apart.
     public let source: String?
+
+    /// What WHOOP called the workout, out of `workouts.csv`'s `Activity name` column — the file's own
+    /// string in the file's own casing.
+    ///
+    /// `nil` on every session this app recorded itself and on every row written before `v15`. Unlike
+    /// `hrZonePercents` that `nil` is not an absence marker: a name is not a measurement, so `nil` and
+    /// a stored `"Activity"` both reach the screen as a label rather than as a dash.
+    public let activityName: String?
+
+    /// WHOOP's own five zone percentages, JSON-encoded into a `.text` column — the `[Double]?` shape
+    /// `biometric_samples.rrIntervalsMs` (`v8`) and `sleeps.sleep_stages` (`v12`) already use, because
+    /// `Array` is not a `DatabaseValueConvertible` and can therefore only ever be a record property.
+    ///
+    /// `nil` on every session this app recorded itself and on every row written before `v14`. `nil` is
+    /// not `[0, 0, 0, 0, 0]`: the latter is a workout that never reached zone 1.
+    public let hrZonePercents: [Double]?
 
     public init(
         id: String,
@@ -39,7 +55,9 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         strain: Double,
         averageHeartRate: Int,
         maxHeartRate: Int,
-        source: String? = nil
+        source: String? = nil,
+        activityName: String? = nil,
+        hrZonePercents: [Double]? = nil
     ) {
         self.id = id
         self.date = date
@@ -49,6 +67,8 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         self.averageHeartRate = averageHeartRate
         self.maxHeartRate = maxHeartRate
         self.source = source
+        self.activityName = activityName
+        self.hrZonePercents = hrZonePercents
     }
 
     enum CodingKeys: String, CodingKey {
@@ -60,6 +80,8 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         case averageHeartRate = "average_heart_rate"
         case maxHeartRate = "max_heart_rate"
         case source
+        case activityName = "activity_name"
+        case hrZonePercents = "hr_zone_percents"
     }
 }
 

@@ -110,6 +110,34 @@ public enum RecoveryScoring {
         window(before: day, in: nights, dated: \.date)
     }
 
+    /// The same window over days of step counts, for the mean the strain page reads a day against.
+    ///
+    /// A third reader of one rule rather than a fourth definition of it. The ordering — filter to
+    /// strictly-before first, *then* take the trailing thirty — is the thing being shared, and it is
+    /// the half that is easy to get wrong: slicing first takes the wrong thirty. The two
+    /// `baselineWindow` overloads above exist for that reason, and this is the same function again
+    /// with a different row type.
+    ///
+    /// Steps are keyed on the day like the other two, and no writer produces a row for a day it did
+    /// not measure — so the series a caller reads back is already the measured days. A caller still
+    /// gates on `StepCount.hasMeasurement` rather than trusting that: a zero-second row is
+    /// constructible, the entity documents it as reader tolerance, and one inside this window would
+    /// contribute a fabricated `0` to the mean. See `StepCount`.
+    public static func baselineWindow(before day: Date, in counts: [StepCount]) -> [StepCount] {
+        window(before: day, in: counts, dated: \.date)
+    }
+
+    /// The same window over days of workout zone time, for the mean the strain page reads a day's two
+    /// zone rows against.
+    ///
+    /// A fourth reader of one rule rather than a fourth definition of it — the same reasoning as the
+    /// step overload above. A day contributes a row here only when its workouts carry a zone block, so
+    /// the caller does not filter anything out afterwards: a day with no zone data is absent from the
+    /// series, which is what keeps it out of the mean.
+    public static func baselineWindow(before day: Date, in zoneTimes: [WorkoutZoneTime]) -> [WorkoutZoneTime] {
+        window(before: day, in: zoneTimes, dated: \.date)
+    }
+
     private static func window<T>(before day: Date, in series: [T], dated: KeyPath<T, Date>) -> [T] {
         let cutoff = day.startOfDay
         return Array(

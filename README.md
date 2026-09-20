@@ -1,7 +1,7 @@
 # Whoopsy
 
-A 100% offline iOS companion for WHOOP 4.0 / 5.0 straps. Your strap, your data, your device — no
-subscription, no account, no analytics.
+A 100% offline iOS companion for WHOOP 4.0 / 5.0 / 5.0 MG straps. Your strap, your data, your
+device — no subscription, no account, no analytics.
 
 The hardware is excellent. The membership is the part you rent forever: your own physiology is
 uploaded to someone else's servers and handed back to you one screen at a time, for as long as you
@@ -42,14 +42,22 @@ strap.** Being specific about that is more useful than a feature list:
 - **Signing is not configured.** `DEVELOPMENT_TEAM` is empty and there is no certificate, so the
   Xcode project will not build to a device without you setting a team. The library and the simulator
   build fine.
-- **Historical sync is known-broken.** Pulling the strap's onboard cache is not implemented
-  correctly, and the reasons are enumerated rather than hidden — see
-  [`TODO.md` §5](TODO.md). The documented frame layout and the implemented one currently disagree.
+- **Historical sync is implemented and has never run against a strap.** Both envelopes are built,
+  inbound frames are checksum-verified, a frame split across several notifications is reassembled,
+  and the drain now has its request (`0x16` on both generations), its per-batch ACK loop and a
+  termination rule on `HISTORY_COMPLETE`, an idle window off the profile, or the live edge. What is
+  still missing is a walk for the type-24 heart-rate record's own header — the *motion* layouts are
+  walked, which is why a drained record reaches the step count and not a heart rate. See
+  [`TODO.md` §5](TODO.md).
+- **A 5.0 can be written to, and what is unproven is whether it answers.** All three WHOOP models
+  carry a transmitted opcode table now. The 5.0's command characteristic needs an authenticated SMP
+  bond that nothing in this project establishes a third-party iOS app can create, so the device
+  screen says that in as many words rather than calling the generation unsupported.
 - **The import path is the well-exercised one.** Recovery, Strain and Sleep can all be computed from
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-an 870-assertion test runner that pins the behaviour of all of them.
+a 1101-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -71,8 +79,8 @@ Three inputs write into the same local tables:
 
 | Source | What it gives | Notes |
 | :--- | :--- | :--- |
-| **The strap**, over BLE | Live heart rate, R-R intervals, battery | Requires a real device |
-| **Apple Health** | Steps, resting heart rate, HRV, respiratory rate | Read-only, permission never disclosed by iOS |
+| **The strap**, over BLE | Live heart rate, R-R intervals, battery, and the day's steps off its own accelerometer | Requires a real device |
+| **Apple Health** | Resting heart rate, HRV | Read-only, permission never disclosed by iOS |
 | **A WHOOP export** | Full history: recovery inputs, sleep stages, strain | The path that makes a fresh install useful |
 
 Everything downstream is computed on-device from stored rows. An imported day is **re-scored through
@@ -102,7 +110,7 @@ including an AI assistant with no memory of the last session.
 | [`TODO.md`](TODO.md) | **The roadmap.** Outstanding work, per CSV column and per component, with the reason each item is still open. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | **App design.** Layer rules, folder layout, component inventory, data-flow diagram. |
 | [`ALGORITHMS.md`](ALGORITHMS.md) | **The maths.** RMSSD/SDNN, the Strain model, the Recovery z-score, sleep staging, sleep need — with constants and citations. |
-| [`BLE_PROTOCOL.md`](BLE_PROTOCOL.md) | **Bluetooth.** GATT UUIDs for both hardware variants, `0xAA` framing, CRC layout, handshake sequence. |
+| [`BLE_PROTOCOL.md`](BLE_PROTOCOL.md) | **Bluetooth.** GATT UUIDs for all three straps, both `0xAA` envelopes, CRC layout, handshake sequence. |
 | [`CLAUDE.md`](CLAUDE.md) | **Working in this repo.** Build and test commands, and the hard-won gotchas that are not obvious from the code. Also the entry point for AI-assisted development. |
 
 ---
@@ -111,32 +119,41 @@ including an AI assistant with no memory of the last session.
 
 Requires Xcode 16+ and Swift 6.
 
-### First: create the data file, or nothing will build
+### First: create the data files, or nothing will build
 
 `Sources/Whoopsy/Data/Resources/*.csv` is **gitignored.** What lived there was one real person's
 physiological record — recovery score, HRV, resting heart rate, skin temperature, blood oxygen, sleep
 staging, and free-text journal notes — and it is not published. **A fresh clone will not compile
-until you put one file back.**
+until you put two files back.**
 
 | File | Needed? |
 | :--- | :--- |
 | `physiological_cycles.csv` | **Required to build.** `Package.swift` bundles it and `WhoopExportImporter` reads it through `Bundle.module`. Without it: `Invalid Resource … File not found` |
-| `sleeps.csv`, `journal_entries.csv`, `workouts.csv` | Not needed. Nothing in the app reads them |
+| `sleeps.csv` | **Required to build**, for the same reason — it is the second `.process(…)` entry. Read only for the **eight nap rows** it carries and nothing else |
+| `journal_entries.csv`, `workouts.csv` | Not needed. Nothing bundles them and nothing reads them |
 
-**If you have a WHOOP export**, drop its `physiological_cycles.csv` into
+Both required files are validated as they are read, so a wrong-shaped one fails loudly instead of
+importing a table of nils. The cycle file must carry `Cycle start time`, `Cycle timezone` and
+`Wake onset`; the sleep file must carry those three **plus `Nap`**, and that column is the load-bearing
+one — it is what tells the two files apart, so pointing the nap parser at the cycle file throws
+`missingColumns(["Nap"])` rather than reading it, finding no naps, and reporting a clean import of
+nothing.
+
+**If you have a WHOOP export**, drop its `physiological_cycles.csv` and `sleeps.csv` into
 `Sources/Whoopsy/Data/Resources/` and the app will import your own history.
 
-**If you don't**, a header-only placeholder is enough to compile — this is verified, not assumed —
+**If you don't**, header-only placeholders are enough to compile — this is verified, not assumed —
 and the importer will honestly report zero days rather than inventing any:
 
 ```bash
 cat > Sources/Whoopsy/Data/Resources/physiological_cycles.csv <<'CSV'
 Cycle start time,Cycle end time,Cycle timezone,Recovery score %,Resting heart rate (bpm),Heart rate variability (ms),Skin temp (celsius),Blood oxygen %,Day Strain,Energy burned (cal),Max HR (bpm),Average HR (bpm),Sleep onset,Wake onset,Sleep performance %,Respiratory rate (rpm),Asleep duration (min),In bed duration (min),Light sleep duration (min),Deep (SWS) duration (min),REM duration (min),Awake duration (min),Sleep need (min),Sleep debt (min),Sleep efficiency %,Sleep consistency %
 CSV
-```
 
-The importer validates that `Cycle start time`, `Cycle timezone` and `Wake onset` are present, so a
-file with a different shape fails loudly instead of importing a table of nils.
+cat > Sources/Whoopsy/Data/Resources/sleeps.csv <<'CSV'
+Cycle start time,Cycle timezone,Wake onset,Nap
+CSV
+```
 
 ### Then build
 
@@ -155,11 +172,11 @@ works around. Add `CODE_SIGNING_ALLOWED=NO` to check compilation without a signi
 
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 15 sections, 870 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 16 sections, 1101 assertions, and no
 test discovery:
 
 ```bash
-make test                 # build + run all 15 sections
+make test                 # build + run all 16 sections
 make test SECTIONS=13,15  # just those two
 ```
 
@@ -168,15 +185,17 @@ deleted sources and the link fails) and hands the runner an absolute `#filePath`
 longer cares which directory you run it from. It ends with one machine-readable line:
 
 ```
-SUITE sections=1,...,15 assertions=870 failed=0 exit=0
+SUITE sections=1,...,16 assertions=1101 failed=0 exit=0
 ```
 
 Read that line rather than the scrollback — the suite has no test discovery, so a section that
 stopped running looks exactly like one that passed. The full explanation is in
 [`CLAUDE.md`](CLAUDE.md) §Tests.
 
-Note the runner is **not hermetic** — one section builds the real dependency container and therefore
-writes to your own development database. That is documented rather than hidden.
+Note the runner is **not hermetic in the migration sense** — one section builds the real dependency
+container, so a run applies any pending migration to your own development database before the app is
+ever launched. It writes no rows there: every section that stores anything builds its own in-memory
+database, and a full run leaves the file byte-identical. That is documented rather than hidden.
 
 ---
 
@@ -215,7 +234,9 @@ server, and no network code. It does not phone home, and there is nothing to opt
 
 HealthKit access is read-only, and iOS never tells an app whether read permission was granted — so
 Whoopsy treats a denial, an empty day and an unavailable store as the same thing and shows a dash
-rather than inventing a zero.
+rather than inventing a zero. Steps used to be the one value read that way and no longer are: they
+come off the strap's own accelerometer and are stored like any other measured day, which took steps
+out of the HealthKit permission request entirely.
 
 ## Licence
 

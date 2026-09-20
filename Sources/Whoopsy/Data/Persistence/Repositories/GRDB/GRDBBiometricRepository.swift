@@ -39,8 +39,10 @@ public final class GRDBBiometricRepository: BiometricRepository, Sendable {
     }
 
     /// Absent channels stay absent. Substituting a plausible default here (a 36.5 °C skin
-    /// temperature, a `0` R-R interval) puts invented data into the recovery math with no way
-    /// downstream to tell it apart from a real reading.
+    /// temperature, a `0` R-R interval, a `0` g accelerometer) puts invented data into the recovery
+    /// and sleep math with no way downstream to tell it apart from a real reading — and the accel
+    /// zero is the worst of the three, because it asserts the strap was motionless rather than
+    /// merely being wrong about a value nothing reads.
     private static func makeSample(from record: BiometricSampleRecord) -> BiometricSample {
         BiometricSample(
             timestamp: record.timestamp,
@@ -50,9 +52,9 @@ public final class GRDBBiometricRepository: BiometricRepository, Sendable {
             // collapses, so a row that captured nothing cannot read back as a row that captured an
             // empty list.
             rrIntervalsMs: record.rrSeries.isEmpty ? nil : record.rrSeries,
-            accelerometerX: record.accelX ?? 0,
-            accelerometerY: record.accelY ?? 0,
-            accelerometerZ: record.accelZ ?? 0,
+            accelerometerX: record.accelX,
+            accelerometerY: record.accelY,
+            accelerometerZ: record.accelZ,
             skinTemperatureCelsius: record.skinTemp,
             spO2Percentage: record.spo2Percentage,
             isOnBody: record.isOnBody ?? true,

@@ -16,6 +16,14 @@ public protocol WorkoutRepository: Sendable {
     /// An empty array when nothing was recorded. Never a stand-in: a day with no workout has no
     /// workout, and the ACTIVITIES card renders that as an absent row rather than a plausible one.
     func getWorkouts(for date: Date) async throws -> [WorkoutSession]
+
+    /// Sessions over the `days` ending on `endingOn`, earliest first — the read behind a day's
+    /// comparison against its own recent history.
+    ///
+    /// Bounded at both ends and anchored on the day the caller is showing, exactly as
+    /// `RecoveryRepository.getRecoveryHistory(days:endingOn:)` is: a day-keyed screen showing a past
+    /// day must not be handed a window that ran on to the present.
+    func getWorkoutHistory(days: Int, endingOn: Date) async throws -> [WorkoutSession]
 }
 
 public protocol AppPreferencesRepository: Sendable { func load() async -> AppPreferences; func save(_ preferences: AppPreferences) async }
@@ -39,16 +47,6 @@ public protocol HealthKitSyncing: Sendable {
     /// Imports the last `days` of HRV and resting heart rate into local storage, one row per day.
     /// Days with no reading are skipped rather than stored as zero.
     func importRecentHealthData(days: Int) async throws -> HealthImportSummary
-
-    /// The steps HealthKit recorded on `date`, or `nil` when it has no number to show.
-    ///
-    /// Does not throw, deliberately. On this platform the failure modes are indistinguishable from
-    /// the outside: HealthKit never discloses read-permission status, so a denial, an empty day, a
-    /// device with no step source and an unavailable store all arrive here as "no number". A caller
-    /// that cannot tell them apart cannot report them apart either, and the honest rendering of all
-    /// four is the same dash. Throwing would only invite a caller to show an error for a day the
-    /// user simply did not carry their phone on.
-    func stepCount(on date: Date) async -> Int?
 }
 
 /// The WHOOP data export, as a third input alongside the strap and HealthKit.

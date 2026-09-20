@@ -1,3 +1,8 @@
+---
+name: evaluate-mockup
+description: Use when a chart mockup, a reference screenshot or a feature requirement implies a figure this app should draw — before any view code exists. Establishes whether the visualisation is renderable from local data at all, names the fields that cannot be populated and why, and grounds every substitution in PATENTS.md rather than in a guess.
+---
+
 # Skill: Chart Feasibility & Data Gap Analysis
 
 ## Role and Objective

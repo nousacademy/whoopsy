@@ -5,10 +5,13 @@ description: Use when a WHOOP export column gains or loses a consumer — a new 
 
 # CSV Field Coverage
 
-Four CSVs ship beside this app and **one is read**. The other three are not junk: they are 4,994
+Four CSVs ship beside this app and **three are read** — `physiological_cycles.csv` in full,
+`sleeps.csv` for the eight nap rows it alone carries, and `workouts.csv` for its 673 workouts, its
+zone block and its `Activity name` column — neither of the last two is in any other file. The remaining one, `journal_entries.csv`, is not junk: it is **3,403**
 rows of measurements the app has never opened, and the only reason a column stays unused is that
-nobody wrote down what it would take. That is what `TODO.md` at the repo root is for, and this skill
-is how it stays true.
+nobody wrote down what it would take. (`sleeps.csv`'s 918 rows are *not* part of any such figure — it
+is bundled, and 910 of its rows are the same 910 nights the cycle file already carries.) That is what
+`TODO.md` at the repo root is for, and this skill is how it stays true.
 
 The failure this skill exists to prevent is not a missing checkbox. It is **a stale inventory** — a
 `[x]` next to a column whose only consumer was deleted two refactors ago, or a `[ ]` next to a
@@ -90,8 +93,11 @@ grep -rn "<the parsed field name>" Sources/Whoopsy/
 ```
 
 Follow it all the way out — record field → entity → mapper → view. A field that reaches
-`WhoopExportRow` and stops there is `[ ]`, and that is the most common mis-mark in this document:
-`asleepMinutes` and `inBedMinutes` are both parsed on every imported row and read by nothing.
+`WhoopExportRow` and stops there is `[ ]`, and that is the most common mis-mark in this document —
+`inBedMinutes` is parsed on every imported row and read by nothing, which is the plain case. The
+subtler one is `asleepMinutes`: the **nap** path consumes it (`WhoopExportImporter.makeNap`), while
+the **cycle** path parses it and never reads it, so the same field is covered on one file's rows and
+uncovered on the other's. A field's coverage is a fact about a path, not about a name.
 
 **3. Flip the line and fix its reason.** A coverage change is a **move between three states**, and
 the line's text has to change with it — a `[x]` carrying a `[ ]`'s justification is the stale-doc
@@ -115,7 +121,7 @@ When one of those changes, update the source it cites, not just `TODO.md`:
 | Recovery inputs, HRV metric classification | `ALGORITHMS.md` §1 / §3, plus the `CLAUDE.md` never-mix gotcha |
 | Strain inputs | `ALGORITHMS.md` §2 — an imported strain is WHOOP's number |
 | Sleep need, sleep debt, consistency | `ALGORITHMS.md` §4 |
-| Why a file is bundled or not | `CLAUDE.md` — the `Bundle.module`-not-`Bundle.main` gotcha names `sleeps.csv` by hand |
+| Why a file is bundled or not | `CLAUDE.md` — the `Bundle.module`-not-`Bundle.main` gotcha names the bundled files by hand |
 | A new table, or a new column on a record | `ARCHITECTURE.md` §2.B and the frozen-migration gotcha in `CLAUDE.md` |
 
 Then run the **`architecture-doc-sync`** skill over the change rather than duplicating its routing
@@ -123,27 +129,31 @@ table here.
 
 ## Rules
 
-1. **A column can be covered and still not be on screen.** `recoveries.skin_temp` and
-   `strains.activeCalories` are stored on every imported day and printed by nothing. Mark them `[x]`
+1. **A column can be covered and still not be on screen.** `recoveries.skin_temperature` and
+   `strains.kilojoules` are stored on every imported day and printed by nothing. Mark them `[x]`
    — they have a consumer — and say plainly in the line that no screen draws them. "Covered" means
    *consumed*, and quietly meaning *visible* is how a fabricated readout gets justified later.
 2. **A redundancy is a finding, not a gap.** Where the app derives a column (`Asleep duration` =
    light + deep + rem; `Sleep performance %` = asleep / need) the derivation is what ships and the
    column stays `[ ]`. **Measure the agreement before calling it redundant** — that is what turned
    `In bed duration` from "the same as the others" into a 34-minute disagreement on six nights.
-3. **A Decision line is closed.** `Recovery score %`, `Sleep performance %` and `Sleep debt (min)`
+3. **A Decision line is closed.** `Recovery score %`, `Sleep performance %` and `Sleep efficiency %`
    are deliberately unused, each with a reason and a citation. Do not flip one to `[x]` because a
    parser grew a field, and do not delete one because it "looks like an oversight". If the decision
-   itself is being revisited, say so in the same turn — with the measurement that changed it.
+   itself is being revisited, say so in the same turn — with the measurement that changed it. Note
+   that a Decision and a covered column can look alike from a distance and are opposites: `Sleep debt
+   (min)` reads like the other three and is `[x]`, because the sleep-detail screen's breakdown box
+   consumes it. What stays a decision is the *model* — whether `SleepNeedMath` should carry a debt
+   term — which is a separate question from whether the column has a reader.
 4. **Fill counts are measurements with a date on them.** Re-run the command; do not carry a count
    forward because the CSV "is a fixed file". It is fixed — but `Data/Resources/` is a directory a
    human can replace, and a column that is 909-filled today can be 910 tomorrow.
 5. **Never mark a column `[x]` for a consumer that cannot produce a value.** A parsed-but-unused
    field, a `?? 0` default and a fallback are all things this repo has shipped as readings
    (`ui-data-provenance` carries the list). Being *reachable* is not being *produced*.
-6. **The file-level blocker is written once, above the list.** Three of these files are unread for
-   one reason each, and repeating it on every line buries it. State it once, in bold, then let the
-   lines stay short.
+6. **The file-level blocker is written once, above the list.** Each unread file is unread for one
+   reason, and repeating it on every line buries it. State it once, in bold, then let the lines stay
+   short.
 7. **Say what you did not verify.** If a coverage claim rests on a grep rather than a run — the
    export is only readable at runtime through `Bundle.module`, and the runner's §11 is the only
    place it is actually parsed — write that in the line instead of implying it was observed.

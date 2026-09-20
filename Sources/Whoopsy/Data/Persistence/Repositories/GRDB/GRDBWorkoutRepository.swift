@@ -25,7 +25,10 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
             endedAt: workout.endedAt,
             strain: workout.strain,
             averageHeartRate: workout.averageHeartRate,
-            maxHeartRate: workout.maxHeartRate
+            maxHeartRate: workout.maxHeartRate,
+            source: workout.source,
+            activityName: workout.activityName,
+            hrZonePercents: workout.hrZonePercents
         )
         let route = workout.route.map {
             WorkoutRoutePointRecord(
@@ -50,6 +53,11 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
 
     public func getWorkouts(for date: Date) async throws -> [WorkoutSession] {
         let records = try await db.getWorkouts(on: date)
+        return try await Self.makeSessions(from: records, db: db)
+    }
+
+    public func getWorkoutHistory(days: Int, endingOn: Date) async throws -> [WorkoutSession] {
+        let records = try await db.getWorkoutHistory(days: days, endingOn: endingOn)
         return try await Self.makeSessions(from: records, db: db)
     }
 
@@ -98,7 +106,10 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
                     averageHeartRate: record.averageHeartRate,
                     maxHeartRate: record.maxHeartRate,
                     route: points,
-                    splits: splits
+                    splits: splits,
+                    source: record.source,
+                    activityName: record.activityName,
+                    hrZonePercents: record.hrZonePercents
                 )
             )
         }

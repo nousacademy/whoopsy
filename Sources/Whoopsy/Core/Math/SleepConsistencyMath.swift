@@ -112,9 +112,9 @@ public enum SleepConsistencyMath {
     /// How far back the caller reads `sleeps` to find four prior records.
     ///
     /// Wide enough that the range is almost never the reason a score is missing: on the bundled export
-    /// this covers 880 of the 888 scorable nights, and every window from 10 to 21 days covers the same
-    /// 880 — the eight it does not reach are nights whose fourth predecessor is 13 to 148 days earlier,
-    /// which is a recording gap rather than a history this model should score across.
+    /// this covers **898 of the 906 scorable nights**, and every window from 10 to 21 days covers the
+    /// same 898 — the eight it does not reach are nights whose fourth predecessor is 51 to 143 days
+    /// earlier, which is a recording gap rather than a history this model should score across.
     public static let historyLookbackDays = 12
 
     /// The recency-weighted mean of the four priors' two boundaries, in night-clock minutes.

@@ -43,12 +43,6 @@ public struct PreviewHealthStoreClient: HealthStoreClient {
         throw HealthStoreUnavailableError(reason: unavailableReason ?? "Unavailable.")
     }
 
-    public func dailyTotal(
-        _ metric: HealthQuantityMetric, from start: Date, to end: Date
-    ) async throws -> Double? {
-        throw HealthStoreUnavailableError(reason: unavailableReason ?? "Unavailable.")
-    }
-
     public func sleepSegments(from start: Date, to end: Date) async throws -> [HealthSleepSegment] {
         throw HealthStoreUnavailableError(reason: unavailableReason ?? "Unavailable.")
     }

@@ -389,6 +389,70 @@ public actor LocalDatabaseManager {
                 to: "sleeps", columns: [("sleep_stages", .text)], in: db)
         }
 
+        // `v13` is the first table in this app that stores a *derived* daily total rather than a
+        // reading: steps are counted from 100 Hz motion that is never persisted, so the count cannot
+        // be recomputed on read the way every other metric here can.
+        //
+        // That is the whole reason a table is needed. A day of motion at 100 Hz across three axes is
+        // ~26M samples — far too much to keep, and far too much to re-walk — so `StepAccumulator`
+        // consumes each batch as it arrives and stores only the running figure. Nothing can
+        // reconstruct it afterwards, which is why this is a stored total and not a projection over
+        // samples.
+        //
+        // The primary key is `date`, on the `strains` rule: a day holds one step count. It is snapped
+        // on write by `saveStepCount`, because a row written at a raw timestamp is inserted rather
+        // than updated and no keyed read can find it.
+        //
+        // **`measuredSeconds` is the column the absence rule reads, and it is not decoration.** The
+        // count alone cannot separate "wore the strap, did not walk" (`0`) from "never measured"
+        // (no row) — both are `0`. This column is what makes the first a measurement and the second
+        // an absence, and `StepCount.hasMeasurement` derives the flag from it rather than storing a
+        // second copy that a writer could set the other way. See `StepCount`.
+        //
+        // **No `source` column**, unlike `strains`. That table carries one because two producers
+        // write it — the strap and the CSV import — and a reader has to tell them apart. Steps have
+        // one producer: the strap. Its live and banked transports deliver the same measurement of the
+        // same motion from the same sensor, a single day is routinely fed by both, and a single
+        // value per row could therefore not be written honestly. The export carries no step counts at
+        // all, so there is no second producer to distinguish.
+        migrator.registerMigration("v13_step_counts") { db in
+            try db.create(table: "stepCounts", ifNotExists: true) { t in
+                t.primaryKey("date", .datetime)
+                t.column("stepCount", .integer).notNull()
+                t.column("measuredSeconds", .double).notNull()
+            }
+        }
+
+        // WHOOP's own five heart-rate zone percentages for an imported workout, as the JSON-encoded
+        // `[Double]?`-in-a-`.text`-column shape `v8` and `v12` already set — `Array` is not a
+        // `DatabaseValueConvertible`, so it can only ever be a record property.
+        //
+        // **Nullable and undefaulted, which is the honest value rather than the convenient one.** The
+        // 673 imported workouts all carry a block; every session this app recorded itself carries
+        // none, and neither does any row written before this migration. NULL says exactly that, and
+        // the strain page draws it as a dash — where a defaulted `[0, 0, 0, 0, 0]` would be a
+        // measured workout that never reached zone 1, which the export also contains 45 of.
+        migrator.registerMigration("v14_workout_hr_zones") { db in
+            try Self.addMissingColumns(
+                to: "workouts", columns: [("hr_zone_percents", .text)], in: db)
+        }
+
+        // `workouts.csv`'s `Activity name`, which the Home screen's activity row draws in place of one
+        // label for every session.
+        //
+        // **Nullable and undefaulted**, on `source`'s reasoning rather than `hrZonePercents`': NULL is
+        // the honest value for a fact nobody recorded at the time, and here that is every session this
+        // app recorded itself plus all 673 imported rows written before this migration. There is no
+        // default to pick, because there is no column in any other file to default from.
+        //
+        // The name is **not** an absence marker the way the zone block is — a name is not a
+        // measurement, so `nil` reaches the screen as WHOOP's own word for an uncategorised activity
+        // rather than as a dash. `WhoopExportRow.activityName` carries that reasoning.
+        migrator.registerMigration("v15_workout_activity_name") { db in
+            try Self.addMissingColumns(
+                to: "workouts", columns: [("activity_name", .text)], in: db)
+        }
+
         try migrator.migrate(queue)
     }
 
@@ -559,6 +623,39 @@ public actor LocalDatabaseManager {
         }
     }
 
+    /// See `saveRecovery` for why the date is snapped.
+    ///
+    /// The snap is load-bearing here for a second reason beyond the keyed read: `TrackStepsUseCase`
+    /// flushes the running count repeatedly through one day, and each flush is a *replacement* of the
+    /// day's row rather than an addition to it. An unsnapped write would append a row per flush and
+    /// leave the day's total split across rows no reader can add back up.
+    public func saveStepCount(_ record: StepCountRecord) throws {
+        var snapped = record
+        snapped.date = record.date.startOfDay
+        try dbQueue.write { db in
+            try snapped.save(db)
+        }
+    }
+
+    /// The day's count, or `nil` when that day was never measured — see `StepRepository`.
+    public func getStepCount(for date: Date) throws -> StepCountRecord? {
+        try dbQueue.read { db in
+            try StepCountRecord.fetchOne(db, key: ["date": date.startOfDay])
+        }
+    }
+
+    /// See `getRecoveryHistory(days:endingOn:)`.
+    public func getStepCountHistory(days: Int, endingOn: Date = Date()) throws -> [StepCountRecord] {
+        let window = Self.historyWindow(days: days, endingOn: endingOn)
+        return try dbQueue.read { db in
+            try StepCountRecord
+                .filter(Column("date") >= window.from)
+                .filter(Column("date") <= window.to)
+                .order(Column("date").asc)
+                .fetchAll(db)
+        }
+    }
+
     public func saveProfile(_ record: UserProfileRecord) throws {
         try dbQueue.write { db in
             try record.save(db)
@@ -676,6 +773,28 @@ public actor LocalDatabaseManager {
     public func getLatestWorkout() throws -> WorkoutRecord? {
         try dbQueue.read { db in
             try WorkoutRecord.order(Column("started_at").desc).fetchOne(db)
+        }
+    }
+
+    /// Every workout whose **day** falls in the window, earliest first.
+    ///
+    /// Shaped like `getRecoveryHistory(days:endingOn:)` and its siblings rather than taking a from/to
+    /// pair, so the two ends come from the one `historyWindow(days:endingOn:)` — a window anchored on a
+    /// day in the past would otherwise run on to the present and pull the whole imported history in
+    /// behind the thirty days a baseline is taken over.
+    ///
+    /// It filters on `date` — the snapped day key — and not on `started_at`, which is what makes the
+    /// result a set of *days* rather than of instants: a session started at 23:50 belongs to the day
+    /// `getWorkouts(on:)` would find it on, and a range test on the raw instant would disagree with
+    /// that lookup by one day at each boundary.
+    public func getWorkoutHistory(days: Int, endingOn: Date = Date()) throws -> [WorkoutRecord] {
+        let window = Self.historyWindow(days: days, endingOn: endingOn)
+        return try dbQueue.read { db in
+            try WorkoutRecord
+                .filter(Column("date") >= window.from)
+                .filter(Column("date") <= window.to)
+                .order(Column("started_at").asc)
+                .fetchAll(db)
         }
     }
 }

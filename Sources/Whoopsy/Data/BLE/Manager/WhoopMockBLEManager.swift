@@ -12,6 +12,7 @@ public final class WhoopMockBLEManager: @unchecked Sendable {
     private let continuationLock = NSLock()
     private var deviceContinuations: [UUID: AsyncStream<WhoopDevice>.Continuation] = [:]
     private var telemetryContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
+    private var motionContinuations: [UUID: AsyncStream<MotionBatch>.Continuation] = [:]
 
     private var currentDevice: WhoopDevice
 
@@ -57,6 +58,32 @@ public final class WhoopMockBLEManager: @unchecked Sendable {
             // before it, this call was also what made the *first* subscriber's stream live.
             self.startGeneratingMockTelemetry()
         }
+    }
+
+    /// Empty, deliberately.
+    ///
+    /// The mock generates heart rate, battery and device state; it does **not** generate motion, and
+    /// it must not start. A synthetic waveform would be a fabricated step count on every simulator
+    /// run — the exact class of invented measurement this app's absence rules exist to forbid — and
+    /// it would also make the pedometer look exercised when what it needs is a capture. The stream is
+    /// registered and pruned like its siblings so `TrackStepsUseCase` behaves identically under the
+    /// mock, and simply never receives a batch.
+    public var motionStream: AsyncStream<MotionBatch> {
+        AsyncStream { continuation in
+            let id = UUID()
+            continuationLock.lock()
+            motionContinuations[id] = continuation
+            continuationLock.unlock()
+            continuation.onTermination = { [weak self] _ in
+                self?.removeMotionContinuation(id)
+            }
+        }
+    }
+
+    private func removeMotionContinuation(_ id: UUID) {
+        continuationLock.lock()
+        motionContinuations[id] = nil
+        continuationLock.unlock()
     }
 
     private func removeDeviceContinuation(_ id: UUID) {

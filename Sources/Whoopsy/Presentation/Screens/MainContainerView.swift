@@ -18,7 +18,7 @@ public struct MainContainerView: View {
                     strainRepository: container.strainRepository,
                     workoutRepository: container.workoutRepository,
                     userProfileRepository: container.userProfileRepository,
-                    healthKit: container.healthKitSync,
+                    stepRepository: container.stepRepository,
                     analyzeStress: container.analyzeStressUseCase,
                     manage: container.manageBLEConnectionUseCase,
                     streamUseCase: container.streamBiometricsUseCase),
@@ -37,6 +37,14 @@ public struct MainContainerView: View {
                     napRepository: container.napRepository,
                     biometricRepository: container.biometricRepository,
                     analyzeSleepStress: container.analyzeSleepStressUseCase),
+                // A third second-instance view model, on the same reasoning as the two above: Home's
+                // strain ring pushes a copy seeded with the day on screen, and the Strain tab's own
+                // `StrainViewModel` below keeps a private day it would otherwise share.
+                strainViewModel: StrainViewModel(
+                    calculate: container.calculateStrainUseCase,
+                    repository: container.strainRepository,
+                    workoutRepository: container.workoutRepository,
+                    stepRepository: container.stepRepository),
                 // Built here rather than inside the badge's `NavigationLink` destination: that
                 // closure is re-evaluated on each push, so a view model constructed in it would be a
                 // fresh one every time — losing the device subscription each push and starting
@@ -50,7 +58,9 @@ public struct MainContainerView: View {
             StrainDashboardView(
                 viewModel: StrainViewModel(
                     calculate: container.calculateStrainUseCase,
-                    repository: container.strainRepository)
+                    repository: container.strainRepository,
+                    workoutRepository: container.workoutRepository,
+                    stepRepository: container.stepRepository)
             ).tabItem { Label("Strain", systemImage: "flame.fill") }
             ActiveWorkoutHUDView(viewModel: workoutViewModel)
                 .tabItem { Label("Workout", systemImage: "figure.run") }
@@ -70,6 +80,19 @@ public struct MainContainerView: View {
             ).tabItem { Label("Recovery", systemImage: "waveform.path.ecg") }
             MoreView(container: container).tabItem { Label("More", systemImage: "ellipsis.circle") }
         }.tint(Theme.livePulseCyan).preferredColorScheme(.dark)
+        // The strap's step counter, started once for the life of the app.
+        //
+        // **Here and nowhere else.** `TrackStepsUseCase` consumes a multicast stream, so a
+        // subscription opened per screen — or worse, per day-step tap inside `HomeViewModel.load` —
+        // would either orphan the previous consumer or accumulate one per call, and the failure is
+        // silent: a `for await` that stops receiving looks exactly like a strap that went quiet. This
+        // is the root view, so its `.task` lives as long as the process does, and the use case's own
+        // `isRunning` guard makes a second call a no-op rather than a second consumer.
+        //
+        // It writes nothing until a motion batch arrives, and no motion batch arrives on any build
+        // without a strap — so on every machine here this task attaches a consumer to an empty stream
+        // and idles. See `WhoopBLEDeviceRepository.motionStream`.
+        .task { await container.trackStepsUseCase.start() }
     }
 }
 

@@ -120,12 +120,25 @@ over time — **is** WHOOP's structure, and 21 is a disclosed multiplier. Whoeve
 | boundaries | 50 / 60 / 70 / 80 / 90 %HRR | the user's **AT** and **CPT** |
 | weights | 1.0 / 2.0 / 4.5 / 9.0 / 16.0 | **0 / 1 / 18 / 42** |
 | saturation | `21·(1 − e^(−k·TotalLoad))`, `k ≈ 0.000045` | linear `/(w(1)·24 hr)`, then arctan |
-| muscular | `w_muscular · V_normalized` | separate family; combination **[not disclosed]** |
+| muscular | **not implemented** — the integrator is cardiovascular only | separate family; combination **[not disclosed]** |
 
 **The band boundaries are the finding that matters.** WHOOP's bands are not percentages of anything —
 they are per-user physiological thresholds. A person's anaerobic threshold is a measurement, it moves
 with fitness, and this app has no way to take it. A fixed %HRR grid is a **substitute for an input the
 app cannot obtain**, which is a citable design constraint rather than an unexamined guess.
+
+**The strain page's `HEART RATE ZONES` rows are not that grid, and reading them as it is the mistake
+this paragraph exists to prevent.** On an imported day those two rows are WHOOP's *own* measurement,
+read out of `workouts.csv`'s five `HR Zone n %` columns and scaled by each workout's span — computed
+over WHOOP's own workout windows, with WHOOP's own thresholds, by WHOOP. They are grouped 1–3 and 4–5
+for the card, and the five percentages sum to ≤ 100 because the remainder is time below zone 1, a
+band for which the export publishes no column. So the two rows are the disclosed quantity arriving as
+a **stored value rather than as a computation this app performs**, which is the one place in the
+strain path where the divergence above does not apply. Three things are unchanged by it. The %HRR grid
+is still what `StrainAccumulatorMath` integrates a strain from, and this app still cannot take an
+AT or a CPT; `StrainScore.zones` is still computed on the live path and still dropped at the write, so
+no screen draws a zone this app derived; and a session this app recorded itself has no such row, so
+those two rows are a dash on every day the export does not cover.
 
 Two smaller things worth recording. The patent's own band count is **internally inconsistent** — the
 text says "(e.g., three)" and then gives a four-category example — so the app's five matches no number
@@ -182,7 +195,8 @@ performance normalisation) to **0–21**.
 > due to muscle exertion as well as cardiovascular exertion."
 
 No combination equation, no `w_cardio`, no `w_muscular`, and no statement of whether the combination is
-additive or saturating. Both of this app's combination weights are its own.
+additive or saturating. This app has nothing to combine: it implements the cardiovascular term alone,
+so the muscular term is **absent from its code** rather than present with a weight of its own.
 
 ### 1.5 Grounding measurement
 

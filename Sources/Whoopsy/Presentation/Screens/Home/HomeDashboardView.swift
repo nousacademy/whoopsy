@@ -11,16 +11,16 @@ import SwiftUI
 /// the chevrons beside the rings and the STRESS MONITOR tile. None of them have a destination in this
 /// app, and a control that looks tappable and is not reads as broken.
 ///
-/// **Two of the three rings push, and they push rather than switching tabs.** The recovery ring opens
-/// `RecoveryDetailView` and the sleep ring opens `SleepDetailView`, both seeded with the day on
-/// screen, on the `NavigationStack` this screen already owns. Switching to a tab would have been
-/// cheaper and is wrong: the Recovery and Sleep tabs each keep a private day seeded to `Date()`, so
-/// tapping an 87% ring on an imported day would land on "No data recorded" — today is past the
-/// export's end. The strain ring and the STRESS MONITOR tile stay inert for the reason above: each
-/// keeps its own day the same way, so each needs the same push-shaped fix rather than a tab switch,
-/// and the two detail views are the shape to copy when they get one. **The chevrons stay omitted** —
-/// a chevron on one of three otherwise identical rings would say the others are broken, and the tap
-/// target is discoverable without it.
+/// **All three rings push, and they push rather than switching tabs.** The recovery ring opens
+/// `RecoveryDetailView`, the sleep ring opens `SleepDetailView` and the strain ring opens
+/// `StrainDetailView`, all seeded with the day on screen and all on the `NavigationStack` this screen
+/// already owns. Switching to a tab would have been cheaper and is wrong: the Recovery, Sleep and
+/// Strain tabs each keep a private day seeded to `Date()`, so tapping an 87% ring on an imported day
+/// would land on "No data recorded" — today is past the export's end. The STRESS MONITOR tile stays
+/// inert for that same reason rather than the one it used to share with the strain ring: it has no
+/// detail page to push yet, and the three rings are the shape to copy when it gets one. **The
+/// chevrons stay omitted** — a chevron on one of three otherwise identical rings would say the others
+/// are broken, and the tap target is discoverable without it.
 ///
 /// **Implemented from the scrolled state of the reference:** the three rings collapse into a compact
 /// row pinned to the top once they scroll out of view (`collapsedHeader`), and the STRESS MONITOR tile
@@ -56,6 +56,10 @@ public struct HomeDashboardView: View {
     /// view model before the push animation starts. A second `SleepViewModel` beside the Sleep tab's,
     /// so paging the pushed screen cannot move the tab's night underneath it.
     @State private var sleepViewModel: SleepViewModel
+    /// Built here for the same reason the two above are, and a second `StrainViewModel` beside the
+    /// Strain tab's: they are two screens with two days, and sharing one would make paging the pushed
+    /// copy move the tab's day underneath it.
+    @State private var strainViewModel: StrainViewModel
     @State private var selectedDate: Date = Date()
     @State private var isPresentingWorkout = false
     @State private var isPresentingCalendar = false
@@ -73,12 +77,14 @@ public struct HomeDashboardView: View {
         workoutViewModel: ActiveWorkoutViewModel,
         recoveryViewModel: RecoveryViewModel,
         sleepViewModel: SleepViewModel,
+        strainViewModel: StrainViewModel,
         deviceDetailViewModel: DeviceDetailViewModel
     ) {
         _viewModel = State(initialValue: viewModel)
         _workoutViewModel = State(initialValue: workoutViewModel)
         _recoveryViewModel = State(initialValue: recoveryViewModel)
         _sleepViewModel = State(initialValue: sleepViewModel)
+        _strainViewModel = State(initialValue: strainViewModel)
         self.deviceDetailViewModel = deviceDetailViewModel
     }
 
@@ -317,9 +323,21 @@ public struct HomeDashboardView: View {
             // and drop the score out of the announcement, so the ring would read as a bare
             // "Recovery" button with no number in it.
             .accessibilityHint("Opens this day's recovery statistics")
-            ring(
-                value: strainValue, label: "Strain", progress: strainProgress,
-                color: Theme.strainRing, size: size, lineWidth: lineWidth, compact: compact)
+            // The third ring with a destination, and the same shape as the two above. It hands over
+            // the day Home is showing rather than switching to the Strain tab, for the reason in this
+            // screen's own doc comment: the tab keeps a private day seeded to `Date()`.
+            NavigationLink {
+                StrainDetailView(viewModel: strainViewModel, date: selectedDate)
+            } label: {
+                ring(
+                    value: strainValue, label: "Strain", progress: strainProgress,
+                    color: Theme.strainRing, size: size, lineWidth: lineWidth, compact: compact)
+            }
+            .buttonStyle(.plain)
+            // A hint only. An explicit `accessibilityLabel` here would *replace* the composed one and
+            // drop the score out of the announcement, so the ring would read as a bare "Strain"
+            // button with no figure in it.
+            .accessibilityHint("Opens this day's strain statistics")
         }
     }
 
@@ -477,10 +495,10 @@ public struct HomeDashboardView: View {
 
                 ForEach(viewModel.workouts) { workout in
                     activityRow(
-                        symbol: "figure.run",
+                        symbol: ActivityGlyph.symbol(for: workout.activityName),
                         tint: Theme.strainRing,
                         value: workout.strain.formattedOneDecimal(),
-                        label: "ACTIVITY",
+                        label: workout.activityName ?? "ACTIVITY",
                         startedAt: workout.startedAt,
                         endedAt: workout.endedAt)
                 }
@@ -491,6 +509,16 @@ public struct HomeDashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
+    /// One row of the `ACTIVITIES` card.
+    ///
+    /// **The label is an activity's own name**, which is the file's casing — `Walking`, `Manual Labor` —
+    /// so the uppercasing is done here rather than on the entity: the drawing owns how it looks, and
+    /// `textCase` is idempotent over the `SLEEP` row above, which passes an already-uppercase literal
+    /// and therefore needs no branch of its own.
+    ///
+    /// `lineLimit(1)` because the two longest names in the export, `Yard Work/Gardening` and `American
+    /// Football`, are the only rows that would otherwise wrap — and a wrapped label makes those rows
+    /// taller than the ones beside them, which reads as a broken layout rather than as a long word.
     private func activityRow(
         symbol: String,
         tint: Color,
@@ -515,6 +543,8 @@ public struct HomeDashboardView: View {
                     .font(.system(size: 10, weight: .bold))
                     .tracking(0.8)
                     .foregroundStyle(Theme.textSecondary)
+                    .textCase(.uppercase)
+                    .lineLimit(1)
             }
 
             Spacer(minLength: 8)

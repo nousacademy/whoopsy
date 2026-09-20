@@ -8,6 +8,14 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     private var commandCharacteristic: CBCharacteristic?
     private let decoder = WhoopPacketDecoder()
 
+    /// Accumulates a frame that arrives split across notifications.
+    ///
+    /// A plain `var` with no lock, like the `hasLogged*` flags below and for the same reason: it is
+    /// written only from `didUpdateValueFor`, and every CoreBluetooth delegate callback runs on the
+    /// one serial queue this class hands `CBCentralManager` at construction. Reset on connect and on
+    /// disconnect, because the buffer holds a *previous* stream's partial frame across either.
+    private var reassembler = WhoopFrameReassembler()
+
     // Continuations for async streams, keyed by subscriber.
     //
     // These were single stored properties, and the stream's getter **replaced** whichever continuation
@@ -32,6 +40,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     private let continuationLock = NSLock()
     private var deviceContinuations: [UUID: AsyncStream<WhoopDevice>.Continuation] = [:]
     private var telemetryContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
+    private var motionContinuations: [UUID: AsyncStream<MotionBatch>.Continuation] = [:]
 
     private var currentDeviceState: WhoopDevice?
 
@@ -51,6 +60,23 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
 
     /// Sequence numbers for outgoing command frames, which are a field of the inner record.
     private let sequence = WhoopCommandSequence()
+
+    // The flash drain in progress.
+    //
+    // Locked, unlike `reassembler` and the `hasLogged*` flags, and the difference is the reason: those
+    // are touched only from the BLE queue, while these are also read and written by the caller that
+    // *started* the drain (a SwiftUI action, through a use case) and by the watchdog task below. That
+    // is three threads, so it is a lock rather than a comment.
+    //
+    // The continuation is stored rather than the caller polling, because a drain's whole point is that
+    // it finishes when the *strap* says so — `HISTORY_COMPLETE` — and a caller that returned at the
+    // request would be reporting a sync that had not happened. Its `nil` case is the state a caller
+    // must not be left in: a continuation dropped without being resumed is a task that hangs forever,
+    // so every path that clears this one resumes it.
+    private let drainLock = NSLock()
+    private var drainSession: HistoricalDrainSession?
+    private var drainCompletion: CheckedContinuation<HistoricalDrainSession?, Never>?
+    private var drainWatchdog: Task<Void, Never>?
 
     /// Whether the one-shot discovery/0x2A37 diagnostics have been logged for this connection.
     ///
@@ -198,10 +224,49 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         continuationLock.unlock()
     }
 
+    /// The strap's decoded 100 Hz motion, for the step counter.
+    ///
+    /// Registered exactly as `liveTelemetryStream` is — a dictionary keyed by `UUID`, pruned in
+    /// `onTermination` — and **that is not a copied idiom but the same defect being avoided**: two
+    /// consumers exist for this stream too (`TrackStepsUseCase` is the only one today, but the
+    /// workout HUD is the obvious second), and a registry that let a second subscriber orphan the
+    /// first would fail silently — no error, no gap, just a `for await` that stops receiving, which is
+    /// indistinguishable from a strap that went quiet.
+    ///
+    /// Nothing yields into it on a strap this build cannot frame for: `didUpdateValueFor`'s
+    /// proprietary branch is the only writer, and a 5.0 or MG reaches it with no enable sequence sent
+    /// — so this is an honest empty stream there rather than a fabricated one, and `TrackStepsUseCase`
+    /// writes no row for a day it measured nothing on.
+    public var motionStream: AsyncStream<MotionBatch> {
+        AsyncStream { continuation in
+            let id = UUID()
+            continuationLock.lock()
+            motionContinuations[id] = continuation
+            continuationLock.unlock()
+            continuation.onTermination = { [weak self] _ in
+                self?.removeMotionContinuation(id)
+            }
+        }
+    }
+
     private func removeTelemetryContinuation(_ id: UUID) {
         continuationLock.lock()
         telemetryContinuations[id] = nil
         continuationLock.unlock()
+    }
+
+    private func removeMotionContinuation(_ id: UUID) {
+        continuationLock.lock()
+        motionContinuations[id] = nil
+        continuationLock.unlock()
+    }
+
+    /// Fans a decoded motion batch out to every live subscriber. See `yieldTelemetry`.
+    private func yieldMotion(_ batch: MotionBatch) {
+        continuationLock.lock()
+        let targets = Array(motionContinuations.values)
+        continuationLock.unlock()
+        for continuation in targets { continuation.yield(batch) }
     }
 
     /// Fans a sample out to every live subscriber.
@@ -262,16 +327,23 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
 
     /// Writes a frame to the command characteristic — **the only place in the app that does.**
     ///
-    /// The profile guard is the last line of defence and the reason this method is the choke point.
-    /// The packet-type numberings do not overlap between generations, so a 4.0-framed command written
-    /// to a 5.0 strap is not a command the strap rejects — it is a *different command*, and one of the
-    /// documented opcodes is a destructive flash erase (`0x19 FORCE_TRIM`). Every builder in
-    /// `WhoopPacketEncoder` already returns `nil` for an unimplemented envelope; this guard means that
-    /// even a frame built by some future path cannot reach the wire without a profile behind it.
+    /// The guard is the last line of defence and the reason this method is the choke point. The
+    /// opcodes this build knows are 4.0's, and a 4.0-framed command written to a 5.0 strap is not a
+    /// command the strap rejects — it is a *different command*, and one of the documented 4.0 opcodes
+    /// is a destructive flash erase (`0x19 FORCE_TRIM`). Every builder in `WhoopPacketEncoder` already
+    /// returns `nil` for a generation with no opcode set; this guard means that even a frame built by
+    /// some future path cannot reach the wire without one.
+    ///
+    /// **It tests `canTransmitCommands`, not the profile's existence**, and the difference is now
+    /// load-bearing: `.whoop5` and `.whoop5MG` answer with a real envelope because the app can
+    /// validate their inbound frames, so a guard on `currentProfile != nil` would have opened the wire
+    /// to a strap this build has no command for. A generation that can be read is not a generation
+    /// that can be written to.
     public func sendCommand(_ data: Data) {
-        guard currentProfile != nil else {
+        guard let profile = currentProfile, profile.canTransmitCommands else {
+            let reason = currentProfile == nil ? "no envelope" : "no command opcode set"
             AppLogger.ble.warning("""
-                Refused to transmit \(data.count, privacy: .public) bytes: no protocol profile for \
+                Refused to transmit \(data.count, privacy: .public) bytes: \(reason, privacy: .public) for \
                 \(self.currentDeviceState?.hardwareGeneration.rawValue ?? "no device", privacy: .public)
                 """)
             return
@@ -283,6 +355,202 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
 
     public func getCurrentDevice() -> WhoopDevice? {
         currentDeviceState
+    }
+
+    // MARK: - The flash drain
+
+    /// Starts a historical drain and returns when it ends — **not when the request is written.**
+    ///
+    /// This is the difference between a sync and a claim of one. `DeviceViewModel` used to print
+    /// "History sync complete." the instant `requestHistoricalSync` returned, which was before the
+    /// strap had been asked anything. A drain's end is the strap's own `HISTORY_COMPLETE` (or one of
+    /// the two ways this side gives up), so the caller has to be able to wait for it — which is what
+    /// the stored continuation is for.
+    ///
+    /// **Returns the finished session, or `nil` when nothing was started** — a strap this build cannot
+    /// write to, an envelope it cannot frame, or a request the builder refused. The session carries
+    /// `recordCount`, `batchCount` and a `finishReason`, so a caller can tell "the strap said it was
+    /// done" from "we gave up waiting" rather than reporting both as a completed sync.
+    public func drainHistoricalData() async -> HistoricalDrainSession? {
+        guard let profile = currentProfile, profile.canTransmitCommands else {
+            AppLogger.ble.warning("Refused to start a historical drain: no command opcode set for this strap")
+            return nil
+        }
+        guard let request = WhoopCommandFrames.historicalSyncRequest(
+            profile: profile, seq: sequence.next()) else {
+            AppLogger.ble.warning("Refused to start a historical drain: the request builder returned no frame")
+            return nil
+        }
+
+        // A second drain concludes the first rather than overwriting it. `drainSession` is a single
+        // slot, so replacing it without resuming the continuation it was waiting on would leave that
+        // caller suspended forever — the leak this whole arrangement exists to avoid.
+        concludeDrain(reason: .aborted)
+
+        let session = HistoricalDrainSession(profile: profile, startedAt: Date())
+
+        return await withCheckedContinuation { (continuation: CheckedContinuation<HistoricalDrainSession?, Never>) in
+            drainLock.lock()
+            drainSession = session
+            drainCompletion = continuation
+            drainLock.unlock()
+
+            // The clock goes first, and it is a prerequisite rather than a courtesy: a strap whose RTC
+            // is invalid stops banking sensor data to flash **entirely** while looking connected and
+            // healthy, and a drained record is stamped by that same RTC — so an unset clock files
+            // history onto a wrong day rather than onto no day. Both 4.0 forms are sent, because a
+            // wrong-length set is acknowledged but not latched.
+            for frame in WhoopCommandFrames.setClockFrames(
+                profile: profile, seq: sequence.next(), epochSeconds: UInt32(Date().timeIntervalSince1970)) {
+                sendCommand(frame)
+            }
+            sendCommand(request)
+
+            armDrainWatchdog(session)
+        }
+    }
+
+    /// Ends a drain in progress from this side and acknowledges it as aborted.
+    ///
+    /// Both generations have a real abort and both use `0x14`, so the frame differs in envelope and
+    /// not in byte — see `WhoopCommandFrames.abortHistoricalTransmits`, which used to send the 5.0 its
+    /// `0x52 STOP_RAW_DATA` on the false premise that this generation publishes no abort. What this
+    /// function does beyond sending it is conclude the session either way, because leaving a caller
+    /// suspended on a strap that has stopped answering is the worse failure.
+    public func abortHistoricalDrain() {
+        if let profile = currentProfile,
+           let frame = WhoopCommandFrames.abortHistoricalTransmits(profile: profile, seq: sequence.next()) {
+            sendCommand(frame)
+        }
+        concludeDrain(reason: .aborted)
+    }
+
+    /// Routes one inbound frame to the drain, if one is running, and performs whatever it asks for.
+    ///
+    /// Called from the frame loop in `didUpdateValueFor`, so it runs on the BLE queue — which is why
+    /// the session's mutation goes through `drainSession?` under the lock rather than through a local
+    /// `if let`. `HistoricalDrainSession` is a **struct**: `if let session = drainSession { session.accept(…) }`
+    /// mutates a copy and silently discards every count, every `lastActivity` and the finish reason.
+    private func routeToDrain(_ frame: WhoopRawFrame, now: Date) {
+        drainLock.lock()
+        guard drainSession != nil else {
+            drainLock.unlock()
+            return
+        }
+        let action = drainSession!.accept(frame, now: now)
+        drainLock.unlock()
+
+        switch action {
+        case .none:
+            break
+
+        case .acknowledge(let token):
+            if let profile = currentProfile,
+               let ack = WhoopCommandFrames.historicalDataAck(
+                   profile: profile, seq: sequence.next(), token: token) {
+                sendCommand(ack)
+            }
+
+        case .acknowledgeAndFinish(let token):
+            // The live edge: ack the batch that just ended, then stop. The ACK is still owed — the
+            // strap's cursor does not move without it — so it is sent before the session concludes.
+            if let profile = currentProfile,
+               let ack = WhoopCommandFrames.historicalDataAck(
+                   profile: profile, seq: sequence.next(), token: token) {
+                sendCommand(ack)
+            }
+            concludeDrain(reason: .liveEdge)
+
+        case .finish:
+            // `HISTORY_COMPLETE` is not a batch and is **not** acknowledged — §4 is explicit, and
+            // answering it is answering a question the strap did not ask.
+            concludeDrain(reason: .complete)
+        }
+
+        // The idle window is checked here rather than only on the watchdog's own schedule, so a drain
+        // that stops mid-stream ends on the next frame's arrival rather than a full window later.
+        drainLock.lock()
+        let expired = drainSession?.checkIdleTimeout(now: now) ?? false
+        drainLock.unlock()
+        if expired { concludeDrain(reason: .idleTimeout) }
+    }
+
+    /// Arms the idle watchdog for a session, replacing any watchdog the previous drain left.
+    ///
+    /// A `Task` rather than a `Timer`, because the drain's window is the profile's own (8 s on the 4.0,
+    /// 60 s on the 5.0) and the check is a comparison against `lastActivity` rather than a countdown —
+    /// so a watchdog that wakes late is still correct, and one that wakes after activity has arrived
+    /// simply re-arms.
+    private func armDrainWatchdog(_ session: HistoricalDrainSession) {
+        let window = session.idleTimeoutSeconds
+        let task = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(window))
+                guard !Task.isCancelled, let self else { return }
+
+                // The lock lives in a synchronous helper rather than here: Swift 6 makes `NSLock.lock()`
+                // unavailable from an `async` context, and the watchdog's body is one. The check has to
+                // be atomic with respect to `routeToDrain` anyway — both mutate the same session.
+                let (expired, finished) = self.checkDrainIdle()
+
+                if expired {
+                    self.concludeDrain(reason: .idleTimeout)
+                    return
+                }
+                // A session that ended by another route (the live edge, `HISTORY_COMPLETE`) has
+                // already resumed its continuation; the watchdog just stops.
+                if finished { return }
+            }
+        }
+        drainLock.lock()
+        drainWatchdog?.cancel()
+        drainWatchdog = task
+        drainLock.unlock()
+    }
+
+    /// Whether the drain in progress has passed its generation's idle window, and whether it has
+    /// finished for some other reason.
+    ///
+    /// Synchronous on purpose: this is the watchdog's lock acquisition, and `NSLock` is unavailable
+    /// from the `async` context the watchdog body runs in.
+    private func checkDrainIdle() -> (expired: Bool, finished: Bool) {
+        drainLock.lock()
+        defer { drainLock.unlock() }
+        let expired = drainSession?.checkIdleTimeout(now: Date()) ?? false
+        return (expired, drainSession?.isFinished ?? false)
+    }
+
+    /// Ends the session in progress, resumes whoever is waiting on it, and stops the watchdog.
+    ///
+    /// **The single exit path for a drain**, which is what keeps the continuation from being dropped:
+    /// every route out — the strap's `HISTORY_COMPLETE`, the live edge, the idle window, an abort, a
+    /// disconnect, and a second drain starting — comes through here.
+    ///
+    /// The `reason` is applied to the session rather than carried separately, so the session a caller
+    /// receives describes why it stopped. `.aborted` is applied only when the session is not already
+    /// finished: a drain that ended because the strap said so must not be relabelled by the
+    /// disconnect that follows it.
+    private func concludeDrain(reason: HistoricalDrainSession.FinishReason) {
+        drainLock.lock()
+        guard let session = drainSession else {
+            drainLock.unlock()
+            return
+        }
+        drainSession = nil
+        var finished = session
+        // A no-op when the session ended itself, which is every path where it could: `accept` records
+        // `HISTORY_COMPLETE` and the live edge, and `checkIdleTimeout` records the window. This line
+        // is what gives the reason for the ones it could not — a disconnect, or a second drain
+        // starting.
+        finished.conclude(reason)
+        let continuation = drainCompletion
+        drainCompletion = nil
+        let watchdog = drainWatchdog
+        drainWatchdog = nil
+        drainLock.unlock()
+
+        watchdog?.cancel()
+        continuation?.resume(returning: finished)
     }
 
     private func updateDeviceState(_ transform: () -> WhoopDevice) {
@@ -332,6 +600,9 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
         hasLoggedCharacteristicInventory = false
         hasLoggedHeartRateFrames = false
         hasLoggedProprietaryFrame = false
+        // A new connection is a new byte stream. Held bytes would be prepended to its first frame and
+        // move every field in it.
+        reassembler.reset()
         updateDeviceState {
             resolvedDevice(
                 for: peripheral,
@@ -347,6 +618,14 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
         hasLoggedCharacteristicInventory = false
         hasLoggedHeartRateFrames = false
         hasLoggedProprietaryFrame = false
+        // The frame in flight when the link dropped will never be completed: its remaining bytes
+        // belong to a stream that ended.
+        reassembler.reset()
+        // A drain cannot outlive its link, and its caller must not be left suspended: no further
+        // frame can arrive, so nothing else will ever conclude it. This resumes the continuation with
+        // an `.aborted` session — unless the strap had already sent `HISTORY_COMPLETE`, in which case
+        // the session keeps that reason and reads as the completed sync it was.
+        concludeDrain(reason: .aborted)
         updateDeviceState {
             resolvedDevice(
                 for: peripheral,
@@ -439,12 +718,34 @@ extension WhoopBLEManager: CBPeripheralDelegate {
             if char.uuid == WhoopGATTConstants.whoop4CommandUUID || char.uuid == WhoopGATTConstants.whoop5CommandUUID {
                 self.commandCharacteristic = char
                 // Send telemetry start command — under the connected strap's own envelope, and only
-                // if this build has one. `sendCommand` refuses a profileless generation too, so a
-                // 5.0 strap gets silence here rather than a 4.0-framed `0x05`.
+                // if this build has one *and* knows that generation's command opcodes. The 4.0's
+                // `0x05` has no published 5.0 counterpart, so the 5.0 falls to the IMU enable below
+                // rather than getting a frame this builder cannot build.
                 if let profile = currentProfile,
                    let frame = WhoopPacketEncoder.enableLiveTelemetry(
                        profile: profile, seq: sequence.next(), enable: true) {
                     sendCommand(frame)
+                }
+
+                // The IMU enable, for the step counter. Sent from here rather than from a screen's
+                // `.task` for the same reason the telemetry enable is: this callback fires once per
+                // connection, and a command sent per screen appearance would toggle the IMU off and on
+                // as the user moved between tabs.
+                //
+                // **Goes through `WhoopCommandFrames`, which is what makes a 5.0 strap produce motion
+                // at all.** It routes by envelope: three frames on the 4.0 (`0x6A`, `0x3F`, `0x6B`) and
+                // two on the 5.0 / MG (`0x51 START_RAW_DATA` then the toggle). This call used to go
+                // straight to the 4.0 builder, whose refusal of the 5.0 envelope was correct and left
+                // the 5.0 with no producer running — the 5.0 leg's whole first step.
+                //
+                // An **empty** array is still the state for an unknown generation rather than an
+                // error, so `TrackStepsUseCase` holds a subscription with nothing arriving, which is
+                // the honest state for a strap this build cannot write to.
+                if let profile = currentProfile {
+                    for frame in WhoopCommandFrames.motionEnableSequence(
+                        profile: profile, seq: sequence.next(), enable: true) {
+                        sendCommand(frame)
+                    }
                 }
             }
 
@@ -504,16 +805,23 @@ extension WhoopBLEManager: CBPeripheralDelegate {
 
         // 3. Proprietary 0xAA packets
         //
-        // Validated and logged, not decoded. The envelope is checked (start of frame, declared
-        // length, header checksum, payload checksum) and the bytes are carried up raw, because no
-        // payload layout on this path has been verified against a strap — see `WhoopRawFrame`. The
-        // 4.0 historical record *is* documented (`BLE_PROTOCOL.md` §4: a 96-byte header with heart
-        // rate at `[17]`) and parsing it is the drain's work, not something to approximate here.
+        // Reassembled, validated, and then **dispatched by type and generation**. Until the motion
+        // decoder landed this branch only logged: a frame arrived validated and undecoded, which was
+        // the honest state while no payload layout had a reader. The motion record now has one, so a
+        // decoded `MotionBatch` is yielded to `motionStream` — and everything else still goes no
+        // further than the one-shot log below, which is where a real strap's frame is first seen and
+        // what `BLE_PROTOCOL.md` §7 asks to be captured.
         //
-        // What this branch is for right now is the one-shot log below: it is the only place a real
-        // strap's frame would ever be seen, and those bytes are what `BLE_PROTOCOL.md` §6 asks for.
+        // **The dispatch is by generation, never by falling back.** `MotionPayloadDecoder.decode`
+        // chooses R21 or R10 from `frame.generation` and refuses anything else, so a 4.0 record is
+        // never walked with the 5.0's offsets — they overlap on shape and a fallback would decode one
+        // strap's record silently.
+        //
+        // A `nil` profile means this build cannot frame for the strap at all, so there is no boundary
+        // to reassemble against and the bytes are not buffered — a strap whose envelope this build does
+        // not know would otherwise accumulate them forever while never producing a frame.
         guard let profile = currentProfile else { return }
-        if let frame = decoder.decodeProprietaryFrame(data: data, profile: profile) {
+        for frame in reassembler.append(data, profile: profile) {
             if !hasLoggedProprietaryFrame {
                 hasLoggedProprietaryFrame = true
                 AppLogger.ble.info("""
@@ -522,6 +830,17 @@ extension WhoopBLEManager: CBPeripheralDelegate {
                     payload=\(frame.payload.count) bytes
                     """)
             }
+
+            let now = Date()
+            if let batch = MotionPayloadDecoder.decode(frame: frame, receivedAt: now) {
+                yieldMotion(batch)
+            }
+
+            // The drain sees every frame, including the ones the motion decoder just consumed: a
+            // banked type-47 record *is* an R21 batch, so the same frame is both a step contribution
+            // and a batch the strap is waiting to have acknowledged. That is the whole reason the
+            // shared core is shared, and it is why this call is not an `else`.
+            routeToDrain(frame, now: now)
         }
     }
 }

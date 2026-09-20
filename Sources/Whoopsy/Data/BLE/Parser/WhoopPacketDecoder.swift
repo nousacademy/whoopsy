@@ -20,7 +20,7 @@ import Foundation
 /// So the decoder does the half it can do and says so plainly: start-of-frame, declared length, header
 /// checksum and payload checksum are all verified, and the bytes are handed up undecoded. That is also
 /// the shape the pending capture needs — raw frames are the evidence, and a parser written against
-/// them comes after, which is the order `BLE_PROTOCOL.md` §6 sets out.
+/// them comes after, which is the order `BLE_PROTOCOL.md` §7 sets out.
 public struct WhoopRawFrame: Sendable, Equatable {
     public let generation: WhoopHardwareGeneration
 
@@ -58,6 +58,22 @@ public final class WhoopPacketDecoder: Sendable {
     public static let startOfFrame: UInt8 = 0xAA
 
     public init() {}
+
+    /// Reads a little-endian `u32` from the first four bytes of `data`.
+    ///
+    /// A loop rather than the four-term shift-and-or this replaces: that expression is the one the
+    /// Swift type checker gave up on once the surrounding offsets stopped being literals, and the loop
+    /// also states the byte order instead of implying it through the width of each shift. It reads
+    /// from `data.startIndex` and tolerates a short buffer by treating the missing bytes as zero,
+    /// which no caller can reach — every one of them has already checked the length — but which keeps
+    /// a truncation from being a crash rather than a checksum failure.
+    static func littleEndianUInt32(in data: Data) -> UInt32 {
+        var value: UInt32 = 0
+        for offset in 0..<4 where data.startIndex + offset < data.endIndex {
+            value |= UInt32(data[data.startIndex + offset]) << (8 * offset)
+        }
+        return value
+    }
 
     /// Decodes standard Bluetooth SIG Heart Rate Measurement (Characteristic 0x2A37).
     ///
@@ -110,17 +126,24 @@ public final class WhoopPacketDecoder: Sendable {
     ///
     /// 1. **Start of frame.** Without it there is no frame boundary to trust, and a payload byte that
     ///    happens to be `0xAA` is otherwise indistinguishable from one.
-    /// 2. **Declared length.** `length` counts the whole inner record plus the four-byte CRC32
-    ///    trailer, so the total frame is `length + 4`. A frame that declares fewer than the three
-    ///    inner prefix bytes is rejected rather than sliced.
-    /// 3. **Header checksum** — over the format's own bytes, which for 4.0 is the two length bytes and
-    ///    nothing else.
-    /// 4. **Payload checksum** — CRC32 over `frame[innerOrigin ..< length]`.
+    /// 2. **Declared length**, read at the profile's own `lengthFieldOffset` — byte 1 under 4.0, byte 2
+    ///    under 5.0, because 5.0 spends byte 1 on a format byte. It counts the whole inner record plus
+    ///    the four-byte CRC32 trailer, so a frame that declares fewer than the three inner prefix bytes
+    ///    is rejected rather than sliced, and the whole frame is `innerOrigin + declaredLength`.
+    /// 3. **Header checksum** — CRC8 over the two length bytes under 4.0, CRC16-Modbus over the first
+    ///    six header bytes under 5.0. The profile selects which.
+    /// 4. **Payload checksum** — CRC32 over the inner record, `innerOrigin + declaredLength - 4` bytes
+    ///    of it, which is the same span under both envelopes.
     ///
-    /// Checks 3 and 4 are new, and they are what turn this from a parser that cannot fail into one
-    /// that can. `CLAUDE.md` used to record that **no inbound CRC was verified anywhere**, which is
-    /// why a wrong parser built from the references reads as plausible garbage rather than as an
-    /// error. A frame that fails either check now produces nothing at all.
+    /// Checks 3 and 4 are what turn this from a parser that cannot fail into one that can. `CLAUDE.md`
+    /// used to record that **no inbound CRC was verified anywhere**, which is why a wrong parser built
+    /// from the references reads as plausible garbage rather than as an error. A frame that fails
+    /// either check produces nothing at all.
+    ///
+    /// **Both envelopes reach this function now, and the second one is read-only.** A 5.0 / MG frame
+    /// validates and is handed up exactly as a 4.0 one is, which is what makes a capture of a 5.0
+    /// strap's traffic legible; nothing in this app can *send* one, because those profiles carry no
+    /// command opcodes.
     public func decodeProprietaryFrame(data: Data, profile: WhoopProtocolProfile) -> WhoopRawFrame? {
         // 1. Start of frame.
         guard data.first == Self.startOfFrame else {
@@ -128,15 +151,17 @@ public final class WhoopPacketDecoder: Sendable {
             return nil
         }
 
-        // 2. The header runs to `innerOrigin`; the inner record needs its three prefix bytes.
-        guard data.count >= profile.innerOrigin + profile.innerPrefixBytes else {
+        // 2. The declared length, at the offset this envelope puts it.
+        guard data.count >= profile.lengthFieldOffset + 2 else {
             AppLogger.decoder.debug("Rejected frame: \(data.count, privacy: .public) bytes is shorter than a header")
             return nil
         }
+        let declaredLength = Int(data[profile.lengthFieldOffset])
+            | (Int(data[profile.lengthFieldOffset + 1]) << 8)
 
-        let declaredLength = Int(data[1]) | (Int(data[2]) << 8)
-        guard declaredLength >= profile.innerOrigin + profile.innerPrefixBytes,
-              data.count >= declaredLength + 4
+        let frameBytes = profile.frameByteCount(declaredLength: declaredLength)
+        guard declaredLength >= WhoopProtocolProfile.checksumTrailerBytes + profile.innerPrefixBytes,
+              data.count >= frameBytes
         else {
             AppLogger.decoder.debug("Rejected frame: declares \(declaredLength, privacy: .public) bytes, has \(data.count, privacy: .public)")
             return nil
@@ -145,24 +170,34 @@ public final class WhoopPacketDecoder: Sendable {
         // 3. Header checksum.
         switch profile.headerChecksum {
         case .crc8OverLengthBytes:
-            let expected = CRCUtils.crc8(Data([data[1], data[2]]))
-            guard data[3] == expected else {
-                AppLogger.decoder.debug("Rejected frame: header crc8 \(data[3], privacy: .public) != \(expected, privacy: .public)")
+            // The input is the two length bytes and nothing else — not the start of frame, and not the
+            // command. `BLE_PROTOCOL.md` §2.1 records what computing it over `[cmd, length…]` cost.
+            let covered = data.subdata(
+                in: profile.lengthFieldOffset..<(profile.lengthFieldOffset + 2))
+            let expected = CRCUtils.crc8(covered)
+            guard data[profile.headerChecksumOffset] == expected else {
+                AppLogger.decoder.debug("Rejected frame: header crc8 \(data[profile.headerChecksumOffset], privacy: .public) != \(expected, privacy: .public)")
                 return nil
             }
         case .crc16ModbusOverHeader:
-            // Not reachable through `WhoopProtocolProfile.profile(for:)` — no generation this build
-            // speaks uses it. Refused rather than parsed, because the offsets below are 4.0's.
-            return nil
+            // Over everything before the checksum, which includes the start-of-frame byte and the
+            // format byte — a wider input than the 4.0 case, and the reason the two are separate cases
+            // rather than one algorithm behind a boolean.
+            let covered = data.subdata(in: 0..<profile.headerChecksumOffset)
+            let expected = CRCUtils.crc16Modbus(covered)
+            let declared = UInt16(data[profile.headerChecksumOffset])
+                | (UInt16(data[profile.headerChecksumOffset + 1]) << 8)
+            guard declared == expected else {
+                AppLogger.decoder.debug("Rejected frame: header crc16 \(declared, privacy: .public) != \(expected, privacy: .public)")
+                return nil
+            }
         }
 
         // 4. Payload checksum, over the inner record.
-        let inner = data.subdata(in: profile.innerOrigin..<declaredLength)
-        let trailer = data.subdata(in: declaredLength..<(declaredLength + 4))
-        let declaredCRC = UInt32(trailer[trailer.startIndex])
-            | (UInt32(trailer[trailer.startIndex + 1]) << 8)
-            | (UInt32(trailer[trailer.startIndex + 2]) << 16)
-            | (UInt32(trailer[trailer.startIndex + 3]) << 24)
+        let innerEnd = profile.innerOrigin + profile.innerByteCount(declaredLength: declaredLength)
+        let inner = data.subdata(in: profile.innerOrigin..<innerEnd)
+        let trailer = data.subdata(in: innerEnd..<frameBytes)
+        let declaredCRC = Self.littleEndianUInt32(in: trailer)
         let computedCRC = CRCUtils.crc32(inner)
         guard computedCRC == declaredCRC else {
             AppLogger.decoder.debug("Rejected frame: payload crc32 \(declaredCRC, privacy: .public) != \(computedCRC, privacy: .public)")

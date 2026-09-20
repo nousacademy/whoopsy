@@ -209,8 +209,12 @@ public final class AnalyzeSleepStressUseCase: Sendable {
                 return nil
             }
 
-            let motion = BaselineStatisticsMath.mean(bucket.map(\.accelerationMagnitude))
-            guard StressMath.isResting(motionMagnitude: motion) else { return nil }
+            // Stillness, and never a substituted zero for it — `magnitudes:` refuses a bucket where
+            // nothing measured motion, so a night with no accelerometer scores no windows rather
+            // than scoring every one of them as resting. See `StressMath.isResting`.
+            guard StressMath.isResting(magnitudes: bucket.map(\.accelerationMagnitude)) else {
+                return nil
+            }
 
             // A zero heart rate is an absent reading, not a stopped heart: the decoder yields 0 for
             // samples carrying no pulse value, and letting one into the mean would drag it down.

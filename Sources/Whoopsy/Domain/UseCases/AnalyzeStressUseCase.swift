@@ -144,8 +144,15 @@ public final class AnalyzeStressUseCase: Sendable {
             let rrIntervals = samples.compactMap(\.rrIntervalMs)
             guard rrIntervals.count >= StressMath.minimumRRIntervals else { continue }
 
-            let motion = Self.mean(samples.map(\.accelerationMagnitude))
-            guard StressMath.isResting(motionMagnitude: motion) else { continue }
+            // The strap must have been still, and **shown** to have been. `magnitudes:` refuses a
+            // whole window in which no sample carries an accelerometer — which is every window the
+            // live `0x2A37` path produces, since nothing in the BLE layer decodes a motion payload
+            // yet. The day then has no eligible windows and the tile is `—`. That is the honest
+            // answer: exertion is the one thing this model separates from stress, and without motion
+            // it cannot tell a workout from an argument.
+            guard StressMath.isResting(magnitudes: samples.map(\.accelerationMagnitude)) else {
+                continue
+            }
 
             // A zero heart rate is an absent reading, not a stopped heart: the decoder yields 0 for
             // samples carrying no pulse value, and letting one into the mean would drag it down.

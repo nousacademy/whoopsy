@@ -20,6 +20,13 @@ public struct WhoopExportRow: Sendable, Equatable {
     public let wakeOnset: Date?
     public let sleepOnset: Date?
 
+    /// A logged workout's own window, from `workouts.csv`, where it is the row's whole subject.
+    ///
+    /// `nil` on every row of the two sleep files and on every cycle row: only `workouts.csv` carries
+    /// these columns, and it is the only file one imports from.
+    public let workoutStart: Date?
+    public let workoutEnd: Date?
+
     public let recoveryScorePercent: Int?
     public let restingHeartRate: Int?
     public let hrvMs: Double?
@@ -27,9 +34,42 @@ public struct WhoopExportRow: Sendable, Equatable {
     public let bloodOxygenPercent: Double?
 
     public let dayStrain: Double?
+    /// `Activity Strain` — the *workout's* own score, which is a different column from the cycle's
+    /// `Day Strain` above and a different quantity. Only `workouts.csv` carries it.
+    public let workoutStrain: Double?
     public let energyKcal: Double?
+    /// Carried by all three files, and the same measurement in each: the highest and average heart
+    /// rate of the cycle, or of the workout that the row is about.
     public let maxHeartRate: Int?
     public let averageHeartRate: Int?
+
+    /// What WHOOP called the workout — `Walking`, `Yoga`, `Activity` — out of the `Activity name`
+    /// column, which only `workouts.csv` carries.
+    ///
+    /// A **name** rather than a measurement, which is why it is the one field on this row that is read
+    /// without being required: `Workout start time` and its siblings decide whether a row *is* a
+    /// workout this app can store, while a missing name has an honest answer already — WHOOP's own
+    /// word for an uncategorised activity — and refusing the row over it would delete a real session
+    /// from the screen. `nil` here therefore means "the file did not say", and the two cases that
+    /// produce it (a file with no such column, a row with an empty cell) are deliberately not
+    /// separated: unlike `isNap`, nothing filters on this.
+    ///
+    /// Measured over the bundled file: **673 of 673 rows are non-empty**, in 21 distinct names.
+    public let activityName: String?
+
+    /// WHOOP's own `HR Zone 1 %`…`HR Zone 5 %` for a workout — the share of its window spent in each
+    /// of the five heart-rate-reserve bands.
+    ///
+    /// **All five or none.** A row where any one of the five cells is empty yields `nil` rather than a
+    /// five-element array with a hole: a partial block would still sum to a confident figure, and the
+    /// two rows built from it would be a picture of a partial measurement presented as a whole one.
+    /// `nil` is also what every row of the other two files carries, and what a `workouts.csv` row with
+    /// no zone block carries.
+    ///
+    /// The five do **not** sum to 100. The remainder is time below zone 1, which WHOOP reports no
+    /// column for — measured over the bundled file, the five sum to anywhere from 0 to 100 with 45 of
+    /// the 673 rows at exactly 0.
+    public let hrZonePercents: [Double]?
 
     public let sleepPerformancePercent: Int?
     /// WHOOP's own Sleep Consistency. Read rather than recomputed — see
@@ -143,6 +183,48 @@ public enum WhoopExportParser {
     /// The `Nap` column, which only `sleeps.csv` carries.
     static let napColumn = "Nap"
 
+    /// The columns `workouts.csv` is read for, and the same guard `parseNaps` applies.
+    ///
+    /// **A set of its own rather than `requiredColumns` plus one**, because this file does not carry
+    /// `Wake onset` at all — requiring the cycle file's columns would make every row of the right file
+    /// throw. What the separate set buys is the same thing `napColumn` buys: pointing this parser at
+    /// either sleep file raises `missingColumns(["Workout start time", "Workout end time"])` instead
+    /// of reading the whole file, finding no workouts in it, and reporting a successful import of
+    /// nothing. The two timestamps are both required because a workout with no end is not a workout
+    /// this app can store — `workouts.ended_at` is NOT NULL.
+    ///
+    /// **This set is what a row must carry to be a workout, not every column the file is read for.**
+    /// `Activity name` is read without being required, and the distinction is the one `WhoopExportRow
+    /// .activityName` states: a missing name has an honest answer, a missing end does not.
+    static let workoutColumns = [
+        "Cycle start time",
+        "Cycle timezone",
+        "Workout start time",
+        "Workout end time",
+    ]
+
+    /// The workouts out of `workouts.csv`.
+    ///
+    /// Unlike `parseNaps` this does **not** filter: every row of the file is a workout, including the
+    /// 45 whose zone percentages are all zero. Those are genuine low-intensity sessions — a walk that
+    /// never reached zone 1 — and dropping them here would delete a real day's activity from the
+    /// screen rather than draw its `0:00`.
+    ///
+    /// Each row also carries `Activity name` — 673 of 673 non-empty over the bundled file, in 21
+    /// distinct names — which the Home screen's activity row draws instead of one label for every
+    /// session. It is read with `text(_:)` and is not in `workoutColumns`, so a file that stops
+    /// carrying it imports unchanged and every row draws the generic label.
+    public static func parseWorkouts(at url: URL) throws -> [WhoopExportRow] {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+            throw WhoopExportError.unreadable(url)
+        }
+        return try parseWorkouts(text)
+    }
+
+    public static func parseWorkouts(_ text: String) throws -> [WhoopExportRow] {
+        try parse(text, requiring: workoutColumns)
+    }
+
     private static func parse(_ text: String, requiring required: [String]) throws -> [WhoopExportRow] {
         // `\r` because the file may have been round-tripped through a tool that wrote CRLF, and a
         // trailing carriage return on every field would poison every numeric parse.
@@ -197,6 +279,24 @@ public enum WhoopExportParser {
                 number(column).map { Int($0.rounded()) }
             }
             func minutes(_ column: String) -> Double? { number(column) }
+            /// A cell read as a string, or `nil` when it is empty **or the column is absent from the
+            /// file entirely** — the two are deliberately not separated here.
+            ///
+            /// `flag` above does separate them, because `parseNaps` *filters* on the answer and "this
+            /// file does not classify its rows" is a different fact from "this row is a night". A name
+            /// has no such reader: both cases mean the same thing to the screen, which is that the
+            /// file did not say what this workout was called.
+            func text(_ column: String) -> String? {
+                let raw = field(fields, index[column])
+                return raw.isEmpty ? nil : raw
+            }
+            /// WHOOP's five zone percentages, **all five or none** — the rule and its reason are on
+            /// `WhoopExportRow.hrZonePercents`. A row whose block is short by even one cell is read as
+            /// no block at all, so a partial measurement can never sum to a confident figure.
+            func zonePercents() -> [Double]? {
+                let values = (1...5).compactMap { number("HR Zone \($0) %") }
+                return values.count == 5 ? values : nil
+            }
             /// `nil` when the column is absent from the file entirely — which is a different fact
             /// from a row that is not a nap, and the one `parseNaps` filters on.
             func flag(_ column: String) -> Bool? {
@@ -210,15 +310,20 @@ public enum WhoopExportParser {
                 cycleStart: cycleStart,
                 wakeOnset: try date("Wake onset"),
                 sleepOnset: try date("Sleep onset"),
+                workoutStart: try date("Workout start time"),
+                workoutEnd: try date("Workout end time"),
                 recoveryScorePercent: integer("Recovery score %"),
                 restingHeartRate: integer("Resting heart rate (bpm)"),
                 hrvMs: number("Heart rate variability (ms)"),
                 skinTempCelsius: number("Skin temp (celsius)"),
                 bloodOxygenPercent: number("Blood oxygen %"),
                 dayStrain: number("Day Strain"),
+                workoutStrain: number("Activity Strain"),
                 energyKcal: number("Energy burned (cal)"),
                 maxHeartRate: integer("Max HR (bpm)"),
                 averageHeartRate: integer("Average HR (bpm)"),
+                activityName: text("Activity name"),
+                hrZonePercents: zonePercents(),
                 sleepPerformancePercent: integer("Sleep performance %"),
                 sleepConsistencyPercent: integer("Sleep consistency %"),
                 respiratoryRate: number("Respiratory rate (rpm)"),

@@ -7,9 +7,11 @@ import SwiftUI
 /// look — Strain, Sleep, Recovery and the workout HUD. Home's mockup wants the opposite of all three,
 /// so bending `GaugeRingView` to fit would move four screens to restyle one.
 ///
-/// **No chevron, and no tap target.** The rings have nowhere to go — the one thing on Home that
-/// navigates is the day bar's title, which opens the month calendar — and an affordance with no
-/// destination is the same defect the dashboard's `CUSTOMIZE` control is left out for.
+/// **No chevron, and no tap target of its own.** Whether a ring has a destination is the caller's
+/// business, and this component cannot know: on Home all three are `NavigationLink`s, and a chevron
+/// drawn here would appear on every ring, while one drawn by a caller on some of them and not others
+/// would say the rest are broken. So the affordance is the caller's, the tap is the link label's, and
+/// the component stays a drawing — `HomeDashboardView` records the same judgement where it wires them.
 public struct MetricRingView: View {
     /// The figure to show, already formatted by the caller — or `nil` for a day with no measurement.
     ///
