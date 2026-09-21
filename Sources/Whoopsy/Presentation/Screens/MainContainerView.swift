@@ -4,12 +4,6 @@ public struct MainContainerView: View {
     private let container: DIContainer
     public init(container: DIContainer = .preview) { self.container = container }
     public var body: some View {
-        // One instance for both Home's "+" and the Workout tab, so the two are views of a single live
-        // session rather than two that could each believe they were recording.
-        let workoutViewModel = ActiveWorkoutViewModel(
-            stream: container.streamBiometricsUseCase, save: container.saveWorkoutUseCase,
-            location: container.locationTracking)
-
         TabView {
             HomeDashboardView(
                 viewModel: HomeViewModel(
@@ -22,7 +16,6 @@ public struct MainContainerView: View {
                     analyzeStress: container.analyzeStressUseCase,
                     manage: container.manageBLEConnectionUseCase,
                     streamUseCase: container.streamBiometricsUseCase),
-                workoutViewModel: workoutViewModel,
                 recoveryViewModel: RecoveryViewModel(
                     calculate: container.calculateRecoveryUseCase,
                     repository: container.recoveryRepository,
@@ -62,8 +55,6 @@ public struct MainContainerView: View {
                     workoutRepository: container.workoutRepository,
                     stepRepository: container.stepRepository)
             ).tabItem { Label("Strain", systemImage: "flame.fill") }
-            ActiveWorkoutHUDView(viewModel: workoutViewModel)
-                .tabItem { Label("Workout", systemImage: "figure.run") }
             SleepDashboardView(
                 viewModel: SleepViewModel(
                     analyze: container.analyzeSleepUseCase,

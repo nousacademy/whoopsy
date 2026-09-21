@@ -1028,7 +1028,7 @@ func runMainSections() async throws {
 
     // MARK: - 14. The Home screen's sources
     if sectionEnabled(14) {
-        print("\n[14/17] Testing recorded workouts, HealthKit steps, the Stress Monitor, the recovery ring tiers and the seven-day MetricWeek join...")
+        print("\n[14/17] Testing the `+` menu's two rows, recorded workouts, HealthKit steps, the Stress Monitor, the recovery ring tiers and the seven-day MetricWeek join...")
         await runHomeSourceTests()
     }
 
@@ -1322,7 +1322,7 @@ func runPersistenceTests() async {
     // The stream is multicast: two subscribers both receive, and neither orphans the other.
     //
     // This was a single stored continuation that each read of the stream *replaced*, so
-    // `StreamBiometricsUseCase` driven from Home's heart-rate readout and from the workout HUD meant
+    // `StreamBiometricsUseCase` driven from Home's heart-rate readout and from a second screen meant
     // the later subscriber was the only one still receiving. Nothing errored and nothing finished —
     // the first subscriber's loop simply stopped, which on this app is indistinguishable from a
     // strap that went quiet.
@@ -3975,6 +3975,30 @@ struct DaytimeBiometricStore: BiometricRepository {
 /// disconnected strap's battery, a `0` for a day with no steps, a `0.0` for a day with no stress
 /// score, and an in-memory array that loses a workout at the next launch.
 func runHomeSourceTests() async {
+    // ---- The `+` menu's rows ----
+    //
+    // `ActivityMenu` is a value rather than a rule written into `HomeDashboardView`'s body for
+    // `DayBarRules`' and `ActivityGlyph`'s reason: the runner has no renderer, so a row built inline
+    // is a row nothing here can see. **What this block proves is the rows and not the drawing** — the
+    // card's frame, its scrim, its animation and the tab bar it hides are all invisible to it, and no
+    // assertion below is evidence that the menu renders where it should. It is placed above the
+    // section's first database so it runs even if the blocks below throw.
+    //
+    // The non-emptiness sweep is the only assertion that can catch a mistyped SF Symbol: a wrong name
+    // is not an error, it draws an empty chip, and neither the compiler nor a screenshot of the other
+    // row can see it. It cannot see the second failure either — every symbol must exist on the **iOS
+    // 17.0** deployment target, which is a fact about the platform and not about the string.
+
+    assertTest(ActivityMenu.entries.count == 2,
+               "The `+` menu draws two rows (\(ActivityMenu.entries.count) held)")
+
+    let titles = ActivityMenu.entries.map(\.title)
+    assertTest(titles == ["ADD ACTIVITY", "START ACTIVITY"],
+               "…titled in that order, which is what draws top-to-bottom (\(titles))")
+
+    let blank = ActivityMenu.entries.filter(\.symbol.isEmpty).map(\.title)
+    assertTest(blank.isEmpty, "…each carrying a non-empty SF Symbol (\(blank) draw an empty chip)")
+
     // ---- v6: recorded workouts now survive the launch that recorded them ----
 
     let db = LocalDatabaseManager(inMemory: true)

@@ -651,10 +651,10 @@ public struct SleepDetailView: View {
     /// The night's performance, with the three-segment band bar in its lower interior.
     ///
     /// **The bar is an overlay on this ring and not a change to `GaugeRingView`.** That component is
-    /// drawn by Strain, Sleep, Recovery and the workout HUD; a fifth parameter on it would move four
-    /// other screens to place one segment bar, which is the reasoning that gave Home `MetricRingView`
-    /// rather than a bent `GaugeRingView`. As an overlay it is inside the ring's lower interior
-    /// without any of those four knowing it exists.
+    /// drawn by Strain, Sleep and Recovery; a fifth parameter on it would move two other screens to
+    /// place one segment bar, which is the reasoning that gave Home `MetricRingView` rather than a
+    /// bent `GaugeRingView`. As an overlay it is inside the ring's lower interior without either of
+    /// those two knowing it exists.
     ///
     /// The `30` is a placement, not a measurement: the ring is 190pt across with an 18pt stroke, so its
     /// inner edge at that height is about 44pt from the centre line and a 62pt bar leaves margin on

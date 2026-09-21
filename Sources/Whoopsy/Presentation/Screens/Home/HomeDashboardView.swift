@@ -46,7 +46,6 @@ import SwiftUI
 /// sex-specific factor the app does not implement.
 public struct HomeDashboardView: View {
     @State private var viewModel: HomeViewModel
-    @State private var workoutViewModel: ActiveWorkoutViewModel
     /// Built here rather than reached for at the tap, because a pushed screen's view model has to
     /// exist before the push animation starts or the destination renders empty for a frame. It is a
     /// second `RecoveryViewModel` beside the Recovery tab's, deliberately: they are two screens with
@@ -61,8 +60,11 @@ public struct HomeDashboardView: View {
     /// copy move the tab's day underneath it.
     @State private var strainViewModel: StrainViewModel
     @State private var selectedDate: Date = Date()
-    @State private var isPresentingWorkout = false
     @State private var isPresentingCalendar = false
+    /// The `+`'s menu. A second overlay flag rather than a mode of the calendar's: the two hang from
+    /// different anchors, dismiss on their own, and cannot be open at once — the calendar's scrim
+    /// covers the `+` that opens this one.
+    @State private var isPresentingActivityMenu = false
 
     /// Home's own device page, reached from the badge in the top bar.
     ///
@@ -74,14 +76,12 @@ public struct HomeDashboardView: View {
 
     public init(
         viewModel: HomeViewModel,
-        workoutViewModel: ActiveWorkoutViewModel,
         recoveryViewModel: RecoveryViewModel,
         sleepViewModel: SleepViewModel,
         strainViewModel: StrainViewModel,
         deviceDetailViewModel: DeviceDetailViewModel
     ) {
         _viewModel = State(initialValue: viewModel)
-        _workoutViewModel = State(initialValue: workoutViewModel)
         _recoveryViewModel = State(initialValue: recoveryViewModel)
         _sleepViewModel = State(initialValue: sleepViewModel)
         _strainViewModel = State(initialValue: strainViewModel)
@@ -120,17 +120,20 @@ public struct HomeDashboardView: View {
             }
         }
         .preferredColorScheme(.dark)
-        // The bar is hidden while the calendar is up, and that is not only for the look of it. An
+        // The bar is hidden while either overlay is up, and that is not only for the look of it. An
         // overlay inside a tab cannot cover the tab bar — the `TabView` draws it above its content —
         // so leaving it visible would put a bright, tappable row of tabs under a modal, and tapping
-        // one would switch screens with `isPresentingCalendar` still set, so the calendar would be
-        // waiting on Home when the user came back. Removing the bar removes both problems at once.
-        .hidingTabBar(isPresentingCalendar)
-        .sheet(isPresented: $isPresentingWorkout) {
-            ActiveWorkoutHUDView(viewModel: workoutViewModel)
-        }
+        // one would switch screens with the flag still set, so the overlay would be waiting on Home
+        // when the user came back. Removing the bar removes both problems at once.
+        .hidingTabBar(isPresentingCalendar || isPresentingActivityMenu)
         .overlay {
             if isPresentingCalendar { calendarOverlay }
+        }
+        // The `+`'s menu. Applied as a second overlay rather than folded into the one above, because
+        // this one needs the published anchor and that one does not — and `overlayPreferenceValue` is
+        // a different modifier, so neither replaces the other.
+        .overlayPreferenceValue(ActivityMenuAnchorKey.self, alignment: .top) { anchor in
+            if isPresentingActivityMenu { activityMenuOverlay(anchoredBelow: anchor) }
         }
     }
 
@@ -182,6 +185,102 @@ public struct HomeDashboardView: View {
 
     private func dismissCalendar() {
         withAnimation(.snappy(duration: 0.26)) { isPresentingCalendar = false }
+    }
+
+    // MARK: - The activity menu
+
+    /// The `+`'s menu: a small card hanging under the button over a dimmed Home.
+    ///
+    /// **An overlay rather than a `.sheet`**, for the calendar's reason and with its partial scrim: a
+    /// sheet centres a full-height card in a dark slab and hides the screen the control belongs to,
+    /// while this is a small bounded thing that only reads as hanging off the `+` when Home is still
+    /// legible behind it.
+    ///
+    /// **The card is positioned from the button's own frame rather than from a padding constant.** The
+    /// `+` sits under a top bar whose height is not fixed and inside a scroll view, so a literal here
+    /// would be the magic number `RingsBottomKey`'s comment warns about — right today, silently wrong
+    /// the first time the bar changes height. `anchor` arrives from a `GeometryReader` in the button's
+    /// own background, measured in `scrollSpace`, which is anchored to the scroll view itself: the
+    /// reported `maxY` is therefore already in the view's *visible* frame, so there is no scroll offset
+    /// to subtract and the transform writes no `@State` — the rings header's other load-bearing rule,
+    /// since it runs on every scroll frame.
+    ///
+    /// Only the scrim ignores the safe area; the card stays inside it, as the calendar's does.
+    private func activityMenuOverlay(anchoredBelow anchor: CGRect) -> some View {
+        // An unpublished anchor is `.null`. The menu can only be opened by tapping the button, so this
+        // is unreachable in practice — it is here so a missing frame cannot place the card at a
+        // coordinate no screen has.
+        let top = anchor.isNull ? 0 : anchor.maxY + 8
+
+        return ZStack(alignment: .topTrailing) {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+                .onTapGesture { dismissActivityMenu() }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel(Text("Dismisses the activity menu"))
+                .transition(.opacity)
+
+            // Trailing-aligned rather than offset to the button's own `maxX`: the `+` is at the page's
+            // trailing edge behind 16 pt of padding, so the same inset lands the card under it without
+            // this having to know the card's width.
+            activityMenu
+                .padding(.trailing, 16)
+                .padding(.top, top)
+                .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .topTrailing)))
+        }
+    }
+
+    /// The card: the rows `ActivityMenu` holds, drawn top to bottom with a rule between them.
+    ///
+    /// The rows come from that value rather than from two `Text`s written here, because a list written
+    /// into a body is a list nothing can assert — `DayBarRules`' and `ActivityGlyph`'s reason, and §14
+    /// drives it.
+    private var activityMenu: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(ActivityMenu.entries.enumerated()), id: \.element.id) { index, entry in
+                if index > 0 { Divider().overlay(Theme.cardBorder) }
+                activityMenuRow(entry)
+            }
+        }
+        .frame(width: 232)
+        .background(Theme.homeCard)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.cardBorder, lineWidth: 1))
+        .shadow(color: .black.opacity(0.45), radius: 20, y: 8)
+    }
+
+    /// One row. The tap dismisses and does nothing else.
+    ///
+    /// `buttonStyle(.plain)` is load-bearing: the default style tints its label and adds a hit shape,
+    /// which would recolour the word the value specifies.
+    private func activityMenuRow(_ entry: ActivityMenu.Entry) -> some View {
+        Button {
+            dismissActivityMenu()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: entry.symbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textMuted)
+                    .frame(width: 20)
+                Text(entry.title)
+                    .font(.system(size: 12, weight: .bold))
+                    .tracking(0.6)
+                    .foregroundStyle(Theme.textPrimary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func presentActivityMenu() {
+        withAnimation(.snappy(duration: 0.3)) { isPresentingActivityMenu = true }
+    }
+
+    private func dismissActivityMenu() {
+        withAnimation(.snappy(duration: 0.26)) { isPresentingActivityMenu = false }
     }
 
     // MARK: - Top bar
@@ -455,8 +554,11 @@ public struct HomeDashboardView: View {
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Theme.textPrimary)
             Spacer()
+            // Opens the menu and nothing else. It used to present the workout HUD as a sheet; the
+            // label changed with it, because "Record a workout" promised a recording path this app
+            // no longer has.
             Button {
-                isPresentingWorkout = true
+                presentActivityMenu()
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 15, weight: .bold))
@@ -464,7 +566,15 @@ public struct HomeDashboardView: View {
                     .frame(width: 30, height: 30)
                     .background(Circle().fill(Color.white))
             }
-            .accessibilityLabel("Record a workout")
+            // Where the menu hangs from — the button's own frame, which is the only thing that stays
+            // right when the bar above it changes height. See `activityMenuOverlay`.
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: ActivityMenuAnchorKey.self,
+                        value: proxy.frame(in: .named(Self.scrollSpace)))
+                })
+            .accessibilityLabel("Opens the activity menu")
         }
         .padding(.top, 4)
     }
@@ -1075,5 +1185,20 @@ private struct RingsBottomKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = min(value, nextValue())
+    }
+}
+
+/// The `+` button's frame, in the scroll view's own coordinate space — what the activity menu hangs
+/// from.
+///
+/// `defaultValue` is `.null` rather than a zero rect, so an unpublished frame is distinguishable from
+/// one measured at the origin and the card is never placed from a value no layout produced. `union` is
+/// the identity for `.null`, which is what makes that reduction the honest one; there is only ever one
+/// publisher of this key.
+private struct ActivityMenuAnchorKey: PreferenceKey {
+    static let defaultValue: CGRect = .null
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = value.union(nextValue())
     }
 }

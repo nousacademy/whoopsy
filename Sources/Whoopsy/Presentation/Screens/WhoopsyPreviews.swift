@@ -32,11 +32,6 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 manage: container.manageBLEConnectionUseCase,
                 streamUseCase: container.streamBiometricsUseCase
             ),
-            workoutViewModel: ActiveWorkoutViewModel(
-                stream: container.streamBiometricsUseCase,
-                save: container.saveWorkoutUseCase,
-                location: container.locationTracking
-            ),
             recoveryViewModel: RecoveryViewModel(
                 calculate: container.calculateRecoveryUseCase,
                 repository: container.recoveryRepository,
@@ -65,18 +60,4 @@ struct HomeDashboardView_Previews: PreviewProvider {
     }
 }
 
-struct ActiveWorkoutHUDView_Previews: PreviewProvider {
-    static var previews: some View {
-        let container = DIContainer.preview
-        ActiveWorkoutHUDView(
-            viewModel: ActiveWorkoutViewModel(
-                stream: container.streamBiometricsUseCase,
-                save: container.saveWorkoutUseCase,
-                location: container.locationTracking
-            )
-        )
-        .previewDevice("iPhone 16 Pro")
-        .preferredColorScheme(.dark)
-    }
-}
 #endif

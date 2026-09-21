@@ -93,7 +93,6 @@ covers the whole history instead of two models disagreeing on one chart.
 
 - **Home** — the day's three rings (Recovery, Strain, Sleep), a month calendar, and metric panels
 - **Strain** — the day's cardiovascular load with heart-rate zone breakdown
-- **Workout** — a live session with a heart-rate HUD and route
 - **Sleep** — last night's stages, efficiency, and the night's sleep need
 - **Recovery** — the score, and the four figures it was computed from against their baselines
 - **More** — coach insights, device management, settings and import
@@ -185,7 +184,7 @@ deleted sources and the link fails) and hands the runner an absolute `#filePath`
 longer cares which directory you run it from. It ends with one machine-readable line:
 
 ```
-SUITE sections=1,...,16 assertions=1101 failed=0 exit=0
+SUITE sections=1,...,17 assertions=1152 failed=0 exit=0
 ```
 
 Read that line rather than the scrollback — the suite has no test discovery, so a section that

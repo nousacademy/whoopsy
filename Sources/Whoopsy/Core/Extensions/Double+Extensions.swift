@@ -14,9 +14,9 @@ extension Double {
 
     /// A duration in seconds as `"7:10"` — hours and zero-padded minutes, no unit letters.
     ///
-    /// Distinct from `formattedHoursMinutes()`, which spells the units out (`"7h 10m"`) and is what
-    /// the workout HUD's elapsed timer wants. This shape is for a reading that already sits under a
-    /// unit label, where `"7h 10m"` next to `HRS` says hours twice.
+    /// Distinct from `formattedHoursMinutes()`, which spells the units out (`"7h 10m"`) and is for a
+    /// caption that has room for them. This shape is for a reading that already sits under a unit
+    /// label, where `"7h 10m"` next to `HRS` says hours twice.
     public func formattedCompactHoursMinutes() -> String {
         let totalMinutes = Int(self) / 60
         return String(format: "%d:%02d", totalMinutes / 60, totalMinutes % 60)

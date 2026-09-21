@@ -79,8 +79,8 @@ import SwiftUI
     ///
     /// **Workouts have no recompute branch, and must not grow one.** They are read from the database
     /// and from nowhere else: an imported workout comes from a CSV that is not re-read on a day
-    /// change, and a live one is written by `ActiveWorkoutViewModel` as it is recorded. There is
-    /// nothing for a screen to recalculate.
+    /// change, and the import is the only thing that writes them. There is nothing for a screen to
+    /// recalculate.
     public func load(for date: Date) async {
         isLoading = true
         defer { isLoading = false }

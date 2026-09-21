@@ -32,9 +32,14 @@ public struct WorkoutSession: Identifiable, Equatable, Sendable {
     /// Which producer this session came from, or `nil` for one this app recorded live.
     ///
     /// `nil` rather than a `"strap"` label because a row written before the column existed is the
-    /// same thing as a live session here — the app's own recording path is the only other writer —
-    /// and because NULL is the honest value for a fact nobody recorded at the time. An imported
-    /// session carries `WhoopExportImporter.sourceLabel`.
+    /// same thing as a live session here — and because NULL is the honest value for a fact nobody
+    /// recorded at the time. An imported session carries `WhoopExportImporter.sourceLabel`.
+    ///
+    /// **Nothing writes `nil` any more.** The app's own recording path was the workout HUD, which is
+    /// deleted, so `nil` now describes only rows an older build left on disk; `whoopExportImporter`
+    /// is the sole live producer and it labels everything. The meaning of the value is unchanged and a
+    /// future recorder should still write `nil` — but do not read a `nil` row as evidence that this
+    /// build recorded it.
     public let source: String?
 
     /// WHOOP's own name for the session — `Walking`, `Yoga`, `Activity` — when it came out of

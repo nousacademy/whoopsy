@@ -3,9 +3,9 @@ import SwiftUI
 /// A flat progress ring with its value centred inside it and its label beneath.
 ///
 /// Deliberately a sibling to `GaugeRingView` rather than a variant of it. That component draws an
-/// angular gradient, an outer glow, and its label *inside* the ring, and four screens depend on that
-/// look — Strain, Sleep, Recovery and the workout HUD. Home's mockup wants the opposite of all three,
-/// so bending `GaugeRingView` to fit would move four screens to restyle one.
+/// angular gradient, an outer glow, and its label *inside* the ring, and three screens depend on that
+/// look — Strain, Sleep and Recovery. Home's mockup wants the opposite of all three,
+/// so bending `GaugeRingView` to fit would move three screens to restyle one.
 ///
 /// **No chevron, and no tap target of its own.** Whether a ring has a destination is the caller's
 /// business, and this component cannot know: on Home all three are `NavigationLink`s, and a chevron

@@ -23,10 +23,15 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     // second subscriber silently orphaned the first: its `for await` loop simply stopped receiving
     // and the stream never finished, which is indistinguishable from a strap that went quiet.
     //
-    // That was not hypothetical. `liveTelemetryStream` is read by `StreamBiometricsUseCase`, which is
-    // driven from both `HomeViewModel.load(for:)` and `MainContainerView`'s workout HUD; and
-    // `deviceStream` is read by `HomeViewModel.observeDevice()` and `DeviceViewModel.load()`. In both
-    // pairs the later subscriber was the only one still receiving.
+    // That was not hypothetical. `liveTelemetryStream` is read by `StreamBiometricsUseCase`, driven
+    // from `HomeViewModel.load(for:)`; `deviceStream` is read by `HomeViewModel.observeDevice()`,
+    // `DeviceViewModel.load()` and `DeviceDetailViewModel`; and `motionStream` by
+    // `TrackStepsUseCase`. In each case the later subscriber was the only one still receiving.
+    //
+    // **The counts are per-stream and they move.** They fell by one when the workout HUD was deleted,
+    // and none of it was visible: a screen that stops reading a stream leaves no other trace. So the
+    // registry is not justified by a named pair of consumers — it is justified by the failure being
+    // silent, which does not depend on how many readers there happen to be today.
     //
     // A dictionary plus `onTermination` pruning rather than a broadcast type, because the failure the
     // registry has to prevent is a *stale* continuation: one whose consumer is gone but which is
@@ -227,10 +232,10 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     /// The strap's decoded 100 Hz motion, for the step counter.
     ///
     /// Registered exactly as `liveTelemetryStream` is — a dictionary keyed by `UUID`, pruned in
-    /// `onTermination` — and **that is not a copied idiom but the same defect being avoided**: two
-    /// consumers exist for this stream too (`TrackStepsUseCase` is the only one today, but the
-    /// workout HUD is the obvious second), and a registry that let a second subscriber orphan the
-    /// first would fail silently — no error, no gap, just a `for await` that stops receiving, which is
+    /// `onTermination` — and **that is not a copied idiom but the same defect being avoided**:
+    /// `TrackStepsUseCase` is this stream's only consumer today and it is still registered rather
+    /// than read directly, because a registry that let a second subscriber orphan the first would
+    /// fail silently — no error, no gap, just a `for await` that stops receiving, which is
     /// indistinguishable from a strap that went quiet.
     ///
     /// Nothing yields into it on a strap this build cannot frame for: `didUpdateValueFor`'s

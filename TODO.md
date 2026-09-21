@@ -255,8 +255,13 @@ Four facts that decide more than one line above.
 
 4. **`workouts.csv` can never fill `workout_route_points`** — `GPS enabled` is `false` on all 673
    rows. It now fills `workouts` itself (§4), which is what its twelve covered columns buy; the
-   route and split tables it maps onto stay empty on every imported session, and are written only by
-   a live recording. **`journal_entries.csv` is the only file left unread**, and it is not one
+   route and split tables it maps onto stay empty on every imported session, and they now have **no
+   writer in `Sources/` at all**: the workout HUD was the app's only recording path and it was
+   deleted with the Workout tab, in favour of a `+` menu whose two rows are inert. The only code
+   left that writes either table is §14's own fixture, through `GRDBWorkoutRepository.save` — so
+   the storage seam is proven and nothing produces a route point. `HomeDashboardView`'s
+   `ACTIVITIES` card reads a session's `activityName`, strain and span and neither field.
+   **`journal_entries.csv` is the only file left unread**, and it is not one
    decision away from being read: it needs a table, a parser and a UI that does not exist at all.
 
 ## The in-bed duration, in full

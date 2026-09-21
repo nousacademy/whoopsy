@@ -35,7 +35,8 @@ exactly like a section that passed.
 The most common regression here, and the one this codebase's whole no-data discipline exists for. A
 defaulted field, a `?? 0`, or a display fallback becomes a confident reading the moment a view draws
 it. It has shipped at least five times: `GRDBSleepRepository` handing back `respiratoryRate: 14.0`,
-`AnalyzeSleepUseCase` writing a literal `14.4` rpm, `ActiveWorkoutHUDView` rendering an invented
+`AnalyzeSleepUseCase` writing a literal `14.4` rpm, `ActiveWorkoutHUDView` (deleted with the workout
+screen — the incident is kept, the type is gone) rendering an invented
 `72` bpm as a live heart rate, `WhoopDevice.batteryPercentage` defaulting to `100` at discovery, and
 `CalculateStrainUseCase`'s empty branch writing `score: 0.0` so today's Strain ring reads `0.0`
 rather than `—`.
@@ -104,13 +105,16 @@ centrally**. A row written at a raw timestamp is inserted, never updated, and no
 
 ## 4. Changing something shared
 
-`GaugeRingView` is drawn by Strain, Sleep, Recovery and the workout HUD. `DayNavigationBar` is used
-by four screens. `Theme` tokens are global. `MainContainerView` builds **one** `ActiveWorkoutViewModel`
-and gives it to both Home's `+` and the Workout tab.
+`GaugeRingView` is drawn by Strain, Sleep and Recovery. `DayNavigationBar` is used by three screens.
+`Theme` tokens are global. `MainContainerView` builds one view model per screen and never shares one
+between two screens.
 
-- `grep -rn "<ComponentName>" Sources/` and list every caller **before** changing its API.
+- `grep -rn "<ComponentName>" Sources/` and list every caller **before** changing its API — and
+  re-grep rather than trusting the list here, because **a caller count is a fact that moves**: the
+  `GaugeRingView` line above named four screens until the workout HUD was deleted, and no compiler,
+  test or screenshot said a word when it dropped to three.
 - Prefer a sibling to a modification: `MetricRingView` exists because bending `GaugeRingView` to
-  Home's mockup would have moved four screens to restyle one.
+  Home's mockup would have moved every other screen to restyle one.
 - **A compile is not a visual check.** Every caller will still build with a changed default, a new
   parameter, or a re-valued token. Nothing in this repo catches that; only looking does.
 
