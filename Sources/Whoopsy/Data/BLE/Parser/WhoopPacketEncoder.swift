@@ -27,7 +27,7 @@ public enum WhoopPacketEncoder {
 
     /// Builds a framed command packet under `profile`'s envelope.
     ///
-    /// The 4.0 envelope, from `BLE_PROTOCOL.md` §2:
+    /// The 4.0 envelope, from `docs/BLE_PROTOCOL.md` §2:
     ///
     /// ```
     /// [0]        SOF = 0xAA
@@ -55,7 +55,7 @@ public enum WhoopPacketEncoder {
     /// into a header the strap reads *before* it reaches that command. The input is now
     /// `Data([lengthLow, lengthHigh])` — ping declares length **7** and writes `0x6B`, the haptic
     /// alarm declares length **9** and writes `0xBD`, and both are the length bytes' own checksum
-    /// rather than the command's. The four vectors in `BLE_PROTOCOL.md` §2.1 pin it and §1 of the
+    /// rather than the command's. The four vectors in `docs/BLE_PROTOCOL.md` §2.1 pin it and §1 of the
     /// suite asserts them, but mind which vector is which: `0xA8` is the checksum of declared length
     /// **8**, which neither frame declares, so a builder that fed the algorithm the right two bytes of
     /// the *wrong* length would still agree with it.
@@ -156,7 +156,7 @@ public enum WhoopPacketEncoder {
     /// Flash-buffer historical sync request — **`0x16 SEND_HISTORICAL_DATA` since the ACK loop landed.**
     ///
     /// The byte here was `0x30` for as long as no drain could be acknowledged. `0x30` is Asynchronous
-    /// Event / Heartbeat in `BLE_PROTOCOL.md` §2's own table, so that form asked a strap for an event
+    /// Event / Heartbeat in `docs/BLE_PROTOCOL.md` §2's own table, so that form asked a strap for an event
     /// rather than for a drain — a command it ignores, which is the failure mode that made the mistake
     /// survivable. `0x16` is a drain it *starts*, and §4's rule is that it must not be sent without a
     /// loop that can answer it: each `HISTORY_END` carries an eight-byte token that has to come back in
@@ -215,7 +215,7 @@ public enum WhoopPacketEncoder {
     /// verified on-device, and OpenStrap's `cmd_send_r10_r11` builds the same byte. `0x6B` takes
     /// `[0x01, 0x01]`: OpenStrap's `cmd_enable_optical` sends `[REVISION_1, enable]`, and its own header
     /// records the convention ("Optical toggles need a TWO-byte `[revision=0x01, enable=0x01]`
-    /// payload"). Neither opcode is documented *with a body* in `BLE_PROTOCOL.md` §6, which is why this
+    /// payload"). Neither opcode is documented *with a body* in `docs/BLE_PROTOCOL.md` §6, which is why this
     /// builder had them bare — but a bodyless frame is the one form **no** source uses, and on a 4.0 a
     /// bodyless `0x3F` starts no live record, which is the stream the step counter reads.
     ///

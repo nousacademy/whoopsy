@@ -26,7 +26,7 @@ import Foundation
 ///     480 + 6.40 × strain (this)                  3.77
 ///     refitting the coefficient on each fold      3.87
 ///     … plus a fitted 7-night deficit term        3.41
-///     ALGORITHMS.md §4's old formula, written out 18.44
+///     docs/ALGORITHMS.md §4's old formula, written out 18.44
 ///
 /// The curve is flat between 6.4 and 7.0 (3.77, 3.76, 3.78), so the fitted value is shipped rather
 /// than the marginally luckier one: a constant anyone can reproduce from the export in one line is
@@ -42,7 +42,7 @@ import Foundation
 ///   read. The strain coefficient absorbs what the debt term would have carried — it falls from 6.40
 ///   to about 2.9 when the term is present, so the two are near-substitutes rather than independent
 ///   inputs.
-/// - **The `0.20` carryover of `ALGORITHMS.md` §4's old formula.** Written out as specified, with a
+/// - **The `0.20` carryover of `docs/ALGORITHMS.md` §4's old formula.** Written out as specified, with a
 ///   7-night deficit, it scores **18.44** — nearly twice the flat 480 it would have replaced. A
 ///   7-night deficit averages about 1000 minutes there, so a fifth of it swamps the baseline instead
 ///   of adjusting it. That formula was never implemented, and it should not be.

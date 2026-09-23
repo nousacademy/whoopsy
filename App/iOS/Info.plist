@@ -30,9 +30,20 @@
     <string>Whoopsy reads heart rate variability and resting heart rate from Apple Health to score Recovery. The import is processed on this device and never uploaded.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Whoopsy uses your location only while an active workout is recording to draw your route on the workout map.</string>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
+    <!-- NOT `NSSupportsLiveActivitiesFrequentUpdates`. That key is about *push*-driven updates arriving
+         from a server, and this app has no server: every content update is pushed locally from a BLE
+         callback through `LiveActivityController`. Declaring it would ask for a budget this app never
+         spends, and the card's timer needs no update at all — it is system-rendered. -->
     <key>UIBackgroundModes</key>
     <array>
         <string>bluetooth-central</string>
+        <!-- Required for `allowsBackgroundLocationUpdates` on `CoreLocationTrackingService`: setting
+             that flag without this entry raises `NSInternalInconsistencyException` at launch rather
+             than being ignored, so the two are a pair. Without it a route stops growing the moment
+             the screen locks, which is most of a run. -->
+        <string>location</string>
     </array>
     <key>UILaunchScreen</key>
     <dict/>

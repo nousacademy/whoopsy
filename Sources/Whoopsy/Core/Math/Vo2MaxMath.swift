@@ -45,7 +45,7 @@ import Foundation
 ///
 /// That correlation is the disqualifier. A day's peak heart rate is a record of how hard the day
 /// was, not of the heart's ceiling, so a model anchored on it reports effort and calls it fitness.
-/// `ALGORITHMS.md` §6 already argues the panel must not carry a day-to-day arrow because VO₂ max
+/// `docs/ALGORITHMS.md` §6 already argues the panel must not carry a day-to-day arrow because VO₂ max
 /// moves on a scale of years; an anchor that swings it 2.4× with the day's training contradicts the
 /// quantity's own definition. Anchoring on a stable `HRmax` instead leaves a day's estimate varying
 /// only with its resting heart rate, which *is* the genuine fitness signal in this ratio.

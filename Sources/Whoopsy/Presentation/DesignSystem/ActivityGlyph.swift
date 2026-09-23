@@ -62,10 +62,14 @@ public enum ActivityGlyph {
     ///
     /// Matched lowercased and trimmed so a future export that changes the casing of a name — or pads a
     /// cell — still lands, which is the one normalisation this table can make without guessing.
+    ///
+    /// **The normalisation is `ActivityName.normalised`, not a copy of it.** The activity detail page
+    /// groups a session with its own history by that same rule, so a fold written twice here would let
+    /// the page decide two sessions were different activities while this table drew them the same
+    /// glyph — or the reverse. The forwarding direction is Presentation → Domain, which is the one this
+    /// app's dependency rule allows.
     public static func symbol(for name: String?) -> String {
-        guard let key = name?.trimmingCharacters(in: .whitespaces).lowercased(), !key.isEmpty else {
-            return fallback
-        }
+        guard let key = ActivityName.normalised(name) else { return fallback }
         return symbols[key] ?? fallback
     }
 }

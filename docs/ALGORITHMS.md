@@ -4,7 +4,17 @@ This document details the open mathematical models implemented in Whoopsy for co
 
 Two sections are exceptions to the rest, in opposite directions. §6 is the only model whose constant is **not** this app's own and is not fitted to anything this app can see — it is quoted from a published method and cited — and it is the only one whose output the screen labels as an **estimate** rather than a measurement. It also still records WHOOP's own three-tier model and why none of that is implemented. §7 is the reverse case: WHOOP publishes no step model at all, so there is nothing to cite and nothing to fit against, and its two fitted constants are stated as this app's own calibration.
 
-Two sources feed these models, and the split matters because one of them carries a permission this app cannot verify. The **WHOOP strap** supplies high-frequency telemetry over BLE (heart rate, R-R intervals, accelerometer, skin temperature, SpO2) **and the step count** (§7), which is accumulated from that accelerometer rather than read from HealthKit. **Apple HealthKit** supplies daily aggregates: SDNN, resting heart rate and staged sleep — and, since the VO₂ MAX panel began deriving its own figure and steps moved onto the strap, neither a VO₂ max nor a step total, because this app no longer asks to read either. A **WHOOP data export**, imported once through Settings, supplies three years of the same daily aggregates WHOOP itself computed (HRV, resting heart rate, SpO2, skin temperature, respiratory rate, sleep stage totals) — plus WHOOP's own finished Recovery and Strain scores. Which source can feed which model is a real constraint, not a preference — §2, §4, §5 and §7 state where it binds, and §1 and §3 state what the export does and does not decide.
+Two sources feed these models, and the split matters because one of them carries a permission this
+app cannot verify. The **WHOOP strap** supplies high-frequency telemetry over BLE (heart rate, R-R
+intervals, accelerometer, skin temperature, SpO2) **and the step count** (§7), which is accumulated
+from that accelerometer rather than read from HealthKit. **Apple HealthKit** supplies daily
+aggregates: SDNN, resting heart rate and staged sleep — and neither a VO₂ max nor a step total,
+because this app does not ask to read either. A **WHOOP data export**, imported once through
+Settings, supplies three years of the same daily aggregates WHOOP itself computed (HRV, resting
+heart rate, SpO2, skin temperature, respiratory rate, sleep stage totals) — plus WHOOP's own
+finished Recovery and Strain scores. Which source can feed which model is a real constraint, not a
+preference — §2, §4, §5 and §7 state where it binds, and §1 and §3 state what the export does and
+does not decide.
 
 ---
 
@@ -71,14 +81,13 @@ own evidence; the within-sleep model (§5) is built on `fromRuns` and does not i
 ### Coverage, and why it is not yet a contiguous series
 
 The strap's Heart Rate characteristic sends several adjacent beats per notification
-(`BLE_PROTOCOL.md` §4), and `biometric_samples.rrIntervalsMs` holds that full per-notification list as
-of `v8`. It held only the first interval before that, so no stored R-R series predates `v8` and the
-column is empty in every existing database — nothing has been backfilled, deliberately, because a
-one-element series written as if it were the whole notification would misrepresent the capture. The
-series is therefore contiguous **within** a notification and not across a night, which is why the
-per-run entry point above exists; the daytime model's single-interval thinning is the other half of
-the same limitation, and both are open and recorded here rather than left to look like properties of
-the model.
+(`docs/BLE_PROTOCOL.md` §4), and `biometric_samples.rrIntervalsMs` holds that full per-notification list
+as of `v8`, and a series stored before `v8` held only the first interval. **No such series is
+backfilled**, because a one-element series written as if it were the whole notification would
+misrepresent the capture. The series is therefore contiguous **within** a notification and not
+across a night, which is why the per-run entry point above exists; the daytime model's single-
+interval thinning is the other half of the same limitation, and both are open and recorded here
+rather than left to look like properties of the model.
 
 ### The imported export is RMSSD, and that is an inference
 
@@ -100,10 +109,10 @@ magnitude as the imported values for the same period. If strap RMSSD comes out a
 imported figure, the export is not RMSSD and the constant above is wrong. `Tests/WhoopsyTestRunner`
 §11 pins the imported distribution; the strap side of the comparison needs a device.
 
-### One HealthKit path deliberately not taken
+### One HealthKit path not taken
 
-HealthKit also exposes `HKHeartbeatSeriesSample`, which carries true beat-to-beat intervals and could
-therefore yield a real RMSSD from Apple data. It is unused on purpose: those series are produced only
+HealthKit also exposes `HKHeartbeatSeriesSample`, which carries true beat-to-beat intervals and
+could therefore yield a real RMSSD from Apple data. It is not used: those series are produced only
 by the ECG app and by narrow on-demand watch recordings, so their coverage is far sparser than
 overnight SDNN, and sourcing one metric name from two provenances would make a baseline's meaning
 ambiguous. Revisit only after the never-mix rule is replaced.
@@ -118,7 +127,7 @@ $$\text{Total Load} = \sum_{z=1}^5 w_z \Delta t_z$$
 
 $$\text{Daily Strain} = 21 \times \left(1 - e^{-k \cdot \text{Total Load}}\right)$$
 
-**There is no second term.** WHOOP's muscular load lives in a separate granted patent family (`PATENTS.md` §1.4) and nothing here computes it: no `V_normalized`, no `w_muscular`, and no `w_cardio` either, since a single summed term needs no weight. Total Load is the zone integral and nothing else.
+**There is no second term.** WHOOP's muscular load lives in a separate granted patent family (`docs/PATENTS.md` §1.4) and nothing here computes it: no `V_normalized`, no `w_muscular`, and no `w_cardio` either, since a single summed term needs no weight. Total Load is the zone integral and nothing else.
 
 ### Zone Weights ($w_z$)
 Heart rate is classified into 5 personalized zones based on Heart Rate Reserve ($\text{HRR} = \text{Max HR} - \text{Resting HR}$):
@@ -132,6 +141,30 @@ Heart rate is classified into 5 personalized zones based on Heart Rate Reserve (
 | **Zone 5** | 90% – 100% | $16.0$ | Maximal Effort |
 
 Scaling constant $k \approx 0.000045$ is calibrated to bind the asymptotic ceiling cleanly to 21.0.
+
+**The table above is one of three readers of a single array, and the array is the definition.**
+`StrainAccumulatorMath.zoneReserveFractions` holds the five pairs; `computeZones` builds each zone's
+bpm edges from it, and `zoneReserveBandLabels` derives the `50-59%` … `90-100%` strings the live
+session screen prints beneath its band row. Moving an edge means moving all three or none — this
+document is the third reader, and it is the only one the compiler cannot check. Two details of the
+labels are not decoration. The upper bound prints as `upper − 1` because the percentages name a
+**half-open** interval, so `50-59%` is 50% up to but not including 60%; printing `50-60%` beside
+`60-69%` would show 60 in two bands at once. The last band is the exception: its ceiling *is* the
+reserve, which is `maxHR`, so nothing lies above it to exclude and it closes at `100%` rather than
+`99%`.
+
+**The five bands are also drawn as one scale, and there the two ends matter rather than the edges.**
+`StrainAccumulatorMath.bandScalePosition(forHeartRate:zones:)` answers where a reading sits on the
+five bands laid end to end, as a `0…1` fraction of the scale's width — which is what the live session
+screen's mark is placed by. It reads the scale's two ends off the **zone table it is handed** (zone 1's
+`lowerBpm` and the last zone's `upperBpm`) rather than recomputing them from `zoneReserveFractions`,
+and that is not a style choice: `computeZones` floors the reserve at 20 bpm, so on a profile whose
+`maxHR − restHR` falls under that floor the fractions and the table no longer describe the same scale,
+and a mark placed against a re-derived span would sit on bands the session was never scored on. The
+clamp is the ordinary case rather than an edge — a heart rate at rest is below zone 1's floor by
+construction, so a worn strap at rest draws at the left edge — and the right edge is `maxHR`. A table
+that cannot define a scale (empty, or with a non-positive span) returns `0` so no caller can divide by
+its own zero; `computeZones` never produces one.
 
 ### Strain is strap-only, and HealthKit must not feed it
 
@@ -204,18 +237,60 @@ rows go through `Double.formattedCompactHoursMinutes()` — `0:34`, not `0:34:12
 what `MetricChange` compares the two columns on, so a figure and its baseline a few seconds apart
 print alike and read as the same, which is the honest reading of two `0:25`s.
 
+### Active calories, and why this section says "this app's approximation" rather than a citation
+
+`StrainAccumulatorMath.estimateCalories` is **this app's own heuristic, not a published equation**:
+
+$$\text{kcal} = \max\left(0.5,\ (\text{HR} - \text{HR}_{\text{rest}}) \times 0.014 \times \text{kg} \times 0.07\right) \times \Delta t_{\text{min}}$$
+
+The `0.014` mL·kg⁻¹·beat⁻¹ term is an oxygen-uptake-per-beat figure and the `0.07` converts that to
+kilocalories per minute, so the arithmetic is a **VO₂-delta heuristic**: it integrates the heart rate
+above resting, scaled by body mass. It is a shape with a plausible constant in it, and no fit against
+measured energy expenditure stands behind either number.
+
+**This is not the Keytel equation, and it must not be labelled one.** No Keytel coefficient appears
+in the body, no `÷ 4.184` conversion happens anywhere in the function, and Keytel's own regressions
+are **sex-specific and take both age and weight** — this app has no sex field and no basis for
+choosing between the two forms. A citation attached to arithmetic that does not implement it makes
+an unvalidated constant read as validated, which is the one failure this whole document exists to
+prevent. The formula stays as it is because it is what `CalculateStrainUseCase` computes, so
+changing it would move every stored calorie figure this app has written.
+
+Three properties of the function are rules rather than details.
+
+* **`nil` when no body weight has been supplied.** The figure is reported to the user as *their own*
+  expenditure, so a defaulted 75 kg would be an invented measurement about a person — the same
+  fabrication class as a dash drawn as a zero. The weight comes from `UserProfile.weightKg` through
+  `user_profiles.weightKg`, and until the user fills in the profile page every calorie figure in
+  this app is correctly absent. **The function takes no `age:` parameter.** An argument nothing
+  reads is not a term in the model, and carrying one invites a caller to believe it is.
+* **`0.0` is a real reading and not an absence.** At or below resting heart rate the session accrued
+  no *active* calories, which a worn strap genuinely reports. The caller distinguishes it from the
+  `nil` above, so a session at rest draws `0` and a session with no weight draws `—`.
+* **The `max(0.5, …)` floor stands for the resting metabolic term.** A session only exists while the strap is being worn, and a worn strap at rest is still a body with a resting metabolic rate — so this is the one place in this file where a non-zero answer is produced without a measurement of active work behind it.
+
+**The two callers divide by different durations, and the session's is the honest one.**
+`CalculateStrainUseCase` passes `samples.count / 60` — a *count* of samples standing in for a span,
+which is only seconds if the strap delivered exactly one notification per second. `LiveSessionAccumulator`
+passes `Σ min(5.0, Δt)`, the same measured span its own zone percentages are computed against. On a 1 Hz
+stream the two coincide exactly; where they diverge, the session screen's figure is the one taken over
+time the strap actually reported. The day model's count is left as it is for the reason above — it is
+what every stored row already holds. The session reads through this same function rather than
+reimplementing it, so the fork is confined to the denominator and the two cannot come to disagree about
+the constant.
+
 ### Days with no measurement
 
 **A day with no samples is not stored.** `CalculateStrainUseCase`'s empty branch returns `nil` and
 writes no row, matching Recovery and Sleep; its measured branch writes `hasMeasurement: true`, so a
 returned value always reads back as a measurement.
 
-It used to reserve a row — `strainScore` `0.0` with no heart rates — so that a reader could tell a
-measured rest day from a day nobody measured. Nothing read it that way, and the row cost two things:
-`WhoopExportImporter` saw a row and skipped the day, so WHOOP's genuine `Day Strain` for it was never
-imported, and `StrainViewModel` treated it as a settled day. Rows written before this change are still
-on disk in that shape, which is why `StrainScore.hasMeasurement` stays — as reader tolerance, not as
-a marker any writer sets.
+**A reserved-zero row must not come back, and a reader must still tolerate one.** Rows written
+before this rule are on disk holding `strainScore` `0.0` with no heart rates, which is why
+`StrainScore.hasMeasurement` stays at all — as reader tolerance, not as a marker any writer sets.
+The writer it replaced cost two things: a placeholder row is a day `WhoopExportImporter` skips, so
+WHOOP's genuine `Day Strain` for it is never imported, and a day `StrainViewModel` treats as
+settled.
 
 The flag is required, and **the score is not the test**. A `0.0` is representable on a measured path:
 `WhoopExportImporter` stores WHOOP's own `Day Strain` verbatim, and the export's column is non-empty
@@ -228,9 +303,9 @@ signature* — `0.0` score, `0` average heart rate, no `source` — identifiable
 defaults to `true` and the migration's `UPDATE` corrects the placeholders; the `source IS NULL` clause
 is what keeps a row an importer wrote from ever matching, whatever its heart-rate fields hold.
 
-`StrainDashboardView` gates on the flag rather than on the score, so a legacy placeholder renders `—`
-instead of a confident `0.0`. Its zone test is `hasMeasurement && !zones.isEmpty` and is **not
-redundant**: the empty branch built all five zones with every duration at zero, so testing emptiness
+`StrainDashboardView` gates on the flag rather than on the score, so a legacy placeholder renders
+`—` instead of a confident `0.0`. Its zone test is `hasMeasurement && !zones.isEmpty`, and both
+halves are needed: a row can carry all five zones with every duration at zero, so testing emptiness
 alone would draw a bar asserting no time in any zone on a day nobody measured.
 
 ---
@@ -252,19 +327,14 @@ Where:
 * $z_{\text{RHR}} = \frac{\text{RHR}_{\text{today}} - \mu_{\text{RHR}}}{\sigma_{\text{RHR}}}$. Lower RHR increases recovery. Resting heart rate is metric-independent, so its baseline draws on the whole window.
 * $\text{SleepPerf} = \frac{\text{Actual Sleep Duration}}{\text{Target Sleep Need}}$, clamped to $0.4 \dots 1.2$ before use.
 
-There is **no respiratory-rate term**, and since the strap path gained a respiratory estimator the
-reason has changed rather than the decision. It used to be that no *measured* input existed: the
-strap has no respiratory *sensor*, `SleepSession.respiratoryRate` was `nil` for every night the strap
-classified, and earlier builds filled the gap with constants (`14.4` written by
-`AnalyzeSleepUseCase`, `14.0` handed out by `GRDBSleepRepository`) — precisely the input a
-$z_{\text{Resp}}$ baseline would have been built on, a number with no variance collapsing to the
-degenerate-input floor. That is no longer true: `RespiratoryRateMath` derives a rate from the R-R
-series on the strap path (see **Respiratory Rate (RSA)** in §4). The reason the term stays out is now
-**scope, not absence**: the great majority of days in this app's database are imported nights carrying
-WHOOP's own stored rate, so introducing the term would re-score all 910 of them through a model none
-of them was scored by, changing every historical Recovery figure on the strength of an estimator this
-document describes as unvalidatable. A measured input existing on one path is not a reason to move
-every number on another.
+There is **no respiratory-rate term**, and the reason is **scope rather than absence**. The strap
+does not sense respiration directly, but `RespiratoryRateMath` derives a rate from the R-R series on
+the strap path (see **Respiratory Rate (RSA)** in §4) — so a measured input now exists on that path
+and the term is still out, because the great majority of days in this app's database are imported
+nights carrying WHOOP's own stored rate: introducing the term would re-score all 910 of them through
+a model none of them was scored by, moving every historical Recovery figure on the strength of an
+estimator this document describes as unvalidatable. A measured input existing on one path is not a
+reason to move every number on another.
 
 The output range is $1 \dots 99$, never $0$ or $100$: the score is an estimate drawn from a
 statistical window, so a perfect or hopeless reading is not claimable.
@@ -284,14 +354,12 @@ own baseline. The series handed in must be **oldest-first**, which is what the r
 load-bearing because the two callers pass different kinds of anchor.** Rows are keyed on
 `startOfDay`, but `WhoopExportImporter` hands a snapped day key while the Recovery screen hands the
 `Date` it is displaying — an instant, which on any day this app runs is hours after midnight.
-Compared raw, that instant is *later* than the day's own midnight row, so the day was counted inside
-its own baseline and the printed mean came from a different set of days than the score above it.
-Measured on the simulator: 2026-08-17 printed an HRV baseline of 53 ms and a sleep-performance
-baseline of 80%, where the strictly-before window gives 52 ms and 78%. Both sides are snapped inside
-`baselineWindow` rather than at the call sites, so the rule holds for whatever anchor a caller
-passes; the day this was found on was one of the roughly one-in-fifteen where the two windows do not
-round to the same printed figure, which is why a screenshot check on an arbitrary day would not have
-caught it.
+Compared raw, that instant is *later* than the day's own midnight row, so the day falls inside its
+own baseline and the printed mean is taken over a different set of days than the score above it. The
+two answers are close enough to look alike and are not: on 2026-08-17 the raw comparison gives an
+HRV baseline of 53 ms and a sleep-performance baseline of 80%, where the strictly-before window
+gives 52 ms and 78%. Both sides are snapped inside `baselineWindow` rather than at the call sites,
+so the rule holds for whatever anchor a caller passes.
 
 The distinction is not academic, and it is measured rather than assumed. Over the bundled export, on
 the 907 days with a comparable predecessor, **391 days (43%) have a calendar-30 window that differs
@@ -332,38 +400,38 @@ one of them through `RecoveryScoring`, in chronological order, against the 30 im
 it. This is the whole reason the import recomputes rather than storing what it was given: one formula
 covers the entire history, so the chart has no seam and this section stays true for it.
 
-WHOOP's own `Recovery score %` column is **deliberately not stored**. The consequence is a real one
-and is not hidden: a historical day's percentage in this app will generally differ from what the
-WHOOP app displayed on that day, because the two are different models over the same measurements.
-The alternative — storing WHOOP's number for old days and computing this app's for new ones — would
-put two incompatible y-axes in one chart and make every trend line across the join meaningless.
+WHOOP's own `Recovery score %` column is **deliberately not stored**. A historical day's percentage
+in this app will therefore generally differ from what the WHOOP app displayed that day, because the
+two are different models over the same measurements. The alternative — storing WHOOP's number for
+old days and computing this app's for new ones — would put two incompatible y-axes in one chart and
+make every trend line across the join meaningless.
 
 Two properties of the walk are worth knowing when reading old scores:
 
 * **The baseline is the imported window, not a warmed-up one.** The first day has no history and lands
   on the cold-start constants above; the 31st day has a full window. Early scores are therefore
   computed against a thinner baseline than later ones, which is inherent to scoring a history
-  forward, not an artefact. No minimum-days rule is applied **to the score**:
-  `BaselineStatisticsMath.baseline` falls back for an empty window, and the coefficient-of-variation
-  floor keeps a 1–3 value window from pinning the score to the $\pm 4$ clamp. That is the deliberate
-  difference from `Baselines.displayed` above, which is a *display* gate: a one-day window still
-  scores a day, it just is not printed as that day's baseline.
+  forward. No minimum-days rule is applied **to the score**: `BaselineStatisticsMath.baseline` falls
+  back for an empty window, and the coefficient-of-variation floor keeps a 1–3 value window from
+  pinning the score to the $\pm 4$ clamp. That is the deliberate difference from
+  `Baselines.displayed` above, which is a *display* gate: a one-day window still scores a day, it
+  just is not printed as that day's baseline.
 * **A day the app already measured is never overwritten.** Imported rows are written only where no
   measurement exists, so a strap day and an imported day can never disagree about the same date.
 
 Finally, a consequence of the formula's sensitivity rather than of the import: the weights above are
 $24$ and $18$ per unit of $z$, so **a day two standard deviations out genuinely reaches the clamp**.
-On real imported history, roughly a quarter of 910 days sit at $1$ or $99$. That is this model
-behaving as specified, not a defect in the import — the `±4σ` guard exists to stop one wild
-observation dominating, and it binds well before that.
+On real imported history, roughly a quarter of 910 days sit at $1$ or $99$ — the `±4σ` guard exists
+to stop one wild observation dominating, and it binds well before that.
 
 ### Days with no measurement
 
 **A day the strap recorded nothing for is not stored.** `CalculateRecoveryUseCase` returns `nil` and
 writes no row, so a day with no data is absent from `recoveries` rather than present as a reserved
-zero. Nothing is substituted from the user profile: the path previously scored such a day from
-`UserProfile.baselineHrvRmssd` as though the strap had measured it, which made an unworn night
-indistinguishable from an average one and silently overwrote a HealthKit SDNN row for the same day.
+zero. Nothing is substituted from the user profile. Scoring such a day from
+`UserProfile.baselineHrvRmssd` would present a constant as though the strap had measured it, making
+an unworn night indistinguishable from an average one, and would overwrite a HealthKit SDNN row for
+the same day.
 
 The test the writer uses is the test its readers use. `RecoveryMetric.hasMeasurement` is
 `hrvValueMs > 0`, and the guard is that same comparison made against the value **as it will be
@@ -386,12 +454,12 @@ Two rules hang off the marker, and a third party does too:
   and it exists precisely because "a row is stored" and "a measurement is stored" are different
   questions.
 
-**Rows written before this rule are still on disk in the placeholder shape** — `recovery_score` `0`,
-`hrv_value_ms` `0`, `resting_heart_rate` `0`, `spo2_percentage` and `respiratory_rate` `NULL` — which
-is why `RecoveryMetric.hasMeasurement` stays at all. It is now reader tolerance for those rows, not a
-marker any writer sets: no production path can create one. `0` is the reserved value on them because
-the formula above cannot produce it (the clamp is $1 \dots 99$), and no HRV or resting heart rate is
-ever physiologically zero either. Three independent signals, one meaning.
+**`RecoveryMetric.hasMeasurement` is reader tolerance, not a marker any writer sets**, because rows
+written before this rule are on disk in the placeholder shape — `recovery_score` `0`, `hrv_value_ms`
+`0`, `resting_heart_rate` `0`, `spo2_percentage` and `respiratory_rate` `NULL` — and no production
+path can create one now. `0` is the reserved value on them because the formula above cannot produce
+it (the clamp is $1 \dots 99$), and no HRV or resting heart rate is ever physiologically zero
+either. Three independent signals, one meaning.
 
 **All four metrics now report absence the same way: no row, and the optional is the answer.**
 
@@ -402,13 +470,12 @@ ever physiologically zero either. Three independent signals, one meaning.
 | Sleep | **no row at all** | the optional — `SleepSession?` | §4, *Nights with no measurement* |
 | Stress | **no score and no series** | the optional — `StressDay?` | §5, *Days with no measurement have no score* |
 
-That is deliberate convergence. Recovery and Strain used to reserve a zero so that a keyed table
-could tell "nothing stored" from "stored as nothing", at the cost of a row that every second reader
-had to remember to exclude — and when one did not, an unworn day imported as a real score or plotted
-as a measured `0.0`. An absent row cannot be mistaken for data by a reader that forgot the rule: it
-is the same shape Sleep and Stress always had, and a reader that handles one now handles all four.
-`MetricWeek` encodes all four side by side, which is what keeps a chart's seven points and a panel's
-mean from disagreeing about which days were measured.
+**All four metrics report a day with no measurement as no row, and the optional is the answer.** A
+reserved zero is the weaker design: every second reader has to remember to exclude it, and a reader
+that forgets imports an unworn day as a real score or plots it as a measured `0.0`. An absent row
+cannot be mistaken for data by a reader that forgot the rule. `MetricWeek` encodes all four side by
+side, which is what keeps a chart's seven points and a panel's mean from disagreeing about which
+days were measured.
 
 ### The rolling baseline is a mean, and that is deliberate
 
@@ -453,19 +520,18 @@ Cold-start values, used only while the history is empty, live on `HRVMetric` (HR
 The boundaries are written down once, as the three half-open `Range<Int>` constants on
 `RecoveryMetric.RecoveryState` — `greenRange = 67..<101`, `yellowRange = 34..<67`,
 `redRange = 0..<34` — which `RecoveryState.init(score:)` is built from. They are ranges rather than
-the `case 67...100` literals they replaced because a **view** now prints them: the month calendar's
-key reads `<34%`, `34% - 66%` and `>66%` off them (`RecoveryTierLegend.entries`) rather than typing
-the numbers a second time, so the key cannot come to disagree with the tier it is describing. The
-inclusive bounds the key needs are arithmetic on the range and deliberately not new constants —
-`>66%` is `greenRange.lowerBound - 1`, not yellow's lower bound, which is the off-by-one a key that
-read both labels as "the same number" would ship.
+`case 67...100` literals because a **view** prints them: the month calendar's key reads `<34%`, `34%
+- 66%` and `>66%` off them (`RecoveryTierLegend.entries`) rather than typing the numbers a second
+time, so the key cannot come to disagree with the tier it is describing. The inclusive bounds the
+key needs are arithmetic on the range and deliberately not new constants — `>66%` is
+`greenRange.lowerBound - 1`, not yellow's lower bound, which is the off-by-one a key that read both
+labels as "the same number" would ship.
 
 `RecoveryMetric.state` forwards to the initialiser, and a caller holding a bare score —
 `GenerateCoachInsightsUseCase`'s green/not-green message — goes through it too rather than comparing
-against `67` itself, which is what that use case used to do. `RecoveryState.color` (in
-`Presentation/DesignSystem/`) is the only place a tier becomes a colour: the Recovery tab's gauge,
-HRV card and trend chart, Home's recovery ring, and each day of the month calendar's grid all read
-through it.
+against `67` itself. `RecoveryState.color` (in `Presentation/DesignSystem/`) is the only place a
+tier becomes a colour: the Recovery tab's gauge, HRV card and trend chart, Home's recovery ring, and
+each day of the month calendar's grid all read through it.
 
 A tier is computed from the **score**, so it is defined only for a measured day: a placeholder row
 (`score: 0`, `hrvValueMs: 0`) reports `.red`, and every drawing of it therefore gates on
@@ -504,10 +570,10 @@ produces because nothing in the BLE layer decodes a motion payload. So such an e
 awake on heart rate alone, and neither the deep band's nor the rem band's stillness requirement can
 refuse it — the heart rate keeps the vote. This is the opposite of what the same absence does in §5,
 and deliberately: there the gate exists to *assert* stillness, so an unmeasured window cannot pass
-it. The substituted $0.0$ these fields used to carry satisfied both motion tests outright — a
-fabricated free-fall reading is below every threshold — so no existing night stages differently; the
-rule is now explicit rather than accidental. It matters because $0.0$ G is free fall and unreachable
-on a body at rest: a motionless worn strap reads $\approx 1.0$ G, with gravity inside the magnitude.
+it. A defaulted $0.0$ would satisfy both motion tests outright, since a fabricated free-fall reading
+is below every threshold — which is why the field is `nil` and the tests are dropped rather than
+answered. It matters because $0.0$ G is free fall and unreachable on a body at rest: a motionless
+worn strap reads $\approx 1.0$ G, with gravity inside the magnitude.
 
 HealthKit publishes stages directly from `sleepAnalysis` (AASM-derived), which is a measurement
 rather than a heuristic and is strictly better where it exists. `HealthSleepStage` already defines
@@ -519,13 +585,13 @@ the two must not both claim the same night.
 
 ### Where a night begins and ends
 
-The rules above classify epochs; they do not say which epochs are the night. That is a separate rule,
-`SleepOnsetMath`, and the strap path had none: a session's boundaries were its first and last sample,
-which are the edges of the **read window** (9 PM → 10 AM) — *when the strap might have been worn*,
-not the night. A strap put on at 7 PM reported a night beginning at 7 PM. The `TIME IN BED` card plots
-exactly this pair, and the export path has always supplied a real one from WHOOP's `Sleep onset` →
-`Wake onset`, so the detector is what makes the strap a producer of the same quantity rather than a
-second kind of thing.
+The rules above classify epochs; they do not say which epochs are the night. That is a separate
+rule, `SleepOnsetMath`, and the strap path needs it: a session's first and last sample are the edges
+of the **read window** (9 PM → 10 AM) — *when the strap might have been worn*, not the night — so a
+strap put on at 7 PM would report a night beginning at 7 PM. The `TIME IN BED` card plots exactly
+this pair, and the export path has always supplied a real one from WHOOP's `Sleep onset` → `Wake
+onset`, so the detector is what makes the strap a producer of the same quantity rather than a second
+kind of thing.
 
 **Onset is the start of the first run of consecutive non-`awake` epochs whose own wall-clock span
 reaches ten minutes; wake is the end of the last such run.** A window with no qualifying run holds no
@@ -547,7 +613,7 @@ ten-minute form is the most commonly applied operational definition. Busa et al.
 22(13):5041, drove all three against polysomnography and found the choice produced **no significant
 difference** in any sleep variable, so the constant is not load-bearing and the standard form ships
 without a fitting exercise. That is the same doctrine that puts `SleepNeedMath` at 6.40 over a
-marginally luckier 7.0. WHOOP's sleep-intention filings (§3.3 of `PATENTS.md`) corroborate the
+marginally luckier 7.0. WHOOP's sleep-intention filings (§3.3 of `docs/PATENTS.md`) corroborate the
 *structure* — a waking event ends a sleep period only when the wearer intends to stay awake, as
 distinct from "transitory stirring or other intermittent activity" — while disclosing no threshold, no
 variable and no model, so the shape is borrowed and nothing numeric is. **AASM's definition is
@@ -643,10 +709,10 @@ both are needed: `minimumEpochSamples` asks whether there is enough to average, 
 whether there is a night here at all. A window can fail either.
 
 There is no placeholder row here, unlike Recovery: `sleeps` has no reserved marker to write, and a
-session invented from literals would be indistinguishable from a measured night in every column.
-That is what the removed behaviour did — it assembled an eight-hour night ($4.2$ h light, $1.8$ h
-deep, $1.6$ h rem, $0.4$ h awake) and saved it whenever the window was too sparse, so a strap left on
-the charger was recorded as a full night's sleep and then scored as one.
+night invented from literals is indistinguishable from a measured one in every column. An eight-hour
+night assembled as $4.2$ h light, $1.8$ h deep, $1.6$ h rem and $0.4$ h awake is exactly that shape,
+and it must never be written: a strap left on the charger would be recorded as a full night's sleep
+and then scored as one.
 
 Absence is therefore carried by the *absence of a row*: `SleepRepository.getSleepSession(for:)` and
 `getSleepHistory(days:)` return `nil` / `[]`, and the callers that read them already accept an
@@ -683,7 +749,7 @@ four-component performance composite this app does not reproduce:
 | $480 + 6.40 \times \text{strain}$ — **implemented** | **3.77** |
 | refitting the coefficient on each fold's own four fifths | 3.87 |
 | … plus a fitted 7-night deficit term | 3.41 |
-| the previous version of this section, written out | 18.44 |
+| $480 + \text{strain} \times 4.5 + \text{7-night deficit} \times 0.20$ | 18.44 |
 
 The curve is flat between 6.4 and 7.0 (3.77, 3.76, 3.78), so the fitted value is shipped rather than
 the marginally luckier one — a constant reproducible from the export in one line is worth more than
@@ -702,7 +768,7 @@ Three inputs WHOOP names that this model deliberately does **not** use:
   far below any simple sum of nightly shortfalls.
 - **Naps.** WHOOP's API shows naps *subtract* from need — `need_from_recent_nap_milli` carries a
   minus sign — and the export's eight nap records are the one thing `sleeps.csv` holds that the
-  bundled cycle file does not. They are now **stored** (`naps`, `v11`; see `ARCHITECTURE.md` §2.B),
+  bundled cycle file does not. They are now **stored** (`naps`, `v11`; see `docs/ARCHITECTURE.md` §2.B),
   so the term is measurable rather than merely unobtainable, and measuring it changed the verdict's
   reason without changing the verdict.
 
@@ -710,9 +776,9 @@ Three inputs WHOOP names that this model deliberately does **not** use:
   shorten — the shipped model's residual runs 24 to 228 minutes *below* prediction, and it tracks
   nap length: over the **7 naps with a following scorable night** the fit is
   $-1.035$ min of need per min of nap with $R^2 = 0.881$. On the whole file, refitting with the term
-  free gives $-0.434 \pm 0.076$ min/min, $t = -5.74$. An earlier reading of this column as
-  *unrelated* to need came from looking the nap up on its own day rather than at the night it
-  precedes, which is the arithmetic this paragraph exists to correct.
+  free gives $-0.434 \pm 0.076$ min/min, $t = -5.74$. **The nap is read at the night it precedes and
+  not on its own day** — read on its own day the column is unrelated to need, which is a property of
+  the lookup rather than of the data.
 
   **And the term still is not shipped, for a reason that is now measured rather than assumed.** The
   coefficient is fit on **14 nights out of 882** — eight naps, each reaching at most two following
@@ -722,27 +788,24 @@ Three inputs WHOOP names that this model deliberately does **not** use:
   constant that improves the fit it was fitted to and worsens the fit it was not is the signature of
   a term carried by fourteen points, and the shortest nap in the file (33 minutes) shows no
   reduction at all while the longest (237) shows 228. So the coefficient stays out of
-  `SleepNeedMath`, and the reason is sample size rather than absence of signal — which is a
-  different claim from the one this section used to make, and the one a future export with more naps
-  should be re-measured against.
+  `SleepNeedMath` for sample size rather than for absence of signal, and a future export with more
+  naps is what should re-measure that.
 - **Sleep Stress.** WHOOP's fourth component, quantified in prose only. It is not a column in any of
   the four export CSVs and not a field in the WHOOP API, so it is unobtainable from this data.
 
-### Why the formula above is not the one this document used to state
+### Why there is no sleep-debt carryover term
 
-This section previously specified $\text{Baseline} (8.0\text{ h}) + \text{Strain Debt} +
-\text{Sleep Debt Carryover} \times 0.20$ with $\text{Strain Debt} = \text{Daily Strain} \times 4.5$.
-**Nothing implemented it, and it should not have been implemented.** Written out as specified, with a
-7-night deficit as the carryover, it scores **18.44** — nearly twice the flat 480 min it would have
-replaced — because a 7-night deficit averages about 1000 minutes, so a fifth of it swamps the
-baseline instead of adjusting it. (The `4.5` alone, without the carryover, is a reasonable but
-under-fitted coefficient: it scores 4.64 where the fitted 6.40 scores 3.77.)
+The need is a baseline plus a strain term and nothing else, and the carryover is the candidate a
+reader will expect to find here. **It is out on measurement.** A 7-night deficit averages about 1000
+minutes, so a fifth of it does not adjust the baseline — it swamps it: written as
+$\text{Sleep Debt Carryover} \times 0.20$ over a 7-night deficit it scores **18.44**, nearly twice
+the flat 480 min it would replace. The strain coefficient is the same error one order smaller: `4.5`
+instead of the fitted `6.40` scores 4.64 where 6.40 scores 3.77.
 
-The **lag**, by contrast, was right and is the part worth keeping from that formulation: across those
-909 nights the previous day's strain fits need at $R^2 = 0.366$ against the same day's $0.161$, and
-WHOOP's own wording names the previous day. The app reads the previous day's row for exactly this
-reason — `strains` is keyed on `startOfDay(wakeOnset)`, so the cycle that preceded the night ending
-on morning D is keyed D.
+The **lag** is the part that holds. Across those 909 nights the previous day's strain fits need at
+$R^2 = 0.366$ against the same day's $0.161$, and WHOOP's own wording names the previous day. The app
+reads the previous day's row for exactly this reason — `strains` is keyed on
+`startOfDay(wakeOnset)`, so the cycle that preceded the night ending on morning D is keyed D.
 
 ### What the coefficient is, and is not
 
@@ -815,7 +878,7 @@ The last is a guard rather than an assumption — over all 910 imported nights `
 measurement and not an absence**: seventeen of the export's nights are in perfect sleep credit, and
 they produce a split whose second part is zero-length.
 
-`TODO.md` §1 records `Sleep debt (min)`'s coverage line against this reader.
+`docs/TODO.md` §1 records `Sleep debt (min)`'s coverage line against this reader.
 
 ### Sleep Consistency
 
@@ -855,10 +918,9 @@ Below four priors there is **no partial rendering**: `consistency(for:history:)`
 one prior the model's MAE is 6.547, which is worse than saying nothing, and the row renders `—` —
 the same gate `SleepNeedMath` and `BaselineStatisticsMath` apply to insufficient history.
 
-**The link is concave, and that was the finding that mattered.** The score is not linear in the mean
-boundary shift: $P^{0.60}$ fits and a linear link does not. Fitted linearly the model reports a
-spurious 1.8:1 onset-to-wake asymmetry; that asymmetry vanishes once the exponent is right, which is
-how the concavity was identified rather than chosen.
+**The link is concave.** The score is not linear in the mean boundary shift: $P^{0.60}$ fits and a
+linear link does not. Fitted linearly the model reports a spurious 1.8:1 onset-to-wake asymmetry,
+which vanishes at the exponent above — so the concavity is measured, not chosen.
 
 **Recency weighting is real but gentle.** 4:3:2:1 sits inside the noise of the fitted exponential,
 and a flat 1:1:1:1 is measurably worse. It is kept because it is the direction the documentation
@@ -867,15 +929,14 @@ describes and it costs nothing in accuracy.
 Agreement against WHOOP's own `Sleep consistency %` on the export's 891 scorable nights, in sample:
 **MAE 2.749, median error 1.379, R² 0.728, 79.0% within ±3 points, 86.6% within ±5.** A forward time
 split — fitted on 2023-07 → 2025-11, tested on 2025-11 → 2026-08 — is *better*, not worse: **MAE
-1.978, 88.8% within ±3.** The constants were re-derived independently of the ones first written
-down and land in the same place (MAE 2.732, R² 0.726, 81.6% within ±3), so they are a fit rather
-than a transcription.
+1.978, 88.8% within ±3.** An independent re-derivation lands in the same place (MAE 2.732, R² 0.726,
+81.6% within ±3), so these are a fit rather than a transcription.
 
 **The error is period-dependent, and that ships as a caveat rather than being hidden.** Every
 60-night window ending on or after 2025-05-23 sits at MAE 1.23–2.13 (455 nights, **MAE 1.190,
 R² 0.927, 91.0% within ±3**); every window ending before 2024-12-08 sits at 2.25–5.42 (436 nights,
-MAE 4.238). The discontinuity coincides exactly with a 137-day recording gap, and the lag structure
-is *identical* on both sides of it — so this is not an algorithm change. The 2023–24 exports carry a
+MAE 4.238). The discontinuity coincides exactly with a 137-day recording gap and the lag structure
+is *identical* on both sides of it, so it is not an algorithm change. The 2023–24 exports carry a
 consistency score that is scattered relative to the timestamps in the same file, and no model
 applied to those timestamps can fix that.
 
@@ -961,16 +1022,13 @@ readings, and one unbanded one that is absent more often than it is present.
 | Sleep Efficiency | `SleepSession.sleepEfficiencyPercentage` | banded |
 | Nap | `naps`, when the day holds one | plain, and the row is **absent** when it does not |
 
-**Three rows this table used to carry were removed, and the producers were not.** `Respiratory Rate`
-and `Sleep Debt` printed `sleeps.respiratory_rate` and `sleeps.sleep_debt`; `High Sleep Stress` printed
-nothing at all and carried a caption explaining that no path here produces the reading — that
-discussion is below and it is why the row was not worth its line. The two readings are still written,
-by `RespiratoryRateMath` and `SleepDebtMath` on the strap path and by the import verbatim, and they are
-not left in the same position afterwards: the respiratory rate still reaches a screen, because
-`CalculateRecoveryUseCase` copies it onto the `recoveries` row the Recovery detail page draws, and
-the debt reaches one as the bottom card's breakdown box, which is the two-part split
-§"Splitting a stored need into its parts" describes. `TODO.md` §1 records that reader against the
-column.
+**Three readings this table does not carry are still produced, and each reaches a screen by another
+route.** `RespiratoryRateMath` and `SleepDebtMath` write their figures on the strap path and the
+import writes them verbatim, but neither is a row on this page: the respiratory rate reaches a
+screen because `CalculateRecoveryUseCase` copies it onto the `recoveries` row the Recovery detail
+page draws, and the debt reaches one as the bottom card's breakdown box, which is the two-part split
+§"Splitting a stored need into its parts" describes. `High Sleep Stress` has no producer anywhere
+and is discussed below. `docs/TODO.md` §1 records the readers against both columns.
 
 The three banded rows take their colours from one rule, `SleepBand.band(for:metric:)`.
 Thresholds are this app's own calibration, anchored on WHOOP's published numbers where they exist:
@@ -992,10 +1050,10 @@ rule covers all three rather than three tuned per row.
 One calibration note belongs with the table rather than being discovered later: over the export's
 **892 scored nights the anchors put 62 in Poor, 805 in Sufficient and 25 in Optimal**. The bands are
 heavily lopsided, because WHOOP's own "90%+ is highly consistent" is genuinely rare. That is a
-property of the anchors, not a fault to tune away — but a rule that places 90% of nights in one band
-discriminates weakly, and saying so is better than leaving it to be found.
+property of the anchors rather than a fault to tune away, though a rule that places 90% of nights in
+one band discriminates weakly.
 
-**The three unbanded rows are readings, and none of them is an oversight.** Respiratory rate is a *reading* — the
+**The three unbanded rows are readings.** Respiratory rate is a *reading* — the
 same column `RecoveryDetailView` draws, at one decimal in `rpm` — and WHOOP publishes no anchor for
 it, so any threshold would be this app's invention dressed as a scale. It is also not monotone in the
 direction the three banded rows share: hours, consistency and efficiency are all better high, while a
@@ -1023,12 +1081,10 @@ itself is drawn as its asleep duration and nothing else, for the reason §4's na
 nap's own `Sleep performance %` is 6–43 on WHOOP's own rows, because its denominator is a night's
 need, so printing it as a performance would file a deliberate 33-minute nap as a 6% night.
 
-**Sleep stress is not measured, and no screen draws it any more.** WHOOP reads it from heart rate, HRV
-and respiratory rate sampled *during* the night against a personal baseline, and this app has no
-producer for it. `SleepDetailView` used to carry it as a `HIGH SLEEP STRESS` row rendering `—`, with a
-caption beneath the card naming what was missing; the row and the caption were both removed, so the
-finding below is now recorded here and nowhere on a screen. The rejection that follows is unaffected —
-no row is needed for a model not to be built.
+**Sleep stress is not measured, and no screen draws it.** WHOOP reads it from heart rate, HRV and
+respiratory rate sampled *during* the night against a personal baseline, and this app has no
+producer for it — so the finding below is recorded here and nowhere on a screen. The rejection that
+follows is unaffected: no row is needed for a model not to be built.
 
 Two candidates were examined and both were rejected, on measurement rather than taste. The export
 carries HRV, resting heart rate and respiratory rate per night and all three are stored, so a 14-day
@@ -1078,10 +1134,10 @@ Two of those rows are *reused* rather than invented, and that is the point of na
 identical constants the Recovery screen's baselines are built from, so the two screens cannot come to
 disagree about how much history a baseline needs. Everything else is a choice made here.
 
-**The band is in percentage points of the night, and WHOOP quotes its own REM range in minutes.** That
-is forced rather than chosen: the bar's track is a 0–100% scale so that the four rows are comparable
-with each other, which means the band drawn on that track has to be on the same scale. A reader
-comparing this app's figure with the WHOOP app's should expect a different unit and not a bug.
+**The band is in percentage points of the night, and WHOOP quotes its own REM range in minutes.**
+That is forced rather than chosen: the bar's track is a 0–100% scale so that the four rows are
+comparable with each other, which means the band drawn on that track has to be on the same scale. A
+reader comparing this app's figure with the WHOOP app's should expect a different unit.
 
 **Restorative sleep is a mean and not a band**, which is why its footer row carries a number and no
 bar. It is a *sum of two stages* — a different quantity on a different denominator — and a band of a
@@ -1092,14 +1148,14 @@ REM are the stages the sleep literature associates with restoration, which is wh
 and why the same marker is deliberately **not** put on the four rows above, where a larger share of any
 one stage is not better news.
 
-**One identity the whole card rests on, and the suite re-verifies it against the real file**: the four
-shares are of `sleepPeriodSeconds`, which is awake + light + deep + REM — the same four fields the rows
-print. Over the bundled export, 910 of 910 nights have a four-percent column summing to exactly 100 and
-a `DURATION` equal to their own sleep period. The column needs largest-remainder rounding to get there,
-because the export stores whole minutes and the exact shares land on fractions: the eight-hour night
-this app used to fabricate — `4.2 / 1.8 / 1.6 / 0.4` hours, rows of which are still in `sleeps` — is
-$52.5 / 22.5 / 20 / 5$, which naive rounding prints as $53 + 23 + 20 + 5 = 101$, a column
-contradicting the total printed above it.
+**One identity the whole card rests on, and the suite re-verifies it against the real file**: the
+four shares are of `sleepPeriodSeconds`, which is awake + light + deep + REM — the same four fields
+the rows print. Over the bundled export, 910 of 910 nights have a four-percent column summing to
+exactly 100 and a `DURATION` equal to their own sleep period. The column needs largest-remainder
+rounding to get there, because the export stores whole minutes and the exact shares land on
+fractions: the eight-hour night this app fabricated — `4.2 / 1.8 / 1.6 / 0.4` hours, rows of which
+are still in `sleeps` — is $52.5 / 22.5 / 20 / 5$, which naive rounding prints as $53 + 23 + 20 + 5
+= 101$, a column contradicting the total printed above it.
 
 **The heart-rate-during-sleep line chart the reference puts above this block is built, and it draws
 no data on every night this app can currently show.** `HoursOfSleepChartSeries` reads
@@ -1121,19 +1177,19 @@ with them: the series and its axis are `HoursOfSleepChart*` because they are dra
 `HOURS OF SLEEP` card and nowhere else, while their points stay `Point.bpm` and their labels stay
 `30/50/70/90`. A `bpm` payload under a name that says hours is a name that lies about a quantity.
 
-**A strap, however, does have a producer — two of them — and saying otherwise is the mistake this
-paragraph exists to prevent.** The live `0x2A37` path is implemented end to end (`WhoopBLEManager` →
-`BiometricSample` → `StreamBiometricsUseCase`) and needs no sampling rate at all: the intervals are
-their own time base, so beat times come from their cumulative sum and instantaneous heart rate is
-`60000 / rr` at each beat. It exists only for nights the app was running and connected, and
-`biometric_samples` is empty in every database on this machine because nothing here has ever been
-connected to a strap — an untested producer, not an absent one. The second is stronger and is *not*
-implemented: the 4.0 flash record is one type-24 record per second of wear carrying an absolute unix
-time of its own at `[7:11]`, so a drained night is placeable on a timeline and **needs no app at all**
-(`BLE_PROTOCOL.md` §5, which calls this "the finding that changes the feasibility question"). So the
-chart is a **strap-sync deliverable rather than a chart deliverable**, blocked where that path is
-blocked — a 16-byte walk through a 96-byte header, no ACK/token loop, and the `RTC_LOST` trap that
-files a night under a *wrong* day rather than under no day. `TODO.md` §5 carries the gap.
+**A strap does have a producer — two of them.** The live `0x2A37` path is implemented end to end
+(`WhoopBLEManager` → `BiometricSample` → `StreamBiometricsUseCase`) and needs no sampling rate at
+all: the intervals are their own time base, so beat times come from their cumulative sum and
+instantaneous heart rate is `60000 / rr` at each beat. It exists only for nights the app was running
+and connected, and `biometric_samples` is empty in every database on this machine because nothing
+here has ever been connected to a strap — an untested producer, not an absent one. The second is
+stronger and is *not* implemented: the 4.0 flash record is one type-24 record per second of wear
+carrying an absolute unix time of its own at `[7:11]`, so a drained night is placeable on a timeline
+and **needs no app at all** (`docs/BLE_PROTOCOL.md` §5, which calls this "the finding that changes the
+feasibility question"). So the chart is a **strap-sync deliverable rather than a chart
+deliverable**, blocked where that path is blocked — a 16-byte walk through a 96-byte header, no
+ACK/token loop, and the `RTC_LOST` trap that files a night under a *wrong* day rather than under no
+day. `docs/TODO.md` §5 carries the gap.
 
 ### Respiratory Rate (RSA)
 
@@ -1142,14 +1198,14 @@ tachogram carries the breathing waveform as a slow modulation, and a peak in its
 **is** the breathing rate. This is WHOOP's own documented mechanism (they derive the figure from PPG
 during the main sleep period) and the standard ECG-derived-respiration family.
 
-`RespiratoryRateMath.respiratoryRate(from:asleepIntervals:)` produces it, `AnalyzeSleepUseCase` calls
-it once per night beside the staging it already does, and the result is **stored** on
+`RespiratoryRateMath.respiratoryRate(from:asleepIntervals:)` produces it, `AnalyzeSleepUseCase`
+calls it once per night beside the staging it already does, and the result is **stored** on
 `sleeps.respiratory_rate` rather than recomputed on read — the same precedent `SleepNeedMath` sets.
 An imported night's value is WHOOP's own and the model is never run over one; the two are told apart
-only by `source`. **`SleepDetailView` no longer draws the row** — it was removed along with the sleep
-debt row — but this value still reaches a screen: `CalculateRecoveryUseCase` copies it onto the
-`recoveries` row, which `RecoveryDetailView`'s breakdown and `WeekLineSeries(respiratoryRateWeek:)`
-both read. The sleep debt has no such second reader.
+only by `source`. **`SleepDetailView` does not draw the row**, but this value still reaches a
+screen: `CalculateRecoveryUseCase` copies it onto the `recoveries` row, which `RecoveryDetailView`'s
+breakdown and `WeekLineSeries(respiratoryRateWeek:)` both read. The sleep debt has no such second
+reader.
 
 **The contiguity problem is the whole of the difficulty.** `BiometricSample.rrIntervalsMs` holds one
 notification's beats — adjacent, in order, by definition — and **across** notifications they are not,
@@ -1196,17 +1252,17 @@ holds `minimumPeakToMeanRatio` times the band's **mean** power, and only if it i
 `edgeGuardBins` from either end; the night's answer is the median over the accepted windows, at one
 decimal, or `nil` below `minimumWindows`.
 
-**The flatness statistic is against the mean, not a share of the total, and that is a correction.**
-A share of the summed band power reads as a property of the signal and is not one: the probe grid is
-six times finer than a 32 s window can resolve, so refining `frequencyStepHz` moves the figure without
-changing the tachogram — the ratio is proportional to the probe spacing. Dividing by the mean removes
-the dependence. The floor is then arithmetic: the band holds about ten independent resolution cells
-(0.3 Hz against the 1/32 s a 32 s window resolves), so the largest of ten noise bins sits at
-$H_{10} \approx 2.93$ times the mean, and the measured noise floor is 2.88. What matters is the
-**night**-level rate, not the per-window one, because a night is scored if `minimumWindows` of its
-windows clear the bar and a 400 s run holds ~74 of them. Measured over 40 synthetic noise-only nights
-per model (white at 40 ms and 60 ms, and a pink series of four AR(1) processes), the fraction of
-nights reported at all is **0.80 at 4.5, 0.03 at 5.0, and 0 of 120 at 5.5**.
+**The flatness statistic is against the mean, not a share of the total.** A share of the summed band
+power reads as a property of the signal and is not one: the probe grid is six times finer than a 32
+s window can resolve, so refining `frequencyStepHz` moves the figure without changing the tachogram
+— the ratio is proportional to the probe spacing. Dividing by the mean removes the dependence. The
+floor is then arithmetic: the band holds about ten independent resolution cells (0.3 Hz against the
+1/32 s a 32 s window resolves), so the largest of ten noise bins sits at $H_{10} \approx 2.93$ times
+the mean, and the measured noise floor is 2.88. What matters is the **night**-level rate, not the
+per-window one, because a night is scored if `minimumWindows` of its windows clear the bar and a 400
+s run holds ~74 of them. Measured over 40 synthetic noise-only nights per model (white at 40 ms and
+60 ms, and a pink series of four AR(1) processes), the fraction of nights reported at all is **0.80
+at 4.5, 0.03 at 5.0, and 0 of 120 at 5.5**.
 
 The cost is sensitivity and it is real: at 5.5 a 40 ms modulation on 25 ms of broadband variability is
 still reported in every night, but a 30 ms modulation on 40 ms is reported in one night in five and a
@@ -1214,7 +1270,7 @@ still reported in every night, but a 30 ms modulation on 40 ms is reported in on
 trade — a narrow estimator that dashes beats a wide one that invents a rate — and every figure in this
 paragraph is synthetic, because the export carries no R-R series.
 
-**`edgeGuardBins` is two because one is not enough, and the measurement is the reason.** The in-band
+**`edgeGuardBins` is two, and the measurement is the reason.** The in-band
 maximum of an out-of-band modulation sits *near* the edge, not necessarily *on* it: a 30 bpm (0.5 Hz)
 modulation at a 100 bpm heart rate peaks on bin 59 of 61 — one inside the top — at 5.61× the mean,
 which clears the flatness gate and was reported as a confident **23.6 bpm** for a signal with no
@@ -1224,19 +1280,18 @@ declined in all 40 seeds and nothing else in the sweep moves. The cost is the to
 effective range becomes 6.4–23.4 bpm at a normal heart rate rather than 6.3–23.7 — which is 0.3 bpm
 off each end of a range the export's own column shows no night occupying (p05 14.5, p95 17.1).
 
-**Cubic reconstruction rather than linear, and it is an aliasing fix rather than refinement.** A
-tachogram is sampled at the beat rate, under 2 Hz asleep, and linear interpolation of a series sampled
-that coarsely does not merely attenuate a component near the beat rate — it **generates harmonics** of
-it, and a harmonic above the beat-rate Nyquist folds back **into the band**. Worked: a 30 bpm
-modulation (0.5 Hz) reconstructed linearly puts its third harmonic at 1.5 Hz, which folds to
-$1.667 - 1.5 = 0.167$ Hz and is reported as roughly 10 bpm. Cubic moves that peak up out of the band's
-interior. The defect is invisible in a plot of the ideal waveform, which is why it survived until the
-band-edge assertions were run.
+**Cubic reconstruction rather than linear, as an aliasing fix.** A tachogram is sampled at the beat
+rate, under 2 Hz asleep, and linear interpolation of a series sampled that coarsely does not merely
+attenuate a component near the beat rate — it **generates harmonics** of it, and a harmonic above
+the beat-rate Nyquist folds back **into the band**. Worked: a 30 bpm modulation (0.5 Hz)
+reconstructed linearly puts its third harmonic at 1.5 Hz, which folds to $1.667 - 1.5 = 0.167$ Hz
+and is reported as roughly 10 bpm. Cubic moves that peak up out of the band's interior. The defect
+is invisible in a plot of the ideal waveform, and it is the band-edge assertions that expose it.
 
 **There is no harmonic rule, and its absence is a measurement.** The second harmonic of a 0.1–0.2 Hz
 fundamental lands inside the same band, so a waveform whose harmonic outweighs its fundamental would
-report twice the true rate. A rule promoting a peak whose sub-harmonic is comparable was implemented
-and then removed, because it can never fire: admitting a window requires the peak to clear
+report twice the true rate. A rule promoting a peak whose sub-harmonic is comparable cannot fire,
+and that is why there is none: admitting a window requires the peak to clear
 `minimumPeakToMeanRatio`, and a comparable second tone raises the band's mean as much as the peak —
 a two-tone 9 bpm-plus-18 bpm tachogram scores **3.38** where the same 18 bpm tone alone scores
 **6.51**. Any threshold that rejects noise has therefore already declined every window such a rule
@@ -1552,12 +1607,12 @@ headline is that same figure. The absence rule bites one level up: a night with 
 whole percents (`WholePercentMath`), for the reason §4 gives for the typical-range card: a printed
 column that sums to 101 is a column a reader can catch.
 
-**No comparison is drawn under the headline, and that is an absence rather than a missing feature.** A
-typical-night comparison would need each prior night's own high-band share, and a night's share needs
-that night's score, which needs *its* fourteen-night baseline — the recursion does not close. Scoring
-prior nights against tonight's baseline instead would produce a plausible-looking number that means
-nothing. `baselineNightCount` is printed in words at the foot of the card instead, so a reader can see
-how much history the figure rests on.
+**No comparison is drawn under the headline.** A typical-night comparison would need each prior
+night's own high-band share, and a night's share needs that night's score, which needs *its*
+fourteen-night baseline — the recursion does not close. Scoring prior nights against tonight's
+baseline instead would produce a plausible-looking number that means nothing. `baselineNightCount`
+is printed in words at the foot of the card instead, so a reader can see how much history the figure
+rests on.
 
 **This card is unreachable on every night this machine can show**, for the same reason the Stress
 Monitor's tile is a dash: `biometric_samples` holds no rows in any database here and the export
@@ -1584,8 +1639,8 @@ at all**, so every imported day has none.
 
 In practice this means: on a strap-less install the tile renders `—` always; on a strap worn
 inconsistently it renders `—` on most past days; and it only produces a number for a day the app was
-running through. That is a data-coverage fact and not a bug, but it is a product fact worth knowing
-before reading anything into an empty tile.
+running through. That is a data-coverage fact rather than a defect, and it is worth knowing before
+reading anything into an empty tile.
 
 ### Why this is derived on read and not stored
 
@@ -1599,16 +1654,13 @@ day already holds.
 
 ## 6. VO₂ Max (mL/(kg·min)) — the one estimate this app computes
 
-Home has a VO₂ MAX panel, so "where does that number come from" has to have an answer. Until this
-change the answer was "nowhere in this app": the panel read a HealthKit sample through and was `—`
-otherwise, so it was empty on **every one of the export's 910 days** and on every day no other app had
-written Apple a reading. It now carries an estimate this app derives itself, and this section is the
+Home has a VO₂ MAX panel, so "where does that number come from" has to have an answer. The panel
+carries an estimate this app derives itself rather than a HealthKit read, and this section is the
 record of that model, its constant, its error bar, and why it is labelled as an estimate.
 
 WHOOP's own three-tier model is still **not** implemented, for the reasons at the end of this
-section — those have not changed. What changed is that "read somebody else's number or print nothing"
-is no longer the only pair of options available for a user with three years of imported history and no
-Apple Watch.
+section. The panel therefore carries a figure for a user with three years of imported history and no
+Apple Watch, where the alternatives are somebody else's number or nothing.
 
 ### What the panel shows
 
@@ -1629,9 +1681,9 @@ Because the estimate reads the slot's resting heart rate and nothing else, it **
 the RHR panel drawn beside it** — one day, one rate, one pair of figures. That is
 structural, not a convention: `makeDay` hoists the gated rate into one local and both fields read it.
 
-The HealthKit read-through that used to back this panel is **gone** — `vo2MaxReadings(days:endingOn:)`
-is removed from `HealthKitSyncing`, and `HealthQuantityMetric.vo2Max` with it, which also drops
-`HKQuantityTypeIdentifierVO2Max` from the consent prompt's `readTypes`. This app no longer asks for
+**This app does not read VO₂ max from HealthKit.** There is no `vo2MaxReadings(days:endingOn:)` on
+`HealthKitSyncing` and no `HealthQuantityMetric.vo2Max`, which also keeps
+`HKQuantityTypeIdentifierVO2Max` out of the consent prompt's `readTypes` — the app does not ask for
 permission to read a quantity it does not use.
 
 ### The model: the Heart Rate Ratio Method
@@ -1644,9 +1696,9 @@ HRrest — the Heart Rate Ratio Method*, Eur J Appl Physiol 91(1):111–115,
 
 The coefficient is **not fitted to anything this app can see**, which is the property that makes it
 worth shipping. The paper derives it from the Fick equation as the product of the maximal-to-rest
-ratios of stroke volume (≈1.3) and of the arterio-venous O₂ difference (≈3.4) — 1.3 × 3.4 × 3.4 ≈ 15 —
-and then measures it in a subgroup of 10 of its 46 subjects as **15.26 (0.72)**, which is where `15.3`
-comes from. Nothing in this repo was tuned to make the number come out a particular way.
+ratios of stroke volume (≈1.3) and of the arterio-venous O₂ difference (≈3.4) — 1.3 × 3.4 × 3.4 ≈ 15
+— and then measures it in a subgroup of 10 of its 46 subjects as **15.26 (0.72)**, which is where
+`15.3` comes from.
 
 **The error bar is the part that matters, and it is not the study's headline figure.** The paper quotes
 its standard error of estimate twice, and the two differ by roughly a factor of two:
@@ -1761,13 +1813,14 @@ scored against 909 nights of WHOOP's own output (§4) — there is **no ground t
 here**: the export carries no VO₂ max column at all, so a fitted model could not be validated on the
 only dataset this project has.
 
-The choice this app makes is therefore **not** a substitute for WHOOP's model and must not be read as
-one. It does not attempt WHOOP's input set, it is not fitted to anything, and it would not agree with
-WHOOP's figure if both were shown side by side. It is a published, cited, independently-derived
+The choice this app makes is therefore **not** a substitute for WHOOP's model and must not be read
+as one. It does not attempt WHOOP's input set, it is not fitted to anything, and it would not agree
+with WHOOP's figure if both were shown side by side. It is a published, cited, independently-derived
 estimate that this app can compute from two numbers it already stores, labelled on screen as an
-estimate — which is a different thing from a reconstruction wearing WHOOP's name. The read-through to
-Apple's number is gone rather than kept alongside it, because a panel holding two different estimates
-on different days with nothing to say which was which is the outcome the paragraph above rejects.
+estimate — which is a different thing from a reconstruction wearing WHOOP's name. **The panel
+carries that estimate alone** — no HealthKit read-through stands beside it, because a panel holding
+two different estimates on different days with nothing to say which was which is the outcome the
+paragraph above rejects.
 
 ### Why the panel prints whole numbers and no direction
 
@@ -1819,7 +1872,7 @@ Two limits on the model this app *does* now ship, stated here so they are not di
 
 ## 7. Steps, from the strap's own accelerometer
 
-WHOOP publishes no step model — `PATENTS.md` records no step algorithm among the filings, and the
+WHOOP publishes no step model — `docs/PATENTS.md` records no step algorithm among the filings, and the
 export carries no step column either, so there is nothing here to recover and nothing to fit against.
 **This is therefore a calibration, not a recovery of WHOOP's function**, in the same voice as §4's
 sleep need and §5's stress thresholds: the shape follows the conventional pedometer literature, and
@@ -1828,7 +1881,7 @@ app's**, and a disagreement is not evidence that either is wrong.
 
 ### The input, and why it is not the raw magnitude
 
-The strap gives three axes in g at 100 Hz (`BLE_PROTOCOL.md` §6, layouts R10 and R21). A wrist at rest
+The strap gives three axes in g at 100 Hz (`docs/BLE_PROTOCOL.md` §6, layouts R10 and R21). A wrist at rest
 reads **≈1.0 g on whichever axis gravity happens to point down** — so a threshold on `|a|` measures
 posture rather than motion, and a strap worn on a still arm all day would read as continuously
 "above zero". The detector therefore removes a **per-axis trailing mean** first and judges the
@@ -1840,7 +1893,7 @@ magnitude  = |linear|                                                 (the Eucli
 ```
 
 That is the whole of the signal conditioning. There is no band-pass filter and no per-axis scaling:
-the two generations carry **the same two scales** (`1/4096` g/LSB, `BLE_PROTOCOL.md` §6), so one
+the two generations carry **the same two scales** (`1/4096` g/LSB, `docs/BLE_PROTOCOL.md` §6), so one
 threshold means the same thing on a 4.0 and a 5.0 MG, which is the fact that lets this be one model
 rather than one per strap.
 
@@ -1905,7 +1958,7 @@ accumulator and the detector have one input and no per-strap branch:
 | 43 | 5.0 / MG | R21, 1244 bytes | live |
 | 47 | 5.0 / MG | R21, 1244 bytes | **banked** (drained from flash) |
 
-The layouts are in `BLE_PROTOCOL.md` §6 and are **frame-absolute**; the decoder subtracts the
+The layouts are in `docs/BLE_PROTOCOL.md` §6 and are **frame-absolute**; the decoder subtracts the
 profile's payload origin. Only R21 carries the strap's own clock, which `MotionBatch.timestampIsFromStrap`
 makes explicit: a **live** record is keyed on its arrival instant (for a 100 Hz stream, arrival *is*
 the measurement instant), while a **banked** record is keyed on its own unix stamp and is refused
@@ -1914,7 +1967,7 @@ to the heart-rate drain, and it is why the stamp is read rather than substituted
 
 **All three rows are wired, and none of them has been exercised.** `WhoopBLEManager` sends the motion
 enable on connect — three frames for a 4.0, two for a 5.0/MG — so the live record arrives while the
-app is connected and running. The banked row arrives through `BLE_PROTOCOL.md` §4's drain, which asks
+app is connected and running. The banked row arrives through `docs/BLE_PROTOCOL.md` §4's drain, which asks
 the strap for its flash history and acknowledges each batch; `HistoricalDrainSession` owns the batch
 structure and `MotionPayloadDecoder` owns the payload, so a banked record produces **the same
 `MotionBatch`** the live path does — which is the whole reason the accumulator and the detector have
@@ -1927,7 +1980,7 @@ accelerometer rollup that cannot carry a cadence. So a 4.0 counts steps while th
 connected, and a window it missed comes back coarser rather than absent. The 5.0/MG banks the full
 100 Hz buffer, so its count survives the app not being there.
 
-The implementation status of both legs is `BLE_PROTOCOL.md` §3 and §6; what a green suite does and
+The implementation status of both legs is `docs/BLE_PROTOCOL.md` §3 and §6; what a green suite does and
 does not prove about them is the paragraph below.
 
 ### What this model cannot do
@@ -1938,3 +1991,112 @@ estimate. It is also **unexercised against hardware**: no strap has been connect
 suite asserts the arithmetic against synthetic waveforms with known counts and both layouts against
 hand-built frames; **a passing run is not evidence that a real wrist's motion produces a count that
 matches a pedometer**, and no screenshot should be offered as such.
+
+## 8. The activity detail page: an activity's own history, and its five zone rows
+
+Three quantities on that page are compared against the same activity's past rather than against the
+user's whole record, and one of them is read out of WHOOP's file rather than computed. The three
+belong together because they share a window and a floor, and because each one's absence rule is the
+reason it can be drawn at all.
+
+### The window is the last ten sessions of that activity, not a calendar window
+
+`ActivityBaseline.window(for:in:)` takes the sessions of the **same activity name**, **strictly
+before** the target's `startedAt`, the target excluded from its own baseline, and caps the result at
+the last **ten** of them. The cap is applied **after** the two filters, which is the part that is easy
+to get wrong: a `.prefix(10)` before the name filter takes the ten most recent sessions of *anything*
+and then discards most of them.
+
+`RecoveryScoring.baselineWindow` cannot serve here for a structural reason as well as a measured one.
+All four of its overloads are **day-keyed** and snap both sides with `.startOfDay`, and a
+`WorkoutSession` has `startedAt`/`endedAt` instants and no `date` keypath at all. So this is a second
+window type rather than a call into that one, and the floor is not restated: `minimumBaselineDays` is
+forwarded from `RecoveryScoring`, so the two cannot come to disagree about how much history a
+comparison needs.
+
+**A 30-day calendar window was measured against the alternative over the bundled export**, counting
+prior sessions that reach the 3-session floor:
+
+| Activity | n | ≥3 prior in 30 d | ≥3 prior in 365 d | ≥3 prior in last 10 |
+| :--- | ---: | ---: | ---: | ---: |
+| Walking | 222 | 193 | 219 | **219** |
+| Yoga | 89 | 74 | 86 | **86** |
+| Basketball | 28 | 8 | 25 | **25** |
+| Hiking | 17 | 3 | 11 | **14** |
+| American Football | 16 | 5 | 10 | **13** |
+| Running | 10 | 0 | 2 | **7** |
+
+The last ten sessions beat the calendar window on every row and tie it on the dense ones, and the
+reason is simply that a person's activities are not evenly spread: a 30-day window draws a dash on 20
+of 28 `Basketball` sessions, which is the case the page exists for. `SleepConsistencyMath`'s
+four-record window is this repo's existing precedent for a sparse series — the same argument at a
+different sample size.
+
+Matching is `ActivityName.matches`, which trims and case-folds. **The abstention group is baselined
+like any other name**: `Activity` and `Other` are words WHOOP writes on 208 of the export's 673 rows,
+so they are a history rather than a hole, and there is no special case here to forget.
+
+### The band is the middle half of the window, in minutes
+
+`ActivityBaseline.summary(for:priorSessions:)` bands the window's durations at the **25th and 75th
+percentiles** through `BaselineStatisticsMath.percentile`, which is R's `quantile(type = 7)` and
+NumPy's default — the same helper `SleepStageRangeScoring` uses, so the two bands are the same
+statistic rather than two that happen to look alike. `Typical` orders its own pair on construction, so
+no caller can be handed an inverted band.
+
+Everything is withheld below the floor, **including the session count**, and that is deliberate: the
+count is what the card's footnote prints, so a window too thin to band must also be too thin to
+describe. Duration and strain are banded over the window itself; **the step mean is taken over a
+second population** — the window sessions that carry a count at all. Averaging `?? 0` over a window in
+which eight of ten sessions have no stored count reports a mean step count near zero for a history
+that is simply unstored, which is the fabrication every absence rule here excludes. So `meanSteps` and
+`stepSessionCount` are computed over the sessions that carry one, and either can be absent while the
+duration and the strain are not.
+
+### The zone rows, and why `0% · 0:00:12` is unreachable here
+
+Each of the five rows prints its BPM range, its whole percent and its time, and the percent and the
+time are **one share of one duration**:
+
+```
+percent_i = hrZonePercents[i]                        (whoop's own figure, stored verbatim)
+seconds_i = percent_i / 100 × durationSeconds        (this app's division, done once)
+```
+
+That single-source rule is what makes the reference's `ZONE 1 … 0% · 0:00:12` **impossible to
+reproduce here**, and the reason is a measured property of the file rather than a choice: **every one
+of the 3,365 `HR Zone n %` cells in `workouts.csv` is a whole number** — measured, zero fractional
+values. The reference computes seconds from a finer internal share and rounds only the percent for
+display. This app is handed the already-rounded percent, so `0%` implies exactly `0:00` and `1%` of a
+958-second session implies `0:09`. The row can never contradict itself, which is a better property,
+but it is quantised to 1% of the session and it will look different from the WHOOP app.
+
+Two absences are distinguished, and the distinction is the whole reason `ActivityZoneRow` is a type:
+a session with **no block** draws `—` on all five rows, while a stored block of five zeroes is a
+**measurement** — 45 of the export's 673 rows are exactly that, workouts that never reached zone 1 —
+and draws a real `0%` beside `0:00:00`. A fractional percent is refused outright rather than rounded,
+because a fraction is a value from some other producer and rounding it would invent a reading instead
+of losing one.
+
+The five times sum to **at most** the session, never to it. The remainder is time below zone 1, which
+WHOOP publishes no column for — the same fact §2 records about the strain page's two zone rows, and
+the reason these are not derived through `WholePercentMath`, which would make the column sum to
+exactly 100 and claim the five bands cover the session.
+
+**The BPM boundaries are this app's and the shares are WHOOP's.** The edges come from
+`StrainAccumulatorMath.computeZones(maxHR:restHR:)`, the same table `CalculateStrainUseCase` scores
+with, so the page introduces no third definition of a zone. On a fresh install that table is built
+from `GRDBUserProfileRepository`'s cold-start **190/60** pair, which is indistinguishable from a
+user-supplied profile — so the card says on its face that the boundaries are this app's. Zone 5's top
+end is printed open (`177+`) rather than as `177-190`, because its ceiling is the profile's nominal
+maximum rather than a measured one and a strap reports a rate above it the moment a session is harder
+than the profile assumes.
+
+### What this section is not evidence for
+
+The comparison is absent on most of what this app can show. The band and both badges need ten prior
+sessions of that activity, and a fresh install has one session; `workouts.steps` is live-only, so the
+step row is a dash on **all 673 imported sessions**; and the heart-rate trace is drawn from
+`biometric_samples`, which holds 0 rows in every database on this machine while the export carries no
+heart-rate series at all. A passing suite here asserts the window, the percentile, the divisions, the
+storage round trip and the page's own strings — **not** that a strap produces any of them.

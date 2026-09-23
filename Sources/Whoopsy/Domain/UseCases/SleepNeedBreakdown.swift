@@ -37,7 +37,7 @@ import Foundation
 ///
 /// **And the identity runs the other way too, which is the whole reason `hasWhoopNeed` is a
 /// parameter.** `need − debt` is WHOOP's base-plus-strain only because WHOOP's need *contains* the
-/// debt; `SleepNeedMath` deliberately leaves the term out (`ALGORITHMS.md` §4), so on a strap night the
+/// debt; `SleepNeedMath` deliberately leaves the term out (`docs/ALGORITHMS.md` §4), so on a strap night the
 /// same subtraction is `baseline + strain − debt` — a base requirement short by the whole deficit,
 /// under a row labelled `Healthy Minimum + Recent Strain`. Both producers store a need **and** a debt,
 /// so nothing in the two numbers tells them apart; `SleepSession.hasWhoopSleepNeed` does, it is `false`

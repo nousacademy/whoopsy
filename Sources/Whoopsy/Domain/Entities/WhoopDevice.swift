@@ -4,7 +4,7 @@ import Foundation
 /// they own.
 ///
 /// **5.0 and 5.0 MG are separate cases on purpose.** They were one (`"WHOOP 5.0 / MG"`) while nothing
-/// read the distinction, but the user owns both and `BLE_PROTOCOL.md` §7 lists as an open question
+/// read the distinction, but the user owns both and `docs/BLE_PROTOCOL.md` §7 lists as an open question
 /// whether the two agree with each other on the wire — so collapsing them would make the one choice
 /// that matters unrepresentable. `selectableModels` is what a picker offers; `allCases` is not, since
 /// it also holds the two non-strap transports.

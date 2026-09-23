@@ -45,7 +45,27 @@ public struct MainContainerView: View {
                 deviceDetailViewModel: DeviceDetailViewModel(
                     manage: container.manageBLEConnectionUseCase,
                     strapModels: container.strapModelRepository,
-                    protocols: container.protocolCatalog)
+                    protocols: container.protocolCatalog),
+                // The app's one live session, handed down rather than built here: it has to outlive
+                // every screen that draws it, so it is the container's and this passes the reference
+                // through. See `LiveSessionUseCase`.
+                liveSessionUseCase: container.liveSessionUseCase,
+                // The activity detail page's view model, built here and handed over as a factory
+                // rather than as an instance.
+                //
+                // **This is the one screen whose subject is not the day Home is showing.** The three
+                // rings push a page about `selectedDate`, so one view model built up front serves every
+                // push; an activity row's subject is the row, and which row is not known until it is
+                // tapped. Building it here keeps `MainContainerView` the only place a view model is
+                // constructed — the closure closes over `container` and nothing else, and the screen
+                // supplies the session.
+                makeActivityDetailViewModel: { session in
+                    ActivityDetailViewModel(
+                        session: session,
+                        workoutRepository: container.workoutRepository,
+                        userProfileRepository: container.userProfileRepository,
+                        biometricRepository: container.biometricRepository)
+                }
             )
             .tabItem { Label("Home", systemImage: "house.fill") }
             StrainDashboardView(
@@ -83,7 +103,16 @@ public struct MainContainerView: View {
         // It writes nothing until a motion batch arrives, and no motion batch arrives on any build
         // without a strap — so on every machine here this task attaches a consumer to an empty stream
         // and idles. See `WhoopBLEDeviceRepository.motionStream`.
-        .task { await container.trackStepsUseCase.start() }
+        //
+        // The orphan sweep runs **first**, and it has to run somewhere: a Live Activity outlives the
+        // process that requested it, so an app killed mid-session leaves a lock-screen card counting up
+        // from a start instant nothing is recording. This build has no BLE state restoration and no
+        // in-flight persistence, so a relaunch cannot adopt one — it can only end it. Ordered ahead of
+        // the step counter because that call never returns.
+        .task {
+            await container.liveSessionUseCase.endOrphanedLiveActivities()
+            await container.trackStepsUseCase.start()
+        }
     }
 }
 
@@ -106,6 +135,10 @@ private struct MoreView: View {
                             manage: container.manageBLEConnectionUseCase,
                             sync: container.syncHistoricalDataUseCase,
                             preferencesRepository: container.preferencesRepository))
+                }
+                NavigationLink("Profile") {
+                    ProfileDashboardView(
+                        viewModel: ProfileViewModel(repository: container.userProfileRepository))
                 }
                 NavigationLink("Settings") {
                     SettingsDashboardView(

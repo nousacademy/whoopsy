@@ -240,7 +240,7 @@ public enum RespiratoryRateMath {
     /// that invents a rate.
     ///
     /// What it does **not** fix is folding, which is a property of the tachogram rather than of the
-    /// band edge and is documented in `ALGORITHMS.md`: a 40 bpm modulation puts its second harmonic at
+    /// band edge and is documented in `docs/ALGORITHMS.md`: a 40 bpm modulation puts its second harmonic at
     /// 1.333 Hz, which the beat-rate sampling folds to 0.333 Hz and reports as ~20 bpm. No edge rule
     /// reaches that, because the peak is not near an edge.
     public static let edgeGuardBins: Int = 2

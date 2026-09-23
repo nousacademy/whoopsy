@@ -29,6 +29,6 @@ where it came from — imported from a WHOOP export, or read off a strap.
 
 Once strap sync works against real hardware and the base app is finished, this file becomes a real
 guide and pull requests open up. The material for it already exists in the repository — `CLAUDE.md`
-for the build and test commands and the architectural rules, `ALGORITHMS.md` and `BLE_PROTOCOL.md`
-for the specs, and `PATENTS.md` for what is and isn't WHOOP's own mathematics. Read those first if
+for the build and test commands and the architectural rules, `docs/ALGORITHMS.md` and `docs/BLE_PROTOCOL.md`
+for the specs, and `docs/PATENTS.md` for what is and isn't WHOOP's own mathematics. Read those first if
 you want to understand the design in the meantime.

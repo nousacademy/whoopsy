@@ -32,7 +32,7 @@ public struct BiometricSample: Identifiable, Equatable, Sendable {
     /// **It is not a substitute for the series, and the two RMSSD consumers currently treat it as
     /// one** — `CalculateRecoveryUseCase` and `AnalyzeStressUseCase` each flatten one interval per
     /// notification, so they difference beats that were never adjacent. That defect predates this
-    /// field and is not fixed here; see the note in `ALGORITHMS.md` §1.
+    /// field and is not fixed here; see the note in `docs/ALGORITHMS.md` §1.
     public var rrIntervalMs: Double? { rrIntervalsMs?.first }
 
     /// The strap's three accelerometer axes in Gs, or `nil` when the notification carried no motion.

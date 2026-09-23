@@ -1,0 +1,21 @@
+{
+  "" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsyLiveActivity-primary.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsyLiveActivity-primary.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsyLiveActivity-primary.dia",
+    "emit-module-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsyLiveActivity-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsyLiveActivity-primary-emit-module.dia",
+    "pch" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsyLiveActivity-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsyLiveActivity-primary.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/App/LiveActivity/WhoopsyLiveActivityBundle.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsyLiveActivityBundle.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsyLiveActivityBundle.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsyLiveActivityBundle.o"
+  },
+  "/Users/alex/Desktop/whoopsy/App/LiveActivity/WhoopsySessionLiveActivity.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsySessionLiveActivity.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsySessionLiveActivity.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivity.build/Objects-normal/arm64/WhoopsySessionLiveActivity.o"
+  }
+}

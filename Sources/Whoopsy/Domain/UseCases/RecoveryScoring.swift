@@ -4,7 +4,7 @@ import Foundation
 ///
 /// This exists because two callers need the same arithmetic from different sources: the strap path
 /// (`CalculateRecoveryUseCase`, RMSSD from R-R intervals) and the HealthKit import path (SDNN).
-/// Duplicating the coefficients into both would reproduce exactly the drift that `ALGORITHMS.md` §3
+/// Duplicating the coefficients into both would reproduce exactly the drift that `docs/ALGORITHMS.md` §3
 /// already suffered, so both go through here.
 ///
 /// It also owns the one rule that cannot be expressed by the formula itself: **history is filtered to

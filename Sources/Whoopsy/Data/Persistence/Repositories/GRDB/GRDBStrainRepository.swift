@@ -51,6 +51,10 @@ public final class GRDBStrainRepository: StrainRepository, Sendable {
         )
     }
 
-    /// Thermochemical conversion, the same one `StrainAccumulatorMath.estimateCalories` names.
+    /// Thermochemical conversion, kcal → kJ. It is the standard constant and **not** something
+    /// `StrainAccumulatorMath.estimateCalories` supplies: that function returns kilocalories and names
+    /// no conversion (it used to claim one in a comment that was untrue of its own body). The
+    /// conversion lives here because this is the boundary where the entity's unit and the column's
+    /// unit differ.
     private static let kilojoulesPerKilocalorie = 4.184
 }

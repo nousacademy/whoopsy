@@ -22,6 +22,25 @@ extension Double {
         return String(format: "%d:%02d", totalMinutes / 60, totalMinutes % 60)
     }
 
+    /// A duration in seconds as `"0:15:58"` — hours, minutes and seconds, seconds zero-padded.
+    ///
+    /// The third shape this file holds, and it is distinct from both of the other two by what it is
+    /// *for* rather than by its separator. `formattedHoursMinutes()` spells its units out and is for a
+    /// caption with room for them; `formattedCompactHoursMinutes()` drops seconds because a sleep
+    /// figure is hours-and-minutes and a seconds digit on a nine-hour night is noise. This one is for a
+    /// figure whose whole magnitude is minutes — a workout's own length, and the time a session spent
+    /// inside one heart-rate zone — where the seconds are a real part of the answer and the hours digit
+    /// is usually a `0`. The reference's activity page prints exactly this: `DURATION 0:15:58`, and
+    /// `ZONE 1 … 0:00:12` beneath it.
+    ///
+    /// The hours field is **not** padded, matching the reference: `0:15:58` and not `00:15:58`. A
+    /// workout long enough to need two digits is a session this app cannot record in one sitting
+    /// anyway, so the asymmetry costs nothing and copying the reference is the safer default.
+    public func formattedClockDuration() -> String {
+        let total = Int(max(0, self).rounded())
+        return String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+    }
+
     /// A duration in seconds as `"+1:44"`, with a leading `+` and never a `-`.
     ///
     /// The sleep need card's breakdown box is a list of things *added to* a base requirement, so every

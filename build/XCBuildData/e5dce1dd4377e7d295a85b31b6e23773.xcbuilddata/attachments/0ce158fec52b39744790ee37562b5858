@@ -1,0 +1,4 @@
+module WhoopsyLiveActivityKit {
+header "WhoopsyLiveActivityKit-Swift.h"
+export *
+}

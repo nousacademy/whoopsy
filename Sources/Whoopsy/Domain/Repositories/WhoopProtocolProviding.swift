@@ -15,7 +15,7 @@ public protocol WhoopProtocolProviding: Sendable {
     /// question about writing, since decoding is answered by the profile's existence.**
     func supportsProprietarySync(_ generation: WhoopHardwareGeneration) -> Bool
 
-    /// What `BLE_PROTOCOL.md` calls the envelope this build frames commands with for this generation,
+    /// What `docs/BLE_PROTOCOL.md` calls the envelope this build frames commands with for this generation,
     /// or `nil` when it frames none.
     ///
     /// Read off the profile's own header checksum rather than listed per generation, so the name a

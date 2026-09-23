@@ -79,7 +79,7 @@ public struct RecoveryMetric: Identifiable, Equatable, Sendable {
         /// Written as half-open ranges rather than as the `case 67...100` literals they replace,
         /// because a **view** now has to print them: the month calendar's legend reads `<34%`,
         /// `34% - 66%` and `>66%` off these instead of typing `34` and `66` a second time. The spec
-        /// and `ALGORITHMS.md` §3 spell the tiers inclusively — green 67–100, yellow 34–66, red 0–33 —
+        /// and `docs/ALGORITHMS.md` §3 spell the tiers inclusively — green 67–100, yellow 34–66, red 0–33 —
         /// and `67..<101` is those same numbers in the form a `contains` test can answer.
         ///
         /// The inclusive upper bounds the legend needs are arithmetic on the range, not new

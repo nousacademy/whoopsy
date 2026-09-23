@@ -245,6 +245,22 @@ public enum Theme {
     public static let bandSufficient = Color(white: 0.62)
     public static let bandOptimal = Color(red: 0.24, green: 0.84, blue: 0.48)
 
+    /// A comparison that carries no verdict — the activity detail page's two delta badges.
+    ///
+    /// **A token of its own, and the alternative was to borrow one.** The three verdict colours above
+    /// say *better*, *unchanged* and *worse*, and an activity's strain rising against its own history
+    /// is none of the three: it is neither good news nor bad news, and it is certainly not the
+    /// yellow `same` — a badge reading `▲ 2.5` in `recoveryYellow` would be calling a harder session a
+    /// warning. `textSecondary` and `bandSufficient` were the two candidates for borrowing and neither
+    /// means a verdict either: the first is body copy, the second is a sleep band, and a token whose
+    /// name says one thing while a screen uses it to mean another is exactly the drift
+    /// `SleepBand.color` and this file exist to prevent. So the neutral gets a name.
+    ///
+    /// **It is deliberately not one of the three, and it is read only through `ActivityDelta.color`.**
+    /// That type is `MetricChange`'s sibling and holds no `Verdict` at all — see its own comment for
+    /// why a fourth case could not be added to that enum instead.
+    public static let neutralDelta = Color(white: 0.62)
+
     // Telemetry Pulse
     public static let livePulseCyan = Color(red: 0.0, green: 0.95, blue: 1.0)
     public static let textPrimary = Color.white

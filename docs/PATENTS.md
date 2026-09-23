@@ -5,7 +5,7 @@ Stress and VO₂ max, set against what this app implements. The purpose is narro
 plainly: **to establish, model by model, which of this app's constants are calibrations and which are
 recoveries — and to make that distinction citable rather than asserted.**
 
-`ALGORITHMS.md` already says of several models that "WHOOP publishes the model's shape and none of its
+`docs/ALGORITHMS.md` already says of several models that "WHOOP publishes the model's shape and none of its
 constants". This document is the evidence for that sentence, and it is also where that sentence turns
 out to be **incomplete**: for most metrics WHOOP publishes the shape *and anchors it to an input this
 app cannot measure*. That is a stronger and more useful statement than "the constants are secret",
@@ -59,9 +59,8 @@ it — and the disclosed **anchors are physiological measurements this app canno
 **Every substitution in the right-hand column is forced, not lazy.** This app has no AT measurement,
 no slow-wave detector, and no trained model. The correct reading of a mismatch is not "the app got it
 wrong" but "the app cannot compute the disclosed quantity, so it computes a different one and must
-say so". That is exactly the bargain `ALGORITHMS.md` already documents for `SleepNeedMath` and
-`StressMath`; this file extends it to Strain and Recovery, which had been assumed to be closer to
-disclosed than they are.
+say so". That is exactly the bargain `docs/ALGORITHMS.md` already documents for `SleepNeedMath` and
+`StressMath`; this file extends it to Strain and Recovery as well.
 
 ---
 
@@ -109,7 +108,7 @@ w(v) = {  0 : v = 0
 | How RHR and MHR are derived | **[not disclosed]** |
 
 **§2's architecture is not a guess.** `Σ w_z · Δt_z` — a step-weighted integral of heart-rate reserve
-over time — **is** WHOOP's structure, and 21 is a disclosed multiplier. Whoever wrote `ALGORITHMS.md`
+over time — **is** WHOOP's structure, and 21 is a disclosed multiplier. Whoever wrote `docs/ALGORITHMS.md`
 §2 landed on the right shape.
 
 ### 1.2 Where the app diverges, and why it has to
@@ -244,7 +243,7 @@ The entire disclosure:
 | A clamp or rounding rule | **[not disclosed]** |
 | Colour coding of tiers | **[not disclosed]** |
 
-**`ALGORITHMS.md` §3's form is entirely this app's own.** The z-score shape, the `24`, the `−18`, the
+**`docs/ALGORITHMS.md` §3's form is entirely this app's own.** The z-score shape, the `24`, the `−18`, the
 `0.70`, the `20`, the `50`, the 30-day flat baseline and the `clamp(1..99)` have **no counterpart in
 this patent family**. Anyone citing these patents as the origin of those numbers is citing something
 else — most likely WHOOP's public-facing documentation, which is not a patent and is not this file.
@@ -314,7 +313,7 @@ that the app reproduces WHOOP's recovery must not be read as covering this.
 ### 2.4 What the patents do corroborate
 
 **RMSSD is named.** `[0161]`: "the HRV metric of the root-mean-square of successive differences of RR
-intervals (RMSSD) is used." [described] `ALGORITHMS.md` §1 currently calls the classification of WHOOP's
+intervals (RMSSD) is used." [described] `docs/ALGORITHMS.md` §1 currently calls the classification of WHOOP's
 exported HRV column as RMSSD "an inference". As an *embodiment* that reading is now corroborated; the
 inference that WHOOP's *export* is RMSSD remains an inference, because the export does not name it.
 
@@ -367,7 +366,7 @@ The nearest thing to a boundary anywhere is the use of *"slow wave sleep"* as a 
 window (§2.3) — a use of a stage, never a definition of one. **US9750415B2 claims to key the recovery
 score off slow wave sleep without ever defining what makes a period slow wave sleep.**
 
-**`ALGORITHMS.md`'s claim that WHOOP publishes no stage boundaries is confirmed.** The consequence is
+**`docs/ALGORITHMS.md`'s claim that WHOOP publishes no stage boundaries is confirmed.** The consequence is
 worth stating: this app's actigraphy + heart-rate-dip heuristic **cannot be validated against, or
 aligned to, anything WHOOP has published.** Any future screen that presents stage boundaries as
 WHOOP's would be presenting this app's calibration as a recovered constant.
@@ -410,7 +409,7 @@ repo's own way (implied sleep performance, MAE):
 | disclosed sigmoid, free scale | 3.700 | 3.594 |
 
 The gap (0.07–0.18 of a point) is **smaller than the spread between fold constructions**, and smaller
-than the gap between this measurement and the 3.77 `ALGORITHMS.md` §4 publishes. So the export cannot
+than the gap between this measurement and the 3.77 `docs/ALGORITHMS.md` §4 publishes. So the export cannot
 choose between them, and the app's linear form is not refuted — it is simply not WHOOP's.
 
 **The disclosure explains an anomaly the doc recorded but could not account for.** §4 notes that
@@ -428,7 +427,7 @@ calculates "a first sleep debt metric based on user strain and a second sleep de
 accumulated sleep debt". A live continuation (US 19/225,049, published 2025-09-18) is where a changed
 strain coefficient would appear — the one document to watch.
 
-`ALGORITHMS.md` §4 documents the accumulated-debt term as a **deliberate omission**, measured as buying
+`docs/ALGORITHMS.md` §4 documents the accumulated-debt term as a **deliberate omission**, measured as buying
 0.35 of a point (3.77 → 3.41) for a second fitted constant and seven nights of history. That judgement
 stands on its own arithmetic; what this file adds is that the patent on the two-term version is granted,
 so the omission is a real departure from the disclosed model and should be described as one.
@@ -465,15 +464,19 @@ per-variable weights, and the app has no inputs for any of them.
 Nothing in any document read for this investigation describes a per-stage typical range, a percentile
 band, or a middle-50% comparison. `SleepTypicalRangeCard`'s window and percentile are this app's own,
 as its own documentation already says — this file confirms the negative rather than adding to it.
+The negative covers **every** percentile band in this app, and there is now a second one: the activity
+detail page's typical duration, `ActivityBaseline`'s 25th–75th percentile over the last ten sessions
+of that activity (`docs/ALGORITHMS.md` §8). It is named here only so a reader does not take this
+section as covering the sleep card alone; nothing about it is disclosed either, and it introduces no
+value this file records.
 
-### 3.5 A correction carried forward
+### 3.5 Two patents that are not WHOOP's
 
 **WO2019168474A1 ("Method, computing device and wearable device for sleep stage detection") is Nitto
-Denko Corporation, not WHOOP.** It appears in web searches beside WHOOP patents only because Google
-Patents' "similar documents" panel lists them together. It is a PCT (PCT/SG2019/050111), it is ceased,
-and **WHOOP's patents do not cite it** — the string does not appear in US11925473B2, US12575786B2,
-US20220293236A1 or US20240188896A1. Its logistic-regression-over-11-epochs classifier is a different
-approach and is not WHOOP's.
+Denko Corporation, and must not be cited as a WHOOP staging source.** It is a PCT
+(PCT/SG2019/050111), it is ceased, and **WHOOP's patents do not cite it** — the string appears in none
+of US11925473B2, US12575786B2, US20220293236A1 or US20240188896A1. Its
+logistic-regression-over-11-epochs classifier is a different approach and is not WHOOP's.
 
 Likewise **US10750958B2 is "Variable brightness and gain for optimizing signal acquisition"**, not a
 staging patent.
@@ -592,9 +595,7 @@ Not acted on; noted.
 consumption", filed **2026-03-09**, published **2026-09-10**. Priority to provisional 63/769,093
 (2025-03-09), with a parallel PCT/US26/18336. Assignee Whoop, Inc.
 
-**The publication has now been read** (the assignee register §9 relied on carries no abstract for the
-application number, which is why an earlier revision of this file called it a title and a date and
-nothing more).
+**The publication has been read** — the assignee register §9 relied on carries no abstract for the application number.
 
 **What it discloses is a model-selection architecture, not a formula** [described]:
 
@@ -618,7 +619,7 @@ and every `220` is a reference numeral (user device 220), not a maximal-heart-ra
 
 **So the comparison with `Vo2MaxMath` resolves the way every other metric here does.** WHOOP discloses
 a **regression-and-GPS suite**; this app computes `15.3 × HRmax / HRrest` (Uth et al. 2004, SEE
-4.7 mL·kg⁻¹·min⁻¹ when `HRmax` is age-predicted), the one model in `ALGORITHMS.md` whose constant is
+4.7 mL·kg⁻¹·min⁻¹ when `HRmax` is age-predicted), the one model in `docs/ALGORITHMS.md` whose constant is
 quoted from a paper rather than fitted. These are not the same model at two precisions — they are
 different models, and the disclosed one needs a GPS-tracked run, a clinical measurement, or a trained
 regression over sleep PPG. **The app's ratio is a forced substitute for all three, not a less precise
@@ -772,7 +773,7 @@ The `assignee=Whoop` result set contains unrelated entities, and two of them are
 **Nothing in this document has been applied to the code.** It is a record. The changes it argues for,
 in rough order of how well-sourced they are:
 
-1. **Cite the tier thresholds.** `ALGORITHMS.md` §3 and `RecoveryState.init(score:)` can now name a
+1. **Cite the tier thresholds.** `docs/ALGORITHMS.md` §3 and `RecoveryState.init(score:)` can now name a
    source for 66/33 rather than presenting the boundaries unsourced. The 33/34 edge is the one open
    question and the patent does not settle it.
 2. **Label Strain §2's constants as this app's own**, alongside the labels `SleepNeedMath` and
@@ -787,7 +788,7 @@ in rough order of how well-sourced they are:
    that rather than implying the fitted form is the only candidate.
 5. **Update the §4 note on the omitted debt term** to record that the two-term version is granted.
 
-**What should *not* change.** The app should not adopt disclosed numbers it cannot honour. `ALGORITHMS.md`
+**What should *not* change.** The app should not adopt disclosed numbers it cannot honour. `docs/ALGORITHMS.md`
 §2's zone table is not wrong because WHOOP's is AT/CPT-based — it is the best available substitute for a
 measurement this app cannot make, and replacing it with four bands at unrealisable thresholds would be
 strictly worse. The same applies to `−z_RMSSD` against the patent's hedged example.

@@ -75,7 +75,7 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
     /// component of that night's need**: WHOOP publishes `sleep_needed` as a sum containing
     /// `need_from_sleep_debt`, and a fit over the export recovers that term at a coefficient of 0.98. A
     /// **strap** night's is this app's own — `SleepDebtMath`, over the nights before it — and the need
-    /// above it is `SleepNeedMath`'s, which **deliberately omits any debt term** (`ALGORITHMS.md` §4).
+    /// above it is `SleepNeedMath`'s, which **deliberately omits any debt term** (`docs/ALGORITHMS.md` §4).
     ///
     /// So the debt is a part of the need on one producer's nights and not on the other's, and nothing
     /// about the two numbers shows it. `hasWhoopSleepNeed` is what carries the difference.
@@ -185,7 +185,7 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
     /// Do **not** replace this with `endTime − startTime`. That span is never shorter than the
     /// classified minutes and is longer on 295 of the same 910 nights, by as much as six hours — one
     /// export row's `Sleep onset` is literally `00:00:00`. The truth lies between the two and the two
-    /// can be six hours apart. `TODO.md` carries the full table.
+    /// can be six hours apart. `docs/TODO.md` carries the full table.
     public var sleepPeriodSeconds: TimeInterval {
         totalTimeAsleepSeconds + awakeSeconds
     }

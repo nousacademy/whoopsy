@@ -41,7 +41,31 @@ public final class DIContainer: @unchecked Sendable {
     /// Which generations this build can actually frame for. Presentation depends on this rather than
     /// on `Data/BLE` so the device screen can say plainly that a 5.0 has no implementation behind it.
     public let protocolCatalog: any WhoopProtocolProviding
-    @MainActor public var locationTracking: any LocationTracking { useMockBLE ? PreviewLocationTrackingService() : CoreLocationTrackingService() }
+    @MainActor public let locationTracking: any LocationTracking
+
+    /// The lock-screen card's transport, and **a stored `let` rather than a computed property like
+    /// `locationTracking` used to be**.
+    ///
+    /// That difference is load-bearing. A computed property builds a fresh service per read, and both
+    /// of these hold state a second instance cannot reach: `LiveActivityController` holds the `Activity`
+    /// handle, so a second instance would have no way to update the card the first one started — the
+    /// card would be requested once and then stranded on the lock screen, counting up, until the system
+    /// expired it. `CoreLocationTrackingService` holds the `CLLocationManager` it called
+    /// `startUpdatingLocation` on, so a second instance's `stop()` would stop a manager that never
+    /// started while the first kept the GPS awake for the life of the process. The comment that used to
+    /// sit here called the computed shape harmless because "a `CLLocationManager` holds no state this app
+    /// reads back" — true about *state*, wrong about *lifecycle*, which is the pair that matters for a
+    /// resource that has to be released.
+    @MainActor public let liveActivityController: any LiveActivityControlling
+
+    /// The live session — **the app's only recording path**, and the reason it is held here rather than
+    /// by a screen.
+    ///
+    /// The user's requirement is that backing out of the session screen leaves it recording, so this
+    /// has to outlive any view. `MainContainerView` hands the one instance to `HomeDashboardView`, which
+    /// is `@MainActor` and lasts as long as the process does.
+    @MainActor public let liveSessionUseCase: LiveSessionUseCase
+
     private let useMockBLE: Bool
 
     public init(useMockBLE: Bool = true) {
@@ -137,6 +161,24 @@ public final class DIContainer: @unchecked Sendable {
             recoveryRepository: recoveryRepository,
             sleepRepository: sleepRepository,
             userProfileRepository: userProfileRepository)
+        // The one place the two halves of the live session meet. It reads the same
+        // `StreamBiometricsUseCase` `HomeViewModel` does — the BLE streams are multicast, so a second
+        // consumer is an addition and not a theft, and the first one is never orphaned.
+        self.liveActivityController = LiveActivityController()
+        // Built here rather than per read, so the instance that starts the GPS is the one that stops
+        // it — see the note on `locationTracking` above.
+        self.locationTracking = useMockBLE
+            ? PreviewLocationTrackingService() : CoreLocationTrackingService()
+        self.liveSessionUseCase = LiveSessionUseCase(
+            controller: liveActivityController,
+            locationTracking: locationTracking,
+            streamBiometricsUseCase: streamBiometricsUseCase,
+            saveWorkoutUseCase: saveWorkoutUseCase,
+            userProfileRepository: userProfileRepository,
+            // The session's own step reader. `TrackStepsUseCase` above is registered on the same
+            // multicast `motionStream`, and both must hold it — see `LiveSessionUseCase`.
+            bleRepository: bleRepository
+        )
         self.whoopExportImport = WhoopExportImporter(
             recoveryRepository: recoveryRepository,
             sleepRepository: sleepRepository,

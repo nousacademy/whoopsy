@@ -1,6 +1,6 @@
 ---
 name: csv-field-coverage
-description: Use when a WHOOP export column gains or loses a consumer — a new parser field, a new column on a record, a new model, a new screen reading an imported value — and whenever a CSV under Sources/Whoopsy/Data/Resources/ is bundled, unbundled, or newly read. Owns TODO.md, the per-column coverage inventory.
+description: Use when a WHOOP export column gains or loses a consumer — a new parser field, a new column on a record, a new model, a new screen reading an imported value — and whenever a CSV under Sources/Whoopsy/Data/Resources/ is bundled, unbundled, or newly read. Owns docs/TODO.md, the per-column coverage inventory.
 ---
 
 # CSV Field Coverage
@@ -11,7 +11,7 @@ zone block and its `Activity name` column — neither of the last two is in any 
 rows of measurements the app has never opened, and the only reason a column stays unused is that
 nobody wrote down what it would take. (`sleeps.csv`'s 918 rows are *not* part of any such figure — it
 is bundled, and 910 of its rows are the same 910 nights the cycle file already carries.) That is what
-`TODO.md` at the repo root is for, and this skill is how it stays true.
+`docs/TODO.md` is for, and this skill is how it stays true.
 
 The failure this skill exists to prevent is not a missing checkbox. It is **a stale inventory** — a
 `[x]` next to a column whose only consumer was deleted two refactors ago, or a `[ ]` next to a
@@ -20,7 +20,7 @@ than no list, because it is read as fact.
 
 ## The file this skill owns
 
-`TODO.md` — one line per column, per file, in the file's own column order, `[x]` when a named symbol
+`docs/TODO.md` — one line per column, per file, in the file's own column order, `[x]` when a named symbol
 consumes it. Three things about it are load-bearing and must not be relaxed:
 
 1. **One line per column.** A checklist shorter than the column count is a column nobody looked at.
@@ -31,7 +31,7 @@ consumes it. Three things about it are load-bearing and must not be relaxed:
    `strains.maxHeartRate` → `StrainDashboardView` "Peak HR" is.
 
 **§1–§4 are the file's own scope. §5 is not.** It is the strap's historical sync — a wire-protocol
-work list, with `- [ ]` items that are tasks rather than columns. It lives in `TODO.md` because that
+work list, with `- [ ]` items that are tasks rather than columns. It lives in `docs/TODO.md` because that
 is where the project's outstanding work is recorded, but the three rules above do not apply to it
 and a re-measure must leave it alone.
 
@@ -81,7 +81,7 @@ Then the invariant, which is the one check this skill cannot skip:
 # Scoped to §1–§4 on purpose: §5 is a work list, not a column inventory, and its
 # `- [ ]` items are not columns. Counting the whole file makes §5 read as 10 extra
 # columns in §1–§4 and sends you looking for a list that is already correct.
-awk '/^## 1\./,/^## 5\./' TODO.md | grep -c '^- \['
+awk '/^## 1\./,/^## 5\./' docs/TODO.md | grep -c '^- \['
 ```
 
 A mismatch is the finding. Fix the list, not the heading.
@@ -114,15 +114,15 @@ the line you touched. The counts are the part a reader trusts fastest and checks
 
 **5. If a status change has a documented reason, route it.** A column's coverage is often decided by
 a rule that lives elsewhere — a **Decision** line (do not cover) is a citation, not an opinion.
-When one of those changes, update the source it cites, not just `TODO.md`:
+When one of those changes, update the source it cites, not just `docs/TODO.md`:
 
 | The line is about | The reason lives in |
 | :--- | :--- |
-| Recovery inputs, HRV metric classification | `ALGORITHMS.md` §1 / §3, plus the `CLAUDE.md` never-mix gotcha |
-| Strain inputs | `ALGORITHMS.md` §2 — an imported strain is WHOOP's number |
-| Sleep need, sleep debt, consistency | `ALGORITHMS.md` §4 |
+| Recovery inputs, HRV metric classification | `docs/ALGORITHMS.md` §1 / §3, plus the `CLAUDE.md` never-mix gotcha |
+| Strain inputs | `docs/ALGORITHMS.md` §2 — an imported strain is WHOOP's number |
+| Sleep need, sleep debt, consistency | `docs/ALGORITHMS.md` §4 |
 | Why a file is bundled or not | `CLAUDE.md` — the `Bundle.module`-not-`Bundle.main` gotcha names the bundled files by hand |
-| A new table, or a new column on a record | `ARCHITECTURE.md` §2.B and the frozen-migration gotcha in `CLAUDE.md` |
+| A new table, or a new column on a record | `docs/ARCHITECTURE.md` §2.B and the frozen-migration gotcha in `CLAUDE.md` |
 
 Then run the **`architecture-doc-sync`** skill over the change rather than duplicating its routing
 table here.

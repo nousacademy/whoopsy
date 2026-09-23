@@ -3,7 +3,7 @@ import Foundation
 /// A proprietary frame whose envelope this app has validated and whose payload it does not decode.
 ///
 /// **This replaces the three decoded payload types the decoder used to produce, and the replacement is
-/// the point rather than a simplification.** `BLE_PROTOCOL.md` §2 documents the 4.0 packet types:
+/// the point rather than a simplification.** `docs/BLE_PROTOCOL.md` §2 documents the 4.0 packet types:
 /// `0x23` command, `0x24` command-response, `0x2F` historical data, `0x30` event, `0x31` metadata. It
 /// documents no live-telemetry packet type and no battery packet type. The app's `0x01` and
 /// `0x02` / `0x20` cases were its own invention, and because dispatch was keyed on a byte that is
@@ -20,7 +20,7 @@ import Foundation
 /// So the decoder does the half it can do and says so plainly: start-of-frame, declared length, header
 /// checksum and payload checksum are all verified, and the bytes are handed up undecoded. That is also
 /// the shape the pending capture needs — raw frames are the evidence, and a parser written against
-/// them comes after, which is the order `BLE_PROTOCOL.md` §7 sets out.
+/// them comes after, which is the order `docs/BLE_PROTOCOL.md` §7 sets out.
 public struct WhoopRawFrame: Sendable, Equatable {
     public let generation: WhoopHardwareGeneration
 
@@ -171,7 +171,7 @@ public final class WhoopPacketDecoder: Sendable {
         switch profile.headerChecksum {
         case .crc8OverLengthBytes:
             // The input is the two length bytes and nothing else — not the start of frame, and not the
-            // command. `BLE_PROTOCOL.md` §2.1 records what computing it over `[cmd, length…]` cost.
+            // command. `docs/BLE_PROTOCOL.md` §2.1 records what computing it over `[cmd, length…]` cost.
             let covered = data.subdata(
                 in: profile.lengthFieldOffset..<(profile.lengthFieldOffset + 2))
             let expected = CRCUtils.crc8(covered)

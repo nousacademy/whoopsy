@@ -69,10 +69,13 @@ public final class CalculateStrainUseCase: Sendable {
         let strainScoreVal = StrainAccumulatorMath.calculateStrainScore(from: totalAccumulatedLoad)
 
         let totalDurationMinutes = Double(samples.count) / 60.0
-        let activeCalories = StrainAccumulatorMath.estimateCalories(
+        // `nil` when the user has supplied no body weight — see `estimateCalories`, which refuses to
+        // substitute one. Note the default 1-second-per-sample assumption folded into the line above:
+        // it is a count, not a measured span, and it is kept because changing it would move every
+        // stored calorie figure this app has already written.
+        let calorieEstimate = StrainAccumulatorMath.estimateCalories(
             heartRate: avgHR,
             durationMinutes: totalDurationMinutes,
-            age: profile.age,
             weightKg: profile.weightKg,
             restingHR: profile.restingHeartRate
         )
@@ -94,7 +97,15 @@ public final class CalculateStrainUseCase: Sendable {
             // absence of one. The guard above is the whole distinction.
             hasMeasurement: true,
             rawAccumulatedLoad: totalAccumulatedLoad,
-            activeCalories: (activeCalories * 10).rounded() / 10,
+            // **The one place in this app where an absence is stored as a `0`.** `strains.kilojoules` is
+            // `NOT NULL` and has no readers — no screen draws it, so this figure reaches nothing — and
+            // relaxing it to nullable needs a table rebuild rather than an `ALTER`, which is a
+            // different and riskier change than the one this arrived with. So when no weight is on file
+            // the day row stores `0.0` and *that is a gap rather than a reading*. The live session
+            // screen does not inherit it: `LiveSessionAccumulator` carries the `nil` through to the
+            // tile, so the figure a user actually sees is absent rather than zero. Recorded in
+            // `docs/TODO.md`; do not copy this pattern to a column anything reads.
+            activeCalories: ((calorieEstimate ?? 0.0) * 10).rounded() / 10,
             averageHeartRate: avgHR,
             maxHeartRate: maxObservedHR,
             zones: updatedZones

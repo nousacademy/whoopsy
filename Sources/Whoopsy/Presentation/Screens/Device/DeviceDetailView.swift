@@ -89,7 +89,7 @@ public struct DeviceDetailView: View {
                 // 4.0's envelope is not a message that strap rejects — it is a different one — so a
                 // caption that named the wrong envelope would be describing the exact mistake the two
                 // builders exist to make unreachable.
-                Text("Commands are framed with the WHOOP \(viewModel.protocolEnvelopeName) envelope recorded in BLE_PROTOCOL.md.")
+                Text("Commands are framed with the WHOOP \(viewModel.protocolEnvelopeName) envelope recorded in docs/BLE_PROTOCOL.md.")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
                 // Said plainly rather than left to the docs: the two envelopes match independent

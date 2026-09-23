@@ -12,6 +12,12 @@ let package = Package(
             name: "WhoopsyCore",
             targets: ["Whoopsy"]
         ),
+        // A **second product**, because the widget extension needs `WhoopsySessionAttributes` and must
+        // not link `Whoopsy`. See the target's own comment.
+        .library(
+            name: "WhoopsyLiveActivityKit",
+            targets: ["WhoopsyLiveActivityKit"]
+        ),
         .executable(
             name: "WhoopsyApp",
             targets: ["WhoopsyApp"]
@@ -22,9 +28,18 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "WhoopsyLiveActivityKit",
+            path: "Sources/WhoopsyLiveActivityKit"
+        ),
+        .target(
             name: "Whoopsy",
             dependencies: [
-                .product(name: "GRDB", package: "GRDB.swift")
+                .product(name: "GRDB", package: "GRDB.swift"),
+                // Referenced only from `#if os(iOS)` code (`Data/Services/LiveActivityController.swift`),
+                // so this edge is inert on macOS and the target compiles to an empty module there —
+                // which keeps `scripts/test.sh`'s hardcoded `Whoopsy.build/*.o` + `GRDB.build/*.o` link
+                // globs sufficient. The Kit contributes no symbol the runner needs and defines none.
+                "WhoopsyLiveActivityKit"
             ],
             path: "Sources/Whoopsy",
             // The three files the importer reads. `journal_entries.csv` is still not read by
@@ -60,7 +75,16 @@ let package = Package(
         .executableTarget(
             name: "WhoopsyApp",
             dependencies: ["Whoopsy"],
-            path: "app"
+            path: "app",
+            // `path: "app"` **is** `App/` on macOS's case-insensitive filesystem — `.gitignore` and
+            // Finder disagree about the case, and SwiftPM follows the path it is given. SwiftPM
+            // compiles every `.swift` file under a target's path recursively, so the widget sources at
+            // `App/LiveActivity/` would be compiled into the *host executable*, where `WidgetKit`'s
+            // `@main` bundle does not exist.
+            //
+            // So every Xcode-only source directory under `App/` needs a matching entry here, and this
+            // is the list to extend rather than a one-off.
+            exclude: ["LiveActivity"]
         )
     ]
 )

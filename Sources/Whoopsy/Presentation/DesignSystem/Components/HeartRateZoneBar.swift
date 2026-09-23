@@ -57,13 +57,11 @@ public struct HeartRateZoneBar: View {
         .glassCard(cornerRadius: 16, padding: 14)
     }
 
-    private func colorForZone(_ index: HeartRateZoneIndex) -> Color {
-        switch index {
-        case .zone1: return Color(white: 0.5)
-        case .zone2: return Theme.livePulseCyan
-        case .zone3: return Theme.recoveryGreen
-        case .zone4: return Theme.recoveryYellow
-        case .zone5: return Theme.recoveryRed
-        }
-    }
+    /// Forwards to `HeartRateZoneIndex.color`, which is now the single zone-to-`Color` mapping.
+    ///
+    /// It was a `switch` in this file while this bar was the mapping's only reader. The live session
+    /// screen's band row is the second, and a second `switch` is exactly the drift
+    /// `SleepStageType.color` was extracted to prevent — so the mapping moved to
+    /// `DesignSystem/HeartRateZoneIndex+Extensions.swift` and this is a forwarder rather than a copy.
+    private func colorForZone(_ index: HeartRateZoneIndex) -> Color { index.color }
 }

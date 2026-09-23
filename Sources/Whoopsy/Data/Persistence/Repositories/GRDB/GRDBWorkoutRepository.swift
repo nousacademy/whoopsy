@@ -28,7 +28,8 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
             maxHeartRate: workout.maxHeartRate,
             source: workout.source,
             activityName: workout.activityName,
-            hrZonePercents: workout.hrZonePercents
+            hrZonePercents: workout.hrZonePercents,
+            steps: workout.steps
         )
         let route = workout.route.map {
             WorkoutRoutePointRecord(
@@ -109,7 +110,8 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
                     splits: splits,
                     source: record.source,
                     activityName: record.activityName,
-                    hrZonePercents: record.hrZonePercents
+                    hrZonePercents: record.hrZonePercents,
+                    steps: record.steps
                 )
             )
         }

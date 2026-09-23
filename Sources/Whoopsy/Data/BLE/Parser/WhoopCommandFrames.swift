@@ -110,7 +110,7 @@ public enum WhoopCommandFrames {
     /// Sets the strap's clock, and returns **every** frame that has to be sent to do it.
     ///
     /// **The 4.0 takes two forms and both are sent, because a wrong-length set is acknowledged but not
-    /// latched** (`BLE_PROTOCOL.md` §7 Q7): the 8-byte `[u32 seconds][u32 subseconds]` newer firmware
+    /// latched** (`docs/BLE_PROTOCOL.md` §7 Q7): the 8-byte `[u32 seconds][u32 subseconds]` newer firmware
     /// uses and the 9-byte legacy form that firmware 41.17.x requires and that ignores the 8-byte one
     /// outright. Published clients disagree on the length, so each is a no-op on the other's firmware —
     /// which is what makes sending both safer than choosing. The two bytes that differ are the only

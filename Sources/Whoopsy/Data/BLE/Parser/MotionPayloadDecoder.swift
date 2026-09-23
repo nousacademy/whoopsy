@@ -5,7 +5,7 @@ import Foundation
 /// `MotionBatch` itself lives in `Domain/Entities/MotionBatch.swift` — it is a measurement, not a wire
 /// shape, and the stream protocol that carries it is a `Domain` one.
 ///
-/// **Everything here is a layout `BLE_PROTOCOL.md` §6 publishes, and nothing here is inferred.** The
+/// **Everything here is a layout `docs/BLE_PROTOCOL.md` §6 publishes, and nothing here is inferred.** The
 /// two layouts are R10 (the 4.0's live stream) and R21 (the 5.0/MG's, live on packet 43 and banked on
 /// packet 47). Both are 100 samples per axis of little-endian `i16`, and — the fact that makes one
 /// pedometer serve both — **both carry the same two scales**.

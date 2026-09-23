@@ -815,7 +815,7 @@ extension WhoopBLEManager: CBPeripheralDelegate {
         // the honest state while no payload layout had a reader. The motion record now has one, so a
         // decoded `MotionBatch` is yielded to `motionStream` — and everything else still goes no
         // further than the one-shot log below, which is where a real strap's frame is first seen and
-        // what `BLE_PROTOCOL.md` §7 asks to be captured.
+        // what `docs/BLE_PROTOCOL.md` §7 asks to be captured.
         //
         // **The dispatch is by generation, never by falling back.** `MotionPayloadDecoder.decode`
         // chooses R21 or R10 from `frame.generation` and refuses anything else, so a 4.0 record is

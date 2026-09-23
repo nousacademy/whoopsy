@@ -115,7 +115,7 @@ public enum BaselineStatisticsMath {
 
     /// Computes multi-factor Recovery Score.
     ///
-    /// The weights below are the specification — `ALGORITHMS.md` §3 restates them, and the two must
+    /// The weights below are the specification — `docs/ALGORITHMS.md` §3 restates them, and the two must
     /// agree. They previously did not, which is why they are named constants here.
     ///
     /// - Parameters:

@@ -20,6 +20,25 @@
                ReferencedContainer = "container:Whoopsy.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <!-- The widget extension, listed explicitly rather than left to the app's target dependency.
+              A scheme's build action is what Xcode actually builds, so an extension reachable only
+              through `dependencies` on the app target is built by `xcodebuild` and *not* by a
+              Cmd-B in the GUI — the difference surfaces as a `.appex` that is missing from the
+              embedded bundle on one path and present on the other. -->
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "A1000000000000000000009E"
+               BuildableName = "WhoopsyLiveActivity.appex"
+               BlueprintName = "WhoopsyLiveActivity"
+               ReferencedContainer = "container:Whoopsy.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

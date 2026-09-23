@@ -55,7 +55,7 @@ import Foundation
 /// robustness against a brief misclassification — one epoch of standing still in an otherwise awake
 /// evening — and buys nothing against the dominant error. This is the same low wake specificity
 /// (29–52%) the validation literature reports for every wrist-worn device, and it is recorded in
-/// `ALGORITHMS.md` §4 rather than left to be inferred from a passing test run.
+/// `docs/ALGORITHMS.md` §4 rather than left to be inferred from a passing test run.
 public enum SleepOnsetMath {
 
     /// One classified epoch, as the caller's classifier produced it.

@@ -2,12 +2,12 @@ import Foundation
 
 /// Steps, counted from wrist acceleration.
 ///
-/// **WHOOP publishes no step model, and this is not a recovery of one.** `PATENTS.md` has no step
-/// section, `ALGORITHMS.md` has no step formula, and neither reference in `BLE_PROTOCOL.md` describes
+/// **WHOOP publishes no step model, and this is not a recovery of one.** `docs/PATENTS.md` has no step
+/// section, `docs/ALGORITHMS.md` has no step formula, and neither reference in `docs/BLE_PROTOCOL.md` describes
 /// how the strap itself counts. So everything below is this app's own calibration — the same bargain
 /// `StressMath`, `SleepNeedMath` and `SleepDebtMath` all document — and **this app's number will not
 /// agree with the WHOOP app's**. What the strap gives is the raw material: three axes of acceleration
-/// at 100 Hz, on both generations and at the same two scales (`BLE_PROTOCOL.md` §6), which is what
+/// at 100 Hz, on both generations and at the same two scales (`docs/BLE_PROTOCOL.md` §6), which is what
 /// lets one threshold mean the same thing on a 4.0 and a 5.0 MG.
 ///
 /// ## The rule

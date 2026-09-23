@@ -107,7 +107,7 @@ print("==================================================")
 // passed — which is exactly how `buildPacket` hashed three bytes into a CRC8 the format says covers
 // two, on every command frame this app has ever sent, without anything noticing.
 //
-// It is now built on the four vectors `BLE_PROTOCOL.md` §2.1 records from the two reverse-engineering
+// It is now built on the four vectors `docs/BLE_PROTOCOL.md` §2.1 records from the two reverse-engineering
 // references' own published frames. These are checkable with no strap, and they are the assertions
 // that fail if the arithmetic or the frame layout moves.
 
@@ -116,7 +116,7 @@ print("==================================================")
 // it on a run that skipped both sections costs nothing.
 
 // The 5.0 `CLIENT_HELLO`, the one published 5.0 frame in hand: a static sixteen bytes from the
-// reference, quoted byte for byte in `BLE_PROTOCOL.md` §2.1. Every field below is asserted against it
+// reference, quoted byte for byte in `docs/BLE_PROTOCOL.md` §2.1. Every field below is asserted against it
 // rather than against this app's own arithmetic, because a vector computed by the code under test is
 // not a vector.
 let hello50 = Data([
@@ -131,7 +131,7 @@ let hello50 = Data([
 let decoder = WhoopPacketDecoder()
 
 if sectionEnabled(1) {
-    print("\n[1/17] Testing CRC Algorithms & Framing...")
+    print("\n[1/19] Testing CRC Algorithms & Framing...")
 
     // The 4.0 header CRC8 is over the two length bytes only, poly 0x07. Both values are the references'
     // own, quoted in §2.1.
@@ -316,7 +316,7 @@ if sectionEnabled(1) {
     // MARK: The 5.0 / MG envelope
     //
     // This block is anchored on the one published 5.0 frame in hand — the static sixteen-byte
-    // `CLIENT_HELLO` quoted in `BLE_PROTOCOL.md` §2.1 — and everything below is asserted against those
+    // `CLIENT_HELLO` quoted in `docs/BLE_PROTOCOL.md` §2.1 — and everything below is asserted against those
     // bytes rather than against this app's own encoder, which cannot build a 5.0 frame and must not.
     // That is the difference between this block and the CRC vectors above it: those pin two functions,
     // this pins a *slice*, and a slice is where an offset error lives.
@@ -438,7 +438,7 @@ if sectionEnabled(1) {
 
     // MARK: Length-driven reassembly across notifications
     //
-    // `BLE_PROTOCOL.md` §4 named this as the remaining half of the framing problem, and it is the gate
+    // `docs/BLE_PROTOCOL.md` §4 named this as the remaining half of the framing problem, and it is the gate
     // on every motion record this app wants. A notification carries at most `MTU − 3` bytes; the
     // 5.0/MG type-47 buffer is 1244 or 2140 bytes on that document's least-verifiable source, and the
     // 4.0 live IMU frame is 1921, published and hardware-verified. Before this, the decoder was handed
@@ -681,7 +681,7 @@ if sectionEnabled(1) {
     // discovered, and every framing, checksum and envelope assertion in this file still passes. That is
     // precisely how the `…82A5-4E40-1CA360B95B30` half sat here unremarked — the suite was green, and a
     // real scan would have found nothing. These literals are noop's `docs/BLE_REVERSE_ENGINEERING.md`
-    // line for line, which is also where the five roles come from; `BLE_PROTOCOL.md` §1 carries the
+    // line for line, which is also where the five roles come from; `docs/BLE_PROTOCOL.md` §1 carries the
     // provenance and the list of clients that agree.
     let whoop4Base = "8D6D-82B8-614A-1C8CB0F8DCC6"
     assertTest(
@@ -707,7 +707,7 @@ if sectionEnabled(1) {
 
 // MARK: - 2. Packet Decoder Tests
 if sectionEnabled(2) {
-    print("\n[2/17] Testing WHOOP Packet Decoder...")
+    print("\n[2/19] Testing WHOOP Packet Decoder...")
 
     // Test Standard SIG Heart Rate Frame
     let sigData = Data([0x10, 72, 0x50, 0x03]) // 72 BPM, 848 in 1/1024s (~828ms)
@@ -724,7 +724,7 @@ if sectionEnabled(2) {
     // This used to decode a frame built in the *encoder's* old layout — `[0xAA, 0x01, 16, 0x00]`, cmd at
     // index 1 — into a `.liveBiometric` payload the app had invented. Two things were wrong with that and
     // both are why this block is now built from the encoder instead of by hand: the layout was not the
-    // documented one (byte 1 is a *length*, not a command), and `BLE_PROTOCOL.md` §2 documents no
+    // documented one (byte 1 is a *length*, not a command), and `docs/BLE_PROTOCOL.md` §2 documents no
     // live-telemetry packet type at all. The decoder now returns the envelope's contents undecoded, which
     // is the half that is specified, and the assertions below pin the four checks it performs.
     let envelopeProfile = WhoopProtocolProfile.whoop4
@@ -747,7 +747,7 @@ if sectionEnabled(2) {
 
     // Dispatch is type-first, and the type is not the cmd. Under the documented envelope the old
     // `case 0x30` fired on a payload length and the old `case 0x20` on a command, which is the whole of
-    // the type/opcode confusion `BLE_PROTOCOL.md` §3 also flags in the handshake table. A command frame
+    // the type/opcode confusion `docs/BLE_PROTOCOL.md` §3 also flags in the handshake table. A command frame
     // whose cmd happens to equal a *packet type* constrains them to be different fields.
     let cmdEqualsType = WhoopPacketEncoder.buildPacket(
         profile: envelopeProfile,
@@ -858,7 +858,7 @@ if sectionEnabled(2) {
 
 // MARK: - 3. Mathematical & HRV Algorithms
 if sectionEnabled(3) {
-    print("\n[3/17] Testing HRV (RMSSD, SDNN, pNN50) & Artifact Rejection...")
+    print("\n[3/19] Testing HRV (RMSSD, SDNN, pNN50) & Artifact Rejection...")
     let rawRR: [Double] = [800.0, 805.0, 810.0, 795.0, 1500.0, 802.0, 808.0]
     let cleaned = HeartRateVariabilityMath.filterRRIntervals(rawRR)
     assertTest(!cleaned.contains(1500.0), "Ectopic beat (1500ms) successfully rejected by filter")
@@ -875,7 +875,7 @@ if sectionEnabled(3) {
 
 // MARK: - 4. Strain & Zone Accumulator
 if sectionEnabled(4) {
-    print("\n[4/17] Testing Strain Integrator & Karvonen Zones...")
+    print("\n[4/19] Testing Strain Integrator & Karvonen Zones...")
     let zones = StrainAccumulatorMath.computeZones(maxHR: 190, restHR: 50)
     assertTest(zones.count == 5, "Computed 5 distinct Heart Rate Zones")
     assertTest(zones[0].lowerBpm == 120, "Zone 1 threshold calculated via HRR: \(zones[0].lowerBpm)")
@@ -893,7 +893,7 @@ if sectionEnabled(4) {
 
 // MARK: - 5. Recovery Baseline Model
 if sectionEnabled(5) {
-    print("\n[5/17] Testing Recovery z-Score Baseline Model...")
+    print("\n[5/19] Testing Recovery z-Score Baseline Model...")
     let greenRecovery = BaselineStatisticsMath.computeRecoveryScore(
         todayHrv: 85.0,
         baselineHrvMean: 65.0,
@@ -941,7 +941,7 @@ Task {
 func runMainSections() async throws {
     // MARK: - 6. End-to-End Clean Architecture & Local Data Sovereignty
     if sectionEnabled(6) {
-        print("\n[6/17] Testing DI Container, Use Cases & Data Sovereignty Export...")
+        print("\n[6/19] Testing DI Container, Use Cases & Data Sovereignty Export...")
         let container = DIContainer(useMockBLE: true)
 
         // Calculate Recovery UseCase. As with Sleep below, this runs against the shared dev database and
@@ -986,68 +986,80 @@ func runMainSections() async throws {
 
     // MARK: - 7. Persistence Schema, Round-Trip & Day-Key Integrity
     if sectionEnabled(7) {
-        print("\n[7/17] Testing migrations, biometric round-trip and day-keyed writes...")
+        print("\n[7/19] Testing migrations, biometric round-trip and day-keyed writes...")
         await runPersistenceTests()
     }
 
     // MARK: - 8. HRV Metric Isolation & Baseline Guards
     if sectionEnabled(8) {
-        print("\n[8/17] Testing HRV metric isolation, baseline guards and formatters...")
+        print("\n[8/19] Testing HRV metric isolation, baseline guards and formatters...")
         runScoringAndFormatterTests()
     }
 
     // MARK: - 9. HealthKit Import (hermetic: fixture store + in-memory database)
     if sectionEnabled(9) {
-        print("\n[9/17] Testing HealthKit import attribution, skipping and idempotency...")
+        print("\n[9/19] Testing HealthKit import attribution, skipping and idempotency...")
         await runHealthKitImportTests()
     }
 
     // MARK: - 10. Days with no data
     if sectionEnabled(10) {
-        print("\n[10/17] Testing no-data days store zeros, and zeros never enter a baseline...")
+        print("\n[10/19] Testing no-data days store zeros, and zeros never enter a baseline...")
         await runNoDataDayTests()
     }
 
     // MARK: - 11. WHOOP export import (real CSV, in-memory database)
     if sectionEnabled(11) {
-        print("\n[11/17] Testing the WHOOP export import against the real file...")
+        print("\n[11/19] Testing the WHOOP export import against the real file...")
         await runWhoopExportImportTests()
     }
 
     // MARK: - 12. Choosing a day
     if sectionEnabled(12) {
-        print("\n[12/17] Testing that a chosen day is read, and an imported day is never overwritten...")
+        print("\n[12/19] Testing that a chosen day is read, and an imported day is never overwritten...")
         await runDaySelectionTests()
     }
 
     // MARK: - 13. Sleep Need
     if sectionEnabled(13) {
-        print("\n[13/17] Testing that a night's Sleep Need follows the previous day's Strain...")
+        print("\n[13/19] Testing that a night's Sleep Need follows the previous day's Strain...")
         await runSleepNeedTests()
     }
 
     // MARK: - 14. The Home screen's sources
     if sectionEnabled(14) {
-        print("\n[14/17] Testing the `+` menu's two rows, recorded workouts, HealthKit steps, the Stress Monitor, the recovery ring tiers and the seven-day MetricWeek join...")
+        print("\n[14/19] Testing the `+` menu's two rows, recorded workouts, HealthKit steps, the Stress Monitor, the recovery ring tiers and the seven-day MetricWeek join...")
         await runHomeSourceTests()
     }
 
     // MARK: - 15. The typical range
     if sectionEnabled(15) {
-        print("\n[15/17] Testing the sleep stage typical range, its whole-percent column, its absence rules, the night's heading, the hours-vs-needed card, the sleep-efficiency card and the within-sleep stress model...")
+        print("\n[15/19] Testing the sleep stage typical range, its whole-percent column, its absence rules, the night's heading, the hours-vs-needed card, the sleep-efficiency card and the within-sleep stress model...")
         await runTypicalRangeTests()
     }
 
     // MARK: - 16. Steps from the strap
     if sectionEnabled(16) {
-        print("\n[16/17] Testing the pedometer, both motion layouts, the step accumulator and the strap's step storage...")
+        print("\n[16/19] Testing the pedometer, both motion layouts, the step accumulator and the strap's step storage...")
         await runStepTests()
     }
 
     // MARK: - 17. Heart-rate zone time out of workouts.csv
     if sectionEnabled(17) {
-        print("\n[17/17] Testing the workouts parser, the derived workout id, the hr_zone_percents round trip, the day's zone aggregate and the export's zone properties...")
+        print("\n[17/19] Testing the workouts parser, the derived workout id, the hr_zone_percents round trip, the day's zone aggregate and the export's zone properties...")
         await runWorkoutZoneTests()
+    }
+
+    // MARK: - 18. The live session
+    if sectionEnabled(18) {
+        print("\n[18/19] Testing the `+` menu's one actionable row, the session accumulator, the band labels, the profile form's parsing and the session's write...")
+        await runLiveSessionTests()
+    }
+
+    // MARK: - 19. The activity detail page
+    if sectionEnabled(19) {
+        print("\n[19/19] Testing the activity window and its band, the five zone rows, the export's zone property, `workout.steps` and the two readers of one motion stream...")
+        await runActivityDetailTests()
     }
 
     print("\n==================================================")
@@ -2811,7 +2823,7 @@ func runSleepNeedTests() async {
     // cited: least squares of WHOOP's own `Sleep need (min)` on its own previous-day `Day Strain`
     // across the 909 nights of the bundled export that carry a preceding strain day, intercept
     // pinned to the 8-hour baseline. Scored by 5-fold cross-validation against the performance
-    // WHOOP's *own* need implies, that scores 3.77 where a flat 480 scores 10.06, `ALGORITHMS.md`
+    // WHOOP's *own* need implies, that scores 3.77 where a flat 480 scores 10.06, `docs/ALGORITHMS.md`
     // §4's 4.5 scores 4.64, and refitting per fold scores 3.87.
     //
     // This assertion is deliberately a bare equality with the basis in the message: changing the
@@ -2915,7 +2927,7 @@ func runSleepNeedTests() async {
         // The strain is keyed on the day *before* the night. `strains` is keyed on
         // `startOfDay(wakeOnset)`, so the cycle ending on morning D is keyed D — a night keyed D+1
         // follows it. Same-day strain is a different, weaker signal: it fits at R²=0.161 against the
-        // previous day's 0.385, which is why `ALGORITHMS.md` §4's same-day coefficient was the wrong
+        // previous day's 0.385, which is why `docs/ALGORITHMS.md` §4's same-day coefficient was the wrong
         // constant for a formula about the previous day.
         let nextMorning = calendar.date(byAdding: .day, value: 1, to: morning)!
         let nextStored = try await sleepRepository.getSleepSession(for: nextMorning)
@@ -3556,7 +3568,7 @@ func runSleepNeedTests() async {
     // respiratory rate and the beats that produced it are both present. What the assertions below
     // cover is the plumbing — a synthetic tachogram modulated at a known rate comes back at that rate
     // — and the rules that decide whether the beats may be used at all. They are not evidence that the
-    // figure agrees with a real strap, and `ALGORITHMS.md` §4 says so in as many words.
+    // figure agrees with a real strap, and `docs/ALGORITHMS.md` §4 says so in as many words.
     do {
         let start = Date(timeIntervalSinceReferenceDate: 0)
 
@@ -3998,6 +4010,65 @@ func runHomeSourceTests() async {
 
     let blank = ActivityMenu.entries.filter(\.symbol.isEmpty).map(\.title)
     assertTest(blank.isEmpty, "…each carrying a non-empty SF Symbol (\(blank) draw an empty chip)")
+
+    // ---- Every day is offered the menu; only today is offered a way to record ----
+    //
+    // The `+` is drawn whatever day is on screen. What the day changes is the *card*: off today it still
+    // opens and still lists `ADD ACTIVITY`, and the row withheld is `START ACTIVITY`, because recording
+    // is something a user does *now*. The rule is `ActivityMenu.entries(on:now:)`, and it forwards to
+    // `DayBarRules.isToday` rather than restating the comparison here or in the view.
+    //
+    // **Yesterday is the assertion that matters.** `isToday` and the shorter `!isFuture` agree on today
+    // and on tomorrow and differ on exactly one input — a past day — so a past day is the only case that
+    // can tell the correct rule from the tempting one. `now` is pinned rather than read from the clock so
+    // the three days cannot drift under the assertions, and the day arithmetic goes through
+    // `Calendar.current` rather than a fixed 86,400-second stride, which a DST boundary can land on the
+    // wrong calendar day.
+    //
+    // **Withholding the whole card is the mutation these catch**, and it is worth saying which one does
+    // the work: returning no rows off today trips the *yesterday titles* assertion, which reads `[]`
+    // where `["ADD ACTIVITY"]` belongs — confirmed by mutation, which fails there and exits 1. The
+    // titles are what pin the row that must survive; the closing assertion states the same property in
+    // general form, so it holds for a day nobody thought to pin rather than for the two that are here.
+
+    let menuNow = Date(timeIntervalSince1970: 1_700_000_000)
+    let menuYesterday = Calendar.current.date(byAdding: .day, value: -1, to: menuNow)!
+    let menuTomorrow = Calendar.current.date(byAdding: .day, value: 1, to: menuNow)!
+
+    let menuTodayTitles = ActivityMenu.entries(on: menuNow, now: menuNow).map(\.title)
+    assertTest(
+        menuTodayTitles == ["ADD ACTIVITY", "START ACTIVITY"],
+        "Today is offered both rows, so the `+` on the current day is unchanged by this rule "
+            + "(\(menuTodayTitles))")
+
+    let menuYesterdayTitles = ActivityMenu.entries(on: menuYesterday, now: menuNow).map(\.title)
+    assertTest(
+        menuYesterdayTitles == ["ADD ACTIVITY"],
+        "…and yesterday is offered only `ADD ACTIVITY` — the case that separates `isToday` from the "
+            + "shorter `!isFuture`, since the two agree on today and on tomorrow and differ only on a "
+            + "day already gone (\(menuYesterdayTitles))")
+
+    let menuTomorrowTitles = ActivityMenu.entries(on: menuTomorrow, now: menuNow).map(\.title)
+    assertTest(
+        menuTomorrowTitles == ["ADD ACTIVITY"],
+        "…and tomorrow the same, where there is nothing yet to start (\(menuTomorrowTitles))")
+
+    let menuDays = [menuYesterday, menuNow, menuTomorrow]
+    let recordingOffered = menuDays.map { day in
+        ActivityMenu.entries(on: day, now: menuNow).contains { $0.action == .startSession }
+    }
+    let dayBarAnswer = menuDays.map { DayBarRules.isToday($0, now: menuNow) }
+    assertTest(
+        recordingOffered == dayBarAnswer,
+        "…and a recording row is offered on exactly the days the day bar calls today, so this screen has "
+            + "one definition of today and the two cannot come to disagree (\(recordingOffered) against "
+            + "\(dayBarAnswer))")
+
+    let menuEveryDayHasRows = menuDays.allSatisfy { !ActivityMenu.entries(on: $0, now: menuNow).isEmpty }
+    assertTest(
+        menuEveryDayHasRows,
+        "…and no day draws an empty card, which is what separates withholding one row from hiding the "
+            + "`+` — every one of the three still holds `ADD ACTIVITY`, a row that is not day-bound")
 
     // ---- v6: recorded workouts now survive the launch that recorded them ----
 
@@ -4655,7 +4726,7 @@ func runHomeSourceTests() async {
 
     // ---- The recovery tier boundaries, which are what colour the Home ring ----
     //
-    // Green 67–100, yellow 34–66, red 0–33, per `ALGORITHMS.md` §"Recovery Tiers". Pinned here
+    // Green 67–100, yellow 34–66, red 0–33, per `docs/ALGORITHMS.md` §"Recovery Tiers". Pinned here
     // because an off-by-one at 66/67 is invisible on screen — the two colours are adjacent either
     // way — and because the ring, the Recovery tab's gauge, its HRV card and its trend chart all
     // read these boundaries through `RecoveryMetric.state`.
@@ -7089,7 +7160,7 @@ func runTypicalRangeTests() async {
     // strap night carries a need and a debt exactly as an imported one does — `AnalyzeSleepUseCase`
     // computes the debt with `SleepDebtMath` and stores it — so `debt != nil` never separated the two
     // producers and the card's box was drawn on strap nights too. It must not be: WHOOP's need is a
-    // total containing its debt term, and `SleepNeedMath`'s deliberately omits it (`ALGORITHMS.md`
+    // total containing its debt term, and `SleepNeedMath`'s deliberately omits it (`docs/ALGORITHMS.md`
     // §4), so on a strap night `need − debt` is a base requirement short by the whole deficit, printed
     // under a row named for terms that need never had. The pair below is otherwise perfectly
     // splittable, which is the point — the flag alone is what withholds it.
@@ -8964,7 +9035,7 @@ func runTypicalRangeTests() async {
 /// has ever been decoded from a strap, so this section proves the arithmetic, the two layouts, the
 /// storage rules and the panel — and it says nothing about whether a 4.0 accepts an enable sequence,
 /// whether a 5.0 completes the command characteristic's bond, or whether a wrist's motion produces a
-/// count that matches a pedometer. `BLE_PROTOCOL.md` §7 is the capture plan that would settle those.
+/// count that matches a pedometer. `docs/BLE_PROTOCOL.md` §7 is the capture plan that would settle those.
 func runStepTests() async {
 
     // MARK: The pedometer
@@ -9688,7 +9759,7 @@ func runStepTests() async {
             opcodes?.toggleIMUMode == 0x6A && opcodes?.sendRealtimeMotion == 0x3F
                 && opcodes?.enableOpticalData == 0x6B,
             "The 4.0's motion enable group is 0x6A TOGGLE_IMU_MODE, 0x3F SEND_R10_R11_REALTIME and "
-                + "0x6B ENABLE_OPTICAL_DATA, from BLE_PROTOCOL.md §6 — got "
+                + "0x6B ENABLE_OPTICAL_DATA, from docs/BLE_PROTOCOL.md §6 — got "
                 + "\(opcodes.map { "\($0.toggleIMUMode)/\($0.sendRealtimeMotion)/\($0.enableOpticalData)" } ?? "no table")")
         assertTest(
             opcodes?.setClock == 0x0A && opcodes?.abortHistoricalTransmits == 0x14
@@ -9696,7 +9767,7 @@ func runStepTests() async {
                 && opcodes?.historicalDataResult == 0x17,
             "The 4.0's drain group is 0x0A SET_CLOCK, 0x14 ABORT_HISTORICAL_TRANSMITS, 0x21 "
                 + "SET_READ_POINTER, 0x22 GET_DATA_RANGE and 0x17 HISTORICAL_DATA_RESULT, from "
-                + "BLE_PROTOCOL.md §4 — these are the bytes the ACK loop and the clock set are built "
+                + "docs/BLE_PROTOCOL.md §4 — these are the bytes the ACK loop and the clock set are built "
                 + "from, and a transposed pair among them is a command that does something else")
 
         // The enable sequence, as the manager sends it: three frames on enable, one on stop, in order.
@@ -10112,7 +10183,7 @@ func runStepTests() async {
 
     // MARK: The published 5.0 command frame
 
-    /// `AA 01 0C 00 00 01 E7 41 23 F1 6A 01 01 00 00 00 58 E9 61 FC`, from `BLE_PROTOCOL.md` §2.1.
+    /// `AA 01 0C 00 00 01 E7 41 23 F1 6A 01 01 00 00 00 58 E9 61 FC`, from `docs/BLE_PROTOCOL.md` §2.1.
     ///
     /// **The only test vector either generation's command path has, and it is worth more than every
     /// other assertion in this section.** Everything else in the two builders is internally consistent
@@ -11003,6 +11074,1889 @@ func runWorkoutZoneTests() async {
     } catch {
         assertTest(false, "The step path's screen-level round trip threw: \(error)")
     }
+}
+
+// MARK: - 18. The live session
+//
+// The app's **only recording path**, and the section is shaped by three things a strap-less machine
+// cannot supply.
+//
+// **It never touches the strap.** `biometric_samples` holds 0 rows in every database on this machine,
+// so nothing here is evidence that a real strap's beats produce a meaningful session — what it proves
+// is the arithmetic, the throttle, the storage and the button. `ScriptedTelemetryRepository` below is
+// the fixture that makes that possible: it is a `WhoopBLEDeviceRepository` whose telemetry stream this
+// section drives directly, which is the only way to deliver a *known* sample train to a type that
+// reads `liveTelemetryStream` and nothing else.
+//
+// **It never touches `ActivityKit`.** `ActivityAttributes` is `@available(macOS, unavailable)` and this
+// runner is a macOS binary, so the card is asserted through `SpyLiveActivityController` — a
+// `LiveActivityControlling` with counters. That is not a workaround: the throttle being tested is the
+// *use case's*, and a spy is the only instrument that can see when it pushed.
+//
+// **It never touches a renderer.** `LiveSessionView`'s drawing — the ring, the five-band row, the
+// waveform, the hidden tab bar — is invisible here. What is asserted is every value the drawing is
+// made of, which is why they live in `LiveSessionAccumulator`, `StrainAccumulatorMath` and
+// `ProfileDraft` rather than in the view's `body`.
+
+/// A `WhoopBLEDeviceRepository` whose live parts are the two streams a section here drives.
+///
+/// **Both streams are multicast, like the real ones.** `liveTelemetryStream` and `motionStream` each
+/// hand every caller its own `AsyncStream`, registered in a lock-guarded dictionary, because an
+/// `AsyncStream` can be iterated once while `StreamBiometricsUseCase.execute()` iterates whatever it is
+/// handed. A fixture returning one stored stream would deliver to the first reader and silently starve
+/// the second — which is the exact failure `CLAUDE.md` records against this protocol, so a fixture
+/// reproducing it would be testing the defect rather than the session.
+///
+/// **Two readers on one motion stream is the arrangement §19 has to prove**, because the app really
+/// does run two: `TrackStepsUseCase` fills the day's tile and `LiveSessionUseCase` counts the session's
+/// own. One stored continuation would let the first reader take every batch and leave the second's
+/// `for await` silent, which is indistinguishable from a strap that went quiet.
+///
+/// The `subscriberCount`s it exposes are what let a section assert the *release* half of that rule:
+/// ending a session must drop its reader, or a stream accumulates consumers that nothing feeds.
+///
+/// Every other member is a no-op or an empty answer. `LiveSessionUseCase` reads `liveTelemetryStream`
+/// and `motionStream` and nothing else from this protocol, so none of the rest is reached — they exist
+/// to satisfy it.
+final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
+    private var motionContinuations: [UUID: AsyncStream<MotionBatch>.Continuation] = [:]
+
+    /// Registers one telemetry continuation under a fresh `UUID` and arranges for its removal.
+    ///
+    /// `[weak self]` rather than a strong capture: the continuation is stored by `self` and holds this
+    /// closure, so a strong one is a retain cycle that no session would ever break.
+    ///
+    /// The motion register below is this function's twin rather than a shared generic: the two
+    /// registries hold different element types, and the argument that they must be pruned alike is
+    /// carried by their being three lines apart and identically shaped.
+    private func register(_ continuation: AsyncStream<BiometricSample>.Continuation) {
+        let id = UUID()
+        lock.lock()
+        continuations[id] = continuation
+        lock.unlock()
+        continuation.onTermination = { [weak self] _ in
+            guard let self else { return }
+            self.lock.lock()
+            self.continuations[id] = nil
+            self.lock.unlock()
+        }
+    }
+
+    private func register(_ continuation: AsyncStream<MotionBatch>.Continuation) {
+        let id = UUID()
+        lock.lock()
+        motionContinuations[id] = continuation
+        lock.unlock()
+        continuation.onTermination = { [weak self] _ in
+            guard let self else { return }
+            self.lock.lock()
+            self.motionContinuations[id] = nil
+            self.lock.unlock()
+        }
+    }
+
+    var liveTelemetryStream: AsyncStream<BiometricSample> {
+        AsyncStream { continuation in register(continuation) }
+    }
+
+    var motionStream: AsyncStream<MotionBatch> {
+        AsyncStream { continuation in register(continuation) }
+    }
+
+    /// How many readers are attached. `0` after a session ends is the assertion; `1` before the first
+    /// sample is the barrier.
+    var subscriberCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return continuations.count
+    }
+
+    /// How many readers the motion stream has. **`2` while a session and the day's counter are both
+    /// attached**, which is the count a single-continuation registry cannot reach.
+    var motionSubscriberCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return motionContinuations.count
+    }
+
+    /// Delivers one sample to every attached reader.
+    func yield(_ sample: BiometricSample) {
+        lock.lock()
+        let readers = Array(continuations.values)
+        lock.unlock()
+        for reader in readers { reader.yield(sample) }
+    }
+
+    /// Delivers one motion batch to every attached reader.
+    func yieldMotion(_ batch: MotionBatch) {
+        lock.lock()
+        let readers = Array(motionContinuations.values)
+        lock.unlock()
+        for reader in readers { reader.yield(batch) }
+    }
+
+    var deviceStream: AsyncStream<WhoopDevice> { AsyncStream { $0.finish() } }
+
+    func startScanning() async throws {}
+    func stopScanning() async {}
+    func connect(to deviceId: String) async throws {}
+    func disconnect() async {}
+    func sendHapticAlert(durationSeconds: Int, pattern: Int) async throws {}
+    func getCurrentDevice() async -> WhoopDevice? { nil }
+    func refreshStrapModel() async {}
+
+    /// Never reached: a session writes a `workouts` row and reads no flash. `aborted` rather than
+    /// `strapReportedComplete`, because a fixture that claimed the strap confirmed a drain it never
+    /// performed would be asserting the strap's buffer from a machine with no strap.
+    func requestHistoricalSync(from startDate: Date, to endDate: Date) async throws
+        -> HistoricalSyncOutcome
+    {
+        HistoricalSyncOutcome(recordCount: 0, batchCount: 0, ending: .aborted)
+    }
+}
+
+/// The card's transport, with counters instead of a lock screen.
+///
+/// `LiveActivityControlling`'s whole point is that it is a seam, and this is the other side of it:
+/// what §18 asserts is **when** the use case pushes and **what** it pushes, neither of which the real
+/// controller can be asked. It is `@MainActor` and `Sendable` because the protocol is — a `@MainActor`
+/// class is `Sendable` without saying so, which is precisely why the protocol refines both.
+///
+/// `nonisolated init()` with every property carrying its own value, exactly as `LiveActivityController`
+/// is built: a `@MainActor` class cannot assign an isolated stored property from a nonisolated
+/// initialiser, and this one has to be constructible from the suite's nonisolated context.
+@MainActor
+final class SpyLiveActivityController: LiveActivityControlling {
+
+    /// Thrown by `start` when `refusesStart` is set. The refusal is the one the real controller can
+    /// produce — Live Activities switched off, too many, or `NSSupportsLiveActivities` missing — and
+    /// the session must record through all three.
+    struct Refused: Error {}
+
+    private(set) var startCount = 0
+    private(set) var updateCount = 0
+    private(set) var endCount = 0
+    private(set) var endOrphansCount = 0
+
+    /// Every state pushed, in order, so a block can assert *what* went to the card and not only how
+    /// often — the two figures on the card and on the screen come off one snapshot, and this is what
+    /// proves they cannot disagree.
+    private(set) var pushedStates: [LiveSessionActivityState] = []
+
+    /// Set by the refusal block. A `var` on the main actor rather than an initialiser argument, for
+    /// the isolation reason above.
+    var refusesStart = false
+
+    nonisolated init() {}
+
+    var isSupported: Bool { true }
+
+    func start(state: LiveSessionActivityState) throws {
+        startCount += 1
+        if refusesStart { throw Refused() }
+    }
+
+    func update(state: LiveSessionActivityState) async {
+        updateCount += 1
+        pushedStates.append(state)
+    }
+
+    func end(state: LiveSessionActivityState) async {
+        endCount += 1
+        pushedStates.append(state)
+    }
+
+    func endOrphans() async -> Int {
+        endOrphansCount += 1
+        return 1
+    }
+}
+
+/// The GPS, with a continuation instead of a satellite.
+///
+/// §18 cannot construct a `CLLocationManager` — see the gotcha about `CBCentralManager` raising a
+/// system prompt mid-run — and would not want to: the real service's whole value is that it talks to
+/// the system, and none of what is asserted below is a fact about CoreLocation. What a spy can answer
+/// is what this block is about: whether the session asked, what it asked, and whether the instance
+/// that started the fixes is the one that stopped them.
+///
+/// Three properties are settable rather than initialiser arguments, and `nonisolated init()` with
+/// every stored property carrying its own value, for the reason `SpyLiveActivityController` gives
+/// above: a `@MainActor` class cannot assign an isolated stored property from a nonisolated
+/// initialiser, and the suite builds these from a nonisolated context.
+@MainActor
+final class SpyLocationTracking: LocationTracking {
+
+    /// The answer `permission` gives before anything is asked. `.undetermined` is the interesting
+    /// one: it is what forces `requestPermission()` to be consulted at all.
+    var permission: LocationPermission = .authorized
+
+    /// What the request resolves to. Set apart from `permission` so a block can drive "the user was
+    /// asked and said no", which is a different situation from "the user said no earlier" — the
+    /// session takes the same branch, but only the first one proves the prompt path was entered.
+    var permissionAfterRequest: LocationPermission = .authorized
+
+    private(set) var requestPermissionCount = 0
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+
+    /// The live stream's continuation, held so `yield` can push a fix through it the way
+    /// `locationManager(_:didUpdateLocations:)` does. `= nil` is required by the `nonisolated init`
+    /// below, exactly as it is on `LiveActivityController`.
+    private var continuation: AsyncStream<WorkoutRoutePoint>.Continuation? = nil
+
+    nonisolated init() {}
+
+    func requestPermission() async -> LocationPermission {
+        requestPermissionCount += 1
+        permission = permissionAfterRequest
+        return permission
+    }
+
+    func start() -> AsyncStream<WorkoutRoutePoint> {
+        startCount += 1
+        return AsyncStream { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func stop() {
+        stopCount += 1
+        continuation?.finish()
+        continuation = nil
+    }
+
+    /// Pushes one fix through the stream the session is reading, and reports whether anyone was
+    /// attached to receive it. `false` is not a failure — it is how a block asserts that a fix was
+    /// *not* delivered, because the GPS was never started or had already been released.
+    @discardableResult
+    func yield(latitude: Double, longitude: Double, timestamp: Date = Date()) -> Bool {
+        guard let continuation else { return false }
+        continuation.yield(WorkoutRoutePoint(
+            latitude: latitude, longitude: longitude, timestamp: timestamp, heartRate: 0))
+        return true
+    }
+}
+
+/// Spins until `condition` holds, or gives up after `timeout`.
+///
+/// The suite is a linear script and the work it waits on runs in a `Task` the use case owns, so there
+/// is nothing to `await` directly — this side can only observe the result. A bounded spin is the
+/// honest instrument: an unbounded one turns a regression into a hang, and a fixed `sleep` turns a
+/// slow machine into a failure.
+func waitUntil(timeout: TimeInterval = 5.0, _ condition: () async -> Bool) async -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while true {
+        if await condition() { return true }
+        if Date() >= deadline { return false }
+        try? await Task.sleep(nanoseconds: 2_000_000)
+    }
+}
+
+/// §18 — the live session, the form that makes its calorie figure possible, and the one band table
+/// both share.
+///
+/// It opens on values with no database behind it (`ActivityMenu`, the accumulator, the band labels,
+/// `ProfileDraft`, `estimateCalories`), so those blocks still assert if the session's own round trip
+/// below throws.
+func runLiveSessionTests() async {
+
+    // ---- The `+` menu's one actionable row ----
+    //
+    // §14 owns the rows themselves — that there are two, titled in that order, each with a symbol.
+    // This is the dimension §14 cannot see: **which one does something**. `ActivityMenu` is a value
+    // rather than a rule written into `HomeDashboardView`'s body for the same reason as before — the
+    // runner has no renderer, so a `switch` in a view's body is a switch nothing here can read.
+    //
+    // Two live-actionable rows would be two recording paths, which is why the count and not the
+    // membership is the assertion that matters.
+
+    let actionable = ActivityMenu.entries.filter { $0.action == .startSession }
+    assertTest(
+        actionable.count == 1,
+        "Exactly one `+` row carries `.startSession` (\(actionable.count) held) — the second row is "
+            + "inert, and a second recording path is the thing this count exists to prevent")
+
+    assertTest(
+        actionable.first?.title == "START ACTIVITY",
+        "…and it is `START ACTIVITY`, not the row above it (\(actionable.first?.title ?? "none"))")
+
+    let inert = ActivityMenu.entries.filter { $0.action == .none }
+    assertTest(
+        inert.map(\.title) == ["ADD ACTIVITY"],
+        "…leaving `ADD ACTIVITY` with no destination at all (\(inert.map(\.title))), which is what "
+            + "makes the import path's absence structural rather than a promise")
+
+    // ---- The five bands, defined once ----
+
+    assertTest(
+        StrainAccumulatorMath.zoneReserveBandLabels
+            == ["50-59%", "60-69%", "70-79%", "80-89%", "90-100%"],
+        "The live screen's five band labels are the five bands: "
+            + "\(StrainAccumulatorMath.zoneReserveBandLabels)")
+
+    // The labels are *derived*, and this is the assertion that keeps them derived: `computeZones`
+    // builds its bpm edges from the same array, so a band edge moved in one place and not the other
+    // fails here rather than printing `50-59%` over a 55% boundary.
+    assertTest(
+        StrainAccumulatorMath.zoneReserveBandLabels.count
+            == StrainAccumulatorMath.zoneReserveFractions.count,
+        "…one label per fraction, so the two arrays cannot describe different numbers of bands")
+
+    let zones190 = StrainAccumulatorMath.computeZones(maxHR: 190, restHR: 60)
+    let derivedLowerEdges = StrainAccumulatorMath.zoneReserveFractions.map {
+        Int((60.0 + 130.0 * $0.lower).rounded())
+    }
+    assertTest(
+        zones190.map(\.lowerBpm) == derivedLowerEdges,
+        "…and the zone table's lower edges are those fractions of the reserve ("
+            + "\(zones190.map(\.lowerBpm)) against \(derivedLowerEdges))")
+
+    // Zone 5's ceiling is `maxHR` itself and not `rest + reserve × 1.00`, because `computeZones`
+    // floors the reserve at 20 bpm and `rest + 20` would overshoot the maximum on a narrow one.
+    assertTest(
+        zones190.last?.upperBpm == 190,
+        "…with the top band closing at `maxHR` rather than at a widened reserve's end "
+            + "(\((zones190.last?.upperBpm).map(String.init) ?? "nil"))")
+
+    // ---- The accumulator's arithmetic ----
+    //
+    // Every number below is the session figure's whole justification, and the two conventions in it
+    // are inherited from `CalculateStrainUseCase` rather than invented here — see the type's doc
+    // comment. They are pinned as literals so that changing either fails loudly here instead of
+    // moving a figure on a screen nothing can check.
+
+    // A clean origin, so `t0 + index × 0.25` is exact in binary and the throttle's `>= 1.0` test
+    // sits on a boundary a float cannot blur. A real `Date()` is ~7.9 × 10⁸ seconds and adding a
+    // quarter to it drops the fraction's last digits.
+    let t0 = Date(timeIntervalSinceReferenceDate: 0)
+
+    var accumulator = LiveSessionAccumulator(zones: zones190, restingHeartRate: 60, weightKg: nil)
+
+    assertTest(
+        accumulator.snapshot.strain == nil,
+        "A session with no samples has no strain — `nil` and not `0.0`, which would be the claim "
+            + "that it measured a resting body")
+    assertTest(
+        accumulator.snapshot.calories == nil,
+        "…and no calories, because there is neither a weight nor an elapsed span to divide by")
+
+    // 160 bpm against a 190/60 profile is zone 3: 151…164 bpm, weight 4.5.
+    accumulator.accept(heartRate: 160, at: t0, isOnBody: true)
+    let firstSample = accumulator.snapshot
+    assertTest(
+        firstSample.measuredSeconds == 1.0,
+        "The session's first sample is credited exactly `1.0` second — the day model's convention "
+            + "for a sample with no predecessor, not a difference against the session's start "
+            + "(\(firstSample.measuredSeconds))")
+    assertTest(
+        firstSample.zoneSeconds[2] == 1.0,
+        "…and that second lands in zone 3, which is where 160 bpm sits on a 190/60 table "
+            + "(\(firstSample.zoneSeconds))")
+
+    // The cap that makes a gap five seconds rather than ten. Dropping `min(5.0, …)` is the change
+    // this assertion exists to catch, and it would double every figure on a strap that notifies
+    // every ten seconds.
+    accumulator.accept(heartRate: 160, at: t0.addingTimeInterval(10), isOnBody: true)
+    let afterGap = accumulator.snapshot
+    assertTest(
+        afterGap.measuredSeconds == 6.0,
+        "A sample ten seconds after its predecessor contributes `5.0`, not `10.0` — a strap that "
+            + "stopped notifying was not measuring, but the body did not stop existing "
+            + "(\(afterGap.measuredSeconds))")
+
+    // A sample below zone 1: it is time the session really spent, and it belongs to no band.
+    accumulator.accept(heartRate: 50, at: t0.addingTimeInterval(20), isOnBody: true)
+    let belowZone1 = accumulator.snapshot
+    assertTest(
+        belowZone1.measuredSeconds == 11.0 && belowZone1.zoneSeconds.reduce(0, +) == 6.0,
+        "A sample below zone 1 adds to the measured span and to no band — 11 s measured against 6 s "
+            + "in zones (\(belowZone1.measuredSeconds) / \(belowZone1.zoneSeconds.reduce(0, +)))")
+    assertTest(
+        belowZone1.zonePercents.reduce(0, +) < 100,
+        "…so the five percentages sum to strictly less than 100, which is what forbids "
+            + "`WholePercentMath.wholePercents(ofSeconds:)` here — that helper makes a column sum to "
+            + "exactly 100, and would claim the five bands covered a session they did not "
+            + "(\(belowZone1.zonePercents.reduce(0, +))%)")
+    assertTest(
+        belowZone1.zonePercents[2] == 55.0,
+        "…and zone 3 is 6 of those 11 seconds, rounded to a whole percent "
+            + "(\(belowZone1.zonePercents[2]))")
+
+    // ---- The band scale's position ----
+    //
+    // This is the one thing on the session screen that reads the zone table for something other than
+    // a duration: where the current heart rate sits on the five bands laid end to end, which is the
+    // mark `HeartRateBandScaleView` draws. The scale's two ends are read off the table rather than
+    // recomputed from `zoneReserveFractions`, and that is the property these pin — on a 190/60 profile
+    // the reserve is 130 bpm, so zone 1's floor is 125 and zone 5's ceiling is `maxHR`, 190, giving a
+    // 65 bpm span. A reader that re-derived the span from the fractions would place the same mark,
+    // which is exactly why the ends are asserted against the table's own numbers.
+
+    assertTest(
+        StrainAccumulatorMath.bandScalePosition(forHeartRate: 125, zones: zones190) == 0,
+        "The scale's left edge is zone 1's own floor: 125 bpm on a 190/60 table is position 0 "
+            + "(\(StrainAccumulatorMath.bandScalePosition(forHeartRate: 125, zones: zones190)))")
+    assertTest(
+        StrainAccumulatorMath.bandScalePosition(forHeartRate: 190, zones: zones190) == 1,
+        "…and its right edge is zone 5's ceiling, which `computeZones` sets to `maxHR` itself rather "
+            + "than to the widened reserve's end "
+            + "(\(StrainAccumulatorMath.bandScalePosition(forHeartRate: 190, zones: zones190)))")
+    assertTest(
+        abs(StrainAccumulatorMath.bandScalePosition(forHeartRate: 151, zones: zones190) - 0.4) < 1e-12,
+        "…and zone 3 opens at 26 of those 65 bpm, so its floor sits at 0.4 of the scale "
+            + "(\(StrainAccumulatorMath.bandScalePosition(forHeartRate: 151, zones: zones190)))")
+
+    assertTest(
+        belowZone1.bandScalePosition == 0,
+        "A reading at rest is below zone 1 by construction, so its mark is clamped to the left edge "
+            + "rather than drawn off the scale — the ordinary case, not an edge "
+            + "(\(belowZone1.bandScalePosition.map { "\($0)" } ?? "nil"))")
+
+    assertTest(
+        accumulator.snapshot.bandScalePosition != nil
+            && LiveSessionAccumulator(zones: zones190, restingHeartRate: 60, weightKg: nil)
+                .snapshot.bandScalePosition == nil,
+        "…and the mark is absent exactly when the reading is — `nil` before any sample, a number "
+            + "once one arrives — so a session that has heard from no strap draws no mark rather than "
+            + "one at zero, which is what a worn strap at rest draws")
+
+    assertTest(
+        StrainAccumulatorMath.bandScalePosition(forHeartRate: 150, zones: []) == 0,
+        "…and a table that cannot define a scale answers 0 rather than dividing by its own zero, "
+            + "which `computeZones` never produces and a caller must not be able to reach")
+
+    // `nil` and `0.0` are different answers, and this is the pair that says so.
+    var subZoneOnly = LiveSessionAccumulator(zones: zones190, restingHeartRate: 60, weightKg: nil)
+    assertTest(subZoneOnly.snapshot.strain == nil, "…`nil` before any sample")
+    subZoneOnly.accept(heartRate: 50, at: t0, isOnBody: true)
+    assertTest(
+        subZoneOnly.snapshot.strain == 0.0,
+        "…and exactly `0.0` after a sample that never reached zone 1, which is a measurement of a "
+            + "session that stayed under the first band (\(subZoneOnly.snapshot.strain.map { "\($0)" } ?? "nil"))")
+
+    // The calorie denominator. `CalculateStrainUseCase` passes `count / 60` — a duration fabricated
+    // from the number of samples — which is right on a 1 Hz stream and wrong on any other. Here the
+    // two are four times apart, so a fork back to the count fails.
+    var calorieAccumulator = LiveSessionAccumulator(
+        zones: zones190, restingHeartRate: 60, weightKg: 75.0)
+    for index in 0..<6 {
+        calorieAccumulator.accept(
+            heartRate: 160, at: t0.addingTimeInterval(Double(index) * 10), isOnBody: true)
+    }
+    let calorieSnapshot = calorieAccumulator.snapshot
+    assertTest(
+        calorieSnapshot.measuredSeconds == 26.0,
+        "Six samples ten seconds apart measured 26 seconds — `1.0 + 5 × 5.0` "
+            + "(\(calorieSnapshot.measuredSeconds))")
+
+    // 7.35 kcal/min is `(160 − 60) × 0.014 × 75 × 0.07`; over 26 s of a minute that is 3.185.
+    let expectedCalories = 7.35 * (26.0 / 60.0)
+    assertTest(
+        abs((calorieSnapshot.calories ?? -1) - expectedCalories) < 1e-9,
+        "…and the calorie figure is scaled by that span, not by a sample count "
+            + "(\(calorieSnapshot.calories.map { "\($0)" } ?? "nil") against \(expectedCalories))")
+    assertTest(
+        (calorieSnapshot.calories ?? 0)
+            > (StrainAccumulatorMath.estimateCalories(
+                heartRate: 160, durationMinutes: 6.0 / 60.0, weightKg: 75.0, restingHR: 60) ?? 0),
+        "…which is strictly *above* what six samples as `count / 60` minutes would give — the two "
+            + "coincide only on a stream that notifies once a second")
+
+    // The waveform's buffer survives the screen, and it is bounded.
+    var waveform = LiveSessionAccumulator(zones: zones190, restingHeartRate: 60, weightKg: nil)
+    for index in 0..<(LiveSessionAccumulator.recentHeartRateCapacity + 5) {
+        waveform.accept(
+            heartRate: 100 + index % 3, at: t0.addingTimeInterval(Double(index)), isOnBody: true)
+    }
+    let waveSnapshot = waveform.snapshot
+    assertTest(
+        waveSnapshot.recentHeartRates.count == LiveSessionAccumulator.recentHeartRateCapacity,
+        "The trace holds a bounded window rather than the whole session "
+            + "(\(waveSnapshot.recentHeartRates.count) of \(LiveSessionAccumulator.recentHeartRateCapacity))")
+    assertTest(
+        waveSnapshot.recentHeartRates.first == 102,
+        "…and it drops from the front, so the five oldest readings are gone and the sixth leads "
+            + "(\(waveSnapshot.recentHeartRates.first.map(String.init) ?? "nil"))")
+
+    let beforeRefusal = waveSnapshot.sampleCount
+    waveform.accept(heartRate: 0, at: t0.addingTimeInterval(500), isOnBody: true)
+    assertTest(
+        waveform.snapshot.sampleCount == beforeRefusal,
+        "A reading of `0` bpm is refused rather than recorded — no strap reports one, so it is a "
+            + "decode artefact, and admitting it would drag the average down and credit the session "
+            + "with seconds no sensor produced")
+
+    assertTest(
+        waveSnapshot.isOnBody == true,
+        "…and the body flag is the sample's own, carried through rather than defaulted")
+    var offBody = LiveSessionAccumulator(zones: zones190, restingHeartRate: 60, weightKg: nil)
+    assertTest(
+        offBody.snapshot.isOnBody == nil,
+        "A session that has read nothing knows nothing about the strap: `nil`, not `true` — a "
+            + "defaulted `true` is the fabrication class `WhoopDevice.batteryPercentage` documents")
+    offBody.accept(heartRate: 100, at: t0, isOnBody: false)
+    assertTest(
+        offBody.snapshot.isOnBody == false,
+        "…and once a sample arrives it is the sample's answer, not this app's assumption")
+
+    // ---- The calorie estimate's absence ----
+    //
+    // `estimateCalories` is the one quantity in this app that multiplies by the user's body, so an
+    // unset weight has to be an absence and a session at rest has to be a real zero. The two are
+    // different sentences on the screen and this is the pair that keeps them apart.
+
+    assertTest(
+        StrainAccumulatorMath.estimateCalories(
+            heartRate: 120, durationMinutes: 10, weightKg: nil, restingHR: 60) == nil,
+        "No body weight means no calorie figure — `nil` rather than a number scaled by a body this "
+            + "app invented, which is what the profile page exists to supply")
+    assertTest(
+        StrainAccumulatorMath.estimateCalories(
+            heartRate: 60, durationMinutes: 10, weightKg: 75.0, restingHR: 60) == 0.0,
+        "…while a session at exactly resting heart rate burns a real `0.0` active calories — the "
+            + "floor is on the *rate*, so a measured session is never an absence")
+
+    // ---- The profile form's parsing ----
+    //
+    // `ProfileDraft` is a separate type rather than three `static` members on `ProfileViewModel` for
+    // `DayBarRules`' reason: the view model is `@MainActor @Observable` and the runner would have to
+    // build one to reach the rules. Here they are three free functions over `String`.
+    //
+    // **A blank field is an absence, not an error.** An empty weight parses to `nil`, which is what
+    // makes the field clearable; text outside the band is a different answer and the view model
+    // refuses it with a message.
+
+    assertTest(
+        ProfileDraft.weight(from: "") == nil && ProfileDraft.weight(from: "   ") == nil,
+        "A blank weight is an absence rather than an error — it is how a weight is cleared")
+
+    assertTest(
+        ProfileDraft.weight(from: "75") == 75.0
+            && ProfileDraft.weight(from: " 75.5 ") == 75.5,
+        "…a supplied one parses, trimmed, at whatever precision it was entered")
+
+    assertTest(
+        ProfileDraft.weight(from: "75,5") == nil,
+        "…a comma decimal separator is refused rather than silently dropped — entry is "
+            + "locale-agnostic and expects a period, and dropping the separator would read `75,5` "
+            + "as `755`")
+
+    assertTest(
+        ProfileDraft.weight(from: "2") == nil && ProfileDraft.weight(from: "500") == nil,
+        "…and text outside the plausible band is refused: the bounds are typo guards, not a "
+            + "judgement about bodies, and the cost of admitting one is a calorie figure scaled by "
+            + "a body that does not exist")
+
+    assertTest(
+        ProfileDraft.weight(from: "20") == 20.0 && ProfileDraft.weight(from: "400") == 400.0,
+        "…with both edges of the band admitted, so the range is inclusive at both ends")
+
+    assertTest(
+        ProfileDraft.heartRate(from: "190", in: ProfileDraft.maxHeartRateRange) == 190
+            && ProfileDraft.heartRate(from: "100", in: ProfileDraft.maxHeartRateRange) == 100
+            && ProfileDraft.heartRate(from: "250", in: ProfileDraft.maxHeartRateRange) == 250,
+        "A maximum heart rate parses inside its own band, edges included")
+    assertTest(
+        ProfileDraft.heartRate(from: "99", in: ProfileDraft.maxHeartRateRange) == nil
+            && ProfileDraft.heartRate(from: "251", in: ProfileDraft.maxHeartRateRange) == nil,
+        "…and is refused outside it")
+
+    assertTest(
+        ProfileDraft.heartRate(from: "60", in: ProfileDraft.restingHeartRateRange) == 60,
+        "A resting heart rate parses against the resting band, not the maximal one")
+    assertTest(
+        ProfileDraft.heartRate(from: "29", in: ProfileDraft.restingHeartRateRange) == nil
+            && ProfileDraft.heartRate(from: "121", in: ProfileDraft.restingHeartRateRange) == nil,
+        "…and `60` is inside the resting band where `29` and `121` are not — the two ranges differ, "
+            + "which is why the band is a parameter and not a constant in the parser")
+    assertTest(
+        ProfileDraft.heartRate(from: "60.5", in: ProfileDraft.restingHeartRateRange) == nil,
+        "…and a fractional rate is refused rather than truncated: a heart rate is a count of beats, "
+            + "and the zones this feeds are built from integers")
+
+    assertTest(
+        ProfileDraft.text(forWeightKg: nil) == "",
+        "An unset weight fills the field with nothing rather than a zero")
+    assertTest(
+        ProfileDraft.text(forWeightKg: 75) == "75.0" && ProfileDraft.text(forWeightKg: 62.5) == "62.5",
+        "…and a set one prints what will be stored, to the precision it is stored at")
+    assertTest(
+        ProfileDraft.weight(from: ProfileDraft.text(forWeightKg: 82.4)) == 82.4,
+        "The field's text round-trips through the parser, so opening and saving without typing "
+            + "cannot change the stored weight")
+
+    // ---- The session, end to end ----
+    //
+    // Everything above is a value. This is the path: a scripted stream in, a `workouts` row out, and
+    // a card requested, updated on a throttle and ended. It is the only block in the suite that
+    // drives `LiveSessionUseCase`, and it is where the app's one recording path is pinned.
+
+    do {
+        let db = LocalDatabaseManager(inMemory: true)
+        let profileRepository = GRDBUserProfileRepository(db: db)
+        let workoutRepository = GRDBWorkoutRepository(db: db)
+        let telemetry = ScriptedTelemetryRepository()
+        let stream = StreamBiometricsUseCase(
+            bleRepository: telemetry, biometricRepository: EmptyBiometricStore())
+        let spy = SpyLiveActivityController()
+        let location = SpyLocationTracking()
+        let session = LiveSessionUseCase(
+            controller: spy,
+            locationTracking: location,
+            streamBiometricsUseCase: stream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+            userProfileRepository: profileRepository,
+            bleRepository: telemetry)
+
+        // ---- Session A: no weight on file, sixty samples a quarter-second apart ----
+        //
+        // The weight's absence is the point of running it first: `GRDBUserProfileRepository` falls
+        // back to a cold-start 190/60 pair with **no** `weightKg`, so this session is what a fresh
+        // install produces and its calorie figure must be absent.
+
+        await session.start()
+        assertTest(
+            await MainActor.run { spy.startCount } == 1,
+            "Starting a session requests exactly one lock-screen card")
+        assertTest(
+            await MainActor.run { session.isLiveActivityActive },
+            "…and the card is reported active, so the screen knows whether to explain its absence")
+        assertTest(await session.isRunning, "…and the session is recording")
+
+        assertTest(
+            await waitUntil { telemetry.subscriberCount == 1 },
+            "…and it has attached exactly one reader to the telemetry stream, which is what makes "
+                + "the samples below reach it")
+
+        // Sixty samples a quarter-second apart: a 14.75-second span. 0.25 is exact in binary, so
+        // every one-second boundary the throttle tests falls on a representable instant.
+        let sampleCount = 60
+        for index in 0..<sampleCount {
+            telemetry.yield(BiometricSample(
+                timestamp: t0.addingTimeInterval(Double(index) * 0.25),
+                heartRate: 150))
+        }
+
+        assertTest(
+            await waitUntil { await session.snapshot?.sampleCount == sampleCount },
+            "All \(sampleCount) samples reached the session's accumulator")
+
+        // `pushCard` hands the controller's `update` to an unstructured `Task`, so the count lags the
+        // ingest by however long those tasks take to reach the main actor. This waits for them to
+        // drain before reading — and it can only ever *under*-count, never over: the throttle runs
+        // synchronously inside `ingest`, so exactly fifteen push tasks exist and no more. The wait is
+        // therefore a barrier, and the assertion below is still the one that decides.
+        _ = await waitUntil { await MainActor.run { spy.updateCount } >= 15 }
+        let pushed = await MainActor.run { spy.updateCount }
+        assertTest(
+            pushed == 15,
+            "…and the card was pushed 15 times, not 60: the first sample, then at most one push "
+                + "per second, so a quarter-second stream is throttled to its one-second crossings "
+                + "(\(pushed) pushes)")
+
+        let sessionASnapshot = await session.snapshot
+        assertTest(
+            sessionASnapshot?.zonePercents[1] == 100.0,
+            "150 bpm on a 190/60 table is zone 2 for the whole session, so the band row reads "
+                + "`100%` there and nothing elsewhere "
+                + "(\(sessionASnapshot.map { $0.zonePercents.description } ?? "no snapshot"))")
+
+        let summaryA = await session.end()
+        guard let summaryA else {
+            assertTest(false, "A session that measured something produces a summary")
+            return
+        }
+        assertTest(
+            summaryA.calories == nil,
+            "…with no calorie figure, because no body weight is on file — the absence rule rather "
+                + "than a figure scaled by 75 kg this app invented")
+        assertTest(await session.isRunning == false, "…and the session has stopped")
+        assertTest(
+            await session.snapshot == nil,
+            "…and its state is dropped, so a second session cannot inherit the first one's samples")
+        assertTest(
+            await MainActor.run { spy.endCount } == 1,
+            "…having ended the card exactly once")
+        assertTest(
+            await MainActor.run { spy.pushedStates.last?.isRunning } == false,
+            "…with the final state marked not running, because `Activity.content` cannot be replaced "
+                + "after `end` and a card left reading live would count up for four hours")
+
+        // The subscription is released. Left attached, a reader accumulates on a stream nothing
+        // feeds — the silent failure this protocol's multicast registry exists to avoid.
+        assertTest(
+            await waitUntil { telemetry.subscriberCount == 0 },
+            "…and its reader is released from the telemetry stream")
+
+        // ---- Session B: a weight on file, a longer and harder effort ----
+
+        try await profileRepository.saveUserProfile(
+            UserProfile(maxHeartRate: 190, restingHeartRate: 60, weightKg: 75.0))
+
+        await session.start()
+        assertTest(
+            await waitUntil { telemetry.subscriberCount == 1 },
+            "A second session attaches its own reader")
+
+        // 61 samples ten seconds apart, all at 170 bpm: zone 4 (164…177, weight 9.0) and 301
+        // measured seconds — `1.0 + 60 × 5.0`. The load is exactly `9.0 × 301.0`, which the pinned
+        // figure below is the exponential of.
+        for index in 0..<61 {
+            telemetry.yield(BiometricSample(
+                timestamp: t0.addingTimeInterval(Double(index) * 10),
+                heartRate: 170))
+        }
+        assertTest(
+            await waitUntil { await session.snapshot?.sampleCount == 61 },
+            "The second session took all 61 of its samples")
+
+        let hardSnapshot = await session.snapshot
+        assertTest(
+            hardSnapshot?.measuredSeconds == 301.0,
+            "…spanning 301 measured seconds (\(hardSnapshot.map { $0.measuredSeconds } ?? -1.0))")
+        assertTest(
+            hardSnapshot?.strain == 2.4,
+            "…for a strain of `2.4`: 9.0 × 301.0 of weighted load through "
+                + "`21 × (1 − e^(−0.000045 × load))`, rounded to one decimal "
+                + "(\(hardSnapshot.map { snap in snap.strain.map { "\($0)" } ?? "nil" } ?? "no snapshot"))")
+        assertTest(
+            hardSnapshot?.maxHeartRate == 170 && hardSnapshot?.averageHeartRate == 170,
+            "…and both heart-rate figures are the samples', not a window's")
+
+        let summaryB = await session.end()
+        guard let recorded = summaryB?.workout else {
+            assertTest(false, "The second session produced an activity")
+            return
+        }
+
+        // Two of these fields are `nil` deliberately and the third is a word. `source: nil` is
+        // documented on the entity as the value for a session this app recorded itself;
+        // `hrZonePercents` is WHOOP's own `HR Zone n %` block out of `workouts.csv`, and writing this
+        // app's computed zones into it is precisely the two-producer defect the `source` column exists
+        // to prevent. `activityName` is the word WHOOP's own classifier abstains to rather than an
+        // absence — see the assertion below.
+        //
+        // **Each is compared after unwrapping, and that is not style.** `recorded?.source == nil` is
+        // `String??` against `nil`, which Swift resolves to the `_OptionalNilComparisonType` overload
+        // — so it asks whether `recorded` itself is nil and answers `false` for every one of these,
+        // passing whatever the field holds.
+        assertTest(
+            recorded.source == nil,
+            "…carrying no `source`, which is what marks it as this app's own recording rather than "
+                + "an imported one")
+        // The name is a label and not a measurement, which is why this is a string rather than a
+        // `nil`: this app records a session without classifying it, and WHOOP's own answer to that
+        // case is a word — 197 rows of the bundled export read exactly `Activity`. `ActivityGlyph`
+        // holds no entry for the string on purpose, so the chip falls back exactly as it did for
+        // `nil` and no screen moved.
+        assertTest(
+            recorded.activityName == "Activity",
+            "…and named with WHOOP's own abstention word rather than left NULL, which its export "
+                + "writes on 197 rows (\(recorded.activityName ?? "nil"))")
+        assertTest(
+            recorded.hrZonePercents == nil,
+            "…and no zone block: that column is WHOOP's own, and this app's zones are a different "
+                + "producer's answer to a different question")
+        // The route half of this sentence used to read *"this build has no GPS"*, which was true when
+        // nothing called the location seam and is false now that the screen has a toggle. What is
+        // still true is why this route is empty: **the toggle was never touched**, and route
+        // recording is opt-in per session rather than implied by starting one. The split half is
+        // unchanged and unconditional — there is still no lap model and no control that creates a
+        // split, so an empty list stays the honest answer rather than an invented one.
+        assertTest(
+            recorded.route.isEmpty && recorded.splits.isEmpty,
+            "…and an empty route because the toggle was never turned on, beside an empty split list "
+                + "that has no producer at all — neither is a dropped column "
+                + "(\(recorded.route.count) points, \(recorded.splits.count) splits)")
+        let routeStartsWithoutToggle = await MainActor.run { location.startCount }
+        assertTest(
+            routeStartsWithoutToggle == 0,
+            "…and the GPS was never started for it, so an opt-in the user did not take does not wake "
+                + "the radio (started \(routeStartsWithoutToggle) times)")
+
+        // `(170 − 60) × 0.014 × 75 × 0.07` is 8.085 kcal/min, and the accumulator scales it by the
+        // session's own `measuredSeconds / 60` — 301 seconds — not by a sample count.
+        let expectedB = (170.0 - 60.0) * 0.014 * 75.0 * 0.07 * (301.0 / 60.0)
+        assertTest(
+            abs((summaryB?.calories ?? -1.0) - expectedB) < 1e-9,
+            "…with a calorie figure now that a weight is on file "
+                + "(\(summaryB.map { s in s.calories.map { "\($0)" } ?? "nil" } ?? "no summary") against \(expectedB))")
+
+        // ---- What END leaves behind ----
+
+        let today = try await workoutRepository.getWorkouts(for: Date())
+        assertTest(
+            today.count == 2,
+            "Both sessions are on the day they were recorded, found by the same read Home's "
+                + "`ACTIVITIES` row uses (\(today.count) held)")
+        assertTest(
+            today.contains { $0.strain == 2.4 },
+            "…including the one that scored, read back with its strain intact")
+
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        assertTest(
+            try await workoutRepository.getWorkouts(for: yesterday).isEmpty,
+            "…and neither is on the day before, which is the day-key snap `saveWorkout` applies "
+                + "centrally")
+
+        // A session that measured nothing writes nothing. `WorkoutSession` has no optional strain,
+        // average or maximum, so a row here would mean inventing all three — the rule is that a
+        // writer may persist a row only when it produced a measurement.
+        await session.start()
+        assertTest(
+            await waitUntil { telemetry.subscriberCount == 1 },
+            "A third session starts and attaches its reader")
+        let emptySummary = await session.end()
+        assertTest(
+            emptySummary == nil,
+            "A session with no samples produces no activity at all — not a `0.0`-strain row")
+        assertTest(
+            try await workoutRepository.getWorkouts(for: Date()).count == 2,
+            "…and writes no row: a START followed by an END with no strap on the body leaves the "
+                + "day exactly as it found it")
+
+        // ---- A card the system refuses ----
+        //
+        // Live Activities can be switched off per-app, the system caps how many an app may have, and
+        // a build without `NSSupportsLiveActivities` is refused outright. All three are properties of
+        // the device or the build, and none is a reason to stop recording.
+
+        let refusingSpy = SpyLiveActivityController()
+        await MainActor.run { refusingSpy.refusesStart = true }
+        let refusingSession = LiveSessionUseCase(
+            controller: refusingSpy,
+            locationTracking: SpyLocationTracking(),
+            streamBiometricsUseCase: stream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+            userProfileRepository: profileRepository,
+            bleRepository: telemetry)
+
+        await refusingSession.start()
+        assertTest(
+            await refusingSession.liveActivityError != nil,
+            "A refused card is reported as an error rather than swallowed — the screen has a "
+                + "sentence to draw from it")
+        assertTest(
+            await MainActor.run { refusingSession.isLiveActivityActive } == false,
+            "…and no card is claimed to be up")
+        assertTest(
+            await refusingSession.isRunning,
+            "…while the session records anyway: a card that cannot be shown is a missing card, not "
+                + "a missing session")
+        assertTest(
+            await waitUntil { telemetry.subscriberCount == 1 },
+            "…and it is reading the strap like any other session")
+
+        await refusingSession.end()
+        assertTest(
+            await waitUntil { telemetry.subscriberCount == 0 },
+            "…and releases it when it ends")
+
+        // ---- The orphan sweep ----
+        //
+        // A card outlives the process that requested it, so an app killed mid-session leaves the
+        // lock screen counting up from a start instant nothing is recording. This build has no BLE
+        // state restoration and no in-flight persistence, so a relaunch cannot adopt one — it can
+        // only end it, which is what `MainContainerView`'s root task does.
+
+        let sweepSpy = SpyLiveActivityController()
+        let sweepSession = LiveSessionUseCase(
+            controller: sweepSpy,
+            locationTracking: SpyLocationTracking(),
+            streamBiometricsUseCase: stream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+            userProfileRepository: profileRepository,
+            bleRepository: telemetry)
+
+        await sweepSession.endOrphanedLiveActivities()
+        assertTest(
+            await MainActor.run { sweepSpy.endOrphansCount } == 1,
+            "The launch sweep ends the cards a dead process left behind")
+
+        await sweepSession.start()
+        await sweepSession.endOrphanedLiveActivities()
+        assertTest(
+            await MainActor.run { sweepSpy.endOrphansCount } == 1,
+            "…and does nothing while a session is running, so it cannot end the card this process "
+                + "is actively updating")
+        _ = await sweepSession.end()
+        assertTest(
+            await waitUntil { telemetry.subscriberCount == 0 },
+            "The last session's reader is released")
+
+        // ---- The GPS route ----
+        //
+        // `recorded.route` above is empty because the toggle was never touched, and the assertion
+        // beside it says why. This is the other half of that sentence: what the route holds when the
+        // toggle *is* turned on. It gets its own in-memory database, its own scripted stream and its
+        // own spies, so nothing here can move the reader counts above.
+        //
+        // **The two halves of the split are asserted in different places on purpose.** "Is this
+        // coordinate a place at all" is a pure value and is asserted first, with no session behind it
+        // — that is the `isPlausible` rule's whole reason for living on the entity rather than inside
+        // the CoreLocation callback, since the runner has no `CLLocationManager` and must not build
+        // one. "Does the session stamp and keep it" needs the session, and is asserted below.
+        //
+        // **Nothing here is evidence about a real fix.** The spy substitutes for CoreLocation; what is
+        // pinned is the filtering, the stamping, the refusal path, the lifecycle pairing and the
+        // storage round trip.
+
+        assertTest(
+            WorkoutRoutePoint(latitude: 40.7411, longitude: -73.9897, heartRate: 0).isPlausible
+                && !WorkoutRoutePoint(latitude: 0, longitude: 0, heartRate: 0).isPlausible,
+            "A real fix is a place and `(0, 0)` is not — that pair is a heuristic, because Null "
+                + "Island is both the placeholder CoreLocation returns for an unresolved fix and a "
+                + "real point in the Gulf of Guinea, and the trade is taken knowingly")
+        assertTest(
+            !WorkoutRoutePoint(latitude: 91, longitude: 0, heartRate: 0).isPlausible
+                && !WorkoutRoutePoint(latitude: 0, longitude: -181, heartRate: 0).isPlausible
+                && !WorkoutRoutePoint(latitude: .nan, longitude: 0, heartRate: 0).isPlausible,
+            "…and this half is definitional rather than a heuristic: a latitude outside ±90, a "
+                + "longitude outside ±180 or a NaN is not a coordinate, which is what catches a fix "
+                + "built from arithmetic that went wrong")
+
+        let routeDB = LocalDatabaseManager(inMemory: true)
+        let routeWorkouts = GRDBWorkoutRepository(db: routeDB)
+        let routeProfile = GRDBUserProfileRepository(db: routeDB)
+        let routeTelemetry = ScriptedTelemetryRepository()
+        let routeStream = StreamBiometricsUseCase(
+            bleRepository: routeTelemetry, biometricRepository: EmptyBiometricStore())
+        let gps = SpyLocationTracking()
+        await MainActor.run { gps.permission = .undetermined }
+        let routeSession = LiveSessionUseCase(
+            controller: SpyLiveActivityController(),
+            locationTracking: gps,
+            streamBiometricsUseCase: routeStream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: routeWorkouts),
+            userProfileRepository: routeProfile,
+            bleRepository: routeTelemetry)
+
+        await routeSession.start()
+        assertTest(
+            await routeSession.isRecordingRoute == false,
+            "A session records no route until the toggle is turned on — an indoor session must not "
+                + "put a blue location indicator on the screen because it was started")
+        assertTest(
+            await MainActor.run { gps.startCount } == 0,
+            "…and starting a session does not touch the GPS at all")
+
+        await routeSession.setRouteRecording(true)
+        assertTest(
+            await routeSession.isRecordingRoute,
+            "…and turning the toggle on starts the route")
+        let prompted = await MainActor.run { gps.requestPermissionCount }
+        assertTest(
+            prompted == 1,
+            "…asking for permission first, because nobody had been asked (`permission` was "
+                + "`.undetermined`), exactly once — \(prompted) prompt(s)")
+        assertTest(
+            await waitUntil { await MainActor.run { gps.startCount } == 1 },
+            "…and handing the session the one stream it will read fixes from")
+
+        // Two fixes before the strap has said anything, one after, and one that is not a place. The
+        // first pair is the case the sentinel exists for.
+        _ = await MainActor.run { gps.yield(latitude: 40.7411, longitude: -73.9897, timestamp: t0) }
+        _ = await MainActor.run {
+            gps.yield(latitude: 40.7420, longitude: -73.9888, timestamp: t0.addingTimeInterval(5))
+        }
+
+        routeTelemetry.yield(BiometricSample(timestamp: t0.addingTimeInterval(10), heartRate: 150))
+        assertTest(
+            await waitUntil { await routeSession.snapshot?.latestHeartRate == 150 },
+            "…and the session has a reading in force before the fixes that follow it arrive")
+
+        _ = await MainActor.run {
+            gps.yield(latitude: 40.7430, longitude: -73.9899, timestamp: t0.addingTimeInterval(15))
+        }
+        let placeholderDelivered = await MainActor.run {
+            gps.yield(latitude: 0, longitude: 0, timestamp: t0.addingTimeInterval(20))
+        }
+        assertTest(
+            placeholderDelivered,
+            "A `(0, 0)` fix is delivered rather than refused at the seam, so the filter that drops it "
+                + "is the session's own and is asserted below rather than assumed")
+
+        // ---- Turning it off, and back on ----
+
+        await routeSession.setRouteRecording(false)
+        assertTest(
+            await routeSession.isRecordingRoute == false,
+            "Turning the toggle off stops the route")
+        let stopsAtToggleOff = await MainActor.run { gps.stopCount }
+        assertTest(
+            stopsAtToggleOff == 1,
+            "…releasing the GPS exactly once (\(stopsAtToggleOff) stop(s))")
+        assertTest(
+            await MainActor.run {
+                gps.yield(latitude: 40.75, longitude: -73.98, timestamp: t0.addingTimeInterval(25))
+            } == false,
+            "…and delivery really ended, rather than a flag being flipped over a stream that still "
+                + "runs — a stopped GPS that keeps yielding is the blue indicator staying up")
+
+        await routeSession.setRouteRecording(true)
+        assertTest(
+            await waitUntil { await MainActor.run { gps.startCount } == 2 },
+            "Turning it back on starts a second stream, so the fixes already collected are kept "
+                + "beside the new ones rather than lost with the first")
+        let promptedTwice = await MainActor.run { gps.requestPermissionCount }
+        assertTest(
+            promptedTwice == 1,
+            "…without asking for permission a second time, because the answer is already on file "
+                + "(\(promptedTwice) prompt(s) across both starts)")
+        _ = await MainActor.run {
+            gps.yield(latitude: 40.7440, longitude: -73.9905, timestamp: t0.addingTimeInterval(30))
+        }
+
+        let routeSummary = await routeSession.end()
+        guard let routeRecorded = routeSummary?.workout else {
+            assertTest(false, "A session that recorded a route produced an activity")
+            return
+        }
+        assertTest(
+            routeRecorded.route.count == 4,
+            "Four of the five fixes are stored: the two before the first reading, the one after it "
+                + "and the one after the toggle came back — and not the `(0, 0)` placeholder "
+                + "(\(routeRecorded.route.count) kept)")
+        assertTest(
+            routeRecorded.route.map(\.heartRate) == [0, 0, 150, 150],
+            "…each stamped with the reading in force when it arrived, so the two before the first "
+                + "sample carry the documented `0` sentinel and the two after carry 150 — the "
+                + "stamp is the session's, not the location service's literal "
+                + "(\(routeRecorded.route.map(\.heartRate)))")
+        assertTest(
+            routeRecorded.route.map(\.timestamp)
+                == [t0, t0.addingTimeInterval(5), t0.addingTimeInterval(15), t0.addingTimeInterval(30)],
+            "…in the order they arrived, with the dropped placeholder leaving no gap in the list")
+        assertTest(
+            routeRecorded.splits.isEmpty,
+            "…and still no splits: the route path adds a producer for one of the two empty lists and "
+                + "none for the other, because there is still no lap model")
+
+        // The summary carries the array; this is the row. §14 pins the route's round trip through
+        // `GRDBWorkoutRepository` on a fixture, and this is the same round trip through the write path
+        // the app actually drives — which is the thing a summary-level assertion cannot see.
+        let storedRoute = try await routeWorkouts.getWorkouts(for: Date()).first?.route ?? []
+        assertTest(
+            storedRoute.count == 4 && storedRoute.map(\.heartRate) == [0, 0, 150, 150],
+            "…and the same four fixes read back off `GRDBWorkoutRepository`, which is what proves they "
+                + "reached `workout_route_points` rather than only the summary "
+                + "(\(storedRoute.count) read back)")
+
+        let stopsAfterEnd = await MainActor.run { gps.stopCount }
+        assertTest(
+            stopsAfterEnd > stopsAtToggleOff,
+            "…and END released the GPS as well as the toggle did — the instance the toggle started is "
+                + "the one END stopped, which is the pairing a service built fresh per read would "
+                + "break (\(stopsAtToggleOff) stop(s) at the toggle, \(stopsAfterEnd) after END)")
+        assertTest(
+            await MainActor.run { gps.yield(latitude: 40.76, longitude: -73.97, timestamp: t0) } == false,
+            "…leaving nothing delivering fixes into a session that has ended")
+
+        // ---- A permission the user refused ----
+        //
+        // The absence rule applied to a capability, in the three-part shape the refused card above
+        // already uses: the refusal is reported, the capability is not claimed, and the core function
+        // is untouched. A route that cannot be recorded is a missing route, not a missing session.
+
+        let deniedTelemetry = ScriptedTelemetryRepository()
+        let deniedGPS = SpyLocationTracking()
+        await MainActor.run {
+            deniedGPS.permission = .undetermined
+            deniedGPS.permissionAfterRequest = .denied
+        }
+        let deniedSession = LiveSessionUseCase(
+            controller: SpyLiveActivityController(),
+            locationTracking: deniedGPS,
+            streamBiometricsUseCase: StreamBiometricsUseCase(
+                bleRepository: deniedTelemetry, biometricRepository: EmptyBiometricStore()),
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: routeWorkouts),
+            userProfileRepository: routeProfile,
+            bleRepository: deniedTelemetry)
+
+        await deniedSession.start()
+        await deniedSession.setRouteRecording(true)
+        let deniedRecording = await deniedSession.isRecordingRoute
+        let deniedStarts = await MainActor.run { deniedGPS.startCount }
+        assertTest(
+            deniedRecording == false && deniedStarts == 0,
+            "A refused permission leaves the toggle off and never starts the GPS — the capability is "
+                + "absent rather than the request being ignored")
+        let deniedError = await deniedSession.routeError
+        assertTest(
+            deniedError?.contains("Settings") == true,
+            "…and the refusal is reported as a sentence naming where to change it, rather than "
+                + "swallowed (\(deniedError ?? "nil"))")
+        assertTest(
+            await deniedSession.isRunning,
+            "…while the session records anyway: a route that cannot be recorded is a missing route, "
+                + "not a missing session")
+        assertTest(
+            await waitUntil { deniedTelemetry.subscriberCount == 1 },
+            "…and it is reading the strap like any other session")
+
+        deniedTelemetry.yield(BiometricSample(timestamp: t0, heartRate: 120))
+        assertTest(
+            await waitUntil { await deniedSession.snapshot?.sampleCount == 1 },
+            "…and it takes samples")
+        let deniedSummary = await deniedSession.end()
+        assertTest(
+            deniedSummary?.workout.route.isEmpty == true,
+            "…ending with a row that carries an empty route, which is what a session with no route "
+                + "should look like rather than no row at all")
+
+        // The *other* refusal, and the reason the two are separate sentences rather than one generic
+        // one: still `.undetermined` after a request means Location Services are off for the whole
+        // device, which the user fixes on a different screen entirely. A single message would send
+        // them to a per-app setting that is not the problem.
+        let offGPS = SpyLocationTracking()
+        await MainActor.run {
+            offGPS.permission = .undetermined
+            offGPS.permissionAfterRequest = .undetermined
+        }
+        let offSession = LiveSessionUseCase(
+            controller: SpyLiveActivityController(),
+            locationTracking: offGPS,
+            streamBiometricsUseCase: routeStream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: routeWorkouts),
+            userProfileRepository: routeProfile,
+            bleRepository: routeTelemetry)
+        await offSession.setRouteRecording(true)
+        let offError = await offSession.routeError
+        assertTest(
+            offError != nil && offError?.contains("Settings") == false,
+            "…and a device with Location Services switched off gets the other sentence, which does "
+                + "not point at a per-app setting that is not the problem (\(offError ?? "nil"))")
+
+        // ---- What Home draws from those rows ----
+        //
+        // `getWorkouts(for:)` above proves the row is *stored*; this proves it reaches the screen the
+        // row is for — Home's `ACTIVITIES` list under `My Day` — through the view model that draws it
+        // rather than through the repository directly. The repo keeps those two apart on purpose: §16
+        // and §17 pin one table read through two view models with two separate gates, and a reader that
+        // forgot a gate is invisible to an assertion made against the repository.
+        //
+        // The view model is handed a **throwaway** telemetry repository. `load(for:)` ends by
+        // subscribing to its stream, and handing it §18's scripted `telemetry` would move
+        // `telemetry.subscriberCount` out from under the reader-count assertions above.
+        let home = await MainActor.run {
+            HomeViewModel(
+                recoveryRepository: GRDBRecoveryRepository(db: db),
+                sleepRepository: GRDBSleepRepository(db: db),
+                strainRepository: GRDBStrainRepository(db: db),
+                workoutRepository: workoutRepository,
+                userProfileRepository: profileRepository,
+                stepRepository: GRDBStepRepository(db: db),
+                analyzeStress: AnalyzeStressUseCase(biometricRepository: EmptyBiometricStore()),
+                manage: ManageBLEConnectionUseCase(
+                    bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
+                streamUseCase: StreamBiometricsUseCase(
+                    bleRepository: ScriptedTelemetryRepository(),
+                    biometricRepository: EmptyBiometricStore()))
+        }
+        await home.load(for: Date())
+        let homeWorkouts = await MainActor.run { home.workouts }
+
+        assertTest(
+            homeWorkouts.count == 2,
+            "Home's `ACTIVITIES` list holds both of the day's sessions (\(homeWorkouts.count) held)")
+        assertTest(
+            homeWorkouts.contains { $0.activityName == "Activity" },
+            "…and the one this app recorded carries the abstention name all the way to the card, not "
+                + "just into the row (\(homeWorkouts.map { $0.activityName ?? "nil" }))")
+    } catch {
+        assertTest(false, "The live session's round trip threw: \(error)")
+    }
+}
+
+/// §19 — the activity detail page, reached by tapping an activity row on Home.
+///
+/// **Nothing here is evidence about a strap**, on §16's, §17's and §18's terms verbatim:
+/// `biometric_samples` holds 0 rows in every database on this machine, so the heart-rate trace the
+/// page draws is `No Data` on every session this app can show, and the blocks below prove arithmetic,
+/// storage, screens and the two readers of one multicast stream — not whether a strap answers.
+///
+/// It opens on values with no database behind them — `ActivityDelta`, `ActivityZoneRow`, and the
+/// window/band pair — so those blocks still assert if a database block below throws. What each block
+/// is for, in the order they run:
+///
+/// 1. **The delta carries no verdict.** `ActivityDelta` is deliberately a sibling of `MetricChange`
+///    rather than a fourth verdict on it: strain rising against the last ten basketball sessions is
+///    neither good news nor bad, and `MetricChange.Verdict`'s three cases are all mapped to a colour.
+/// 2. **The five zone rows**, which is what the user asked to sit below the chart. The property that
+///    matters is that a row's percent and its time are **one share of one duration**, so they cannot
+///    contradict each other — and the reference's `0% · 0:00:12` is therefore unreachable here.
+/// 3. **The window and the band**, on a fixture whose quartiles are exact in binary.
+/// 4. **`workout.steps`** through `v17`'s column, which is the one thing on this page with no
+///    producer on any imported session.
+/// 5. **Two readers on one motion stream** — the assertion that fails if anyone replaces the
+///    multicast registry with a single continuation.
+/// 6. **The export as a property**, over all 673 rows.
+func runActivityDetailTests() async {
+
+    // Every literal below is a duration or an offset from this instant rather than from `Date()`, so
+    // the blocks that need no database cannot move with the day the suite runs.
+    let anchor = Date(timeIntervalSince1970: 1_700_000_000)
+
+    /// A session at a known offset, carrying only what the block needs.
+    func session(
+        _ name: String?,
+        startOffset: TimeInterval,
+        durationSeconds: TimeInterval,
+        strain: Double = 5,
+        steps: Int? = nil,
+        zones: [Double]? = nil
+    ) -> WorkoutSession {
+        WorkoutSession(
+            startedAt: anchor.addingTimeInterval(startOffset),
+            endedAt: anchor.addingTimeInterval(startOffset + durationSeconds),
+            strain: strain,
+            averageHeartRate: 121,
+            maxHeartRate: 164,
+            route: [],
+            splits: [],
+            activityName: name,
+            hrZonePercents: zones,
+            steps: steps)
+    }
+
+    // The profile's table, off the cold-start 190/60 pair `GRDBUserProfileRepository` answers a fresh
+    // install with. It is the same table `CalculateStrainUseCase` builds its zones from and the same
+    // one the live session's band scale reads, so this page introduces no third edge.
+    let zones = StrainAccumulatorMath.computeZones(maxHR: 190, restHR: 60)
+
+    // MARK: - The delta: a comparison with no verdict
+
+    let strainDelta = ActivityDelta.between(
+        current: 4.1, mean: 1.6, formatted: { $0.formattedOneDecimal() })
+    assertTest(
+        strainDelta?.magnitudeText == "2.5" && strainDelta?.meanText == "1.6"
+            && strainDelta.flatMap(\.direction) == .up,
+        "A figure above its window's mean points up, and the magnitude is the distance — **never "
+            + "signed**, because the glyph is the only thing that says which way it went "
+            + "(\(strainDelta?.magnitudeText ?? "nil"), \(strainDelta?.meanText ?? "nil"))")
+
+    let downDelta = ActivityDelta.between(
+        current: 1.6, mean: 4.1, formatted: { $0.formattedOneDecimal() })
+    assertTest(
+        downDelta.flatMap(\.direction) == .down && downDelta?.magnitudeText == "2.5",
+        "…and a figure below it points down, with the same unsigned magnitude — the two directional "
+            + "cases differ in the glyph and in nothing else")
+
+    // `4.14` and `4.1` print alike at one decimal, so the row would read `4.1 = 4.1`. The comparison
+    // is therefore made on the **formatted** pair, which is `MetricChange`'s rule and the reason
+    // `between` takes the caller's own formatter rather than choosing one.
+    let sameDelta = ActivityDelta.between(
+        current: 4.14, mean: 4.1, formatted: { $0.formattedOneDecimal() })
+    assertTest(
+        sameDelta != nil,
+        "A figure that prints the same as its mean still produces a delta rather than nothing: "
+            + "`nil` is reserved for a **missing side**, never for *unchanged*")
+    assertTest(
+        sameDelta.flatMap(\.direction) == nil && sameDelta?.magnitudeText == "0.0",
+        "…and that case has no direction and a magnitude of `0.0` — a raw comparison of 4.14 against "
+            + "4.1 would instead draw `4.1 ▲ 4.1`, a row contradicting itself")
+
+    assertTest(
+        ActivityDelta.between(current: nil, mean: 4.0, formatted: { $0.formattedOneDecimal() }) == nil,
+        "A session whose own figure was never measured yields no delta at all — the badge is "
+            + "withheld, never drawn against a substituted number")
+    assertTest(
+        ActivityDelta.between(current: 4.0, mean: nil, formatted: { $0.formattedOneDecimal() }) == nil,
+        "…and so does a window below the three-session floor, which has no mean to compare against")
+
+    assertTest(
+        (strainDelta?.symbolName ?? "nil") == "arrowtriangle.up.fill"
+            && (downDelta?.symbolName ?? "nil") == "arrowtriangle.down.fill"
+            && (sameDelta?.symbolName ?? "nil") == "circle.fill",
+        "Each of the three answers has its own glyph, and the unchanged one is a filled circle "
+            + "rather than a triangle pointing nowhere "
+            + "(\(strainDelta?.symbolName ?? "nil"), \(downDelta?.symbolName ?? "nil"), "
+            + "\(sameDelta?.symbolName ?? "nil"))")
+
+    let verdicts = [Theme.recoveryGreen, Theme.recoveryYellow, Theme.recoveryRed]
+    assertTest(
+        strainDelta?.color == Theme.neutralDelta && downDelta?.color == Theme.neutralDelta,
+        "Both directions draw in the neutral token — a computed property, so the page cannot come "
+            + "to draw a delta in a verdict colour by hand")
+    assertTest(
+        verdicts.allSatisfy { $0 != strainDelta?.color && $0 != downDelta?.color },
+        "…and **no verdict colour is reachable from either direction**. `MetricChange`'s three "
+            + "tokens are what a page that disagreed would reach for, and `Theme.neutralDelta` is "
+            + "deliberately a fourth token rather than `textSecondary` or `bandSufficient` borrowed "
+            + "to mean a judgement: neither of those means one")
+
+    assertTest(
+        strainDelta.map(ActivityDeltaBadge.spoken)
+            == "up 2.5, against an average of 1.6 over your last ten",
+        "The badge's sentence names the window, because *last ten* is the fact that decides whether "
+            + "the comparison means anything (\(strainDelta.map(ActivityDeltaBadge.spoken) ?? "nil"))")
+    assertTest(
+        sameDelta.map(ActivityDeltaBadge.spoken)
+            == "unchanged, against an average of 4.1 over your last ten",
+        "…and the unchanged case is spoken as words rather than as `0.0` with no glyph beside it")
+
+    // MARK: - The five zone rows
+
+    // The mockup's own session: 958 seconds, and a block summing to 90 — the remaining tenth is time
+    // below zone 1, which WHOOP publishes no column for and which is why the column is short.
+    let zoned = session(
+        "Basketball", startOffset: 0, durationSeconds: 958, zones: [10, 20, 30, 25, 5])
+    let rows = ActivityZoneRow.rows(for: zoned, zones: zones)
+
+    assertTest(
+        rows.count == 5 && rows.map(\.index.rawValue) == [5, 4, 3, 2, 1],
+        "Five rows come back **hardest band first**, and the order is decided in `rows(for:zones:)` "
+            + "rather than by a `reversed()` in the page's body: the runner can assert this array's "
+            + "first element and cannot see a `ForEach` that walks it backwards "
+            + "(\(rows.map(\.index.rawValue)))")
+    assertTest(
+        rows[4].percentText == "10%" && rows[4].secondsText == "0:01:36",
+        "Zone 1's share is `10` of 958 seconds and the row prints `0:01:36` — 95.8 seconds rounded to "
+            + "the clock's own resolution — and the two figures come from one division rather than "
+            + "two (\(rows[4].percentText), \(rows[4].secondsText))")
+    assertTest(
+        rows.allSatisfy { $0.seconds != nil }
+            && rows.compactMap(\.seconds).reduce(0, +) < zoned.durationSeconds,
+        "…and the five times sum to **strictly less** than the session, because the block itself sums "
+            + "to 90 rather than 100 (\(rows.compactMap(\.seconds).reduce(0, +)) of "
+            + "\(zoned.durationSeconds))")
+    assertTest(
+        rows.first?.bpmRangeText.hasSuffix("+") == true,
+        "Zone 5's range has an **open top end**: its ceiling is the profile's nominal maximum rather "
+            + "than a measured one, and a strap reports a rate above it the moment a session is "
+            + "harder than the profile assumes — printing `177-190` would name a ceiling the scoring "
+            + "does not honour (\(rows.first?.bpmRangeText ?? "nil"))")
+    assertTest(
+        (0..<4).allSatisfy { rows[$0].lowerBpm == rows[$0 + 1].upperBpm },
+        "…and the bands are contiguous: each band's floor is the one above it's ceiling, so the five "
+            + "ranges tile the scale without a gap or an overlap "
+            + "(\(rows.map(\.bpmRangeText)))")
+
+    // An absent block and a measured zero are different answers, and the whole type exists to keep
+    // them apart.
+    let unzonedRows = ActivityZoneRow.rows(
+        for: session("Basketball", startOffset: 0, durationSeconds: 958), zones: zones)
+    assertTest(
+        unzonedRows.count == 5
+            && unzonedRows.allSatisfy { $0.percent == nil && $0.seconds == nil },
+        "A session with no zone block still draws five rows, each with no figure on it — `nil` in, "
+            + "`nil` out, on `WorkoutSession.zoneSeconds`'s own guard")
+    assertTest(
+        unzonedRows.allSatisfy { $0.percentText == "—" && $0.secondsText == "—" },
+        "…and both properties draw the dash, so a row can never show a figure beside an absent one "
+            + "(\(unzonedRows.map(\.percentText)), \(unzonedRows.map(\.secondsText)))")
+    assertTest(
+        ActivityZoneRow.spoken(unzonedRows[0]).hasSuffix("Not recorded for this session."),
+        "…and the row says so out loud rather than reading a zero "
+            + "(\(ActivityZoneRow.spoken(unzonedRows[0])))")
+
+    let zeroRows = ActivityZoneRow.rows(
+        for: session("Basketball", startOffset: 0, durationSeconds: 958, zones: [0, 0, 0, 0, 0]),
+        zones: zones)
+    assertTest(
+        zeroRows.allSatisfy { $0.percentText == "0%" && $0.secondsText == "0:00:00" },
+        "A stored block of five zeroes is a **measurement** — 45 of the export's 673 rows are exactly "
+            + "that, workouts that never reached zone 1 — so it draws `0%` beside `0:00:00`, not the "
+            + "dash an absent block draws. The two are the same pixels only if someone collapses them")
+    assertTest(
+        zeroRows.allSatisfy { $0.percent == 0 && $0.seconds == 0 },
+        "**And a stored `0` percent implies exactly `0` seconds.** This is the property that "
+            + "separates this app's rows from the reference's: the export's percents are whole, so a "
+            + "row's two figures are one share of one duration and can never contradict each other, "
+            + "where the reference's `ZONE 1 … 0% · 0:00:12` comes from a finer internal share it "
+            + "rounds only for display")
+
+    assertTest(
+        ActivityZoneRow.rows(
+            for: session("Basketball", startOffset: 0, durationSeconds: 958,
+                         zones: [10.5, 20, 30, 25, 5]),
+            zones: zones
+        ).allSatisfy { $0.percent == nil },
+        "A fractional percent is **refused outright** rather than rounded: all 3,365 `HR Zone n %` "
+            + "cells in the bundled file are whole numbers, so a fraction is a value from some other "
+            + "producer, and rounding it would silently invent a reading instead of losing one")
+    assertTest(
+        ActivityZoneRow.rows(
+            for: session("Basketball", startOffset: 0, durationSeconds: 958, zones: [10, 20]),
+            zones: zones
+        ).allSatisfy { $0.percent == nil },
+        "…and a block that is not five long reads as no block at all rather than as a partial set "
+            + "summing to a confident figure")
+    assertTest(
+        ActivityZoneRow.rows(for: zoned, zones: Array(zones.prefix(4))).isEmpty,
+        "A zone **table** that is not five bands long answers no rows at all: a page drawing three of "
+            + "five zones would report the session's time as though the two hardest bands did not exist")
+
+    // MARK: - The window
+
+    // Twelve `Basketball` sessions ten minutes apart, a `Walking` one interleaved among them, and a
+    // `Basketball` one recorded *after* the target. Each is the assertion for one filter: a window
+    // that ignored the cap takes twelve, one that ignored the name takes the `Walking` row, and one
+    // keyed on the day rather than the instant admits the later session.
+    let target = session("Basketball", startOffset: 7800, durationSeconds: 600)
+    var history = [session("Walking", startOffset: 300, durationSeconds: 600)]
+    for index in 0..<12 {
+        history.append(session(
+            "Basketball", startOffset: 600 + Double(index) * 600, durationSeconds: 600))
+    }
+    history.append(session("Basketball", startOffset: 8400, durationSeconds: 600))
+
+    let window = ActivityBaseline.window(for: target, in: history)
+    assertTest(
+        window.count == ActivityBaseline.sessionWindowCount,
+        "The window is capped at ten (\(ActivityBaseline.sessionWindowCount)) sessions — the count "
+            + "the user chose over a calendar window, because a 30-day window would draw a dash on 20 "
+            + "of the export's 28 basketball sessions")
+    assertTest(
+        window.allSatisfy { $0.activityName == "Basketball" },
+        "…and holds only the target's own activity: the `Walking` session interleaved among them is "
+            + "not pulled in (\(window.compactMap(\.activityName)))")
+    assertTest(
+        window.allSatisfy { $0.startedAt < target.startedAt },
+        "…and none of them starts at or after the target — **strictly** before, so two sessions on "
+            + "one day do not share a baseline and the later of them can be compared against the "
+            + "earlier")
+    assertTest(
+        !window.contains { $0.id == target.id },
+        "…and the target is not in its own baseline, which is the identity filter and not the instant "
+            + "one: a session cannot be its own comparison")
+    assertTest(
+        !window.contains { $0.startedAt == anchor.addingTimeInterval(8400) },
+        "…and neither is the session recorded *after* it — a window keyed on the calendar day rather "
+            + "than the instant would have admitted the second basketball session on that day")
+    assertTest(
+        window.first?.startedAt == anchor.addingTimeInterval(1800),
+        "…and the ten taken are the ten **most recent** matches, with the cap applied *after* the "
+            + "filters: twelve basketball sessions are strictly before the target and the two oldest "
+            + "are dropped, which a `.prefix(10)` before the name filter would have got wrong "
+            + "(\(window.first.map { $0.startedAt.timeIntervalSince(anchor) } ?? -1))")
+
+    assertTest(
+        ActivityBaseline.window(
+            for: target,
+            in: [session("  basketball ", startOffset: 600, durationSeconds: 600)]
+        ).count == 1,
+        "Matching is `ActivityName`'s normalisation — trimmed and case-folded — because the export's "
+            + "own names are not written consistently, and a page grouping on the raw string would "
+            + "show one activity's history as two")
+
+    // The abstention group is baselined like any other name, which is the user's own answer and the
+    // reason there is no special case here to assert the absence of.
+    let abstentionHistory = (0..<3).map {
+        session("activity", startOffset: Double($0) * 600, durationSeconds: 600)
+    }
+    assertTest(
+        ActivityBaseline.window(
+            for: session("Activity", startOffset: 1800, durationSeconds: 600),
+            in: abstentionHistory
+        ).count == 3,
+        "WHOOP's abstention word is baselined like any other name: `Activity` and `Other` are words "
+            + "it writes on 208 of the export's 673 rows, which is a history rather than a hole — and "
+            + "the 197 `Activity` rows are exactly the sessions with no name to group on")
+
+    // MARK: - The floor, at both edges
+
+    let twoPriors = (0..<2).map {
+        session("Running", startOffset: Double($0) * 600, durationSeconds: 600)
+    }
+    let runTwo = session("Running", startOffset: 1800, durationSeconds: 600)
+    let thinSummary = ActivityBaseline.summary(
+        for: runTwo, priorSessions: ActivityBaseline.window(for: runTwo, in: twoPriors))
+    assertTest(
+        thinSummary.sessionCount == 0 && thinSummary.typicalDuration == nil
+            && thinSummary.meanStrain == nil && thinSummary.meanSteps == nil,
+        "Two prior sessions is below `RecoveryScoring.minimumBaselineDays` and **everything** is "
+            + "withheld: no band, no strain mean, no step mean, and a session count of zero — which "
+            + "is what tells the card to say there is nothing to compare against rather than printing "
+            + "a mean over two sessions")
+
+    let threePriors = (0..<3).map {
+        session("Running", startOffset: Double($0) * 600, durationSeconds: 600)
+    }
+    let runThree = session("Running", startOffset: 1800, durationSeconds: 600)
+    let threeSummary = ActivityBaseline.summary(
+        for: runThree, priorSessions: ActivityBaseline.window(for: runThree, in: threePriors))
+    assertTest(
+        threeSummary.sessionCount == 3 && threeSummary.typicalDuration != nil
+            && threeSummary.meanStrain != nil,
+        "…and the third prior crosses the floor, so the band and the mean appear at exactly "
+            + "`RecoveryScoring.minimumBaselineDays` and not one session later "
+            + "(\(threeSummary.sessionCount))")
+
+    // The step mean is taken over a **second population** — the priors that carry a step count at
+    // all — and this pair is what keeps an unstored history from reading as a history of stillness.
+    let mixedSummary = ActivityBaseline.summary(
+        for: session("Basketball", startOffset: 6000, durationSeconds: 600),
+        priorSessions: (0..<10).map {
+            session("Basketball", startOffset: Double($0) * 600, durationSeconds: 600,
+                    steps: $0 < 2 ? 500 + $0 : nil)
+        })
+    assertTest(
+        mixedSummary.meanStrain != nil && mixedSummary.meanSteps == nil
+            && mixedSummary.stepSessionCount == 0,
+        "A ten-session window bands its duration and its strain while its **step** mean is withheld: "
+            + "only two of the ten carry a count, and this app has not measured the other eight — "
+            + "averaging `?? 0` over them would report a mean step count of nearly zero for a history "
+            + "that is simply unstored")
+    assertTest(
+        mixedSummary.sessionCount == 10,
+        "…and the session count is the **window's**, not the step population's, so the card's "
+            + "footnote describes the band it actually drew (\(mixedSummary.sessionCount))")
+
+    let steppedSummary = ActivityBaseline.summary(
+        for: session("Basketball", startOffset: 6000, durationSeconds: 600),
+        priorSessions: (0..<10).map {
+            session("Basketball", startOffset: Double($0) * 600, durationSeconds: 600,
+                    steps: $0 < 3 ? 500 + $0 * 100 : nil)
+        })
+    assertTest(
+        steppedSummary.stepSessionCount == 3 && steppedSummary.meanSteps == 600,
+        "…and three carrying one is enough to band it: the mean is taken over those three alone, not "
+            + "over the ten (\(steppedSummary.meanSteps ?? -1) over "
+            + "\(steppedSummary.stepSessionCount))")
+
+    // MARK: - The band
+
+    // Durations of 600, 1200, 1800 and 2400 seconds. R's `quantile(type = 7)` — which
+    // `BaselineStatisticsMath.percentile` implements and NumPy defaults to — puts the first quartile
+    // at `h = (4 − 1) × 0.25 + 1 = 1.75`, so `600 + 0.75 × 600 = 1050`, and the third at `h = 3.25`,
+    // so `1800 + 0.25 × 600 = 1950`. Both are exact in binary, which is what lets them be pinned as
+    // literals rather than to a tolerance, and both are reproducible outside this codebase.
+    let quartilePriors = [600.0, 1200.0, 1800.0, 2400.0].enumerated().map { index, duration in
+        session("Yoga", startOffset: Double(index) * 3600, durationSeconds: duration)
+    }
+    let yogaSummary = ActivityBaseline.summary(
+        for: session("Yoga", startOffset: 4 * 3600, durationSeconds: 600),
+        priorSessions: quartilePriors)
+    assertTest(
+        yogaSummary.typicalDuration == ActivityBaseline.Typical(low: 1050, high: 1950),
+        "The band is the middle half of the window's durations, pinned against hand-computed "
+            + "quartiles rather than against a second implementation "
+            + "(\(String(describing: yogaSummary.typicalDuration)))")
+    assertTest(
+        yogaSummary.typicalDuration.map { $0.low <= $0.high } == true,
+        "…and the pair is ordered as it is handed out, so no caller can be given an inverted band")
+    assertTest(
+        ActivityBaseline.Typical(low: 900, high: 100)
+            == ActivityBaseline.Typical(low: 100, high: 900),
+        "The initialiser orders an inverted pair rather than trusting its caller — the percentile "
+            + "helper has no reason to hand one over, but a band drawn backwards puts the mark in the "
+            + "wrong place and reads as a different scale rather than as a wrong reading")
+
+    assertTest(
+        ActivityDurationBarLayout.make(durationSeconds: 600, typical: nil) == nil,
+        "**No band, no bar.** The bar's scale *is* the band, so a session with no window to read it "
+            + "against draws no picture at all — and the row prints its duration either way, so the "
+            + "absence costs the page a drawing and no figure")
+    let layout = ActivityDurationBarLayout.make(
+        durationSeconds: 1500, typical: ActivityBaseline.Typical(low: 1050, high: 1950))
+    assertTest(
+        layout?.lowFraction == 1050.0 / 1950.0 && layout?.highFraction == 1.0
+            && layout?.filledFraction == 1500.0 / 1950.0,
+        "…and with one, the session's own length lands **inside** the band's span on a scale that is "
+            + "the band's upper edge — a track running to the session's own end would draw every "
+            + "session as a full bar and say nothing "
+            + "(\(String(describing: layout)))")
+    let longLayout = ActivityDurationBarLayout.make(
+        durationSeconds: 4000, typical: ActivityBaseline.Typical(low: 1050, high: 1950))
+    assertTest(
+        longLayout?.filledFraction == 1.0,
+        "…and a session longer than the band's top edge **widens the scale** rather than being "
+            + "clamped level with one that only just reached it")
+
+    // MARK: - The page's own strings
+
+    // The four sentences the page composes, asserted as statics for the reason every other spoken
+    // string here is: the runner has no renderer, so a sentence built inside a `body` is a sentence
+    // nothing can check. The numbers are the mockup's own — a fifteen-minute session against a 9–26
+    // minute band — so the literals are figures a reader can hold beside the reference.
+    assertTest(
+        ActivityDetailView.comparisonBasis(sessionCount: 0)
+            == "No comparison: not enough previous sessions of this activity yet.",
+        "With no window the card says so in a whole sentence rather than leaving the badges off and "
+            + "nothing beside them — a reader who sees no comparison should be told why "
+            + "(\(ActivityDetailView.comparisonBasis(sessionCount: 0)))")
+    assertTest(
+        ActivityDetailView.comparisonBasis(sessionCount: 1)
+            == "Compared with your last 1 session of this activity.",
+        "…and one prior session takes the singular, which is a string a plural-only form gets wrong "
+            + "on exactly the state a user reaches first (\(ActivityDetailView.comparisonBasis(sessionCount: 1)))")
+    assertTest(
+        ActivityDetailView.comparisonBasis(sessionCount: 10)
+            == "Compared with your last 10 sessions of this activity.",
+        "…and the count printed is the **window's**, which is what makes the two badges above it a "
+            + "comparison against a stated population rather than against an unstated number — the "
+            + "user's own answer to how the basis should be shown "
+            + "(\(ActivityDetailView.comparisonBasis(sessionCount: 10)))")
+
+    assertTest(
+        ActivityDetailView.typicalDurationCaption(low: 540, high: 1560) == "Typical: 9-26 min",
+        "The band's caption prints **whole minutes**, not a clock shape: two `m:ss` durations side "
+            + "by side invite the eye to compare digits, and this is a span of a scale rather than a "
+            + "reading (\(ActivityDetailView.typicalDurationCaption(low: 540, high: 1560)))")
+    assertTest(
+        ActivityDetailView.spokenDuration(durationText: "0:15:58", low: 540, high: 1560)
+            == "Duration 0:15:58. Typical for this activity is 9 to 26 minutes.",
+        "…and the card's spoken form says the session's own length first and the band second, so the "
+            + "reading and the comparison are not read as one figure "
+            + "(\(ActivityDetailView.spokenDuration(durationText: "0:15:58", low: 540, high: 1560)))")
+
+    // Composed from the two ends' own formatted strings rather than pinned to `"Aug 10 2:17 PM to
+    // 2:32 PM"`: the suite runs in whatever zone the machine is in, and a literal here would be a
+    // test that passes only in one of them — §11's and §12's rule, on a string instead of a count.
+    let subtitleStart = anchor
+    let subtitleEnd = anchor.addingTimeInterval(958)
+    let subtitle = ActivityDetailView.subtitle(startedAt: subtitleStart, endedAt: subtitleEnd)
+    assertTest(
+        subtitle == "\(subtitleStart.formattedShortDate()) \(subtitleStart.formattedHourMinute()) "
+            + "to \(subtitleEnd.formattedHourMinute())",
+        "The header's one line is the app's existing short date and its existing clock form at both "
+            + "ends, joined by ` to ` — so this page introduces no fourth date format "
+            + "(\(subtitle))")
+    assertTest(
+        subtitle.contains(" to ") && subtitle.hasPrefix(subtitleStart.formattedShortDate())
+            && subtitle.hasSuffix(subtitleEnd.formattedHourMinute()),
+        "…and it is composed rather than a bare date: the two ends are distinguishable in it, which "
+            + "is what a one-ended form would lose (\(subtitle))")
+
+    // MARK: - `workout.steps` through the database
+
+    do {
+        let db = LocalDatabaseManager(inMemory: true)
+        let repository = GRDBWorkoutRepository(db: db)
+        let measured = session("Basketball", startOffset: 0, durationSeconds: 600, steps: 693)
+        let unmeasured = session("Basketball", startOffset: 3600, durationSeconds: 600)
+        try await repository.save(measured)
+        try await repository.save(unmeasured)
+
+        // Each session is read off **its own** day rather than off one shared anchor, so a time zone
+        // that puts the two either side of midnight narrows this instead of making the second read
+        // return nothing and the `nil` comparison below pass for the wrong reason.
+        let readMeasured = try await repository.getWorkouts(for: measured.startedAt)
+            .first { $0.id == measured.id }
+        let readUnmeasured = try await repository.getWorkouts(for: unmeasured.startedAt)
+            .first { $0.id == unmeasured.id }
+
+        assertTest(
+            readMeasured?.steps == 693,
+            "A recorded step count round-trips through `v17`'s column in both directions — the "
+                + "`save` and the `makeSessions` — so the figure the page prints is the one the "
+                + "session accumulated (\(String(describing: readMeasured?.steps)))")
+        assertTest(
+            readUnmeasured?.steps == nil,
+            "…and an **unrecorded** one comes back `nil` rather than `0`. The column is nullable and "
+                + "undefaulted, which is the only shape in which NULL reads as *not measured* — the "
+                + "same distinction `source` documents, and the reason this row draws a dash on all "
+                + "673 imported sessions")
+        assertTest(
+            readMeasured != nil && readUnmeasured != nil,
+            "…and both were found on their own day, which is what makes the two assertions above a "
+                + "statement about the value rather than about a missing row")
+    } catch {
+        assertTest(false, "The `workout.steps` round trip threw: \(error)")
+    }
+
+    // MARK: - Two readers on one motion stream
+
+    // The app really does run two: `TrackStepsUseCase` fills the day's tile and `LiveSessionUseCase`
+    // counts the session's own. `motionStream` is multicast, so attaching the second must not starve
+    // the first — and the failure if anyone replaces the registry with a single continuation is
+    // **silent**, because one reader's `for await` simply stops receiving, which is indistinguishable
+    // from a strap that went quiet. The discriminating assertion below is the day's row: the session
+    // registers first, so a single-continuation registry would hand it every batch and leave the
+    // day's counter frozen rather than erroring.
+    do {
+        let db = LocalDatabaseManager(inMemory: true)
+        let telemetry = ScriptedTelemetryRepository()
+        let stepRepository = GRDBStepRepository(db: db)
+        let workoutRepository = GRDBWorkoutRepository(db: db)
+        let trackSteps = TrackStepsUseCase(bleRepository: telemetry, stepRepository: stepRepository)
+        let day = Date()
+
+        let session = LiveSessionUseCase(
+            controller: SpyLiveActivityController(),
+            locationTracking: SpyLocationTracking(),
+            streamBiometricsUseCase: StreamBiometricsUseCase(
+                bleRepository: telemetry, biometricRepository: EmptyBiometricStore()),
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+            userProfileRepository: GRDBUserProfileRepository(db: db),
+            bleRepository: telemetry)
+
+        await session.start()
+        assertTest(
+            await waitUntil { telemetry.motionSubscriberCount == 1 },
+            "A live session attaches one reader to the strap's motion stream, where before this page "
+                + "`TrackStepsUseCase` was its only reader")
+
+        // Three one-second samples at 150 bpm, which is what `end()` needs to have a strain, an
+        // average and a maximum to write. Without them the session records nothing at all and the
+        // step count below would have no row to land on.
+        for index in 0..<3 {
+            telemetry.yield(BiometricSample(
+                timestamp: day.addingTimeInterval(Double(index)), heartRate: 150))
+        }
+        assertTest(
+            await waitUntil { await session.snapshot?.sampleCount == 3 },
+            "…and its telemetry reader is running, which is what makes the session recordable at all")
+
+        // The day's counter, started second — the ordering `MainContainerView` gives it, where the
+        // app-level `.task` starts it once and never from `HomeViewModel.load(for:)`.
+        let dayReader = Task { await trackSteps.start() }
+        assertTest(
+            await waitUntil { telemetry.motionSubscriberCount == 2 },
+            "…and the day's own counter attaches a **second**, which is the count a "
+                + "single-continuation registry cannot reach: it would report 1 while one of the two "
+                + "`for await` loops sat silent")
+
+        telemetry.yieldMotion(motionBatch(startingAt: day, bumps: 12))
+
+        // The day's row is the barrier *and* the discriminating assertion: it is written by the
+        // reader that registered last, so it cannot appear at all if the batch went to the first
+        // continuation alone.
+        assertTest(
+            await waitUntil {
+                ((try? await stepRepository.getStepCount(for: day)) ?? nil)?.stepCount == 12
+            },
+            "One batch reaches the **day's** reader while a session is also attached, so the second "
+                + "subscriber took nothing from the first "
+                + "\(String(describing: (try? await stepRepository.getStepCount(for: day)) ?? nil))")
+
+        // A second barrier, and it is about ordering rather than about delivery: the sample below is
+        // yielded *after* the motion batch, and the session's two consumers are both main-actor
+        // tasks, so waiting for the telemetry one to catch up is what keeps `end()` from cancelling
+        // the motion consumer with a batch still undrained.
+        telemetry.yield(BiometricSample(timestamp: day.addingTimeInterval(3), heartRate: 150))
+        _ = await waitUntil { await session.snapshot?.sampleCount == 4 }
+
+        await session.end()
+        let saved = try await workoutRepository.getWorkouts(for: day).first
+        assertTest(
+            saved?.steps == 12,
+            "…and the **same** batch reached the session's own reader, so ending the session writes "
+                + "the count it accumulated rather than `nil` "
+                + "(\(String(describing: saved?.steps)))")
+        assertTest(
+            await waitUntil { telemetry.motionSubscriberCount == 1 },
+            "Ending the session releases its motion reader — the registry's other half: a stream that "
+                + "accumulates consumers nothing feeds is the same defect from the other side")
+
+        dayReader.cancel()
+    } catch {
+        assertTest(false, "The two-reader motion block threw: \(error)")
+    }
+
+    // MARK: - The export, as a property
+
+    // Read through the parser rather than through the importer, on §17's shape: the property being
+    // asserted — every percent whole, five derived durations summing to at most the workout's own
+    // span, and the all-zero rows reading back as **measured** zeroes — needs the parser and
+    // `ActivityZoneRow.rows(for:zones:)` and nothing else.
+    let workoutsURL = whoopExportURL().deletingLastPathComponent()
+        .appendingPathComponent("workouts.csv")
+    let exported = ((try? WhoopExportParser.parseWorkouts(at: workoutsURL)) ?? []).compactMap {
+        row -> WorkoutSession? in
+        guard let start = row.workoutStart, let end = row.workoutEnd else { return nil }
+        return WorkoutSession(
+            startedAt: start,
+            endedAt: end,
+            strain: 0,
+            averageHeartRate: 0,
+            maxHeartRate: 0,
+            route: [],
+            splits: [],
+            activityName: row.activityName,
+            hrZonePercents: row.hrZonePercents)
+    }
+    let exportRows = exported.map { ActivityZoneRow.rows(for: $0, zones: zones) }
+
+    assertTest(
+        exported.count == 673 && exportRows.allSatisfy { $0.count == 5 },
+        "All 673 of the export's workouts yield five zone rows — no row is short a band, and none "
+            + "answers an empty list (\(exported.count))")
+    assertTest(
+        exportRows.allSatisfy { $0.allSatisfy { $0.percent != nil } }
+            && exportRows.allSatisfy { rows in
+                rows.allSatisfy { ($0.percent ?? 1) == ($0.percent ?? 1).rounded() }
+            },
+        "…and every one of the 3,365 figures is a whole percent, which is the property that makes a "
+            + "row's two figures one answer divided once rather than two that can disagree")
+    assertTest(
+        zip(exported, exportRows).allSatisfy { session, rows in
+            rows.compactMap(\.seconds).reduce(0, +) <= session.durationSeconds + 1e-6
+        },
+        "…and the five times sum to at most the workout's own length on **every** row: the remainder "
+            + "is time below zone 1, which WHOOP publishes no column for, so zones 1–3 plus 4–5 is "
+            + "deliberately not the workout's duration")
+    assertTest(
+        zip(exported, exportRows).allSatisfy { _, rows in
+            rows.allSatisfy { ($0.percent != 0) || $0.seconds == 0 }
+        },
+        "**A stored `0` percent implies exactly `0` seconds across the whole file.** This is the "
+            + "property the reference cannot state and this app can: the mockup's `ZONE 1 … 0% · "
+            + "0:00:12` is unreachable here, because the two figures come from one share of one span")
+
+    let zeroExportRows = zip(exported, exportRows).filter { _, rows in
+        rows.allSatisfy { $0.percent == 0 }
+    }
+    assertTest(
+        zeroExportRows.count == 45,
+        "…45 of the 673 read `0` in every band — measured workouts that never reached zone 1, the "
+            + "count §17 owns on the raw file, which this page's rows must not change "
+            + "(\(zeroExportRows.count))")
+    assertTest(
+        zeroExportRows.allSatisfy { _, rows in
+            rows.allSatisfy { $0.percentText == "0%" && $0.secondsText == "0:00:00" }
+        },
+        "…and each of those reads back a **measured** `0%` beside `0:00:00` rather than the dash an "
+            + "absent block draws — 45 sessions this app would otherwise report as having no zone "
+            + "data at all")
+}
+
+/// One `MotionBatch` carrying `bumps` acceleration transients on the x axis.
+///
+/// **A bump train rather than a sine, and the count is why** — §16's reasoning, restated because the
+/// waveform is what makes the number `12` an assertion rather than an artefact: `|sin|` at 2 Hz peaks
+/// four times a second and the 1/3 s refractory rejects every other one, so a sine's count is a
+/// property of that interaction. Isolated Gaussian bumps 0.5 s apart at σ = 4 samples never merge.
+///
+/// **The two-second lead-in is not decoration either.** `StepDetectionMath.Detector` judges a peak
+/// against a threshold window that *includes the sample under test*, so a bump arriving into an empty
+/// window faces a level near its own peak and passes whatever the rule is; two seconds of still wrist
+/// fills the window first and drops the level to the 0.05 g floor.
+///
+/// `sampleIntervalSeconds` is `0.01`, so the batch is 100 Hz and `StepAccumulator` builds its detector
+/// at that rate — which is the whole reason `LiveSessionUseCase` reads the rate off the batch it was
+/// handed rather than declaring one.
+func motionBatch(startingAt start: Date, bumps: Int) -> MotionBatch {
+    let interval = 0.01
+    let leadInSeconds = 2.0
+    let periodSeconds = 0.5
+    let amplitudeG = 0.3
+    let sigma = 0.04
+    let total = leadInSeconds + Double(max(bumps - 1, 0)) * periodSeconds + 0.4
+    let count = Int((total / interval).rounded()) + 1
+
+    let x = (0..<count).map { index -> Double in
+        let seconds = Double(index) * interval
+        var value = 1.0
+        for bump in 0..<bumps {
+            let distance = seconds - (leadInSeconds + Double(bump) * periodSeconds)
+            value += amplitudeG * exp(-(distance * distance) / (2 * sigma * sigma))
+        }
+        return value
+    }
+    let still = [Double](repeating: 0, count: count)
+
+    return MotionBatch(
+        generation: .whoop4,
+        start: start,
+        // A live batch, not a banked one: the strap's own absolute time is a property of a flash
+        // record, and this is the shape a session receives while it is recording.
+        timestampIsFromStrap: false,
+        sampleIntervalSeconds: interval,
+        accelerometerG: MotionAxes(x: x, y: still, z: still),
+        gyroscopeDps: nil)
 }
 
 // The async sections need the process kept alive long enough to finish; 5s was too short on a

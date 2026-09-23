@@ -6,9 +6,7 @@ Reverse-engineered Bluetooth Low Energy protocol for WHOOP hardware. Three strap
 
 ## How to read this document
 
-Nothing here has been captured on this project's own hardware yet. Every statement is tagged with
-where it came from, and the tags are not decoration — most of the disagreements recorded below exist
-because two sources were silently mixed in an earlier revision of this file.
+Nothing here has been captured on this project's own hardware yet. Every statement is tagged with where it came from, and the tags are not decoration — most of the disagreements recorded below exist because two sources were silently mixed.
 
 | Tag | Meaning |
 | :--- | :--- |
@@ -34,9 +32,7 @@ ones. **The bond gates the proprietary command characteristic, not the SIG servi
 reported requirement rather than a settled one, so §7 Q6 carries it as an open question. The
 constraint noop states, in its Swift source and in its `WHOOP5_DEEP_DATA.md`, is that the 5.0/MG
 command characteristic needs an **authenticated SMP bond** which **macOS CoreBluetooth cannot
-complete** — so on the host that barrier is not one a better encoder would clear. **What that
-sentence does not say is that iOS can create one**, which is the half this document used to assume:
-see Q6, where the ecosystem's evidence points both ways.
+complete** — so on the host that barrier is not one a better encoder would clear. **What that sentence does not say is that iOS can create one**: see Q6, where the ecosystem's evidence points both ways.
 
 ### The 4.0 base UUID is settled without a capture, and the ecosystem is what settled it
 
@@ -46,8 +42,7 @@ reference clients of half a dozen independent projects (noop's Swift, Kotlin and
 whose own `docs/BLE_REVERSE_ENGINEERING.md` maps the five characteristics — OpenStrap/research,
 atria, Whoopless, WhoopBLE). One project dissents on the trailing service digit only, using `…0000`.
 
-The half this file used to carry, `…82A5-4E40-1CA360B95B30`, is **unsourced**: it returns no hit in
-noop, in OpenStrap, or in a public code search across GitHub. It has been replaced in the constant.
+The half `…82A5-4E40-1CA360B95B30` is **unsourced**: it returns no hit in noop, in OpenStrap, or in a public code search across GitHub, and must not be used.
 §1 of the suite pins these identifiers against the reference literals — not against the constants
 they test, which is the distinction that matters here — so the substitution cannot silently reverse.
 
@@ -57,8 +52,7 @@ peripheral is never discovered, no frame is ever decoded, and nothing downstream
 distinguish it from a strap that is switched off. It is the first thing to check when a scan finds
 nothing, and the cheapest defect in this file to fix.
 
-The 5.0 / MG base never had the problem — `fd4b0001-cce1-4033-93ce-002d5875f58a` agrees between the
-document and the code.
+The 5.0 / MG base is `fd4b0001-cce1-4033-93ce-002d5875f58a`, and the document and the code agree.
 
 ### Characteristic map
 
@@ -81,8 +75,7 @@ choice rather than a guess: the device screen
 and `WhoopProtocolProfile.profile(for:)` turns that into an envelope — or into `nil` for the standard
 strap and the simulator, which every command writer refuses. The 5.0 and MG profiles *are* built, and
 a frame arriving under either validates in `WhoopPacketDecoder` exactly as a 4.0 one does; what they
-do not carry is a command opcode set, so no builder produces a frame for them. §3's implementation
-status has the reasoning — read it before assuming the asymmetry is an oversight.
+do not carry is a command opcode set, so no builder produces a frame for them. §3's implementation status has the reasoning.
 
 Both generations share a start-of-frame byte `0xAA`, an inner record of the shape
 `[type][seq][cmd][payload…]`, and the same zlib CRC-32 as the payload check (reflected, poly
@@ -142,10 +135,7 @@ Three consequences, and the third is the one that bites:
 
 1. **The header CRC algorithm is generation-selected** — `.crc8` versus `.crc16Modbus`. `CRCUtils`
    **[repo]** implements both plus `crc32`, and **all three are correct** — see §2.1, where they were
-   checked against published reference vectors. `crc16Modbus` was for some time called from no
-   production path at all, because no profile selected it; `WhoopProtocolProfile.headerChecksum` now
-   selects it for the two 5.0 profiles and `WhoopPacketDecoder` takes one of two branches on that
-   field. **The two branches are separate cases rather than one algorithm behind a boolean, and the
+   checked against published reference vectors. `WhoopProtocolProfile.headerChecksum` selects `crc16Modbus` for the two 5.0 profiles, and `WhoopPacketDecoder` takes one of two branches on that field. **The two branches are separate cases rather than one algorithm behind a boolean, and the
    difference is the input, not the polynomial**: CRC8 covers `[1, 2]` and CRC16-Modbus covers
    `[0 ..< 6]`, which reaches back over the start-of-frame byte and the format byte. A single
    function parameterised by "how many bytes" would have been right for both and would also have made
@@ -155,19 +145,18 @@ Three consequences, and the third is the one that bites:
    under 5.0, because 5.0 spends byte 1 on a format byte — and that pair is why
    `WhoopProtocolProfile` carries `lengthFieldOffset` and `headerChecksumOffset` rather than the
    decoder holding two sets of literals.
-3. **The packet-type numbering was believed to differ by generation, and the belief was an artefact
-   of radix.** The two references write the same numbering in different bases — the 4.0 reference in
-   hex, the 5.0 reference in decimal — and every value below corresponds exactly:
-
+3. **The packet-type numbering is shared, and the apparent difference is an artefact of radix.** The
+   two references write the same numbering in different bases — the 4.0 reference in hex, the 5.0
+   reference in decimal — and every value below corresponds exactly:
    `0x23`=35 · `0x24`=36 · `0x30`=48 · `0x2F`=47 · `0x31`=49 · `0x2B`=43 · `0x33`=51 · `0x34`=52
 
-   **Do not read "the values do not overlap" into this table.** It was written that way in an earlier
-   revision, on the strength of the two columns looking different, and it is the exact failure the
-   preamble warns about: two sources silently mixed. Eight exact correspondences across two
-   independently written references is not coincidence, and the working assumption is now that the
-   **type numbering is shared and the envelope is the discriminator** — which is what points 1 and 2
-   above already require, since neither CRC nor record origin can be guessed from a type byte. §7
-   carries the capture that would settle the full enum rather than these eight roles.
+   **Do not read "the values do not overlap" into this table**: it comes from the two columns
+   looking different, and it is the exact failure the preamble warns about — two sources silently
+   mixed. Eight exact correspondences across two independently written references is not
+   coincidence, and the working assumption is that the **type numbering is shared and the envelope
+   is the discriminator** — which is what points 1 and 2 above already require, since neither CRC
+   nor record origin can be guessed from a type byte. §7 carries the capture that would settle the
+   full enum rather than these eight roles.
 
 ### Packet types
 
@@ -195,14 +184,15 @@ under the 5.0 one. Version 24 *is* the 4.0 record §4 documents, so the two sour
 are checkable against each other rather than merely similar.
 
 **Both vocabularies are published, and they name the same byte rather than describing two
-mechanisms.** The 4.0-enveloped schema keys its `HISTORICAL_DATA` on versions `24` / `12` / `5` / `7`
-/ `9`; the 5.0/MG sensor reference names record layouts an `R` number — `R16`, `R17`, `R18`, `R20`,
-`R21`, `R26`. The reference is explicit that the type alone identifies nothing — "R16 and R17 ECG use
-a layout selector at byte 9" — and that **packet number, record layout, command number and event
-number are separate namespaces**. The correction worth carrying is that the `24` / `12` / `5` / `7` /
-`9` vocabulary belongs to a schema whose **envelope is the 4.0's** (`SOF` at 0, two-byte `length` at
-1, `crc8` at 3, `packet_type` at 4, `seq` at 5), so it is not "the 5.0 reference's" and reading it as
-a 5.0 version set beside 5.0 records is what this section used to do.
+mechanisms.** The 4.0-enveloped schema keys its `HISTORICAL_DATA` on versions `24` / `12` / `5` /
+`7` / `9`; the 5.0/MG sensor reference names record layouts an `R` number — `R16`, `R17`, `R18`,
+`R20`, `R21`, `R26`. The reference is explicit that the type alone identifies nothing — "R16 and R17
+ECG use a layout selector at byte 9" — and that **packet number, record layout, command number and
+event number are separate namespaces**. The correction worth carrying is that the `24` / `12` / `5`
+/ `7` / `9` vocabulary belongs to a schema whose **envelope is the 4.0's** (`SOF` at 0, two-byte
+`length` at 1, `crc8` at 3, `packet_type` at 4, `seq` at 5), so it is not "the 5.0 reference's", and
+reading it as a 5.0 version set beside 5.0 records mixes two sources — the exact failure the
+preamble warns about.
 
 **The record lengths follow from the layout byte rather than forming a second, independent key.** A
 5.0/MG type-47 record is fixed-length per layout — `R18` at 124 B, `R21` at 1,244 B, `R20` at
@@ -215,8 +205,7 @@ relationship backwards and will read an `R20` optical record as an IMU buffer.
 ### 2.1 The checksum vectors **[repo, verified]**
 
 Both references publish concrete frames, which makes the repo's CRC utilities checkable **today,
-with no strap**. They were run against them and **all three are correct** — and since the framing was
-corrected, all four are asserted in §1 of the suite rather than merely in a table here:
+with no strap**. All three are correct, and all four are asserted in §1 of the suite rather than merely in a table here:
 
 | Vector | Source | Expected | `CRCUtils` | |
 | :--- | :--- | :--- | :--- | :--- |
@@ -237,7 +226,7 @@ AA 01 08 00 00 01 E6 71 23 01 91 01 36 3E 5C 8D
 └─ SOF                              crc16 LE = 0x71E6 over [0..<6]
 ```
 
-**A second 5.0 frame is now in hand, and it is the more useful of the two** because it is a *command*
+**A second 5.0 frame is in hand, and it is the more useful of the two** because it is a *command*
 rather than a handshake — the only published frame here that carries an opcode, and therefore the
 only worked example of the 5.0 command payload layout `[type][seq][cmd][params…]`:
 
@@ -270,13 +259,11 @@ frame at all** — see §3's implementation status. The toggle frame's two check
 verified against those utilities by hand rather than by assertion, and are the obvious next pair to
 pin.
 
-**The defect was not in the arithmetic — it was in what `buildPacket` fed it, and that is now fixed.**
-The 4.0 format specifies CRC8 over **the two length bytes only** (`raw[3] == crc8(raw[1:3])`), and
-`buildPacket` used to compute `crc8([cmd, lengthLow, lengthHigh])` — three bytes, with `cmd`
-prepended — so every command frame the app sent carried a header checksum the format does not agree
-with. The input is now `Data([lengthLow, lengthHigh])`: ping declares length **7** and writes
+**The 4.0 format specifies CRC8 over the two length bytes only** (`raw[3] == crc8(raw[1:3])`), so
+`buildPacket` feeds it `Data([lengthLow, lengthHigh])`: ping declares length **7** and writes
 `0x6B`, the haptic alarm declares length **9** and writes `0xBD`. Both are the length bytes' own
-checksum and not the command's, which is the whole of the rule.
+checksum and not the command's, which is the whole of the rule. **Prepending `cmd` to that input
+produces a header checksum the format does not agree with**, on every command frame the app sends.
 
 `0xA8` — the first published vector — is the checksum of declared length **8**, which neither frame
 declares. That is worth keeping in view: the two published vectors pin the polynomial, the byte order
@@ -330,7 +317,7 @@ The 4.0's twelve:
 | `0x05` | `liveTelemetry` | `enableLiveTelemetry` | enable/disable live telemetry |
 | `0x10` | `hapticAlarm` | `hapticAlarmCommand` | haptic alarm |
 | `0x20` | `ping` | `pingCommand` | ping / keep-alive |
-| `0x16` | `requestHistoricalSync` | `WhoopCommandFrames.historicalSyncRequest` | the drain's request — **`0x30` until the ACK loop landed; see §4** |
+| `0x16` | `requestHistoricalSync` | `WhoopCommandFrames.historicalSyncRequest` | the drain's request — **`0x16`; see §4** |
 | `0x6A` | `toggleIMUMode` | `motionEnableSequence` | IMU on/off — **one byte on the 4.0**, `[01]` to enable and `[00]` to stop. The two-byte form is real but belongs to the optical and persistent toggles; OpenStrap's `TWO_BYTE_TOGGLES` names those four opcodes and excludes this one, and noop's 4.0 branch sends `[0x01]` while giving its 5/MG the two-byte selector. §6's `[1,1]` is the *5/MG's* shorthand — do not carry it back to the 4.0 |
 | `0x3F` | `sendRealtimeMotion` | `motionEnableSequence` | start the live 100 Hz motion record — body `[01]`, from noop's implemented `sendR10R11Realtime` (hardware-verified) and OpenStrap's `cmd_send_r10_r11` |
 | `0x6B` | `enableOpticalData` | `motionEnableSequence` | body `[01, 01]` — OpenStrap's running client reads it as wrist-gated optical (the HR source) and this app followed that; noop's 4.0 *doc* says it *returns* the stored IMU stream state, while noop's own enum uses `enableOpticalData` and never sends it. See the naming note below |
@@ -362,15 +349,16 @@ code is against it: **the two-byte `[1, 1]` this app sent on a 4.0 was the 5/MG'
 4.0 now sends `[01]`.
 
 **The read reading is the command doc's alone, and the code beside it contradicts it.**
-`Strand/BLE/Commands.swift` names 107 `enableOpticalData` — OpenStrap's name, and this app's — and no
-call site in that client sends it: noop's live-IMU path is `startRawData` plus 106 and nothing more. So
-noop's `GET_IMU_DATA_STREAM` is a 4.0-column refinement its own enum does not carry, and OpenStrap's
-reading is not outvoted. What noop's doc does establish, and this app follows, is that **107 carries a
-body on a 4.0** — where this app used to send none. Its 107 row carries the warning *"The WHOOP 5/MG
-identifier `ENABLE_OPTICAL_DATA` does not describe this WHOOP 4 operation"*, and its transport profile
-treats live HR as the standard GATT service and keeps it "separate".
+`Strand/BLE/Commands.swift` names 107 `enableOpticalData` — OpenStrap's name, and this app's — and
+no call site in that client sends it: noop's live-IMU path is `startRawData` plus 106 and nothing
+more. So noop's `GET_IMU_DATA_STREAM` is a 4.0-column refinement its own enum does not carry, and
+OpenStrap's reading is not outvoted. What noop's doc does establish, and this app follows, is that
+**107 carries a body on a 4.0**, so a bare 107 is not a frame this app may send. Its 107 row carries
+the warning *"The WHOOP 5/MG identifier `ENABLE_OPTICAL_DATA` does not describe this WHOOP 4
+operation"*, and its transport profile treats live HR as the standard GATT service and keeps it
+"separate".
 
-**Both readings are now served by the same byte, which is why nothing is waiting on the resolution.**
+**Both readings are served by the same byte**, so nothing waits on the resolution.
 `[01, 01]` is OpenStrap's enable form, so an enable starts the optical path live HR depends on; under
 noop's reading it is a `[01]` read with a trailing byte, which starts nothing and is harmless either
 way. **§7 Q12** carries the capture that separates them — write `0x6B` with `[01, 01]` and read the
@@ -400,20 +388,19 @@ which is the whole reason the table is a separate type:
 | `0x92` / 146 | `setClock` | `setClock` | SET_CLOCK |
 | `0x93` / 147 | `getClock` | `getClock` | GET_CLOCK — **the read-back, and the 4.0 has no counterpart** |
 
-**Four of the 5.0's twelve were missing until the drain's ACK loop landed, and the way they were
-missing is the part worth keeping.** The table's earlier form asserted that six of the 4.0's roles had
-*no published 5.0 byte at all*, and that claim was false for `0x14` and `0x21`: the noop catalog
-enumerates every ID from 1 to 159 once, bounds its 5/MG column to firmware 50.42.1.0, and marks both
-supported under the same names the 4.0 uses. **Omitting a published opcode is its own error rather
-than a safe default** — it left the drain's only stop with no byte to send, and the builder that
-should have sent `0x14` sent `0x52 STOP_RAW_DATA` instead, which stops the producer and leaves the
-drain walking. A name is not an opcode this build may send; but a *published* opcode left out of the
-table is a byte nothing can assert about. The two generations' remaining differences are real and are
-not this kind: `liveTelemetry`/`hapticAlarm`/`ping`/`sendRealtimeMotion` are 4.0-only under those
-names, and the raw-data pair (`0x51`/`0x52`) is the 5.0's way of doing what `0x3F` and the
-telemetry verb do there — which is coverage under other names rather than a gap. **106 and 107 are
-not that kind of difference**: both generations have both, under names that disagree, which is the
-naming note above rather than a missing opcode.
+**Every published 5.0 byte belongs in the table, and two of them are shared with the 4.0's rather
+than the 5.0's own.** The noop catalog enumerates every ID from 1 to 159 once, bounds its 5/MG
+column to firmware 50.42.1.0, and marks `0x14` and `0x21` supported under the same names the 4.0
+uses. **Omitting a published opcode is its own error rather than a safe default** — it leaves the
+drain's only stop with no byte to send, and a builder reaching for one sends `0x52 STOP_RAW_DATA`
+instead, which stops the producer and leaves the drain walking. A name is not an opcode this build
+may send; but a *published* opcode left out of the table is a byte nothing can assert about. The two
+generations' remaining differences are real and are not this kind:
+`liveTelemetry`/`hapticAlarm`/`ping`/`sendRealtimeMotion` are 4.0-only under those names, and the
+raw-data pair (`0x51`/`0x52`) is the 5.0's way of doing what `0x3F` and the telemetry verb do there
+— which is coverage under other names rather than a gap. **106 and 107 are not that kind of
+difference**: both generations have both, under names that disagree, which is the naming note above
+rather than a missing opcode.
 
 **`None of this sequence is implemented`** still holds for §3's eight steps: there is no CLIENT_HELLO,
 no feature-flag negotiation, and the clock synchronization and ACK loop exist as builders and a
@@ -421,38 +408,35 @@ session rather than as a completed handshake. What *is* built is the motion enab
 `didDiscoverCharacteristicsFor` on connect, and the drain — §4 carries its status.
 
 **The 4.0's live enable is three ordered frames** (`0x6A` `[01]`, then `0x3F` `[01]`, then `0x6B`
-`[01,01]`), all or nothing. **All three now carry a body, and `0x3F` and `0x6B` did not before** —
-they were sent bare on the reasoning that the references named the opcodes and stopped, which the
-references' own running clients disprove: noop sends `[0x01]` for the realtime record (documented
-on-device, "2.1/s → 0/s"), and OpenStrap sends a two-byte `[revision, enable]` for the optical one. A
-bodyless `0x3F` is the shape that matters most, because it starts no live record — which is the
-stream the step counter reads. **The toggle's width moved the other way and is the one byte here that
-got narrower rather than wider**: `0x6A` is an IMU verb, and the two-byte `[revision, enable]`
-convention belongs to the optical and persistent toggles (see §3's note). The 5.0's is two (`0x51`
-then `0x6A`), and **that ordering is the
-reference's rather than this app's** — noop's configuration contract states that the live-IMU
-sequence "starts raw production before enabling live IMU transport", with stopping production and
-disabling that transport as separate cleanup operations. The one open half left in the 4.0's three is
-what `0x6B` *does*, which is the naming note above and §7 Q12.
+`[01,01]`), all or nothing. **All three carry a body**, and the references' own running clients are
+the basis: noop sends `[0x01]` for the realtime record (documented on-device, "2.1/s → 0/s"), and
+OpenStrap sends a two-byte `[revision, enable]` for the optical one. A bodyless `0x3F` is the shape
+that matters most, because it starts no live record — which is the stream the step counter reads.
+**`0x6A` carries one byte rather than the two-byte form**: it is an IMU verb, and the two-byte
+`[revision, enable]` convention belongs to the optical and persistent toggles (see §3's note). The
+5.0's is two (`0x51` then `0x6A`), and **that ordering is the reference's rather than this app's** —
+noop's configuration contract states that the live-IMU sequence "starts raw production before
+enabling live IMU transport", with stopping production and disabling that transport as separate
+cleanup operations. The one open half left in the 4.0's three is what `0x6B` *does*, which is the
+naming note above and §7 Q12.
 
-**Every one of those frames is written in the §2 envelope**, which none of them were before: the
-header CRC8 is over the two length bytes, `length` is the inner record plus four, and the inner
-record is `[type][seq][cmd][payload…]` with the CRC32 over the whole record. Nothing has been
-captured on hardware, so this says the frames match both references — not that a strap accepts them.
-Three properties are new and all are enforced in code rather than described here: the decoder verifies
-the header and payload checksums on inbound frames and refuses anything that fails (§2), the
-generation decides which envelope is used at all, and **`buildPacket` now tests the envelope alone** —
-the opcode-table half of its old guard was doing no work, since the table is read by the *builders*.
-Each 4.0 builder applies `fourEnvelopeOpcodes`, which asserts both the table and the envelope, so a
+**Every one of those frames is written in the §2 envelope**: the header CRC8 is over the two length
+bytes, `length` is the inner record plus four, and the inner record is `[type][seq][cmd][payload…]`
+with the CRC32 over the whole record. Nothing has been captured on hardware, so this says the frames
+match both references — not that a strap accepts them. Three properties are enforced in code rather
+than described here: the decoder verifies the header and payload checksums on inbound frames and
+refuses anything that fails (§2), the generation decides which envelope is used at all, and
+**`buildPacket` tests the envelope alone**, since the opcode table is read by the *builders*. Each
+4.0 builder applies `fourEnvelopeOpcodes`, which asserts both the table and the envelope, so a
 builder cannot assemble a 4.0-framed command under a 5.0 header.
 
 **Reading a generation and writing to it are separate capabilities, and the fields that carry the
-distinction are the two opcode tables.** `WhoopProtocolProfile` holds `commandOpcodes: CommandOpcodes?`
-and `syncOpcodes: SyncOpcodes?`; the 4.0 populates the first and the 5.0/MG the second, and
-`canTransmitCommands` is `commandOpcodes != nil || syncOpcodes != nil`. It is what every builder and
-`WhoopBLEManager.sendCommand` consults, and it is deliberately **not** the envelope: this app
-**validates inbound 5.0 frames** (§2), so a guard on the envelope would have started permitting 5.0
-writes the moment the decoder learned to read them — right about nothing and wrong about why.
+distinction are the two opcode tables.** `WhoopProtocolProfile` holds `commandOpcodes:
+CommandOpcodes?` and `syncOpcodes: SyncOpcodes?`; the 4.0 populates the first and the 5.0/MG the
+second, and `canTransmitCommands` is `commandOpcodes != nil || syncOpcodes != nil`. It is what every
+builder and `WhoopBLEManager.sendCommand` consults, and it is deliberately **not** the envelope:
+this app **validates inbound 5.0 frames** (§2), so a guard on the envelope would permit 5.0 writes
+because inbound 5.0 frames are readable — right about nothing and wrong about why.
 
 **The two tables exist because the sharing is partial rather than total.** The 4.0 and the 5.0/MG
 share `0x16`, `0x17`, `0x22`, `0x14` and `0x21`; the rest of each is its own. A single table would
@@ -505,25 +489,24 @@ Sensor ADCs: raw green PPG `[29]`, red/IR `[31]`, red `[64]`, IR `[66]`, skin te
 
 **A second, independent parser now corroborates this table at a measured scale, and adds the one
 number a decoder needs that the table did not carry.** OpenStrap's `parse_r24` reads the same fields
-at the same offsets — counter at `[3:7]`, `unix` at `[7:11]`, sub-seconds at `[11:13]`, heart rate at
-`[17]`, `rr_count` at `[18]`, then the R-R intervals as **i16 LE milliseconds** from `[19]`, and the
-accelerometer triplet at `[36:48]` — and reports that the layout is "verified on **127,971 of our own
-stored records** and cross-checked against an independent implementation", with the heart rate
-confirmed to match the live stream **within one beat**. It also states a **minimum inner length of 89
-bytes**, which is the guard this table lacked: a record shorter than that cannot hold the fields below
-`[88]`, so a walk should refuse it rather than read past its end. Two smaller facts from the same
-parser are worth carrying because both bound a decode: **`rr_count` is `0`–`4`**, so the R-R loop is
-bounded and does not need to be driven by the record's length, and **the strap's `[51]` is a contact
-*quality* (`0`–`198`) and not a wear flag** — the natural misreading of that field is the one the
-reference calls out. Two things this does *not* change:
-the confidence tags above are the 4.0 reference's own and are left as they were, because a second
-parser agreeing is corroboration rather than a new source; and **none of it is a capture on this
-project's hardware**. What it does change is that the record walk is no longer a design against a
-table — it is a design against a layout that a running client has decoded a hundred thousand times.
-The R-R intervals are the field worth noting for this app in particular: they are what
-`biometric_samples.rrIntervalsMs` holds and what no strap has ever filled (§5), so a drain is the
-only path by which a stored R-R series — and with it a real HRV, respiratory rate and within-sleep
-stress figure — could exist at all.
+at the same offsets — counter at `[3:7]`, `unix` at `[7:11]`, sub-seconds at `[11:13]`, heart rate
+at `[17]`, `rr_count` at `[18]`, then the R-R intervals as **i16 LE milliseconds** from `[19]`, and
+the accelerometer triplet at `[36:48]` — and reports that the layout is "verified on **127,971 of
+our own stored records** and cross-checked against an independent implementation", with the heart
+rate confirmed to match the live stream **within one beat**. It also states a **minimum inner length
+of 89 bytes**, which is the guard this table lacked: a record shorter than that cannot hold the
+fields below `[88]`, so a walk should refuse it rather than read past its end. Two smaller facts
+from the same parser are worth carrying because both bound a decode: **`rr_count` is `0`–`4`**, so
+the R-R loop is bounded and does not need to be driven by the record's length, and **the strap's
+`[51]` is a contact *quality* (`0`–`198`) and not a wear flag** — the natural misreading of that
+field is the one the reference calls out. Two things this does *not* change: the confidence tags
+above are the 4.0 reference's own and are left as they were, because a second parser agreeing is
+corroboration rather than a new source; and **none of it is a capture on this project's hardware**.
+The record walk is therefore a design against a layout a running client has decoded a hundred
+thousand times, rather than against a table. The R-R intervals are the field worth noting for this
+app in particular: they are what `biometric_samples.rrIntervalsMs` holds and what no strap has ever
+filled (§5), so a drain is the only path by which a stored R-R series — and with it a real HRV,
+respiratory rate and within-sleep stress figure — could exist at all.
 
 **The `[52:64]` "mirror" is resolved, and it is not a gyroscope.** The 4.0 reference reports those
 twelve bytes as byte-identical to `[36:48]`, with the parenthetical "(not an extra sensor)", validated
@@ -586,7 +569,7 @@ that byte is what the 4.0 table above calls the record's "record type" and which
 captured 4.0 frame. Its decoded keys are `hist_version`, schema-versioned biometric fields and
 `rr_intervals`.
 
-**Which source is which, because this section previously conflated them.** The `hist_version` /
+**Which source is which.** The `hist_version` /
 `ref`-chain schema is published in a machine-readable file whose **envelope is the 4.0's** — `SOF` at
 0, two-byte `length` at 1, `crc8` at 3, `packet_type` at 4, `seq` at 5 — so its `24` / `12` / `5` /
 `7` / `9` vocabulary is a **4.0-enveloped** version set, not a 5.0 one. The 5.0/MG source proper is
@@ -712,9 +695,7 @@ safe command set along with reboot/power-cycle/firmware opcodes.
 | Batch ending | `HISTORY_END` acknowledged, `HISTORY_COMPLETE` not | metadata `0x31`, sub-type at `inner[2]` | 49, same sub-type offset |
 | Record layout | **no walk for the type-24 record** — the raw inner record is handed up undecoded. The *motion* layouts **are** walked (`MotionPayloadDecoder`, §6), and those are what the step path reads | 96-byte header | version-selected schema |
 
-**The request body is one `00` byte on both generations, and this app used to send eight.** It
-composed a `[u32 startEpoch][u32 endEpoch]` little-endian window; that window was this codebase's own
-invention and it has been corrected at both builders. **Four sources agree on the bare byte, three of
+**The request body is one `00` byte on both generations.** A `[u32 startEpoch][u32 endEpoch]` little-endian window has no source behind it and must not be reintroduced at either builder. **Four sources agree on the bare byte, three of
 them code that runs**, which is why this is a correction rather than a judgement call between two
 readings:
 
@@ -728,8 +709,7 @@ readings:
 **The eight-byte shape this app copied belongs to the reply, and it runs the other way.** ID 23's body
 is `01` plus the exact eight-byte `HISTORY_END` block — which noop calls **opaque** and warns against
 reconstructing ("never reconstruct the opaque second word") — and `inner[13:21]` on the 4.0 / payload
-`[6,14)` on the 5.0 is where the ACK above reads it. The widths coincided and the provenance did not:
-the request had been built out of the reply's token, which no source supports. **Nothing selects a
+`[6,14)` on the 5.0 is where the ACK above reads it.  **Nothing selects a
 range on this command**, and a window has somewhere else to live — `0x21 SET_READ_POINTER` seeks the
 read cursor and takes a **u32 offset**, not an epoch pair.
 
@@ -745,21 +725,19 @@ elsewhere calls `0x2F` type 24 — and its status is `O / U`, observed rather th
 question about the *reply*, not the request, and **§7 Q11** carries it; it needs no new decoder,
 because a `00` body either delivers records or does not.
 
-**`0x30` was `Asynchronous Event / Heartbeat` and its correction waited for the loop rather than
-preceding it.** As an outbound command it was not a command at all — §2's own table says so — so an
-outbound `0x30` asked a strap for an event rather than for a drain, which is a command it ignores.
-That failure mode was benign, and the byte sat uncorrected because **a missing ACK makes the strap
-re-send the same batch forever**: starting a drain this app could not acknowledge would have left a
-strap looping, which is worse than sending a command it ignores. The byte moved when the ACK loop
-landed, and it lives in the opcode tables rather than in the builders, so the correction was one edit
-per generation rather than a search for a literal.
+**`0x30` is a packet type and not a command, and §2's own table says so.** An outbound `0x30`
+therefore asks a strap for an event rather than for a drain — a command it ignores, which is benign
+on its own. **A missing ACK is not benign, because it makes the strap re-send the same batch
+forever**, so starting a drain this app cannot acknowledge leaves a strap looping. The byte lives in
+the opcode tables rather than in the builders, which makes it one edit per generation rather than a
+search for a literal.
 
 **The record layout is the one gap left, and it is narrower than it looks.** What the drain reads out
 of the stream today is the batch structure — the records, the `HISTORY_END` that closes a batch and
 carries the continuation token, and the `HISTORY_COMPLETE` that ends the drain — plus the motion
 records, which §6's decoder walks and which are what produces a `MotionBatch` for the step path. The
 type-24 heart-rate record's own 96-byte header is still not walked: `WhoopRawFrame` is handed up
-validated and stops there, exactly as the order §7 sets out. `TODO.md` §5 carries it.
+validated and stops there, exactly as the order §7 sets out. `docs/TODO.md` §5 carries it.
 
 **The timestamp that would place a drained batch on a timeline is still verified as a field and
 unverified as a value.** `[7:11]` of the type-24 record is a u32 unix time, but the strap's RTC is set
@@ -773,31 +751,27 @@ the same as knowing it latched.** The 5.0's `0x93 GET_CLOCK` is the only read-ba
 offers; it is sent, its reply is logged as an ordinary inbound response, and **no path in this app
 decodes it or claims a clock latched.** §7 Q7 stays open.
 
-Two defects that used to sit here are **fixed and have left this table**. The 16-byte walk through the
-live layout is gone — `decodeHistoricalSyncPayload` and `decodeLiveTelemetryPayload` no longer exist,
-and the decoder now returns the validated inner record as a `WhoopRawFrame` for a later parser to
-walk, which is the order §7 sets out. And the encoder's `headerCrc`/length-byte mismatch is gone with
-the framing rewrite in §2. What that buys is negative and worth stating as such: **the app can no
-longer fabricate a reading from a record it does not understand**, which is what the old walk did by
-reading a record-counter byte as a heart rate and writing it to `biometric_samples`.
+**The decoder returns the validated inner record as a `WhoopRawFrame` for a later parser to walk**,
+which is the order §7 sets out. **The app cannot fabricate a reading from a record it does not
+understand**, and a 16-byte walk through a layout whose record header is 96 bytes is exactly how a
+record-counter byte becomes a heart rate in `biometric_samples`.
 
 Inbound CRCs **are** now verified — the header CRC8 and the payload CRC32, both enforced in
 `decodeProprietaryFrame`, which refuses a frame that fails either. That closes the `0xAA`-in-payload
 ambiguity at the frame level: a false boundary yields a frame that fails its checksum instead of
 plausible garbage.
 
-**Length-based reassembly is now implemented**, in `WhoopFrameReassembler`, and it was the remaining
-half of that problem. Its absence was not a rejection but an invisibility: a notification carries at
+**Length-based reassembly is implemented**, in `WhoopFrameReassembler`. A notification carries at
 most `MTU − 3` bytes while the 5.0/MG type-47 record runs to 2140 and the 4.0 live IMU stream to
-roughly 1.9 KB, so `decodeProprietaryFrame` — handed one notification and requiring
-`data.count >= declaredLength + 4` — returned `nil` for every frame that spanned a second one, and
-the manager discarded that `nil`. The reassembler owns **boundaries, not validity**: it finds a start
-of frame, reads the declared length **at the profile's own `lengthFieldOffset`** — byte 1 under 4.0,
-byte 2 under 5.0 — holds bytes until that many have arrived, and hands the candidate
-to the decoder, whose checksums remain the only thing that decides whether those bytes were a frame.
-A candidate the decoder refuses is treated as evidence the `0xAA` it started on was a payload byte,
-and the scan resumes one byte later — so a notification lost to a dropped link costs bytes and never a
-reading. Two properties are consequences rather than tuning: a boundary declaring more than
+roughly 1.9 KB, so `decodeProprietaryFrame` — handed one notification and requiring `data.count >=
+declaredLength + 4` — cannot complete a frame that spans a second one, and without the reassembler
+that `nil` is all the manager has. The reassembler owns **boundaries, not validity**: it finds a
+start of frame, reads the declared length **at the profile's own `lengthFieldOffset`** — byte 1
+under 4.0, byte 2 under 5.0 — holds bytes until that many have arrived, and hands the candidate to
+the decoder, whose checksums remain the only thing that decides whether those bytes were a frame. A
+candidate the decoder refuses is treated as evidence the `0xAA` it started on was a payload byte,
+and the scan resumes one byte later — so a notification lost to a dropped link costs bytes and never
+a reading. Two properties are consequences rather than tuning: a boundary declaring more than
 `maximumFrameBytes` (4096, above every documented record shape) is skipped rather than waited on,
 which is what bounds the buffer without a trim rule; and the buffer is **per-connection**, reset on
 both connect and disconnect, since bytes held across a reconnect would be prepended to the new
@@ -830,7 +804,7 @@ Two things follow, and both are load-bearing:
 * **A client that keeps only the first interval is discarding most of the series.** Whoopsy did
   exactly that until `v8`. Because Respiratory Sinus Arrhythmia is read off the beat-to-beat
   tachogram — a contiguous, correctly ordered series — a thinned stream cannot support it. The full
-  list is now stored in `biometric_samples.rrIntervalsMs`, with `rrIntervalMs` retained as the first
+  list is stored in `biometric_samples.rrIntervalsMs`, with `rrIntervalMs` retained as the first
   element.
 
 **For a heart-rate-over-the-night curve this path needs no sampling rate at all.** The intervals are
@@ -937,25 +911,24 @@ generations and only its 4.0 half generalises. `R21` is the **5.0/MG** layout, a
 producer 3 below, §4's drain table and §7's closing paragraph all say so.
 
 **This is the best-documented motion layout in this document and it belongs to the 4.0.** A
-`REALTIME_RAW_DATA` variant declaring **1917 bytes** carries **100 samples per axis at ~100 Hz** — one
-packet per second per axis — as signed int16 **little-endian**: accelerometer X / Y / Z at frame
+`REALTIME_RAW_DATA` variant declaring **1917 bytes** carries **100 samples per axis at ~100 Hz** —
+one packet per second per axis — as signed int16 **little-endian**: accelerometer X / Y / Z at frame
 `89` / `289` / `489` at `0.000244140625` g/LSB (1/4096 g), then gyroscope X / Y / Z at frame `692` /
-`892` / `1092` at `0.06103515625` deg/s/LSB (±2000 dps full scale), with the trailer from `1292`. Each
-600-byte lane is contiguous and the two are separated by three bytes. The scales were verified against
-a motion-capture reference and a controlled **720° rotation** respectively, on generation-4 hardware.
-The 1928-byte / 100 Hz figures this section used to carry as second-hand are superseded: the length is
-**1917 declared**, which is 1921 bytes of frame, and the layout behind it is published rather than
-inferred.
+`892` / `1092` at `0.06103515625` deg/s/LSB (±2000 dps full scale), with the trailer from `1292`.
+Each 600-byte lane is contiguous and the two are separated by three bytes. The scales were verified
+against a motion-capture reference and a controlled **720° rotation** respectively, on generation-4
+hardware. The length is **1917 declared**, which is 1921 bytes of frame, and the layout behind it is
+published rather than inferred — a second-hand 1928-byte / 100 Hz figure is not this frame's own.
 
 **3. The layout-selected `R21` record — 5.0 / MG, 100 Hz, six axes, live *and* banked.**
-[reported 5.0, hardware-validated] **This reverses what this section previously claimed.** The 5.0/MG
-**does** have a live raw-IMU stream: layout 21 is carried by **live packet 43 and historical packet
-47**, so the same 1,244-byte buffer is both streamed and banked. Three sources agree and none
-dissents — the 5.0/MG sensor reference states the dual carriage outright, the deep-data page records
-the enable sequence, and an independent APK-decompilation capture names packet `0x2B` / 43
-`REALTIME_RAW_DATA` with the "Maverick R21 format" behind it. The previous claim that the 5.0/MG had
-"no live raw-IMU stream at all" traces to no source in hand: it was this document's own inference
-from an absence, and the absence was in the reference it was reading, not in the hardware.
+[reported 5.0, hardware-validated] The 5.0/MG **does** have a live raw-IMU stream: layout 21 is
+carried by **live packet 43 and historical packet 47**, so the same 1,244-byte buffer is both
+streamed and banked. Three sources agree and none dissents — the 5.0/MG sensor reference states the
+dual carriage outright, the deep-data page records the enable sequence, and an independent APK-
+decompilation capture names packet `0x2B` / 43 `REALTIME_RAW_DATA` with the "Maverick R21 format"
+behind it. The previous claim that the 5.0/MG had "no live raw-IMU stream at all" traces to no
+source in hand: it was this document's own inference from an absence, and the absence was in the
+reference it was reading, not in the hardware.
 
 The record is `R21`: **fixed 1,244 bytes**, CRC32 at 1,240 covering `[8,1240)`, layout selector `21`
 at `inner[1]`. Its content is **100 accelerometer samples and 100 gyroscope samples per axis — 100 Hz
@@ -975,8 +948,7 @@ the envelope is added:
 
 **The two scales are a matched pair, and both sources state them the same way.** `1/4096` g/LSB over
 a signed `int16` is `32767 / 4096 = 7.9998` g, and the independent source writes it out as "±8g
-(1g ≈ 4096 LSB)" — so the two agree, and the ±4 g reading this document once carried is exactly half
-and would leave the top bit of every sample unused. The gyro's `2000/32768` is the same pairing at
+(1g ≈ 4096 LSB)" — so the two agree, and a ±4 g scale is exactly half — it would leave the top bit of every sample unused. The gyro's `2000/32768` is the same pairing at
 ±2000 dps. **These are the same two scales producer 2 above carries**, which is what lets one
 magnitude threshold mean the same thing across both generations instead of one per strap.
 
@@ -990,17 +962,16 @@ piggybacking on a session the WHOOP app has already configured, where the toggle
 someone else. **This app does not piggyback and does not bond**, so the passive route is not
 available to it and the two-command sequence is the one that applies.
 
-**The feature names this section used to rest on are no longer load-bearing.** `gyroEnergyDps`,
-`accelEnergyG`, `jerkRms`, `cadenceHz` and `cadenceStrength` came from a feature extractor whose
-offsets were unverifiable from here; the layout above supersedes them, because a gyroscope reading in
-degrees per second is now reproducible from published offsets and a published scale rather than from
-a named feature. What survives is why the producer matters: six-axis motion at 100 Hz recoverable
-from **banked** history, on a strap the app was not running beside. That the sensor pair
-`PATENTS.md` §1.4's musculoskeletal family requires ("fused 3-axis accelerometer and gyroscope data")
-is present on both generations is now established twice over and by different evidence: the 5.0/MG's
-by the sensor suite the ITF filing lists **[filed]**, the 4.0's by the live raw layout above
-**[reported 4.0, hardware-verified]**. What that pair can *do* still differs by generation — see the
-table below — but neither strap is missing a sensor this section once had reason to think it might be.
+**The feature names are not load-bearing.** `gyroEnergyDps`, `accelEnergyG`, `jerkRms`, `cadenceHz`
+and `cadenceStrength` come from a feature extractor whose offsets are unverifiable from here, and
+the layout above supersedes them: a gyroscope reading in degrees per second is reproducible from
+published offsets and a published scale rather than from a named feature. What survives is why the
+producer matters: six-axis motion at 100 Hz recoverable from **banked** history, on a strap the app
+was not running beside. That the sensor pair `docs/PATENTS.md` §1.4's musculoskeletal family requires
+("fused 3-axis accelerometer and gyroscope data") is present on both generations is established
+twice over and by different evidence: the 5.0/MG's by the sensor suite the ITF filing lists
+**[filed]**, the 4.0's by the live raw layout above **[reported 4.0, hardware-verified]**. What that
+pair can *do* still differs by generation — see the table below.
 
 ### What each generation can deliver
 
@@ -1027,9 +998,7 @@ whether or not a phone is nearby, and that record survives on board until the ne
 the table's last column that way, because it is the column easiest to misread: it says what this app
 can come back for, not what the strap was doing. A 4.0 records at 100 Hz and streams it, while its
 flash keeps a 1 Hz accelerometer rollup — so a window the app missed comes back **coarser**, not
-absent. A 5.0/MG banks the full 100 Hz buffer, so the same window comes back whole. The 4.0 is
-therefore not the strap that fails to record; it is the one whose high-rate detail is perishable,
-which is a weaker claim than the one this section used to make. Every strap holds history for the
+absent. A 5.0/MG banks the full 100 Hz buffer, so the same window comes back whole. The 4.0 records at 100 Hz but banks only a 1 Hz accel rollup, so its high-rate detail is perishable rather than absent. Every strap holds history for the
 retention window §4 states — the 5.0 and the MG share a row here but are two separate straps, and
 neither has been shown to behave like the other — and on any of them a gap in this app's data is a gap
 in this app's coverage.
@@ -1080,7 +1049,7 @@ the `0x2A37` heart-rate decode path constructs samples with a timestamp, a heart
 intervals and nothing else, so **the magnitude is `nil` on every sample that path produces**. Only the
 mock manager fills the axes on a sample.
 
-**The strap's accelerometer is now read, and it does not come through that path.** §6's motion records
+**The strap's accelerometer is read, and it does not come through that path.** §6's motion records
 are decoded by `MotionPayloadDecoder` into a `MotionBatch` — a batch of a hundred samples per axis,
 carrying its own start instant — and never become `BiometricSample` rows: they feed
 `TrackStepsUseCase` and land in `stepCounts` as one count per day. So the paragraph above is about the
@@ -1088,7 +1057,7 @@ heart-rate path's samples and not about this app's reach into the strap; the two
 producers with separate tables. What remains true is that **nothing here has been seen on hardware** —
 the motion layouts are pinned against hand-built frames, and no strap has answered any of them.
 
-**The change from a defaulted `0.0` to `nil` is the whole point and is not cosmetic.** Gravity is
+**`accelerationMagnitude` must be `nil` when unmeasured, never a defaulted `0.0`.** Gravity is
 inside the magnitude, so a motionless *worn* strap reads ≈1.0 G, and `0.0` is free fall — which a body
 cannot produce. Worse, `0.0` sits on the **still** side of every movement threshold in this app, so a
 fabricated zero did not read as "no motion was measured"; it read as "measured, and perfectly still",
@@ -1120,14 +1089,13 @@ so this says the command bytes match the references and the walk matches §6's t
 strap accepts the enable or answers with a record. What it also does not change: **R10 is streamed and
 never banked**, so a 4.0 fills only the time the app was running with the strap connected.
 
-**The 5.0/MG is no longer the side with no way to ask.** Its profile carries `syncOpcodes` and
-`WhoopPacketEncoder5` writes its envelope, so `motionEnableSequence` produces a real two-frame
-sequence (`0x51` then `0x6A` — §3) rather than the empty array an earlier revision of this paragraph
-described, and `HistoricalDrainSession` is the loop that answers it. The layout is settled and walked:
+**The 5.0/MG has a way to ask.** Its profile carries `syncOpcodes` and `WhoopPacketEncoder5` writes
+its envelope, so `motionEnableSequence` produces a real two-frame sequence (`0x51` then `0x6A` —
+§3), and `HistoricalDrainSession` is the loop that answers it. The layout is settled and walked:
 `MotionPayloadDecoder` reads R21 out of a live type-43 frame and a banked type-47 one alike, so a
-banked record reaches `MotionBatch` and `stepCounts` through the same code the 4.0's live path uses —
-which is the whole reason the shared core is shared, and §7 Q9 is answered. What remains unwalked on
-**both** generations is the drain's heart-rate record (§4), and what remains absent on both is
+banked record reaches `MotionBatch` and `stepCounts` through the same code the 4.0's live path uses
+— which is the whole reason the shared core is shared, and §7 Q9 is answered. What remains unwalked
+on **both** generations is the drain's heart-rate record (§4), and what remains absent on both is
 hardware: none of it has been captured on this project's own strap.
 
 That is also why **the payoff of the two routes still runs the way it does**: the 4.0 route is
@@ -1145,7 +1113,7 @@ deliberately ordered so the cheap, high-leverage answers come first.
    `61080001-8d6d-82b8-614a-1c8cb0f8dcc6` is what every independent reference uses, and
    `WhoopGATTConstants` carries it as of this revision. What a scan would still add is confirmation
    on this project's own hardware — worth having, given that a wrong UUID looks like no device at
-   all, but no longer a question about which value is right.
+   all, but not a question about which value is right.
 2. **Which envelope does each strap actually speak** (§2) — capture the first frames each strap sends
    on connect and check the header CRC with `crc8` versus `crc16Modbus`, and the inner record origin
    at 4 versus 8. Three straps, three answers, and the 5.0/MG pair may not agree with each other.
@@ -1161,20 +1129,20 @@ deliberately ordered so the cheap, high-leverage answers come first.
    RTC caveat at Q7 below attached, which is a separate failure and not a smaller one.
 4. **What the real record size and header are, per strap** (§4) — **the 4.0 half is answered, and by
    more than the table above was built from.** 96 bytes is reported for 4.0 type 24, a real captured
-   4.0 frame agrees with that table field for field, and an **implemented parser** now corroborates it
-   at scale: OpenStrap's `parse_r24` gives the same offsets this section records — counter at `[3:7]`,
-   `unix` at `[7:11]`, sub-seconds at `[11:13]`, heart rate at `[17]`, `rr_count` at `[18]` with the
-   R-R intervals as i16 LE from `[19]` — and states they are "verified on 127,971 of our own stored
-   records and cross-checked against an independent implementation", with the heart rate confirmed to
-   match the live stream within a beat. It also gives a **minimum inner length of 89 bytes**, which is
-   a decodable guard this section did not have. So the walk is no longer blind and no longer
-   single-sourced from a table; it is corroborated by a second parser that has run over real history.
-   The three 5.0/MG type-47 sizes — `124` / `1244` / `2140` — are **no longer single-sourced** either:
-   they are the fixed lengths of layouts `R18` / `R21` / `R20`, published in the 5.0/MG sensor
-   reference and stated independently in the deep-data page. What is still unobserved is the *record
-   header* on a 5.0 frame, which is Q3's narrower question. **None of this is a capture on this
-   project's hardware**, and the corroboration is of the *layout* — that a record can be decoded at
-   all is still this app's first drain away.
+   4.0 frame agrees with that table field for field, and an **implemented parser** now corroborates
+   it at scale: OpenStrap's `parse_r24` gives the same offsets this section records — counter at
+   `[3:7]`, `unix` at `[7:11]`, sub-seconds at `[11:13]`, heart rate at `[17]`, `rr_count` at `[18]`
+   with the R-R intervals as i16 LE from `[19]` — and states they are "verified on 127,971 of our
+   own stored records and cross-checked against an independent implementation", with the heart rate
+   confirmed to match the live stream within a beat. It also gives a **minimum inner length of 89
+   bytes**, which is a decodable guard this section did not have. So the walk is corroborated by a
+   second parser that has run over real history rather than read off a table, and the three 5.0/MG
+   type-47 sizes — `124` / `1244` / `2140` — are independently sourced: they are the fixed lengths
+   of layouts `R18` / `R21` / `R20`, published in the 5.0/MG sensor reference and stated
+   independently in the deep-data page. What is still unobserved is the *record header* on a 5.0
+   frame, which is Q3's narrower question. **None of this is a capture on this project's hardware**,
+   and the corroboration is of the *layout* — that a record can be decoded at all is still this
+   app's first drain away.
 5. **Whether the ACK token survives reconnection** (§4) — reported persistent for 4.0's cursor; the
    resume behaviour matters for a sync that runs on a phone that comes and goes. **The references
    answer this one by design rather than by measurement, and the design is the answer to copy:** noop
@@ -1269,8 +1237,7 @@ deliberately ordered so the cheap, high-leverage answers come first.
    ~86,000 records per day", which is at least self-consistent at 1 Hz), and **neither measured it** —
    no project has drained to `HISTORY_COMPLETE` and read the oldest record's `[7:11]` against wall
    time. Against those, **WHOOP's own user-facing guidance says roughly 72 hours** of offline storage
-   on the 4.0. So this is no longer "unsourced"; it is **sourced twice and contradicted once**, and
-   the reverse-engineering figure is the one with no measurement behind it. Design against the
+   on the 4.0. So the figure is **sourced twice and contradicted once**, and the reverse-engineering number is the one with no measurement behind it. Design against the
    smaller number until the drain settles it. It is also among the cheapest questions here to settle, because it
    needs no new code and no decode — connect, drain to `HISTORY_COMPLETE`, and read how far back the
    first record's `[7:11]` reaches against wall time, which is the read **Q7 already requires**, so
@@ -1299,37 +1266,37 @@ deliberately ordered so the cheap, high-leverage answers come first.
    "wrist-gated optical (**the HR source**)", and builds its live example on it. noop's 4.0 column
    reads the same byte as `GET_IMU_DATA_STREAM` — body `[01]`, "Returns the stored IMU data-stream
    state" — and its 107 row warns that *"The WHOOP 5/MG identifier `ENABLE_OPTICAL_DATA` does not
-   describe this WHOOP 4 operation."* **But noop's own enum names the byte `enableOpticalData` and no
-   call site sends it**, so the read reading rests on the doc alone (§3's note has the sites), and the
-   byte is now sent as OpenStrap's two-byte `[01, 01]` — an enable under one reading, a `[01]` read
-   with a trailing byte under the other, harmless either way. **The capture is cheap and needs no
-   drain:** write `0x6B` with `[01, 01]` on a connected 4.0 and read the reply — a state byte or a
-   stream coming up are different answers — then confirm whether live HR responds at all, since this
-   app reads HR from `0x2A37` and may not need the frame. Note the 5/MG is a third answer again: its
-   107 is optical *session saving* on 50.42.1.0, its `ENABLE_OPTICAL_DATA` identifier is historical on
-   that column too, and live optical output there is **108**.
+   describe this WHOOP 4 operation."* **But noop's own enum names the byte `enableOpticalData` and
+   no call site sends it**, so the read reading rests on the doc alone (§3's note has the sites),
+   and the byte is sent as OpenStrap's two-byte `[01, 01]` — an enable under one reading, a `[01]`
+   read with a trailing byte under the other, harmless either way. **The capture is cheap and needs
+   no drain:** write `0x6B` with `[01, 01]` on a connected 4.0 and read the reply — a state byte or
+   a stream coming up are different answers — then confirm whether live HR responds at all, since
+   this app reads HR from `0x2A37` and may not need the frame. Note the 5/MG is a third answer
+   again: its 107 is optical *session saving* on 50.42.1.0, its `ENABLE_OPTICAL_DATA` identifier is
+   historical on that column too, and live optical output there is **108**.
 
 The capture itself is the deliverable: drain once, record the raw frames, and decode from the
 recording. **Do not decode from a live drain into a parser written from these notes** — a parser
-built while watching a strap is tuned to its own bugs, and the recording is what lets a later reading
-be checked against the bytes that produced it. §4's reassembler has removed the specific hazard that
-used to stand behind this advice (a coincidental `0xAA` no longer reads as a boundary, because the
-decoder's checksums refuse it), but the ordering is unchanged: the frames are the evidence and the
-parser comes after. The motion paths in §6 need a **separate recording on the 4.0**, because they are
-live-stream traffic and will not appear in a flash drain at all — and that recording is worth more
-than this document once assumed, since the layout is published and hardware-verified and what it
-lacks is only an opcode and a payload walk on this side of the link. **The 5.0/MG is the opposite
-case, and this document had it backwards**: layout 21 is banked, so a flash drain *is* the motion
-capture there, and the separate thing that generation needs recorded is the enable sequence (`81`
-then `106`) rather than the samples.
+built while watching a strap is tuned to its own bugs, and the recording is what lets a later
+reading be checked against the bytes that produced it. §4's reassembler has closed one hazard behind
+this advice (a coincidental `0xAA` does not read as a boundary, because the decoder's checksums
+refuse it), and the ordering is unchanged: the frames are the evidence and the parser comes after.
+The motion paths in §6 need a **separate recording on the 4.0**, because they are live-stream
+traffic and will not appear in a flash drain at all — and that recording is worth more than this
+document once assumed, since the layout is published and hardware-verified and what it lacks is only
+an opcode and a payload walk on this side of the link. **The 5.0/MG is the opposite case, and this
+document had it backwards**: layout 21 is banked, so a flash drain *is* the motion capture there,
+and the separate thing that generation needs recorded is the enable sequence (`81` then `106`)
+rather than the samples.
 
 ---
 
 ## Sources
 
 * **OpenStrap/research** — WHOOP 4.0 BLE protocol reference (`PROTOCOL.md`, 263 lines) plus a
-  2,271-line reference client (`research_playground.py`, whose `sync` drains the historical flash and
-  whose `build_batch_ack` is the ACK). Covers the 4.0 envelope, the type-24 record header, the
+  2,271-line reference client (`research_playground.py`, whose `sync` drains the historical flash
+  and whose `build_batch_ack` is the ACK). Covers the 4.0 envelope, the type-24 record header, the
   `0x2F`/`0x31` types, the ACK/token loop, the full command enum and the session-init sequence.
   **Its evidence base is stronger than its README suggests, and the two disagree**: the README's
   summary says the record past the header is "fingerprinted but unconfirmed", while `PROTOCOL.md` §5
@@ -1338,14 +1305,13 @@ then `106`) rather than the samples.
   section which marks `[7:11]`, `[11:13]`, `[17]` and `[18]`/`[19:19+2n]` **verified**. Read
   `PROTOCOL.md`, not the README, when judging a field's confidence. Two of its rejections matter
   here: the `[76]` "respiration" and `[78]` "signal quality" fields are **bit-constant** across all
-  811 records and are fixed trailer bytes, and the README is explicit that **everything was tested on
-  a WHOOP 4.0 and nothing else**. It is also the source of §6's 4.0 rows — the live IMU opcodes and
-  record types, and the statement that **raw R10/R21 are live-stream only** while the flash holds
-  type-24 — and of the `[52:64]` byte-identical-mirror claim §4 now carries as a named duplicate
-  triplet. Note that this source reports **no gyroscope offset anywhere**, and that an absence of
-  evidence in a reference that did not go looking for one is not evidence of absence: for some time
-  §6 read that silence as the 4.0 having no established gyroscope at all, and it was wrong — see the
-  noop schema below, which publishes the offsets and the calibrated scale.
+  811 records and are fixed trailer bytes, and the README is explicit that **everything was tested
+  on a WHOOP 4.0 and nothing else**. It is also the source of §6's 4.0 rows — the live IMU opcodes
+  and record types, and the statement that **raw R10/R21 are live-stream only** while the flash
+  holds type-24 — and of the `[52:64]` byte-identical-mirror claim §4 now carries as a named
+  duplicate triplet. Note that this source reports **no gyroscope offset anywhere**, and that an
+  absence of evidence in a reference that did not go looking for one is not evidence of absence: the
+  noop schema below publishes the offsets and the calibrated scale.
   <https://github.com/OpenStrap/research> · `PROTOCOL.md` §4–§5 are the load-bearing sections.
 * **OpenStrap/edge** — the sibling project, and **the closest thing in the ecosystem to this app**:
   a Flutter client for **iOS and Android** under MIT, which pairs over BLE and drains history from
@@ -1364,21 +1330,19 @@ then `106`) rather than the samples.
   something the app can promise to do unattended. Its own README labels its metrics approximations
   from published research and explicitly not medical-grade.
   <https://github.com/OpenStrap/edge>
-* **noop `docs/PROTOCOL.md`** — the hub of a reference that **is reachable**, and this entry corrects
-  a claim this document used to make. The repository is **`ryanbr/noop`**, whose `docs/` tree carries
+* **noop `docs/PROTOCOL.md`** — the hub of a reference that **is reachable**. The repository is **`ryanbr/noop`**, whose `docs/` tree carries
   `PROTOCOL.md`, `PROTOCOL_SENSORS.md`, `PROTOCOL_COMMANDS.md`, `PROTOCOL_WHOOP5.md`,
   `PROTOCOL_CONCEPTS.md`, `PROTOCOL_TRANSPORT.md`, `PROTOCOL_CONFIGURATION.md` and
   `WHOOP5_DEEP_DATA.md` alongside the Swift
   protocol package. **`PROTOCOL_COMMANDS.md` is the canonical command matrix and the one to read a
-  name out of**: it enumerates every ID once with a **WHOOP 4 column beside a WHOOP 5/MG column**, so
-  it is the page that shows where the two generations name one byte differently — which is §3's
+  name out of**: it enumerates every ID once with a **WHOOP 4 column beside a WHOOP 5/MG column**,
+  so it is the page that shows where the two generations name one byte differently — which is §3's
   naming note, and the reason a name taken from the wrong column is visible there and nowhere else.
-  `PROTOCOL_CONFIGURATION.md` carries the per-operation contracts behind those names. Earlier revisions here cited a fork and a read-only mirror and concluded the
-  project's current pages could not be reached; **that was wrong**, and the pages below are quoted
-  from the upstream tree. Its lineage moved rather than disappeared: the canonical `NoopApp/noop` is
-  now a 404 (the README describes the project as deplatformed and meant to be mirrored), the repo
-  cited here is the live continuation, and a same-named third repo is an unrelated near-empty stub —
-  so **cite this one by its full path** rather than by the name.
+  `PROTOCOL_CONFIGURATION.md` carries the per-operation contracts behind those names. The pages
+  below are quoted from the upstream tree, and its lineage moved rather than disappeared: the
+  canonical `NoopApp/noop` is now a 404 (the README describes the project as deplatformed and meant
+  to be mirrored), the repo cited here is the live continuation, and a same-named third repo is an
+  unrelated near-empty stub — so **cite this one by its full path** rather than by the name.
 
   **This is the ecosystem's strongest evidence and it is stronger than "a reference".** noop is a
   shipped product on three platforms — a Swift macOS app with an iOS build, a Kotlin Android app and
@@ -1428,33 +1392,31 @@ then `106`) rather than the samples.
   schema keys `HISTORICAL_DATA` on its **version byte** (versions `24` / `12` / `5` / `7` / `9`) and
   gives its fields at frame-absolute offsets — which is where §4's answer to Q3 comes from — and it
   carries two length-keyed `REALTIME_RAW_DATA` variants: **1917 B** as a 6-axis IMU buffer with
-  **100 samples per axis**, the accelerometer at frame `89` / `289` / `489` at `0.000244140625` g/LSB
-  and the **gyroscope at `692` / `892` / `1092` at `0.06103515625` deg/s/LSB (±2000 dps)**, and
-  **1921 B** as an optical buffer. Its IMU scales are annotated as verified against a motion-capture
-  reference and a controlled 720° rotation on generation-4 hardware, which is the strongest evidence
-  in this document for any **position on the strap's own axes**, and the source of §6's 4.0 gyroscope
-  row. Its `HISTORICAL_DATA` decoder reads the record's unix stamp first and comments that there is
-  **no wall-clock offset** to apply. **Its envelope is the 4.0's** — `SOF` at 0, two-byte `length` at
-  1, `crc8` at 3, `packet_type` at 4, `seq` at 5 — so its `24` / `12` / `5` / `7` / `9` vocabulary is
-  4.0-enveloped, and §2 no longer attributes it to a 5.0 schema. The 5.0/MG record set is
-  `PROTOCOL_SENSORS.md` above, which is where the `R`-number layouts and §6's producer 3 come from.
-  <https://github.com/ryanbr/noop> · the schema is
+  **100 samples per axis**, the accelerometer at frame `89` / `289` / `489` at `0.000244140625`
+  g/LSB and the **gyroscope at `692` / `892` / `1092` at `0.06103515625` deg/s/LSB (±2000 dps)**,
+  and **1921 B** as an optical buffer. Its IMU scales are annotated as verified against a motion-
+  capture reference and a controlled 720° rotation on generation-4 hardware, which is the strongest
+  evidence in this document for any **position on the strap's own axes**, and the source of §6's 4.0
+  gyroscope row. Its `HISTORICAL_DATA` decoder reads the record's unix stamp first and comments that
+  there is **no wall-clock offset** to apply. **Its envelope is the 4.0's** — `SOF` at 0, two-byte
+  `length` at 1, `crc8` at 3, `packet_type` at 4, `seq` at 5 — so its `24` / `12` / `5` / `7` / `9`
+  vocabulary is 4.0-enveloped, and §2 does not attribute it to a 5.0 schema. The 5.0/MG record set
+  is `PROTOCOL_SENSORS.md` above, which is where the `R`-number layouts and §6's producer 3 come
+  from. <https://github.com/ryanbr/noop> · the schema is
   `Packages/WhoopProtocol/Sources/WhoopProtocol/Resources/whoop_protocol.json`.
-* **noop's deep-data page (`WHOOP5_DEEP_DATA.md`)** — the page this document used to call the
-  "depth-buffer research log" and record as **unreachable**. It is reachable at the upstream tree
-  above, and reading it changes two things. It states the 5.0/MG motion carriage plainly — "**the
+* **noop's deep-data page (`WHOOP5_DEEP_DATA.md`)** — reachable at the upstream tree above. Two things in it matter. It states the 5.0/MG motion carriage plainly — "**the
   large records are no longer an undifferentiated type-`0x2F` blob**. Layout v21 (1,244 bytes)
-  contains six-axis IMU data; layout v20 (2,140 bytes) contains five repeated measurement blocks whose
-  producer is optical" — so the two lengths §6 carried on its authority are **confirmed here
+  contains six-axis IMU data; layout v20 (2,140 bytes) contains five repeated measurement blocks
+  whose producer is optical" — so the two lengths §6 carried on its authority are **confirmed here
   independently of the sensor reference** — and it records the enable sequence §6 now quotes:
-  "command 81 followed by command 106 with `[1,1]`; stop uses command 82 followed by command 106 with
-  `[1,0]`", with the caution that requests, effective collection state and packet delivery are
+  "command 81 followed by command 106 with `[1,1]`; stop uses command 82 followed by command 106
+  with `[1,0]`", with the caution that requests, effective collection state and packet delivery are
   separate things. **What it does not say is that the 5/MG has no live raw-IMU stream.** Nothing in
   it supports the claim this document attributed to it, and two other sources contradict it. The
   residue that remains genuinely unverifiable from here is only the feature extractor
   (`accelEnergyG`, `gyroEnergyDps`, `jerkRms`, `cadenceHz`, `cadenceStrength`), whose offsets are
-  still unpublished — and §6 no longer depends on it. Worth noting for method, since it is stronger
-  than a capture alone: the page correlates captured frames against the tester's own **WHOOP data
+  still unpublished — and §6 does not rest on it. Worth noting for method, since it is stronger than
+  a capture alone: the page correlates captured frames against the tester's own **WHOOP data
   export** to pin an offset by known plaintext, and runs locally so that only offsets and encodings
   ever leave the machine. It also keeps raw buffers aside so a byte-exact decoder can be reversed
   offline — capture first, decode after, which is this document's own ordering.

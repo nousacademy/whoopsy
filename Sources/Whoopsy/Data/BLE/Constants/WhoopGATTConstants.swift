@@ -28,7 +28,7 @@ public enum WhoopGATTConstants: Sendable {
     // detail to re-derive: a wrong service UUID advertises nothing this app filters on, so it
     // presents as **no device found** rather than as a decode error, and no assertion downstream of
     // discovery can see it. §1 of the suite pins these against the reference literals for that
-    // reason. `BLE_PROTOCOL.md` §1 carries the provenance.
+    // reason. `docs/BLE_PROTOCOL.md` §1 carries the provenance.
     /// Primary custom service UUID for WHOOP 4.0
     public static var whoop4ServiceUUID: CBUUID { CBUUID(string: "61080001-8D6D-82B8-614A-1C8CB0F8DCC6") }
     /// Command write (client → strap)
@@ -43,7 +43,7 @@ public enum WhoopGATTConstants: Sendable {
     ///
     /// **The characteristic number is unattested** — no reference in hand carries a `…0006` or
     /// `…0007` on this base, so only the base half above is sourced and the role is this project's
-    /// own note. Nothing consumes this constant; it is kept because `BLE_PROTOCOL.md` §1's
+    /// own note. Nothing consumes this constant; it is kept because `docs/BLE_PROTOCOL.md` §1's
     /// characteristic map lists the role. Delete it if nothing ever does.
     public static var whoop4MemfaultDiagnosticsUUID: CBUUID { CBUUID(string: "61080007-8D6D-82B8-614A-1C8CB0F8DCC6") }
 

@@ -1,0 +1,1036 @@
+{
+  "" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Whoopsy-primary.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Whoopsy-primary.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Whoopsy-primary.dia",
+    "emit-module-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Whoopsy-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Whoopsy-primary-emit-module.dia",
+    "pch" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Whoopsy-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Whoopsy-primary.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/App/AppEnvironment.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AppEnvironment.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AppEnvironment.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AppEnvironment.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/App/DependencyInjection/DIContainer.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DIContainer.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DIContainer.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DIContainer.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/App/WhoopsyApp.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopsyApp.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopsyApp.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopsyApp.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Extensions/Date+Extensions.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Date+Extensions.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Date+Extensions.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Date+Extensions.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Extensions/Double+Extensions.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Double+Extensions.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Double+Extensions.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Double+Extensions.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Logging/AppLogger.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AppLogger.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AppLogger.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AppLogger.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/BaselineStatisticsMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BaselineStatisticsMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BaselineStatisticsMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BaselineStatisticsMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/HeartRateVariabilityMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateVariabilityMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateVariabilityMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateVariabilityMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/LiveSessionAccumulator.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionAccumulator.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionAccumulator.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionAccumulator.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/RespiratoryRateMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RespiratoryRateMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RespiratoryRateMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RespiratoryRateMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/SleepConsistencyMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/SleepDebtMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepDebtMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepDebtMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepDebtMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/SleepNeedMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/SleepOnsetMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepOnsetMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepOnsetMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepOnsetMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/StepAccumulator.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepAccumulator.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepAccumulator.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepAccumulator.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/StepDetectionMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepDetectionMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepDetectionMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepDetectionMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/StrainAccumulatorMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainAccumulatorMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainAccumulatorMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainAccumulatorMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/StressMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/Vo2MaxMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Vo2MaxMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Vo2MaxMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Vo2MaxMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Core/Math/WholePercentMath.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WholePercentMath.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WholePercentMath.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WholePercentMath.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Constants/WhoopGATTConstants.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopGATTConstants.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopGATTConstants.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopGATTConstants.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Constants/WhoopProtocolProfile.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopProtocolProfile.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopProtocolProfile.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopProtocolProfile.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopBLEManager.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopBLEManager.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopBLEManager.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Manager/WhoopMockBLEManager.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopMockBLEManager.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopMockBLEManager.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopMockBLEManager.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/CRCUtils.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CRCUtils.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CRCUtils.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CRCUtils.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/HistoricalDrainSession.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HistoricalDrainSession.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HistoricalDrainSession.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HistoricalDrainSession.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/MotionPayloadDecoder.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MotionPayloadDecoder.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MotionPayloadDecoder.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MotionPayloadDecoder.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/WhoopCommandFrames.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopCommandFrames.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopCommandFrames.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopCommandFrames.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/WhoopFrameReassembler.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopFrameReassembler.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopFrameReassembler.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopFrameReassembler.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/WhoopPacketDecoder.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopPacketDecoder.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopPacketDecoder.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopPacketDecoder.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/WhoopPacketEncoder.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopPacketEncoder.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopPacketEncoder.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopPacketEncoder.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Parser/WhoopPacketEncoder5.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopPacketEncoder5.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopPacketEncoder5.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopPacketEncoder5.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/BLE/Repositories/WhoopBLEDeviceRepositoryImpl.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopBLEDeviceRepositoryImpl.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Exporters/LocalDataExporter.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocalDataExporter.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocalDataExporter.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocalDataExporter.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthKitBridge.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthKitBridge.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthKitBridge.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthKitBridge.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthKitImporter.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthKitImporter.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthKitImporter.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthKitImporter.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthKitStoreClient.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthKitStoreClient.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthKitStoreClient.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthKitStoreClient.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthStoreClient.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthStoreClient.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthStoreClient.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthStoreClient.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Health/HealthStoreClientFactory.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthStoreClientFactory.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthStoreClientFactory.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthStoreClientFactory.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Import/WhoopExportImporter.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopExportImporter.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopExportImporter.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopExportImporter.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Import/WhoopExportParser.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopExportParser.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopExportParser.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopExportParser.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Database/LocalDatabaseManager.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocalDatabaseManager.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocalDatabaseManager.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocalDatabaseManager.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/BiometricSampleRecord.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BiometricSampleRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BiometricSampleRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BiometricSampleRecord.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/NapRecord.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/NapRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/NapRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/NapRecord.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/RecoveryRecord.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryRecord.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/SleepRecord.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepRecord.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/StepCountRecord.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepCountRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepCountRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepCountRecord.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/StrainRecord.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainRecord.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/UserProfileRecord.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/UserProfileRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/UserProfileRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/UserProfileRecord.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Models/WorkoutRecord.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WorkoutRecord.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WorkoutRecord.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WorkoutRecord.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBBiometricRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBBiometricRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBBiometricRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBBiometricRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBNapRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBNapRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBNapRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBNapRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBSleepRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBSleepRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBSleepRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBSleepRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBStepRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBStepRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBStepRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBStepRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBStrainRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBStrainRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBStrainRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBStrainRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBUserProfileRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBUserProfileRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBUserProfileRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBUserProfileRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/GRDB/GRDBWorkoutRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBWorkoutRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBWorkoutRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GRDBWorkoutRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/LocalPresentationRepositories.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocalPresentationRepositories.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocalPresentationRepositories.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocalPresentationRepositories.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Persistence/Repositories/SwiftDataRecoveryRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SwiftDataRecoveryRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SwiftDataRecoveryRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SwiftDataRecoveryRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Services/LiveActivityController.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveActivityController.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveActivityController.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveActivityController.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Data/Services/LocationTrackingService.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocationTrackingService.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocationTrackingService.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocationTrackingService.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/ActivityName.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityName.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityName.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityName.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/BiometricSample.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BiometricSample.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BiometricSample.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BiometricSample.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/HRVMetric.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HRVMetric.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HRVMetric.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HRVMetric.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/HealthImportSummary.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthImportSummary.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthImportSummary.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HealthImportSummary.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/HeartRateReading.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateReading.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateReading.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateReading.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/HeartRateZone.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateZone.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateZone.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateZone.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/LiveSessionActivityState.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionActivityState.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionActivityState.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionActivityState.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/MetricWeek.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricWeek.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricWeek.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricWeek.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/MotionBatch.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MotionBatch.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MotionBatch.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MotionBatch.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/PresentationSupport.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/PresentationSupport.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/PresentationSupport.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/PresentationSupport.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/RRInterval.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RRInterval.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RRInterval.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RRInterval.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/RecoveryMetric.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryMetric.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryMetric.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryMetric.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/SleepBand.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepBand.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepBand.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepBand.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/SleepNap.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNap.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNap.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNap.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/SleepSession.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepSession.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepSession.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepSession.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/SleepStressNight.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressNight.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressNight.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressNight.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/StepCount.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepCount.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepCount.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepCount.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/StrainScore.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainScore.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainScore.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainScore.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/StressDay.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressDay.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressDay.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressDay.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/StressScore.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressScore.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressScore.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressScore.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/StressWindow.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressWindow.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressWindow.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressWindow.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/UserProfile.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/UserProfile.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/UserProfile.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/UserProfile.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/WhoopDevice.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopDevice.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopDevice.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopDevice.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/WhoopImportSummary.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopImportSummary.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopImportSummary.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopImportSummary.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Entities/WorkoutZoneTime.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WorkoutZoneTime.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WorkoutZoneTime.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WorkoutZoneTime.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/BiometricRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BiometricRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BiometricRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/BiometricRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/LiveActivityControlling.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveActivityControlling.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveActivityControlling.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveActivityControlling.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/LocationTracking.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocationTracking.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocationTracking.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LocationTracking.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/NapRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/NapRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/NapRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/NapRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/PresentationRepositories.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/PresentationRepositories.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/PresentationRepositories.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/PresentationRepositories.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/RecoveryRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/SleepRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/StepRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StepRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/StrainRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/StrapModelRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrapModelRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrapModelRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrapModelRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/UserProfileRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/UserProfileRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/UserProfileRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/UserProfileRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/WhoopBLEDeviceRepository.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopBLEDeviceRepository.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopBLEDeviceRepository.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopBLEDeviceRepository.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/Repositories/WhoopProtocolProviding.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopProtocolProviding.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopProtocolProviding.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopProtocolProviding.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/ActivityBaseline.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityBaseline.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityBaseline.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityBaseline.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/AnalyzeSleepStressUseCase.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AnalyzeSleepStressUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AnalyzeSleepStressUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AnalyzeSleepStressUseCase.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/AnalyzeSleepUseCase.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AnalyzeSleepUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AnalyzeSleepUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AnalyzeSleepUseCase.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/AnalyzeStressUseCase.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AnalyzeStressUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AnalyzeStressUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/AnalyzeStressUseCase.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/CalculateRecoveryUseCase.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CalculateRecoveryUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CalculateRecoveryUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CalculateRecoveryUseCase.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/CalculateStrainUseCase.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CalculateStrainUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CalculateStrainUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CalculateStrainUseCase.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/ExportLocalDataUseCase.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ExportLocalDataUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ExportLocalDataUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ExportLocalDataUseCase.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/LiveSessionUseCase.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionUseCase.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/ManageBLEConnectionUseCase.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ManageBLEConnectionUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ManageBLEConnectionUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ManageBLEConnectionUseCase.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/PresentationUseCases.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/PresentationUseCases.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/PresentationUseCases.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/PresentationUseCases.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/RecoveryScoring.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryScoring.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryScoring.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryScoring.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/SleepConsistencyScoring.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyScoring.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyScoring.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyScoring.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/SleepEfficiencyScoring.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepEfficiencyScoring.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepEfficiencyScoring.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepEfficiencyScoring.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/SleepNeedBreakdown.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedBreakdown.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedBreakdown.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedBreakdown.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/SleepStageRangeScoring.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStageRangeScoring.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStageRangeScoring.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStageRangeScoring.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/StreamBiometricsUseCase.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StreamBiometricsUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StreamBiometricsUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StreamBiometricsUseCase.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/SyncHistoricalDataUseCase.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SyncHistoricalDataUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SyncHistoricalDataUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SyncHistoricalDataUseCase.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Domain/UseCases/TrackStepsUseCase.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TrackStepsUseCase.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TrackStepsUseCase.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TrackStepsUseCase.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/ActivityGlyph.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityGlyph.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityGlyph.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityGlyph.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/ActivityMenu.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityMenu.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityMenu.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityMenu.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/ActivityDelta.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDelta.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDelta.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDelta.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/CardNotch.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CardNotch.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CardNotch.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CardNotch.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/GaugeRingView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GaugeRingView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GaugeRingView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GaugeRingView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/GlassCardModifier.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GlassCardModifier.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GlassCardModifier.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/GlassCardModifier.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/HeartRateBandScaleView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateBandScaleView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateBandScaleView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateBandScaleView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/HeartRateZoneBar.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateZoneBar.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateZoneBar.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateZoneBar.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/LiveHeartRateView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveHeartRateView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveHeartRateView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveHeartRateView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/MetricCardView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricCardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricCardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricCardView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/MetricChange.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricChange.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricChange.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricChange.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/MetricHeadline.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricHeadline.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricHeadline.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricHeadline.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/MetricRingView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricRingView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricRingView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MetricRingView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/MonthCalendarView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MonthCalendarView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MonthCalendarView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MonthCalendarView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Components/SleepBandBar.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepBandBar.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepBandBar.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepBandBar.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/DayBarRules.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DayBarRules.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DayBarRules.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DayBarRules.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/HeartRateZoneIndex+Extensions.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateZoneIndex+Extensions.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateZoneIndex+Extensions.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HeartRateZoneIndex+Extensions.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/MonthGrid.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MonthGrid.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MonthGrid.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MonthGrid.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/RecoveryState+Extensions.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryState+Extensions.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryState+Extensions.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryState+Extensions.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/SleepBand+Extensions.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepBand+Extensions.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepBand+Extensions.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepBand+Extensions.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/SleepNeedComponent+Extensions.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedComponent+Extensions.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedComponent+Extensions.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedComponent+Extensions.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/SleepStageType+Extensions.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStageType+Extensions.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStageType+Extensions.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStageType+Extensions.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/StressBand+Extensions.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressBand+Extensions.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressBand+Extensions.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressBand+Extensions.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/Theme.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Theme.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Theme.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/Theme.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/DesignSystem/WhoopComponents.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopComponents.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopComponents.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopComponents.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Activity/ActivityDetailView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDetailView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDetailView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDetailView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Activity/ActivityDetailViewModel.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDetailViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDetailViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDetailViewModel.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Activity/ActivityDurationBar.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDurationBar.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDurationBar.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityDurationBar.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Activity/ActivityHeartRateChartView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityHeartRateChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityHeartRateChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityHeartRateChartView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Activity/ActivityHeartRateSeries.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityHeartRateSeries.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityHeartRateSeries.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityHeartRateSeries.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Activity/ActivityZoneRow.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityZoneRow.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityZoneRow.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ActivityZoneRow.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Coach/CoachDashboardView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CoachDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CoachDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CoachDashboardView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Coach/CoachViewModel.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CoachViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CoachViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/CoachViewModel.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Device/DeviceDetailView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceDetailView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceDetailView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceDetailView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Device/DeviceDetailViewModel.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceDetailViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceDetailViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceDetailViewModel.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Device/DeviceSettingsView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceSettingsView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceSettingsView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceSettingsView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Device/DeviceViewModel.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/DeviceViewModel.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Home/HomeDashboardView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HomeDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HomeDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HomeDashboardView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Home/HomeViewModel.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HomeViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HomeViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HomeViewModel.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Home/StrainRecoveryChartView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainRecoveryChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainRecoveryChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainRecoveryChartView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Home/StressMonitorChartView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressMonitorChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressMonitorChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StressMonitorChartView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/MainContainerView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MainContainerView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MainContainerView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/MainContainerView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Profile/ProfileDashboardView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ProfileDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ProfileDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ProfileDashboardView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Profile/ProfileDraft.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ProfileDraft.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ProfileDraft.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ProfileDraft.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Profile/ProfileViewModel.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ProfileViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ProfileViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/ProfileViewModel.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Recovery/FittedAxis.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/FittedAxis.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/FittedAxis.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/FittedAxis.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Recovery/RecoveryDashboardView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryDashboardView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Recovery/RecoveryDetailView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryDetailView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryDetailView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryDetailView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Recovery/RecoveryViewModel.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RecoveryViewModel.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Recovery/WeekBarChartView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekBarChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekBarChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekBarChartView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Recovery/WeekBarSeries.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekBarSeries.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekBarSeries.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekBarSeries.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Recovery/WeekChartAxis.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekChartAxis.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekChartAxis.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekChartAxis.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Recovery/WeekLineChartView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekLineChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekLineChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekLineChartView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Recovery/WeekLineSeries.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekLineSeries.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekLineSeries.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WeekLineSeries.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Session/LiveSessionView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/LiveSessionView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Settings/SettingsDashboardView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SettingsDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SettingsDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SettingsDashboardView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Settings/SettingsViewModel.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SettingsViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SettingsViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SettingsViewModel.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/HoursOfSleepChartSeries.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursOfSleepChartSeries.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursOfSleepChartSeries.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursOfSleepChartSeries.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/HoursOfSleepChartView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursOfSleepChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursOfSleepChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursOfSleepChartView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/HoursVsNeededChartView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursVsNeededChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursVsNeededChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursVsNeededChartView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/HoursVsNeededWeek.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursVsNeededWeek.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursVsNeededWeek.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HoursVsNeededWeek.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/HypnogramChartView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HypnogramChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HypnogramChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/HypnogramChartView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/RestorativeSleepChartView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RestorativeSleepChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RestorativeSleepChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RestorativeSleepChartView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/RestorativeSleepWeek.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RestorativeSleepWeek.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RestorativeSleepWeek.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/RestorativeSleepWeek.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepClockAxis.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepClockAxis.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepClockAxis.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepClockAxis.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepConsistencyCard.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyCard.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyCard.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyCard.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepConsistencyChart.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyChart.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyChart.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepConsistencyChart.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepDashboardView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepDashboardView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepDetailView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepDetailView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepDetailView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepDetailView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepEfficiencyCard.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepEfficiencyCard.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepEfficiencyCard.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepEfficiencyCard.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepNeedBar.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedBar.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedBar.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedBar.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepNeedCard.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedCard.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedCard.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNeedCard.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepNightHeading.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNightHeading.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNightHeading.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepNightHeading.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepStressCard.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressCard.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressCard.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressCard.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepStressChartSeries.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressChartSeries.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressChartSeries.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressChartSeries.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepStressChartView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressChartView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepStressShareBar.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressShareBar.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressShareBar.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepStressShareBar.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepTimelineView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepTimelineView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepTimelineView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepTimelineView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepTypicalRangeCard.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepTypicalRangeCard.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepTypicalRangeCard.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepTypicalRangeCard.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/SleepViewModel.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/SleepViewModel.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/TimeInBedChartView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TimeInBedChartView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TimeInBedChartView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TimeInBedChartView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/TimeInBedWeek.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TimeInBedWeek.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TimeInBedWeek.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TimeInBedWeek.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Sleep/TypicalRangeBar.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TypicalRangeBar.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TypicalRangeBar.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/TypicalRangeBar.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Strain/StrainDashboardView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainDashboardView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainDashboardView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainDashboardView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Strain/StrainDetailView.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainDetailView.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainDetailView.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainDetailView.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/Strain/StrainViewModel.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainViewModel.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainViewModel.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/StrainViewModel.o"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/Whoopsy/Presentation/Screens/WhoopsyPreviews.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopsyPreviews.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopsyPreviews.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/WhoopsyPreviews.o"
+  },
+  "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/DerivedSources/resource_bundle_accessor.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/resource_bundle_accessor.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/resource_bundle_accessor.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/Whoopsy-t.build/Objects-normal/arm64/resource_bundle_accessor.o"
+  }
+}

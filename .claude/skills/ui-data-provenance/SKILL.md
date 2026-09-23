@@ -81,7 +81,7 @@ day's own gated resting heart rate and `UserProfile.maxHeartRate`, stored in no 
 whenever either input is missing — which, on an imported day, means whenever that day's cycle had no
 resting heart rate — and it is labelled `(EST.)` because it is a model's output sitting beside three
 measurements. WHOOP's three-tier model is still the one this app declines to reimplement;
-`ALGORITHMS.md` §6 records it, this estimate's citation and error bar, and the measurement that
+`docs/ALGORITHMS.md` §6 records it, this estimate's citation and error bar, and the measurement that
 rejected the day's own observed peak as the anchor.
 
 The lesson generalises: **a panel's verdict is a claim about the producer, so it goes stale when the

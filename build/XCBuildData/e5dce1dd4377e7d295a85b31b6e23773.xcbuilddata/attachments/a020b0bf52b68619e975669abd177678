@@ -1,0 +1,16 @@
+{
+  "" : {
+    "const-values" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivityKit-t.build/Objects-normal/arm64/WhoopsyLiveActivityKit-primary.swiftconstvalues",
+    "dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivityKit-t.build/Objects-normal/arm64/WhoopsyLiveActivityKit-primary.d",
+    "diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivityKit-t.build/Objects-normal/arm64/WhoopsyLiveActivityKit-primary.dia",
+    "emit-module-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivityKit-t.build/Objects-normal/arm64/WhoopsyLiveActivityKit-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivityKit-t.build/Objects-normal/arm64/WhoopsyLiveActivityKit-primary-emit-module.dia",
+    "pch" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivityKit-t.build/Objects-normal/arm64/WhoopsyLiveActivityKit-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivityKit-t.build/Objects-normal/arm64/WhoopsyLiveActivityKit-primary.swiftdeps"
+  },
+  "/Users/alex/Desktop/whoopsy/Sources/WhoopsyLiveActivityKit/SessionAttributes.swift" : {
+    "index-unit-output-path" : "/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivityKit-t.build/Objects-normal/arm64/SessionAttributes.o",
+    "llvm-bc" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivityKit-t.build/Objects-normal/arm64/SessionAttributes.bc",
+    "object" : "/Users/alex/Desktop/whoopsy/build/Whoopsy.build/Release-iphoneos/WhoopsyLiveActivityKit-t.build/Objects-normal/arm64/SessionAttributes.o"
+  }
+}

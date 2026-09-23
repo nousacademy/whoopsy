@@ -18,7 +18,7 @@ import Foundation
 ///     debt_n = 15.85 + 0.068·shortfall_n + 0.352·shortfall_{n−1}
 ///
 /// The prior night's coefficient is **5.2×** its own night's, and the shortfalls are only 0.42
-/// autocorrelated, so this is not collinearity — it is what the quantity is. `ALGORITHMS.md` §4 had
+/// autocorrelated, so this is not collinearity — it is what the quantity is. `docs/ALGORITHMS.md` §4 had
 /// already read the column that way in prose ("lagged a night so it cannot contain the night being
 /// predicted"); this is that sentence measured. The model is therefore **lagged**: a night's debt
 /// accumulates the shortfalls strictly before it.

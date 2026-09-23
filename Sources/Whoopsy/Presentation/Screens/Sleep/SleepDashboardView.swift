@@ -29,7 +29,7 @@ public struct SleepDashboardView: View {
     private var gaugeColor: Color { hasSession ? Theme.sleepIndigo : Theme.textSecondary }
     private var efficiency: String { hasSession ? "\(viewModel.session?.sleepEfficiencyPercentage ?? 0)" : dash }
     /// This night's shortfall against this night's need — **not** WHOOP's Sleep Debt, which accumulates
-    /// across nights and is deliberately not modelled here (`ALGORITHMS.md` §4 says why). The two share
+    /// across nights and is deliberately not modelled here (`docs/ALGORITHMS.md` §4 says why). The two share
     /// the word "debt" and nothing else, so the card is labelled with the quantity it actually shows:
     /// a reader who takes it for the accumulated figure would be reading a one-night number as a
     /// week's.

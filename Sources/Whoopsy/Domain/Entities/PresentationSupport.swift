@@ -10,6 +10,30 @@ public struct WorkoutRoutePoint: Identifiable, Equatable, Sendable {
     public init(id: UUID = UUID(), latitude: Double, longitude: Double, timestamp: Date = .now, heartRate: Int) {
         self.id = id; self.latitude = latitude; self.longitude = longitude; self.timestamp = timestamp; self.heartRate = heartRate
     }
+
+    /// Whether this fix is worth storing, as opposed to a coordinate the phone never measured.
+    ///
+    /// It lives here rather than in the CoreLocation-touching service for the reason every extracted
+    /// rule in this repo does: the runner has no `CLLocationManager` and must not build one, so a test
+    /// written inside `didUpdateLocations` would be a rule nothing can check. `LiveSessionUseCase`
+    /// applies it to every point it receives.
+    ///
+    /// **Two checks, and they are not the same kind of thing.** The range test is definitional — a
+    /// latitude outside ±90 is not a place, and `NaN` fails it by construction, which is what catches
+    /// a fix built from arithmetic that went wrong. Rejecting exactly `(0, 0)` is a **heuristic**, and
+    /// the honest statement of it is that Null Island is the coordinate CoreLocation hands back for a
+    /// fix it has not resolved yet; it is also a real point in the Gulf of Guinea, so a route genuinely
+    /// recorded there would lose its points. That trade is taken deliberately, because the cost of the
+    /// false positive is a missing dot in one place on earth and the cost of the false negative is a
+    /// polyline striking across the map from the user's actual position to `0, 0`.
+    ///
+    /// The *primary* filter is `horizontalAccuracy < 0`, which is CoreLocation's own "this coordinate
+    /// is not valid" signal; that one stays in the service, because it is a fact about a `CLLocation`
+    /// and cannot be stated on a value type here.
+    public var isPlausible: Bool {
+        guard latitude >= -90, latitude <= 90, longitude >= -180, longitude <= 180 else { return false }
+        return !(latitude == 0 && longitude == 0)
+    }
 }
 
 public struct WorkoutSplit: Identifiable, Equatable, Sendable {
@@ -67,6 +91,24 @@ public struct WorkoutSession: Identifiable, Equatable, Sendable {
     /// as a dash.
     public let hrZonePercents: [Double]?
 
+    /// Steps the strap counted **during this session**, or `nil` when it counted none to report.
+    ///
+    /// **A session-scoped count and not the day's**, which is what separates it from `StepCount`: the
+    /// day's row accumulates a whole day of motion across every session and every waking hour, while
+    /// this is the slice of it that fell inside `startedAt`…`endedAt`. The producer is
+    /// `LiveSessionUseCase`'s own `StepAccumulator` over the same `motionStream` `TrackStepsUseCase`
+    /// reads — the two are independent instances over a multicast stream, which is what the registry
+    /// exists for.
+    ///
+    /// **`nil` and `0` are different answers, and the writer is what keeps them apart.** `0` is a
+    /// measured session of no walking; `nil` is a session whose motion was not measured at all — every
+    /// imported row (the export carries no step counts, so all 673 of them), every row written before
+    /// `v17`, and any session the strap saw no motion batch during. The writer stores `nil` when its
+    /// accumulator's `hasMeasurement` is false, and the page draws a dash and withholds the badge there
+    /// rather than printing a confident `0`. That is `StepCount.hasMeasurement`'s rule applied to one
+    /// session instead of one day, and it is the same test on both sides of the write.
+    public let steps: Int?
+
     public init(
         id: UUID = UUID(),
         startedAt: Date,
@@ -78,12 +120,14 @@ public struct WorkoutSession: Identifiable, Equatable, Sendable {
         splits: [WorkoutSplit],
         source: String? = nil,
         activityName: String? = nil,
-        hrZonePercents: [Double]? = nil
+        hrZonePercents: [Double]? = nil,
+        steps: Int? = nil
     ) {
         self.id = id; self.startedAt = startedAt; self.endedAt = endedAt; self.strain = strain
         self.averageHeartRate = averageHeartRate; self.maxHeartRate = maxHeartRate
         self.route = route; self.splits = splits
         self.source = source; self.activityName = activityName; self.hrZonePercents = hrZonePercents
+        self.steps = steps
     }
 
     /// The workout's own length, in seconds — the scale every zone figure is a share of.
@@ -96,6 +140,23 @@ public struct WorkoutSession: Identifiable, Equatable, Sendable {
     /// absent block must not become a measured `0`.
     public var zone1to3Seconds: Double? { zoneSeconds(0..<3) }
     public var zone4to5Seconds: Double? { zoneSeconds(3..<5) }
+
+    /// One band's time, in seconds, or `nil` when the workout carries no zone block.
+    ///
+    /// The activity detail page's five rows are the **second reader** of this derivation — the strain
+    /// page's `zone1to3Seconds`/`zone4to5Seconds` pair is the first — and it needs the bands apart
+    /// rather than summed. Rather than a second division at the call site, this forwards to the same
+    /// private helper: a row printing `22%` beside `0:03:32` derived twice would be two figures free to
+    /// disagree, which is the rule `MetricChange.between` applies to the pair it compares.
+    ///
+    /// **The whole-block guard is the same one**, so the two accessors can never come apart: a session
+    /// with `nil` `hrZonePercents`, or an array that is not five long, answers `nil` for every band —
+    /// not `0`, which would be a measured band of no time. The `0` case travels through unchanged and
+    /// is the right answer for the 45 rows in the bundled export that never reached zone 1: those are
+    /// a measured `0%` and `0:00`, and the page draws them as such.
+    public func zoneSeconds(_ index: HeartRateZoneIndex) -> Double? {
+        zoneSeconds((index.rawValue - 1)..<index.rawValue)
+    }
 
     private func zoneSeconds(_ range: Range<Int>) -> Double? {
         guard let percents = hrZonePercents, percents.count == 5 else { return nil }

@@ -453,6 +453,50 @@ public actor LocalDatabaseManager {
                 to: "workouts", columns: [("activity_name", .text)], in: db)
         }
 
+        // The body weight the calorie estimate needs, supplied by the user on the profile page.
+        //
+        // `user_profiles` has stored exactly two fields since `v2` — a maximal and a resting heart
+        // rate — while `UserProfile` carries ten, so every other field was an initialiser default that
+        // no row could override. For eight of them that was invisible, because nothing read them.
+        // `weightKg` was the exception: `CalculateStrainUseCase` fed its `75.0` default into
+        // `StrainAccumulatorMath.estimateCalories`, so every calorie figure this app has ever computed
+        // rested on a body the user never described.
+        //
+        // **Nullable and undefaulted**, on `source`'s reasoning: NULL is the honest value for a fact
+        // nobody supplied, and it is what makes the absence reachable. A default here would be a
+        // number this app invented and then divided by — the fabrication the whole no-data discipline
+        // exists to prevent — so an unset weight must produce *no* calorie figure rather than a
+        // plausible one. `UserProfile.weightKg` is optional for the same reason, and
+        // `estimateCalories` returns `nil` rather than a value when it is absent.
+        //
+        // The heart rates stay non-optional and keep their column defaults. They are the inputs the
+        // Karvonen zones cannot be built without, so an absent one is not an absence the screen can
+        // draw — it is a zone table that cannot be computed at all.
+        migrator.registerMigration("v16_profile_weight") { db in
+            try Self.addMissingColumns(
+                to: "user_profiles", columns: [("weightKg", .double)], in: db)
+        }
+
+        // ## v17 — the steps one session walked
+        //
+        // `stepCounts` has held a day's total since `v13`, and this is the same measurement scoped to a
+        // single session: the slice of the day's motion that fell inside the session's own span. The
+        // activity detail page prints it beside the activity's own history.
+        //
+        // **Nullable and undefaulted, and here the absence is the ordinary case rather than the edge.**
+        // No bundled CSV carries a per-workout step count, so all 673 imported sessions read NULL — and
+        // so does every row written before this migration. NULL is what the page draws as a dash, and it
+        // is *not* the same answer as a session of no walking, which stores a real `0`. A default of
+        // `0` would collapse the two and put a confident no-steps figure on every imported session the
+        // app has ever shown.
+        //
+        // It is the session's own column rather than a second table because a workout row is already
+        // keyed on its own `id` and a day can hold several sessions, which is the shape `v6` chose for
+        // exactly this reason.
+        migrator.registerMigration("v17_workout_steps") { db in
+            try Self.addMissingColumns(to: "workouts", columns: [("steps", .integer)], in: db)
+        }
+
         try migrator.migrate(queue)
     }
 

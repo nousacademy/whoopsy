@@ -3,7 +3,7 @@ import Foundation
 /// How one WHOOP generation frames a packet on the wire.
 ///
 /// The generations do **not** share an envelope, and this type is where that stops being a comment in
-/// a markdown file and becomes something the codec cannot ignore. `BLE_PROTOCOL.md` §2 carries the
+/// a markdown file and becomes something the codec cannot ignore. `docs/BLE_PROTOCOL.md` §2 carries the
 /// byte tables; what is recorded here is only what the codec needs in order to slice and dispatch.
 ///
 /// **Reading and writing are separate capabilities, and this type carries both.** Every generation
@@ -54,7 +54,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
         public let ping: UInt8
 
         /// **`0x16 SEND_HISTORICAL_DATA`, and the byte here was `0x30` until the ACK loop landed.**
-        /// `0x30` is **Asynchronous Event / Heartbeat** in `BLE_PROTOCOL.md` §2's own table, so an
+        /// `0x30` is **Asynchronous Event / Heartbeat** in `docs/BLE_PROTOCOL.md` §2's own table, so an
         /// outbound `0x30` asked a strap for an event rather than for a drain — a command it ignores,
         /// which is the failure mode that made the mistake survivable. `0x16` is a drain it *starts*.
         ///
@@ -68,7 +68,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
 
         // MARK: The motion and drain set
 
-        /// `0x6A TOGGLE_IMU_MODE` / `SEND_R10_R11`. Toggles the IMU on and off; `BLE_PROTOCOL.md` §6
+        /// `0x6A TOGGLE_IMU_MODE` / `SEND_R10_R11`. Toggles the IMU on and off; `docs/BLE_PROTOCOL.md` §6
         /// gives the shared two-byte form `[1, 1]` to enable and `[1, 0]` to stop.
         ///
         /// The same byte is `106` in the noop catalog, which is the numbering the 5.0 profiles inherit —
@@ -82,7 +82,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
         /// **This is the 4.0's answer to the 5.0's `0x51 START_RAW_DATA`, and it is the opcode the
         /// whole live step path hangs on**: without it the strap sends no `R10`, and a 4.0 accrues no
         /// steps. Its payload is not documented — the reference names the opcode and stops — so the
-        /// builder sends none, and a capture settles it (`BLE_PROTOCOL.md` §7).
+        /// builder sends none, and a capture settles it (`docs/BLE_PROTOCOL.md` §7).
         public let sendRealtimeMotion: UInt8
 
         /// `0x6B ENABLE_OPTICAL_DATA`. Named rather than used by the step path — the optical engine is
@@ -111,7 +111,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
         public let setReadPointer: UInt8
 
         /// `0x22 GET_DATA_RANGE` — the range canary, and the only command that would answer "how far
-        /// back does this strap's backlog actually reach". `TODO.md` §5 records that figure as
+        /// back does this strap's backlog actually reach". `docs/TODO.md` §5 records that figure as
         /// unmeasured and disputed by a factor of five across the references.
         public let getDataRange: UInt8
 
@@ -165,7 +165,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
     /// (`0x91`), the clock pair (`0x92`/`0x93`), the config writes (`0x77`/`0x78`) and raw data's start
     /// and stop (`0x51`/`0x52`) exist on this generation and not on the 4.0's table. **The numbers are
     /// decimal in the noop catalog the 5.0 set comes from and hex everywhere in this build**, which is
-    /// how `BLE_PROTOCOL.md` §2's eight correspondences are recorded; the fields below are written in
+    /// how `docs/BLE_PROTOCOL.md` §2's eight correspondences are recorded; the fields below are written in
     /// hex with the decimal in the comment, so neither reader has to convert.
     public struct SyncOpcodes: Sendable, Equatable {
         /// `0x91` / 145. The 5.0's static hello. §2.1 carries the published sixteen-byte frame, so this
@@ -279,7 +279,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
     ///
     /// **Both profiles carry the same values, and that is a finding rather than an oversight.** It was
     /// believed the two references disagreed here — the 4.0 reference writes its types in hex, the 5.0
-    /// reference in decimal — and `BLE_PROTOCOL.md` §2 records the eight exact correspondences that
+    /// reference in decimal — and `docs/BLE_PROTOCOL.md` §2 records the eight exact correspondences that
     /// falsify it (`0x23`=35, `0x2F`=47, …). The numbering is shared; the **envelope** is the
     /// discriminator. The field is kept per-profile anyway, because the moment a capture shows one
     /// generation numbering a role differently this is where it goes, and because a literal in a
@@ -294,7 +294,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
 
         /// **`realtimeRawData` is `0x2B` on the 4.0 and `43` on the 5.0 / MG, and those are the same
         /// byte.** It was the one role this table did not carry, so the 100 Hz motion record had no
-        /// name anywhere in the codebase and `BLE_PROTOCOL.md` §6's two layouts had nothing to be
+        /// name anywhere in the codebase and `docs/BLE_PROTOCOL.md` §6's two layouts had nothing to be
         /// dispatched from. The shared numbering is the whole reason one `switch` can route both
         /// generations to their own layout rather than each generation needing its own type check.
         public init(
@@ -420,7 +420,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
 
     /// The 4.0 envelope, and the only one whose writers predate the second builder.
     ///
-    /// Every field is from `BLE_PROTOCOL.md` §2, and the checksum arithmetic behind it was checked
+    /// Every field is from `docs/BLE_PROTOCOL.md` §2, and the checksum arithmetic behind it was checked
     /// against both references' published frames — see §2.1, where all four vectors reproduce. **None
     /// of it is captured on this project's own hardware**, so "correct" here means "matches both
     /// reverse-engineering references and is internally consistent", not "a strap accepts it".
@@ -456,7 +456,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
         )
     )
 
-    /// The 5.0 envelope. `BLE_PROTOCOL.md` §2 gives one envelope for the 5.0 and the MG, so these two
+    /// The 5.0 envelope. `docs/BLE_PROTOCOL.md` §2 gives one envelope for the 5.0 and the MG, so these two
     /// differ only in the `generation` they report back on a decoded frame.
     public static let whoop5 = fiveEnvelope(.whoop5)
 

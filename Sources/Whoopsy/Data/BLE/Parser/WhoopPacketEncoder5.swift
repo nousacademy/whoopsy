@@ -15,7 +15,7 @@ import Foundation
 /// 4.0 profile handed to this file gets `nil` rather than 4.0 opcodes under a 5.0 envelope.
 ///
 /// **Nothing here is captured on this project's own hardware.** What grounds it is
-/// `BLE_PROTOCOL.md` §2's envelope, §2.1's two published frames — one of which the suite reproduces
+/// `docs/BLE_PROTOCOL.md` §2's envelope, §2.1's two published frames — one of which the suite reproduces
 /// byte-for-byte — and §6's enable sequence. Whether a 5.0 accepts any of it is a question about the
 /// command characteristic's authenticated SMP bond (§7 Q6) and about the firmware, and neither is
 /// answered by a green build.
@@ -27,7 +27,7 @@ public enum WhoopPacketEncoder5 {
 
     /// `frame[4..<6)`, and **the one field in either envelope this build does not understand.**
     ///
-    /// `BLE_PROTOCOL.md` §2 names the two bytes and does not specify them: they hold `00 01` in both
+    /// `docs/BLE_PROTOCOL.md` §2 names the two bytes and does not specify them: they hold `00 01` in both
     /// published 5.0 frames — the static `CLIENT_HELLO` and the command frame — and the CRC16 covers
     /// them, so they are part of the header rather than padding the checksum skips. They are therefore
     /// **pinned as literals copied from those frames and never computed**, because the alternatives
@@ -42,7 +42,7 @@ public enum WhoopPacketEncoder5 {
 
     /// Builds a framed command packet under `profile`'s envelope.
     ///
-    /// The 5.0 envelope, from `BLE_PROTOCOL.md` §2:
+    /// The 5.0 envelope, from `docs/BLE_PROTOCOL.md` §2:
     ///
     /// ```
     /// [0]        SOF = 0xAA
@@ -148,7 +148,7 @@ public enum WhoopPacketEncoder5 {
     ///
     /// **That ordering is this app's, not a reference's.** §6 names all four opcodes and orders none of
     /// them, so each direction is one plausible arrangement of bytes a capture is what settles
-    /// (`BLE_PROTOCOL.md` §7). The suite asserts the order as read off the built bytes rather than as a
+    /// (`docs/BLE_PROTOCOL.md` §7). The suite asserts the order as read off the built bytes rather than as a
     /// claim about the wire.
     ///
     /// **Both bytes that vary are the reference's, and byte 0 is the one that does not.** §2.1's frame
@@ -292,7 +292,7 @@ public enum WhoopPacketEncoder5 {
     /// `0x22` / 34 `GET_DATA_RANGE` — the range canary.
     ///
     /// The one command that would answer "how far back does this strap's backlog actually reach",
-    /// which `TODO.md` §5 and §7 Q10 both record as unmeasured and disputed by a factor of five across
+    /// which `docs/TODO.md` §5 and §7 Q10 both record as unmeasured and disputed by a factor of five across
     /// the references. The payload is undocumented, so this sends none, and the reply is not read on
     /// any path.
     public static func getDataRange(profile: WhoopProtocolProfile, seq: UInt8) -> Data? {

@@ -22,7 +22,7 @@ it is a SQLite library.
   backend to pay for.
 - **No analytics, no telemetry, no crash reporting.** No engagement metrics, no feature flags, no
   device fingerprinting. Nothing is measured about you that you did not ask to be measured.
-- **Transparent.** Every number traces to a formula in [`ALGORITHMS.md`](ALGORITHMS.md), with its
+- **Transparent.** Every number traces to a formula in [`ALGORITHMS.md`](docs/ALGORITHMS.md), with its
   constants, its citations, and — where a constant is this project's own guess rather than a
   validated one — a plain statement that it is. Where a figure has no producer, the UI shows a dash
   rather than a plausible number.
@@ -37,7 +37,7 @@ This is a working app with real engineering behind it, and it is **not yet usabl
 strap.** Being specific about that is more useful than a feature list:
 
 - **The app has never run against real hardware.** The BLE protocol here is reverse-engineered from
-  [`BLE_PROTOCOL.md`](BLE_PROTOCOL.md). No strap has been connected, so nothing in the packet layer
+  [`BLE_PROTOCOL.md`](docs/BLE_PROTOCOL.md). No strap has been connected, so nothing in the packet layer
   has been checked against a device.
 - **Signing is not configured.** `DEVELOPMENT_TEAM` is empty and there is no certificate, so the
   Xcode project will not build to a device without you setting a team. The library and the simulator
@@ -48,7 +48,7 @@ strap.** Being specific about that is more useful than a feature list:
   termination rule on `HISTORY_COMPLETE`, an idle window off the profile, or the live edge. What is
   still missing is a walk for the type-24 heart-rate record's own header — the *motion* layouts are
   walked, which is why a drained record reaches the step count and not a heart rate. See
-  [`TODO.md` §5](TODO.md).
+  [`TODO.md` §5](docs/TODO.md).
 - **A 5.0 can be written to, and what is unproven is whether it answers.** All three WHOOP models
   carry a transmitted opcode table now. The 5.0's command characteristic needs an authenticated SMP
   bond that nothing in this project establishes a third-party iOS app can create, so the device
@@ -57,7 +57,7 @@ strap.** Being specific about that is more useful than a feature list:
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-a 1101-assertion test runner that pins the behaviour of all of them.
+a 1337-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -91,7 +91,9 @@ covers the whole history instead of two models disagreeing on one chart.
 
 ## Screens
 
-- **Home** — the day's three rings (Recovery, Strain, Sleep), a month calendar, and metric panels
+- **Home** — the day's three rings (Recovery, Strain, Sleep), a month calendar, and metric panels. Its
+  activity rows push a detail page for that session: strain, steps, heart rate, and the five
+  heart-rate zone rows, each compared against that activity's own recent history
 - **Strain** — the day's cardiovascular load with heart-rate zone breakdown
 - **Sleep** — last night's stages, efficiency, and the night's sleep need
 - **Recovery** — the score, and the four figures it was computed from against their baselines
@@ -102,14 +104,15 @@ covers the whole history instead of two models disagreeing on one chart.
 ## Documentation
 
 The docs are the spec, not a summary. They are written to be read by whoever touches this next —
-including an AI assistant with no memory of the last session.
+including an AI assistant with no memory of the last session. They live in [`docs/`](docs/); this
+file and `CLAUDE.md` are the only two left at the repo root.
 
 | File | What it holds |
 | :--- | :--- |
-| [`TODO.md`](TODO.md) | **The roadmap.** Outstanding work, per CSV column and per component, with the reason each item is still open. |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | **App design.** Layer rules, folder layout, component inventory, data-flow diagram. |
-| [`ALGORITHMS.md`](ALGORITHMS.md) | **The maths.** RMSSD/SDNN, the Strain model, the Recovery z-score, sleep staging, sleep need — with constants and citations. |
-| [`BLE_PROTOCOL.md`](BLE_PROTOCOL.md) | **Bluetooth.** GATT UUIDs for all three straps, both `0xAA` envelopes, CRC layout, handshake sequence. |
+| [`TODO.md`](docs/TODO.md) | **The roadmap.** Outstanding work, per CSV column and per component, with the reason each item is still open. |
+| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **App design.** Layer rules, folder layout, component inventory, data-flow diagram. |
+| [`ALGORITHMS.md`](docs/ALGORITHMS.md) | **The maths.** RMSSD/SDNN, the Strain model, the Recovery z-score, sleep staging, sleep need — with constants and citations. |
+| [`BLE_PROTOCOL.md`](docs/BLE_PROTOCOL.md) | **Bluetooth.** GATT UUIDs for all three straps, both `0xAA` envelopes, CRC layout, handshake sequence. |
 | [`CLAUDE.md`](CLAUDE.md) | **Working in this repo.** Build and test commands, and the hard-won gotchas that are not obvious from the code. Also the entry point for AI-assisted development. |
 
 ---
@@ -171,11 +174,11 @@ works around. Add `CODE_SIGNING_ALLOWED=NO` to check compilation without a signi
 
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 16 sections, 1101 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 19 sections, 1337 assertions, and no
 test discovery:
 
 ```bash
-make test                 # build + run all 16 sections
+make test                 # build + run all 19 sections
 make test SECTIONS=13,15  # just those two
 ```
 
@@ -184,7 +187,7 @@ deleted sources and the link fails) and hands the runner an absolute `#filePath`
 longer cares which directory you run it from. It ends with one machine-readable line:
 
 ```
-SUITE sections=1,...,17 assertions=1152 failed=0 exit=0
+SUITE sections=1,2,...,19 assertions=1337 failed=0 exit=0
 ```
 
 Read that line rather than the scrollback — the suite has no test discovery, so a section that
@@ -200,12 +203,12 @@ database, and a full run leaves the file byte-identical. That is documented rath
 
 ## Roadmap and contributing
 
-**[`TODO.md`](TODO.md) is the roadmap**, and it is deliberately blunt: open items carry the reason
+**[`TODO.md`](docs/TODO.md) is the roadmap**, and it is deliberately blunt: open items carry the reason
 they are open, and several are marked as decisions *not* to do something, with the measurement that
 justified it.
 
 **Ideas are welcome as issues.** If you have an implementation idea — a better estimator, a new
-metric, a fix for something in `TODO.md` — open an issue and describe the approach. Design
+metric, a fix for something in `docs/TODO.md` — open an issue and describe the approach. Design
 discussion before code is genuinely useful here, because most of the hard problems in this project
 are measurement questions rather than coding questions.
 
@@ -233,9 +236,9 @@ server, and no network code. It does not phone home, and there is nothing to opt
 
 HealthKit access is read-only, and iOS never tells an app whether read permission was granted — so
 Whoopsy treats a denial, an empty day and an unavailable store as the same thing and shows a dash
-rather than inventing a zero. Steps used to be the one value read that way and no longer are: they
-come off the strap's own accelerometer and are stored like any other measured day, which took steps
-out of the HealthKit permission request entirely.
+rather than inventing a zero. Steps are not read that way: they come off the strap's own
+accelerometer and are stored like any other measured day, which keeps steps out of the HealthKit
+permission request entirely.
 
 ## Licence
 

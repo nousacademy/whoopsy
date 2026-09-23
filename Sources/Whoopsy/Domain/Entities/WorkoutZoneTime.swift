@@ -10,7 +10,7 @@ import Foundation
 /// producer of zone time this app has: the export carries no heart-rate series for
 /// `StrainAccumulatorMath` to integrate, `biometric_samples` holds no rows on any database here, and
 /// the drain's type-24 heart-rate record has no reader. So nothing on this screen is a zone this app
-/// computed from a heart rate it measured — see `ALGORITHMS.md` §2, and do not describe it as such.
+/// computed from a heart rate it measured — see `docs/ALGORITHMS.md` §2, and do not describe it as such.
 ///
 /// ## Why this is two fields and not five
 ///

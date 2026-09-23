@@ -47,6 +47,14 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
     /// not `[0, 0, 0, 0, 0]`: the latter is a workout that never reached zone 1.
     public let hrZonePercents: [Double]?
 
+    /// Steps the strap counted during this session. See `WorkoutSession.steps` for what `nil` means and
+    /// why it is not a `0`.
+    ///
+    /// Added by `v17_workout_steps`, nullable and undefaulted, so NULL is the honest value on every row
+    /// written before the column existed — which is all 673 of the export's, since no bundled CSV
+    /// carries a per-workout step count.
+    public let steps: Int?
+
     public init(
         id: String,
         date: Date,
@@ -57,7 +65,8 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         maxHeartRate: Int,
         source: String? = nil,
         activityName: String? = nil,
-        hrZonePercents: [Double]? = nil
+        hrZonePercents: [Double]? = nil,
+        steps: Int? = nil
     ) {
         self.id = id
         self.date = date
@@ -69,6 +78,7 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         self.source = source
         self.activityName = activityName
         self.hrZonePercents = hrZonePercents
+        self.steps = steps
     }
 
     enum CodingKeys: String, CodingKey {
@@ -82,6 +92,7 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         case source
         case activityName = "activity_name"
         case hrZonePercents = "hr_zone_percents"
+        case steps
     }
 }
 

@@ -14,7 +14,7 @@ public final class AnalyzeSleepStressUseCase: Sendable {
     /// The longest in-bed span this model will describe, in seconds.
     ///
     /// A guard on **reads**, not a physiological claim. `SleepSession`'s in-bed span is not bounded by
-    /// anything: the importer only checks `end > start`, and `ALGORITHMS.md` records that one export
+    /// anything: the importer only checks `end > start`, and `docs/ALGORITHMS.md` records that one export
     /// row's `Sleep onset` is literally `00:00:00`, which stretches a night's span by up to six hours
     /// past the sleep it contains. A span that long is an artefact of the source row rather than a
     /// night, and left unchecked it is also the size of the read: at the strap's ~1 Hz this is 57,600

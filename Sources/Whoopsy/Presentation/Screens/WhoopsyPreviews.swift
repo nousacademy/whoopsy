@@ -54,8 +54,49 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 manage: container.manageBLEConnectionUseCase,
                 strapModels: container.strapModelRepository,
                 protocols: container.protocolCatalog
-            )
+            ),
+            liveSessionUseCase: container.liveSessionUseCase,
+            makeActivityDetailViewModel: { session in
+                ActivityDetailViewModel(
+                    session: session,
+                    workoutRepository: container.workoutRepository,
+                    userProfileRepository: container.userProfileRepository,
+                    biometricRepository: container.biometricRepository)
+            }
         )
+        .preferredColorScheme(.dark)
+    }
+}
+
+struct ActivityDetailView_Previews: PreviewProvider {
+    static var previews: some View {
+        let container = DIContainer.preview
+        NavigationStack {
+            ActivityDetailView(
+                viewModel: ActivityDetailViewModel(
+                    session: WorkoutSession(
+                        startedAt: Date().addingTimeInterval(-958),
+                        endedAt: Date(),
+                        strain: 4.1,
+                        averageHeartRate: 121,
+                        maxHeartRate: 164,
+                        route: [],
+                        splits: [],
+                        activityName: "Basketball",
+                        hrZonePercents: [0, 0, 0, 0, 0]),
+                    workoutRepository: container.workoutRepository,
+                    userProfileRepository: container.userProfileRepository,
+                    biometricRepository: container.biometricRepository))
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+struct LiveSessionView_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationStack {
+            LiveSessionView(useCase: DIContainer.preview.liveSessionUseCase)
+        }
         .preferredColorScheme(.dark)
     }
 }

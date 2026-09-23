@@ -4,7 +4,7 @@ import Foundation
 /// request.
 ///
 /// **A drain that is started and not answered leaves the strap re-sending the same batch forever.**
-/// `BLE_PROTOCOL.md` §4's reference calls it the Groundhog Day bug: records stream back in batches,
+/// `docs/BLE_PROTOCOL.md` §4's reference calls it the Groundhog Day bug: records stream back in batches,
 /// each one ends with a `HISTORY_END` marker carrying an eight-byte continuation token, and the strap
 /// will not move its read cursor until that token comes back in a `HISTORICAL_DATA_RESULT` reply. A
 /// build that sends `SEND_HISTORICAL_DATA` while holding no ACK loop is therefore worse off than one

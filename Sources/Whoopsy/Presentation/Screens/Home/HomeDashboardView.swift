@@ -42,7 +42,7 @@ import SwiftUI
 /// alternative was a number nobody measured. Three consequences are load-bearing: the label carries
 /// `(EST.)` and the other four must not, the panel takes no change arrow because the quantity moves
 /// on a scale of years, and the figure is one significant figure because its error bar is quoted in
-/// whole mL·kg⁻¹·min⁻¹ — `ALGORITHMS.md` §6 carries the model, its 4.7 mL·kg⁻¹·min⁻¹ SEE, and the
+/// whole mL·kg⁻¹·min⁻¹ — `docs/ALGORITHMS.md` §6 carries the model, its 4.7 mL·kg⁻¹·min⁻¹ SEE, and the
 /// sex-specific factor the app does not implement.
 public struct HomeDashboardView: View {
     @State private var viewModel: HomeViewModel
@@ -74,18 +74,58 @@ public struct HomeDashboardView: View {
     /// losing the device subscription each push and starting another.
     private let deviceDetailViewModel: DeviceDetailViewModel
 
+    /// The live session, owned by the app rather than by this screen.
+    ///
+    /// It is **not** built here and not a `@State`: a session has to outlive the screen that starts it,
+    /// and a value this screen owns would be torn down with it. `DIContainer` holds the one instance
+    /// and `MainContainerView` hands it down, so backing out of `LiveSessionView` — or off Home
+    /// entirely — leaves it recording. That is the user's stated requirement, and it is why this is a
+    /// `let` and not the `@State` its three sibling view models are.
+    private let liveSessionUseCase: LiveSessionUseCase
+
+    /// Whether `LiveSessionView` is pushed.
+    ///
+    /// The destination itself has to live **inside** the `NavigationStack` below, while the menu whose
+    /// row sets this is an overlay applied *outside* it — so the row cannot be a `NavigationLink`, and
+    /// this flag is the bridge between the two.
+    @State private var isPresentingLiveSession = false
+
+    /// One session's detail page, built on demand.
+    ///
+    /// **A factory rather than three more stored repositories**, and the reason is the shape of the
+    /// destination rather than a preference: the three rings push a page whose *subject* is the day
+    /// this screen is showing, so one view model built up front serves every push. An activity row's
+    /// subject is the row — `viewModel.workouts` is an array and any of its elements can be tapped —
+    /// so there is nothing to build until the tap happens.
+    ///
+    /// **`MainContainerView` is still the only place a view model is built**, which is the rule this
+    /// closure exists to keep: it is constructed there out of `DIContainer` and handed down, exactly as
+    /// the three `@State` view models above are. What this screen supplies is the session.
+    ///
+    /// **A fresh instance per push is correct here, and `deviceDetailViewModel`'s warning does not
+    /// apply.** That comment is about a view model holding a stream subscription, which a second
+    /// construction would silently re-open; `ActivityDetailViewModel` holds only repositories and does
+    /// its one read in the destination's `.task`, so a per-push instance re-reads the history — which
+    /// is what a reader returning to a session wants — and leaks nothing. Construction itself does no
+    /// work, so it is also safe if SwiftUI evaluates this closure on a plain re-render of Home.
+    private let makeActivityDetailViewModel: (WorkoutSession) -> ActivityDetailViewModel
+
     public init(
         viewModel: HomeViewModel,
         recoveryViewModel: RecoveryViewModel,
         sleepViewModel: SleepViewModel,
         strainViewModel: StrainViewModel,
-        deviceDetailViewModel: DeviceDetailViewModel
+        deviceDetailViewModel: DeviceDetailViewModel,
+        liveSessionUseCase: LiveSessionUseCase,
+        makeActivityDetailViewModel: @escaping (WorkoutSession) -> ActivityDetailViewModel
     ) {
         _viewModel = State(initialValue: viewModel)
         _recoveryViewModel = State(initialValue: recoveryViewModel)
         _sleepViewModel = State(initialValue: sleepViewModel)
         _strainViewModel = State(initialValue: strainViewModel)
         self.deviceDetailViewModel = deviceDetailViewModel
+        self.liveSessionUseCase = liveSessionUseCase
+        self.makeActivityDetailViewModel = makeActivityDetailViewModel
     }
 
     public var body: some View {
@@ -111,6 +151,12 @@ public struct HomeDashboardView: View {
             .overlayPreferenceValue(RingsBottomKey.self, alignment: .top) { ringsBottom in
                 collapsedHeader(collapse: collapse(for: ringsBottom))
             }
+            // Inside the `NavigationStack`, which is not a style choice: the menu that sets the flag is
+            // an overlay applied to the view *below*, outside this stack, and a destination declared
+            // out there cannot push — the link would be inert with no error.
+            .navigationDestination(isPresented: $isPresentingLiveSession) {
+                LiveSessionView(useCase: liveSessionUseCase)
+            }
             .task {
                 await viewModel.observeDevice()
                 await viewModel.load(for: selectedDate)
@@ -125,7 +171,17 @@ public struct HomeDashboardView: View {
         // so leaving it visible would put a bright, tappable row of tabs under a modal, and tapping
         // one would switch screens with the flag still set, so the overlay would be waiting on Home
         // when the user came back. Removing the bar removes both problems at once.
-        .hidingTabBar(isPresentingCalendar || isPresentingActivityMenu)
+        //
+        // **The live session is the third case, and it is why the flag is here rather than on the
+        // session's own view.** `LiveSessionView` does apply `.hidingTabBar(true)`, and it does not
+        // work: measured on the iOS 26.5 simulator, a `.toolbar(.hidden, for: .tabBar)` declared on a
+        // *pushed destination* leaves the tab bar drawn over the session — hiding the END button
+        // behind it — both when the push happens during first layout and when it is delayed until
+        // after it. Declaring the same modifier at the tab's **root**, which is this line and the
+        // position the calendar above already proves, does hide it, and un-hides it again on pop
+        // because this flag is the binding `navigationDestination(isPresented:)` resets. So the
+        // destination's own modifier is left in place as intent but is not the mechanism; this is.
+        .hidingTabBar(isPresentingCalendar || isPresentingActivityMenu || isPresentingLiveSession)
         .overlay {
             if isPresentingCalendar { calendarOverlay }
         }
@@ -230,14 +286,18 @@ public struct HomeDashboardView: View {
         }
     }
 
-    /// The card: the rows `ActivityMenu` holds, drawn top to bottom with a rule between them.
+    /// The card: the rows the day is offered, drawn top to bottom with a rule between them.
     ///
     /// The rows come from that value rather than from two `Text`s written here, because a list written
     /// into a body is a list nothing can assert — `DayBarRules`' and `ActivityGlyph`'s reason, and §14
     /// drives it.
+    ///
+    /// **The day is asked for its rows, not filtered here.** `ActivityMenu.entries(on:)` is what
+    /// withholds `START ACTIVITY` off today, so the rule stays where the runner — which has no
+    /// renderer — can read it, and this body holds no "is today" comparison to drift from the day bar's.
     private var activityMenu: some View {
         VStack(spacing: 0) {
-            ForEach(Array(ActivityMenu.entries.enumerated()), id: \.element.id) { index, entry in
+            ForEach(Array(ActivityMenu.entries(on: selectedDate).enumerated()), id: \.element.id) { index, entry in
                 if index > 0 { Divider().overlay(Theme.cardBorder) }
                 activityMenuRow(entry)
             }
@@ -249,13 +309,25 @@ public struct HomeDashboardView: View {
         .shadow(color: .black.opacity(0.45), radius: 20, y: 8)
     }
 
-    /// One row. The tap dismisses and does nothing else.
+    /// One row. The tap dismisses, then does whatever the entry's `Action` names.
+    ///
+    /// **The `switch` is exhaustive over `ActivityMenu.Entry.Action`**, deliberately: a case added
+    /// there stops this compiling until it is handled here, which is the property a stored closure in
+    /// the entry would not have had.
     ///
     /// `buttonStyle(.plain)` is load-bearing: the default style tints its label and adds a hit shape,
     /// which would recolour the word the value specifies.
     private func activityMenuRow(_ entry: ActivityMenu.Entry) -> some View {
         Button {
             dismissActivityMenu()
+            switch entry.action {
+            case .none:
+                // `ADD ACTIVITY` — the import path is not built. The tap closes the menu and stops
+                // here; there is no destination to reach.
+                break
+            case .startSession:
+                isPresentingLiveSession = true
+            }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: entry.symbol)
@@ -557,6 +629,12 @@ public struct HomeDashboardView: View {
             // Opens the menu and nothing else. It used to present the workout HUD as a sheet; the
             // label changed with it, because "Record a workout" promised a recording path this app
             // no longer has.
+            //
+            // **Drawn on every day, and unconditionally.** What a day changes is the *card*, not this
+            // button: `ActivityMenu.entries(on:)` withholds `START ACTIVITY` off today and keeps
+            // `ADD ACTIVITY`. Gating the button instead would take the whole menu — and with it a row
+            // that is not day-bound — off every day but one, and it would also have to carry the
+            // anchor below, which publishes this frame for `activityMenuOverlay` to hang from.
             Button {
                 presentActivityMenu()
             } label: {
@@ -603,14 +681,29 @@ public struct HomeDashboardView: View {
                         endedAt: sleep.endTime)
                 }
 
+                // **The `ForEach` is wrapped and the helper is not.** `activityRow` above draws the
+                // `SLEEP` row as well, and a sleep row has no workout behind it — wrapping the helper
+                // would give it a destination that does not exist. So the `NavigationLink` goes here,
+                // around the rows that do have one, and the `SLEEP` row above stays inert.
+                //
+                // `.buttonStyle(.plain)` for the rings' reason: the default styles tint the label and
+                // add a hit shape, which would recolour the strain figure and the chip.
                 ForEach(viewModel.workouts) { workout in
-                    activityRow(
-                        symbol: ActivityGlyph.symbol(for: workout.activityName),
-                        tint: Theme.strainRing,
-                        value: workout.strain.formattedOneDecimal(),
-                        label: workout.activityName ?? "ACTIVITY",
-                        startedAt: workout.startedAt,
-                        endedAt: workout.endedAt)
+                    NavigationLink {
+                        ActivityDetailView(viewModel: makeActivityDetailViewModel(workout))
+                    } label: {
+                        activityRow(
+                            symbol: ActivityGlyph.symbol(for: workout.activityName),
+                            tint: Theme.strainRing,
+                            value: workout.strain.formattedOneDecimal(),
+                            label: workout.activityName ?? "ACTIVITY",
+                            startedAt: workout.startedAt,
+                            endedAt: workout.endedAt)
+                    }
+                    .buttonStyle(.plain)
+                    // A hint only, on the rings' rule: an explicit `accessibilityLabel` here would
+                    // *replace* the composed one and drop the strain out of the announcement.
+                    .accessibilityHint("Opens this activity's statistics")
                 }
             }
         }
@@ -972,7 +1065,7 @@ public struct HomeDashboardView: View {
     /// age-predicted rather than measured, which is this app's case; the study's population was 46
     /// well-trained men and its authors say applicability elsewhere needs direct validation. Printing
     /// that as a bare `VO₂ MAX` beside three genuinely measured panels would present it as a reading
-    /// of the same kind, which is the "At baseline" mistake in a different tile. See `ALGORITHMS.md`
+    /// of the same kind, which is the "At baseline" mistake in a different tile. See `docs/ALGORITHMS.md`
     /// §6 for the model and §`Vo2MaxMath` for the anchor decision.
     ///
     /// The marker is the part that is still a decision. `MetricChange.between` would compare the day's
@@ -1157,8 +1250,12 @@ public struct HomeDashboardView: View {
 
 // MARK: - Platform
 
-private extension View {
+extension View {
     /// Hides the tab bar, on the platforms that have one.
+    ///
+    /// **Not `private` any more.** It was, while Home was its only caller; `LiveSessionView` is the
+    /// second, and the alternative to widening this is a second copy of the `#if os(iOS)` guard in
+    /// that file — which is the drift this repo extracts helpers to prevent.
     ///
     /// `ToolbarPlacement.tabBar` is unavailable on macOS and this view is built for both — the host
     /// `swift build` is this repo's edit/compile loop and the test runner links against its objects.

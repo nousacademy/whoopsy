@@ -2,12 +2,12 @@ import Foundation
 
 /// Reassembles a proprietary frame that arrives split across several BLE notifications.
 ///
-/// `BLE_PROTOCOL.md` §4 names this as the remaining half of the framing problem: the decoder verifies a
+/// `docs/BLE_PROTOCOL.md` §4 names this as the remaining half of the framing problem: the decoder verifies a
 /// frame's checksums, but it is handed **one notification's bytes**, so a frame longer than the
 /// negotiated MTU is not "rejected" — it is never seen at all. `decodeProprietaryFrame` requires
 /// `data.count >= declaredLength + 4` and returns `nil` when it is short, and the manager drops that
 /// `nil` on the floor. Every record the motion path needs is in that category: the 4.0 live IMU
-/// stream runs to **1921** bytes of frame — 1917 declared, the one motion layout in `BLE_PROTOCOL.md`
+/// stream runs to **1921** bytes of frame — 1917 declared, the one motion layout in `docs/BLE_PROTOCOL.md`
 /// §6 that is published and hardware-verified — and the 5.0/MG type-47 buffer to 1244 or 2140 by that
 /// document's least-verifiable source, against a notification that carries at most `MTU − 3` bytes.
 /// So nothing downstream of the envelope is reachable until this exists.
@@ -47,7 +47,7 @@ public struct WhoopFrameReassembler: Sendable {
     /// buffer is bounded by this plus one notification's worth of bytes.
     ///
     /// **The value is set above every documented shape rather than measured.** The largest record
-    /// `BLE_PROTOCOL.md` describes is the 5.0/MG optical buffer, which declares 2140 bytes — the frame
+    /// `docs/BLE_PROTOCOL.md` describes is the 5.0/MG optical buffer, which declares 2140 bytes — the frame
     /// is `innerOrigin + declaredLength`, so 2148 under the 5.0 envelope and 2144 under the 4.0 one,
     /// and the 5.0 figure is the one that counts because that is the envelope the record arrives
     /// under. The 4.0 live IMU frame at 1921 bytes, the 5.0/MG IMU record at 1244 declared bytes and
@@ -56,7 +56,7 @@ public struct WhoopFrameReassembler: Sendable {
     /// as nothing, which is silent but writes no reading, whereas a bound set too low for a shape
     /// nobody has seen yet would do the same thing — so the cost of being wrong is a frame not decoded
     /// rather than a wrong one. Only the 4.0's figure is hardware-verified; the 5.0/MG shapes come
-    /// from the one source `BLE_PROTOCOL.md` cannot reach, so a capture is what would settle them —
+    /// from the one source `docs/BLE_PROTOCOL.md` cannot reach, so a capture is what would settle them —
     /// §7 Q9 asks for one.
     public static let maximumFrameBytes: Int = 4096
 
