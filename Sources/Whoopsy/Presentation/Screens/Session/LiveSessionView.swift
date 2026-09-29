@@ -61,6 +61,8 @@ public struct LiveSessionView: View {
                 statTiles
                 routeCard
                 routeNote
+                offlineMapCard
+                offlineMapNote
                 endButton
                 liveActivityNote
             }
@@ -512,6 +514,111 @@ public struct LiveSessionView: View {
             get: { useCase.isRecordingRoute },
             set: { isOn in Task { await useCase.setRouteRecording(isOn) } }
         )
+    }
+
+    /// The second switch, and the one that exists because of a hike rather than a run.
+    ///
+    /// **Independent of `RECORD ROUTE` and drawn as its own card**, which is the user's own ruling
+    /// rather than a layout choice. Either can be on without the other: a route with no offline map is
+    /// the ordinary case on a short run in a city, and an offline map with no route is a hiker who wants
+    /// the area cached but is not tracking the walk. Neither switch gates or moves the other, so this
+    /// one is not nested under `routeCard` and does not read its state.
+    ///
+    /// **It is thrown before the signal goes, never in response to it.** There is no connectivity
+    /// detection anywhere in this feature — the app has no networking code at all — so the decision is
+    /// entirely the user's, taken at the trailhead while the phone still has bars. The subtitle says so
+    /// in as many words, because a switch that downloads "a map" and is flipped after the signal is gone
+    /// does nothing and would read as broken.
+    ///
+    /// **Disabled rather than hidden on a build with no map SDK.** A missing card would be a feature the
+    /// user cannot see is missing; a disabled switch with a sentence names what is absent, which is the
+    /// same choice `routeNote` makes for a refused permission.
+    ///
+    /// The switch's position is the use case's, for the reason `routeCard` gives: the first flip awaits
+    /// a permission prompt, so a `Toggle` holding its own `@State` would show "on" over a refusal.
+    private var offlineMapCard: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "map")
+                .font(.system(size: 15))
+                .foregroundColor(
+                    useCase.isOfflineMapRequested ? Theme.livePulseCyan : Theme.textMuted)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("USE OFFLINE MAP")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundColor(Theme.textPrimary)
+                    .tracking(0.8)
+
+                Text(offlineMapDetail)
+                    .font(.system(size: 11))
+                    .foregroundColor(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Toggle("", isOn: offlineMapBinding)
+                .labelsHidden()
+                .tint(Theme.livePulseCyan)
+                .disabled(!useCase.isOfflineMapSupported)
+        }
+        .padding(14)
+        .background(Theme.homeCard)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Theme.cardBorder, lineWidth: 1)
+        )
+    }
+
+    /// What the switch is doing, in one line under its title.
+    ///
+    /// **Four states, and only one of them prints a number.** The percentage comes from the seam's own
+    /// `onProgress` callback as tiles arrive — see `OfflineMapServing.download` for why it is pushed
+    /// rather than derived — so it is a real figure or it is not drawn.
+    ///
+    /// `.failed` deliberately falls through to the ordinary sentence rather than repeating the failure:
+    /// `offlineMapNote` below prints the authored sentence, and the switch has already gone back off, so
+    /// this line has to read as the offer it is again.
+    private var offlineMapDetail: String {
+        guard useCase.isOfflineMapSupported else {
+            return "Not available in this build. The route card will use the standard map."
+        }
+        switch useCase.offlineMapState {
+        case .ready:
+            return "Saved. This session's route will draw with no connection."
+        case .downloading(let fraction):
+            return "Downloading this area… \(Int((fraction * 100).rounded()))%"
+        case .absent, .unsupported, .failed:
+            return "Saves a map of this area while you still have signal. Turn it on before you lose "
+                + "coverage."
+        }
+    }
+
+    /// Reads through to the use case and writes through a `Task` — see `routeCard` for why.
+    private var offlineMapBinding: Binding<Bool> {
+        Binding(
+            get: { useCase.isOfflineMapRequested },
+            set: { isOn in Task { await useCase.setOfflineMap(isOn) } }
+        )
+    }
+
+    /// Reports why no map was downloaded, and says nothing otherwise.
+    ///
+    /// `routeNote`'s twin, and absent in the ordinary case for its reason: a switch that is on needs no
+    /// note under it, and a note saying so would be a permanent fixture on the screen. What arrives here
+    /// is one of the use case's **authored sentences** — a refused permission, no position fix, a failed
+    /// download — never a system error description.
+    @ViewBuilder
+    private var offlineMapNote: some View {
+        if let error = useCase.offlineMapError {
+            Text(error)
+                .font(.system(size: 11))
+                .foregroundColor(Theme.textMuted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+        }
     }
 
     /// Reports a route that could not be recorded, and says nothing otherwise.

@@ -28,10 +28,20 @@ public struct WhoopImportSummary: Sendable, Equatable {
 
     /// Workout rows written, out of the bundled `workouts.csv`.
     ///
-    /// A fifth table, and like `napsWritten` not a day count — a day can hold several workouts. On
-    /// this export it is 673 against 910 nights, and unlike the naps these are **not** a curiosity:
-    /// they are the only producer of the strain page's two `HEART RATE ZONES` rows, so a zero here is
-    /// why those rows would be dashes on every day.
+    /// A fifth table, and like `napsWritten` not a day count — a day can hold several workouts. On a
+    /// **fresh install** it is 673 against 910 nights, and unlike the naps these are **not** a
+    /// curiosity: they are the only producer of the strain page's two `HEART RATE ZONES` rows, so a zero
+    /// on a first import is why those rows would be dashes on every day.
+    ///
+    /// **On a re-import it is 0, and 0 now has two causes that read alike.** `importWorkoutRows` gained
+    /// the day-already-recorded skip its three sibling tables always had, so a second press writes
+    /// nothing — which is the point of the skip, since a write there would revert an edit made on the
+    /// activity detail page. But `importBundledWorkouts()` also answers `0` when this build carries no
+    /// `workouts.csv` at all, and it is the same number either way. The count on its own therefore says
+    /// "no workout row was written" and not *why*; the two cases are told apart by the file existing,
+    /// which nothing on this row records. A field distinguishing them was considered and not added:
+    /// the only reader is `message`, and a sentence explaining which of the two happened is not
+    /// something the person who pressed the button can act on.
     public let workoutsWritten: Int
 
     /// Distinct days that received at least one row. A set count, not derivable from the three

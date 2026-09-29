@@ -9,54 +9,106 @@ import SwiftUI
 ///
 /// ## What each axis claims
 ///
-/// The x axis is the **session**, not the clock day: 0 is `series.start` and the right edge is
-/// `series.end`, so a fifteen-minute game and a two-hour hike are both drawn full-width. That is the
-/// sleep chart's choice and it holds here for a stronger reason — the page is *about* one session, and
-/// a session placed on a 24-hour clock would be a fifteen-minute mark on a mostly empty frame.
+/// The x axis is the **session**, not the clock day: 0 is `start` and the right edge is `end`, so a
+/// fifteen-minute game and a two-hour hike are both drawn full-width. That is the sleep chart's choice
+/// and it holds here for a stronger reason — the page is *about* one session, and a session placed on
+/// a 24-hour clock would be a fifteen-minute mark on a mostly empty frame.
 ///
 /// The y axis is **fixed and widens rather than fitting or clamping**; `ActivityHeartRateAxis`'s own
 /// comment carries that argument, and it is why the numbers on the left are drawn at all: a trace with
 /// no scale under it is a shape, not a reading.
 ///
-/// ## Two marks the sleep chart draws and this one does not
+/// ## The window is the frame, and its two edges are ruled anyway
 ///
-/// The night chart rules its two bounds as dashed verticals with a dot at each foot, because a night's
-/// in-bed window sits *inside* a longer recording and the marks say where the night was. **Here the
-/// window is the frame.** `start` and `end` are the session's own instants and are drawn at
-/// `rect.minX` and `rect.maxX` by construction, so dashed rules there would trace the plot's own edges
-/// and say nothing; the two ends are named by the labels beneath instead, which is the fact a reader
-/// actually wants. That is the whole of why this view is shorter than its sibling rather than a copy of
-/// it with two shapes switched off.
+/// The night chart rules its two bounds as dashed verticals with a dot at each foot because a night's
+/// in-bed window sits *inside* a longer recording. Here `start` and `end` are the session's own
+/// instants and the plot's own edges, so a rule at each end traces the frame rather than marking a
+/// span within it — and **the same two ships here deliberately**. They are drawn because this page's
+/// reference draws them and the page is being matched to it, which is the whole of the reason; they
+/// mark where the session began and ended and nothing else, so nothing should read them as a band
+/// inside a longer record the way the night chart's are read. The clock labels beneath each foot are
+/// what actually name the two ends.
+///
+/// ## The frame is drawn whether or not there is a trace in it
+///
+/// `series` is **optional**, and the absent branch is not an empty view. `biometric_samples` holds 0
+/// rows in every database this app has ever run against and the export carries no heart-rate series,
+/// so **every session this app can currently show takes that branch** — and the session's window is
+/// known without a single sample. So the frame, the two rules, the two clock labels and the empty
+/// gutter the axis numbers would sit in are all drawn, with `absenceNote` centred in the plot.
+///
+/// **It is a sentence and not a flat line.** A line at the axis foot is the strongest possible claim
+/// of a calm session, and it is the one mark this branch must never make — the rule
+/// `StressMonitorChartView` follows for a day with no eligible window, applied here to a session with
+/// no samples.
 ///
 /// ## A run of one is drawn, and a gap is not bridged
 ///
 /// `runs` comes from the series, which splits on a dropout. A run of two or more is stroked as one
 /// segment; a run of exactly one draws a dot instead, because a polyline through a single point draws
 /// nothing at all and that point *was* measured — the same two shapes, for the same reason, as
-/// `StressMonitorChartView`'s `LinePath`/`DotPath` pair.
+/// `StressMonitorChartView`'s `LinePath`/`DotPath` pair. The area beneath the trace is closed from the
+/// same runs, so a gap is a gap in the fill as well as in the line.
 public struct ActivityHeartRateChartView: View {
 
-    public let series: ActivityHeartRateSeries
+    /// The session's samples, or `nil` when it has none. See this type's comment: the absent case is
+    /// the one every session on this machine draws, and it is a drawn frame rather than a blank.
+    public let series: ActivityHeartRateSeries?
 
-    public init(series: ActivityHeartRateSeries) {
+    /// The session's own window, which the frame is drawn across whether or not `series` is present.
+    public let start: Date
+    public let end: Date
+
+    public init(series: ActivityHeartRateSeries?, start: Date, end: Date) {
         self.series = series
+        self.start = start
+        self.end = end
     }
 
-    /// Total height including the time labels beneath the plot, matching the other two charts' pair so
-    /// the three sit at the same weight on their screens. A `GeometryReader` has no intrinsic size, so
-    /// something has to state one.
-    private static let totalHeight: CGFloat = 132
-    private static let labelHeight: CGFloat = 15
+    /// What the plot says when there is nothing to draw in it.
+    ///
+    /// A `nonisolated static` rather than text built in the `body`, on the rule this page's other
+    /// strings follow: the runner has no renderer, so a sentence written into a `body` is a sentence
+    /// nothing can assert.
+    public nonisolated static let absenceNote = "No heart rate recorded"
+
+    /// Total height including the time labels beneath the plot. A `GeometryReader` has no intrinsic
+    /// size, so something has to state one.
+    ///
+    /// **This chart is taller than its three 132 pt siblings** — `HoursOfSleepChartView`,
+    /// `SleepStressChartView` and `StressMonitorChartView` — and the difference is deliberate rather
+    /// than drift. On each of those screens the trace is one element among several: the night chart's
+    /// sits under a headline figure that is the card's actual subject, and the stress chart's is one
+    /// card on a page of cards. Here the trace *is* the page's hero block in the reference, at roughly
+    /// twice this family's height, and a session is a short window whose whole shape is the point — so
+    /// drawing it at the siblings' size is the single most visible way this page can fail to look like
+    /// the picture it is being matched to. Only this file moves; the three siblings keep their own.
+    private static let totalHeight: CGFloat = 210
+
+    /// Room for the clock labels under the plot, which are set larger here than the siblings' 9 pt for
+    /// the same reason the plot is taller — see `totalHeight`.
+    private static let labelHeight: CGFloat = 22
 
     /// The gutter the y labels sit in, to the left of the plot.
-    private static let axisLabelWidth: CGFloat = 26
+    ///
+    /// **Reserved in both branches**, so the frame does not move when a session has no samples: the
+    /// trace starts at the same x either way, and the two branches are the same picture with a
+    /// different middle rather than two different pictures. It is wider than the siblings' 26 pt
+    /// because the numbers in it are set larger; at 12 pt a `100` does not fit a 26 pt gutter without
+    /// crowding the plot it labels.
+    private static let axisLabelWidth: CGFloat = 30
 
     public var body: some View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    yLabels(height: max(1, proxy.size.height - Self.labelHeight))
-                        .frame(width: Self.axisLabelWidth)
+                    if let series {
+                        yLabels(axis: series.axis, height: max(1, proxy.size.height - Self.labelHeight))
+                            .frame(width: Self.axisLabelWidth)
+                    } else {
+                        Color.clear
+                            .frame(width: Self.axisLabelWidth)
+                    }
                     plot(plotHeight: max(1, proxy.size.height - Self.labelHeight))
                 }
                 timeLabels
@@ -70,32 +122,65 @@ public struct ActivityHeartRateChartView: View {
 
     // MARK: - Plot
 
+    /// The trace mapped across this session's own window. See `ActivityHeartRatePlot` for why the window
+    /// is the caller's to state rather than the series' to imply.
+    private var plot: ActivityHeartRatePlot {
+        ActivityHeartRatePlot(series: series, start: start, end: end)
+    }
+
     private func plot(plotHeight: CGFloat) -> some View {
         ZStack {
-            Gridlines(axis: series.axis)
-                .stroke(Theme.ringTrack, lineWidth: 1)
+            if let series {
+                ActivityHeartRatePlot.Gridlines(axis: series.axis)
+                    .stroke(Theme.ringTrack, lineWidth: 1)
 
-            LinePath(runs: plotRuns, axis: series.axis)
+                // The area is a `Shape` and not a `Path` built here: `path(in:)` is handed the frame,
+                // so the gradient's stops land on the plot rather than on the shape's own bounding box
+                // — the trap `StressMonitorChartView` records for its fill.
+                ActivityHeartRatePlot.AreaPath(runs: plot.runs, axis: series.axis)
+                    .fill(
+                        LinearGradient(
+                            colors: [Theme.weekLine.opacity(0.35), Theme.weekLine.opacity(0)],
+                            startPoint: .top,
+                            endPoint: .bottom))
+
+                ActivityHeartRatePlot.LinePath(runs: plot.runs, axis: series.axis)
+                    .stroke(
+                        Theme.weekLine,
+                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+
+                ActivityHeartRatePlot.DotPath(runs: plot.runs, axis: series.axis, radius: 2.5)
+                    .fill(Theme.weekLine)
+            } else {
+                Text(Self.absenceNote)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.textMuted)
+            }
+
+            // The session's own bounds, drawn the way this repo draws every vertical marker —
+            // `HoursOfSleepChartView.BoundsMarkers`, `StressMonitorChartView.TimeMarker` and
+            // `TypicalRangeBar`'s band edges all use this exact style.
+            ActivityHeartRatePlot.BoundsMarkers()
                 .stroke(
-                    Theme.weekLine,
-                    style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    Theme.textSecondary.opacity(0.6),
+                    style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
 
-            DotPath(runs: plotRuns, axis: series.axis, radius: 2.5)
-                .fill(Theme.weekLine)
+            ActivityHeartRatePlot.FootDots(radius: 2.5)
+                .fill(Theme.textSecondary.opacity(0.6))
         }
         .frame(height: plotHeight)
     }
 
-    private func yLabels(height: CGFloat) -> some View {
+    private func yLabels(axis: ActivityHeartRateAxis, height: CGFloat) -> some View {
         GeometryReader { proxy in
-            ForEach(series.axis.gridLines, id: \.self) { value in
+            ForEach(axis.gridLines, id: \.self) { value in
                 Text(Self.axisText(value))
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(Theme.textMuted)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
                     .fixedSize()
                     .position(
                         x: proxy.size.width - Self.axisLabelWidth / 2,
-                        y: labelY(for: value, height: proxy.size.height))
+                        y: labelY(for: value, axis: axis, height: proxy.size.height))
             }
         }
         .frame(height: height)
@@ -105,9 +190,9 @@ public struct ActivityHeartRateChartView: View {
     ///
     /// It bites at the lower bound: the standard axis' bottom gridline *is* the frame's bottom edge, so
     /// an unclamped label would have its lower half outside the view.
-    private func labelY(for value: Double, height: CGFloat) -> CGFloat {
+    private func labelY(for value: Double, axis: ActivityHeartRateAxis, height: CGFloat) -> CGFloat {
         let inset: CGFloat = 5
-        let y = (1 - CGFloat(series.axis.fraction(value))) * height
+        let y = (1 - CGFloat(axis.fraction(value))) * height
         return min(max(y, inset), max(inset, height - inset))
     }
 
@@ -116,18 +201,21 @@ public struct ActivityHeartRateChartView: View {
     ///
     /// **A clock time each, and not a duration.** The session's own length is printed above this chart
     /// as `DURATION`, so two more durations here would say the same thing twice; the times say when the
-    /// session was, which nothing else on the card does.
+    /// session was, which nothing else on the page does. They are drawn in both branches, because the
+    /// session's window is a fact the page has whether or not any sample arrived inside it.
     private var timeLabels: some View {
         HStack(spacing: 0) {
-            Text(series.start.formattedHourMinute())
+            Text(start.formattedHourMinute())
             Spacer(minLength: 4)
-            Text(series.end.formattedHourMinute())
+            Text(end.formattedHourMinute())
         }
         // Offset by the gutter so the labels line up with the plot above them rather than with the axis
-        // numbers, which are not a time.
+        // numbers, which are not a time. Set larger and brighter than the y numbers beside them, which
+        // is the reference's own hierarchy: the two ends of the session are the frame's caption, and the
+        // scale is furniture.
         .padding(.leading, Self.axisLabelWidth)
-        .font(.system(size: 9, weight: .medium))
-        .foregroundStyle(Theme.textMuted)
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(Theme.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -137,107 +225,4 @@ public struct ActivityHeartRateChartView: View {
         String(Int(value.rounded()))
     }
 
-    // MARK: - The series in plot terms
-
-    /// A point in the data's own terms rather than in screen points: `fraction` is 0 at the session's
-    /// start and 1 at its end, and `bpm` is on the axis' scale. Data terms because a `Shape` must lay
-    /// itself out in whatever rect it is handed.
-    private struct PlotPoint {
-        let fraction: Double
-        let bpm: Double
-    }
-
-    private var plotRuns: [[PlotPoint]] {
-        series.runs.map { run in
-            run.map { PlotPoint(fraction: fraction(for: $0.time), bpm: $0.bpm) }
-        }
-    }
-
-    /// The session's real length rather than a flat figure, and never zero — the series refuses a
-    /// window whose end is not after its start, and this floor is the second guard on the same division.
-    private var length: TimeInterval { max(series.end.timeIntervalSince(series.start), 1) }
-
-    private func fraction(for time: Date) -> Double {
-        min(max(time.timeIntervalSince(series.start) / length, 0), 1)
-    }
-
-    // MARK: - Shapes
-
-    /// The mapping every shape below shares: data terms in, screen points out.
-    ///
-    /// The y mapping goes through `ActivityHeartRateAxis.fraction` rather than restating the arithmetic,
-    /// so a widening or a change to the bounds moves the drawing with it.
-    private enum Scale {
-        static func x(_ fraction: Double, in rect: CGRect) -> CGFloat {
-            rect.minX + CGFloat(min(max(fraction, 0), 1)) * rect.width
-        }
-
-        static func y(_ bpm: Double, axis: ActivityHeartRateAxis, in rect: CGRect) -> CGFloat {
-            rect.maxY - CGFloat(axis.fraction(bpm)) * rect.height
-        }
-    }
-
-    private static func point(
-        _ point: PlotPoint, axis: ActivityHeartRateAxis, in rect: CGRect
-    ) -> CGPoint {
-        CGPoint(x: Scale.x(point.fraction, in: rect), y: Scale.y(point.bpm, axis: axis, in: rect))
-    }
-
-    /// The trace. Runs of one point are skipped — `DotPath` draws those.
-    private struct LinePath: Shape {
-        let runs: [[PlotPoint]]
-        let axis: ActivityHeartRateAxis
-
-        func path(in rect: CGRect) -> Path {
-            var path = Path()
-            for run in runs where run.count > 1 {
-                guard let first = run.first else { continue }
-                path.move(to: ActivityHeartRateChartView.point(first, axis: axis, in: rect))
-                for point in run.dropFirst() {
-                    path.addLine(to: ActivityHeartRateChartView.point(point, axis: axis, in: rect))
-                }
-            }
-            return path
-        }
-    }
-
-    /// A lone reading, drawn as a point.
-    ///
-    /// A polyline through a single point draws nothing at all, and the value was still measured — a
-    /// session the app heard from three times is thin, not absent. Drawing a flat segment instead would
-    /// invent a duration the strap never recorded.
-    private struct DotPath: Shape {
-        let runs: [[PlotPoint]]
-        let axis: ActivityHeartRateAxis
-        let radius: CGFloat
-
-        func path(in rect: CGRect) -> Path {
-            var path = Path()
-            for run in runs where run.count == 1 {
-                guard let point = run.first else { continue }
-                let centre = ActivityHeartRateChartView.point(point, axis: axis, in: rect)
-                path.addEllipse(
-                    in: CGRect(
-                        x: centre.x - radius,
-                        y: centre.y - radius,
-                        width: radius * 2,
-                        height: radius * 2))
-            }
-            return path
-        }
-    }
-
-    private struct Gridlines: Shape {
-        let axis: ActivityHeartRateAxis
-
-        func path(in rect: CGRect) -> Path {
-            var path = Path()
-            for value in axis.gridLines {
-                let y = Scale.y(value, axis: axis, in: rect)
-                path.move(to: CGPoint(x: rect.minX, y: y))
-                path.addLine(to: CGPoint(x: rect.maxX, y: y))
-            }
-            return path
-        }
-    }
 }

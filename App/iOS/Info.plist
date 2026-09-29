@@ -22,6 +22,37 @@
     <string>1</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <!-- The Mapbox PUBLIC token (`pk.…`), read by `MapboxSetup.configure()` and required for the
+         offline route map — the `USE OFFLINE MAP` switch on the live session screen and the card it
+         draws.
+
+         **The key lives here; the token does not.** `MBXAccessToken` stays the one read path because
+         it is Mapbox's own documented mechanism, but its value is expanded at build time from
+         `MBX_ACCESS_TOKEN`, which two xcconfig files define: the committed
+         `App/Config/Mapbox.xcconfig`, set as this target's base configuration in `Whoopsy.xcodeproj`
+         (so it applies to Debug and Release alike) and defining the setting **empty**, and the
+         **gitignored** `App/Config/Mapbox.local.xcconfig` beside it, which the committed file pulls in
+         through `#include?` when it exists and whose value therefore wins. The token lives only in the
+         second file, so it is never committed.
+
+         A clone that has not created `App/Config/Mapbox.local.xcconfig` therefore gets a genuinely
+         **empty** string here, not an unexpanded variable: `configure()` returns `false` and the build
+         behaves exactly like `UnavailableOfflineMaps` — the switch is simply not offered and the card
+         draws MapKit. Nothing is half-configured and nothing crashes.
+
+         **The committed base file is not optional, and that is why the token is in the other one.**
+         `xcodebuild` treats a base configuration it cannot open as a hard error —
+         `Unable to open base configuration reference file` — and fails the build before compiling
+         anything. A token file named as the base configuration would make every fresh clone
+         unbuildable; `#include?` makes it merely unconfigured. Do not delete `Mapbox.xcconfig`, and do
+         not merge the two files.
+
+         This is NOT a secret: a public token ships inside every built app and Mapbox designs it to be
+         embedded. The SECRET token (`sk.…`, with `Downloads:Read`) is a build-time credential for
+         SwiftPM's package resolution and lives in `~/.netrc` — never here, never in either xcconfig,
+         never anywhere in this tree. See README.md §Building. -->
+    <key>MBXAccessToken</key>
+    <string>$(MBX_ACCESS_TOKEN)</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>Whoopsy requires Bluetooth access to discover, connect to, and stream biometrics from your WHOOP strap.</string>
     <key>NSBluetoothPeripheralUsageDescription</key>

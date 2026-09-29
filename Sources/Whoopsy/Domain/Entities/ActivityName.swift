@@ -9,7 +9,7 @@ import Foundation
 /// rule is written down.
 ///
 /// **It has two readers and they must not disagree.** `ActivityBaseline.window(for:in:)` groups a
-/// session with its own history by this rule, and `ActivityGlyph.symbol(for:)` keys its SF Symbol table
+/// session with its own history by this rule, and `ActivityGlyph.mark(for:)` keys its drawing table
 /// by it — so a table that folded case while the window did not would draw one glyph for a set of
 /// sessions the page had already decided were two different activities. `ActivityGlyph` forwards here
 /// rather than carrying its own copy for exactly that reason.

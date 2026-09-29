@@ -57,9 +57,17 @@ public struct SleepTypicalRangeCard: View {
     ///
     /// `SectionLabel` carries `frame(maxWidth: .infinity, alignment: .leading)` of its own, which is
     /// what pushes the pair to the right and holds the two ends of the row apart without a `Spacer`.
+    ///
+    /// **The glyph is here because a mark with no key reads as arbitrary**, and the mark is a shape
+    /// this screen invented: a filled span bounded by two dashed rules. `BandMarkGlyph` draws it from
+    /// the same two pieces the bars below draw — `Theme.bandMarkFill` and `BandEdges` — so the key
+    /// cannot come to depict a mark the bars no longer make. It is a small square of the mark itself
+    /// and not a bar with the mark on it: a reader looking up the grey block on the third row wants to
+    /// find the same grey block in the header. Its doc comment carries the baseline guide that puts
+    /// the square's foot on the text's foot.
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            bandGlyph
+            BandMarkGlyph()
 
             SectionLabel("Typical range")
 
@@ -74,39 +82,6 @@ public struct SleepTypicalRangeCard: View {
                 .monospacedDigit()
         }
         .padding(.bottom, 16)
-    }
-
-    /// The key to the band mark the four bars below draw.
-    ///
-    /// **It is a legend and not decoration.** The mark is a filled span bounded by two dashed rules,
-    /// which is a shape this screen invented, and a mark with no key is as likely to read as arbitrary
-    /// as it is to read as a range — which is exactly the state the two bare dashed lines it replaced
-    /// were in. It is built from `Theme.bandMarkFill` and `BandEdges`, the same two pieces the bars
-    /// draw, so the key cannot come to depict a mark the bars no longer make; a hand-drawn miniature
-    /// would have been a second copy to keep in step.
-    ///
-    /// **It is a small square of the mark itself rather than a bar with the mark on it**, which is what
-    /// it used to be — a capsule of `ringTrack` with a dashed rounded box inset inside it. That glyph
-    /// described a *bar*, and a key has to describe the *mark*: a reader looking up the grey block on
-    /// the third row wants to find the same grey block in the header, not a bar that happens to contain
-    /// one. The reference's own key is this shape, at this size.
-    ///
-    /// The baseline guide puts the glyph's bottom edge on the text baseline, which is where a small
-    /// mark beside a word belongs. Without it a view carrying no text of its own aligns by its centre
-    /// in a `.firstTextBaseline` stack and sits slightly low.
-    private var bandGlyph: some View {
-        ZStack(alignment: .leading) {
-            Rectangle()
-                .fill(Theme.bandMarkFill)
-
-            BandEdges(inset: 0.75)
-                .stroke(
-                    Theme.bandMarkEdge,
-                    style: StrokeStyle(lineWidth: 1.5, dash: TypicalRangeBar.markDash))
-        }
-        .frame(width: 16, height: 16)
-        .alignmentGuide(.firstTextBaseline) { $0[.bottom] }
-        .accessibilityHidden(true)
     }
 
     // MARK: - One stage

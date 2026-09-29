@@ -156,29 +156,137 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
         try await importWorkoutRows(WhoopExportParser.parseWorkouts(at: url))
     }
 
-    /// Rows written, which on this export is 673. Idempotent by construction: the session's id is
-    /// derived from its own two instants, so a second run updates the same 673 rows — see
-    /// `workoutID(startingAt:endingAt:)` for why a `UUID()` here would write 673 more every press.
+    /// Rows written, which on this export is 673 on a fresh install and **0 on a re-import**.
+    ///
+    /// ## The day-already-recorded skip, which the cycle walk has always had and this path did not
+    ///
+    /// Until this skip existed, a re-import overwrote every workout row from the CSV. That was
+    /// survivable while the file was the only producer of these rows and its contents never changed —
+    /// the write was the same values back. It stopped being survivable the moment the activity detail
+    /// page gained an `EDIT ACTIVITY` sheet: an edit is written to the row, and a re-import would
+    /// silently revert it, so the Settings caption *"re-importing is safe to run more than once"* was
+    /// true of the other three tables and false of this one.
+    ///
+    /// **This is a skip and not a merge.** A day that already holds a workout is left exactly as it
+    /// is, whatever it holds — the export's version of it, an edit of the export's version, or a
+    /// session this app recorded itself whose `startedAt` lands on that day. There is no attempt to
+    /// reconcile the two, and that is the honest design: the file has no way to say whether it is
+    /// newer than what is on disk, and a merge would have to guess.
+    ///
+    /// **The cost is that a re-import no longer repairs a workout row.** A row deleted by the page's
+    /// `Delete` is gone for good — see `delete()`'s note on why a durable delete would need a
+    /// tombstone. And the values written on a *fresh* install are still the file's, so the skip only
+    /// ever withholds a write that would have been the file's values over the user's own.
+    ///
+    /// ## The day set is computed once, before the loop, and never grows during it
+    ///
+    /// This is the part that is easy to get wrong by copying the cycle walk's shape. That walk keeps a
+    /// `claimedThisWalk` set and adds to it as it goes, because it needs to answer *"did a pre-existing
+    /// row claim this day, or did an earlier row of this same import?"* — a different question, about
+    /// one row per day.
+    ///
+    /// Here the question is only ever about rows already on disk, and **the set must not be updated
+    /// as the walk proceeds**. The bundled file's 673 rows land on **445 distinct days**, because a day
+    /// can hold several workouts; a set that grew during the loop would let the first row for a day
+    /// write and reject the rest, so a fresh install would import 445 sessions and silently lose 228 of
+    /// them. §17's `firstWrite == rows.count` is the assertion that fails if anyone makes that mistake.
+    ///
+    /// ## The key is `Date.startOfDay` and not the importer's injected `calendar`
+    ///
+    /// `LocalDatabaseManager.saveWorkout` snaps a row's `date` column with the `Date.startOfDay`
+    /// extension, which is `Calendar.current` and is **not** injectable. The importer's own `calendar`
+    /// parameter exists for the cycle walk's day keys, and using it here would be the trap `CLAUDE.md`
+    /// already records against this type: a calendar in another zone does not shift the day keys, it
+    /// *splits* them — the importer computes one `startOfDay` and the database re-snaps in another, so
+    /// every key misses and the skip fails silently rather than loudly. Production passes `.current`,
+    /// so the two agree; a test or a new caller must too.
     @discardableResult
     func importWorkoutRows(_ rows: [WhoopExportRow]) async throws -> Int {
+        let recordedDays = try await recordedWorkoutDays()
         var written = 0
         for row in rows {
             guard let workout = Self.makeWorkout(from: row) else { continue }
+            guard !recordedDays.contains(workout.startedAt.startOfDay) else { continue }
             try await workoutRepository.save(workout)
             written += 1
         }
         return written
     }
 
+    /// The days that already hold at least one workout, as `startOfDay` keys.
+    ///
+    /// **The window is absurdly wide on purpose.** `ActivityDetailViewModel.historyLookbackDays` is a
+    /// year because it is comparing an activity against its own recent history; this read is asking a
+    /// different question — *"does this day hold anything at all?"* — over a file that starts in 2023,
+    /// and a window that cut the oldest rows off would let them be re-imported as duplicates. It ends
+    /// on `Date()` rather than on the export's last day for the same reason `getWorkoutHistory` needs
+    /// an anchor at all: a window that ran on to the present is what the `endingOn` overload exists to
+    /// prevent, and there is nothing here to anchor on.
+    ///
+    /// The read is one query for a set that the loop then consults 673 times, which is the point of
+    /// computing it up front rather than asking the repository per row.
+    ///
+    /// ## Fasts are excluded, and they have to be
+    ///
+    /// This asks whether a day already holds *any* workout, and it refuses every export row landing on
+    /// one. A fast is a workout row, so without this filter a fast's start day would read as
+    /// "already recorded" and the export's rows for it would be dropped — **measured: 16 of the file's
+    /// 673 rows sit on the 10 days that are also fast start days** (`Walking` 5, `Activity` 4, `Other`
+    /// 2, `American Football` 2, `Dance`, `Manual Labor`, `Yoga`). Two imports that erase each other's
+    /// days depending on which button was pressed first is a bug the user would find before a test did.
+    ///
+    /// **Those figures are a UTC measurement and the count moves with the device's zone**, because how
+    /// many export rows share a day with a fast depends on where midnight falls: the same walk in
+    /// UTC−4 gives 17 rows over 12 days (`Activity` 6, and `Manual Labor` drops out) and the export
+    /// then writes 656 rather than 657. So neither number belongs in an assertion — what holds
+    /// everywhere is that **all 673 rows are written whatever the zone**, which is what §20 pins.
+    ///
+    /// **The filter is negative, and scoping positively to `whoop_export` would be wrong.** That would
+    /// change the rule for a session this app recorded itself: the export would then be free to write
+    /// beside a live session, which is exactly what "it never touches a day the app measured itself"
+    /// forbids, and the day would carry two rows on Home and double its zone aggregate through
+    /// `WorkoutZoneTime.aggregate`. It would also break §17's edit-survives assertion, since
+    /// `ActivityEditDraft.applying(to:)` passes `source` through unchanged.
+    ///
+    /// **It excludes a *set* of labels rather than the one label it started with.** There are two fast
+    /// producers now — `ZeroFastingImporter` reads them out of the Zero export, and
+    /// `LiveSessionUseCase.endFast()` writes one this app recorded itself — and the rule that matters
+    /// is *a fast is not a workout*, which is a fact about both of them rather than about either
+    /// producer. `ActiveFast.fastSourceValues` is where that set is written down, in `Domain`, because
+    /// this importer is `Data` and may not own the type describing what a fast is. A second literal
+    /// here would be a second chance to teach this skip about one producer and not the other, and the
+    /// symptom would be a silent 16-row loss on whichever one was missed.
+    ///
+    /// The disjointness argument that made the single-label filter safe holds for both producers, and
+    /// for the same reason: an imported fast's id is Zero's own `FastID` and a recorded fast's is a
+    /// fresh `UUID`, so neither can ever collide with an export row's id — which is derived from that
+    /// row's own two instants. Nothing here can rewrite a fast, and a fast cannot shadow an export row.
+    private func recordedWorkoutDays() async throws -> Set<Date> {
+        let history = try await workoutRepository.getWorkoutHistory(
+            days: Self.workoutDayLookbackDays, endingOn: Date())
+        return Set(
+            history
+                // A `nil` source is a session this app recorded live, which is not a fast — so the
+                // sentinel stands for "not in the set" and never for a producer's name.
+                .filter { !ActiveFast.fastSourceValues.contains($0.source ?? "") }
+                .map { $0.startedAt.startOfDay })
+    }
+
+    /// How far back the already-recorded-day set is read. Eleven years, which is wider than any export
+    /// this app will be handed and is not a policy about history — see `recordedWorkoutDays()`.
+    static let workoutDayLookbackDays = 4_000
+
     /// A workout row as a session, or `nil` when the row cannot be one.
     ///
     /// **Every measured field is required and none is defaulted**, which is measured rather than
     /// assumed: all 673 rows of the bundled file carry a start, an end, an `Activity Strain`, a
     /// `Max HR` and an `Average HR`, so requiring them costs nothing on this file and refuses a
-    /// malformed row instead of writing one. That matters because `WorkoutSession`'s heart-rate fields
-    /// are non-optional `Int`s: an empty cell would have to become either a `0` bpm — a fabricated
-    /// reading, on a session the ACTIVITIES card would then draw as a real one — or a dropped row.
-    /// Dropping it is the honest answer, and it is why this is an optional.
+    /// malformed row instead of writing one. **That is now a policy this type states rather than a
+    /// constraint the type imposes**, and `v18` is why: `WorkoutSession`'s three figures are optional,
+    /// so an empty cell *could* be written as a `nil` — and this importer would still be wrong to do
+    /// it, because an export row is a measured workout by construction and a `nil` on one would say
+    /// *nothing measured this* about a session WHOOP measured. The Zero import is the producer that
+    /// earns a `nil`, and it writes its own rows; nothing reaches this walk without the columns.
     ///
     /// **The name is the one field that is not required**, and the reason it is not is that a name is
     /// not a measurement: `row.activityName` reaching `WorkoutSession` as `nil` is a row that says

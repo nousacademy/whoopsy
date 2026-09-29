@@ -497,6 +497,92 @@ public actor LocalDatabaseManager {
             try Self.addMissingColumns(to: "workouts", columns: [("steps", .integer)], in: db)
         }
 
+        // ## v18 — a session nothing measured says so
+        //
+        // `v6` declared `strain`, `average_heart_rate` and `max_heart_rate` NOT NULL, which was right
+        // while the only producer was a strap: every recorded session had all three. The Zero fasting
+        // import is the first producer with no sensor behind it — a fasting window has no strain and no
+        // heart rate — and a NOT NULL column leaves it no way to say so. Writing `0` would be worse
+        // than saying nothing: it reads as *measured, and no strain at all*, which is the fabricated
+        // reading the absence rule forbids everywhere else in this app. So the three become nullable,
+        // on `steps`' own reasoning one migration up, and `nil` is what the activity page draws as a
+        // dash.
+        //
+        // **In place, and not as a table rebuild.** `workout_route_points` and `workout_splits` are
+        // bound to `workouts` by `ON DELETE CASCADE`, and GRDB runs a migration with foreign keys
+        // deferred — so dropping `workouts` would *not* fire the cascade and every route point and
+        // split in the database would be silently orphaned. A rebuild that hand-restated the column
+        // list would also be a second copy of `v6`'s schema, free to drift from it. Altering the three
+        // columns in place touches no other row and no other table.
+        //
+        // **The `UPDATE` is not optional.** A bare `ADD` of a nullable column leaves every existing row
+        // NULL, which would quietly convert every measured workout on disk into "nothing was measured"
+        // — the exact opposite of this migration's intent. The four statements per column are
+        // add-then-copy-then-swap because SQLite cannot relax NOT NULL in place, and the staging column
+        // is named for what it holds rather than being a `_new` suffix so a half-applied migration is
+        // legible in `pragma_table_info`.
+        //
+        // **The last two statements move the data to the *old* name, and the direction is the whole of
+        // the trick.** The staging column is what survives: it is dropped from and renamed *back onto*
+        // `name`, so the table ends with one column called `strain` holding every value the NOT NULL one
+        // held. Written the other way round — `rename(column: name, to: staging)`, which reads just as
+        // plausibly and was this migration's first draft — the rename targets a column the line above
+        // just dropped and SQLite aborts the whole migration with
+        // `no such column: "strain"`. GRDB runs a migration in one transaction, so that failure rolls
+        // back to a schema with no `strain_unmeasured` in it and no `v18` row in `grdb_migrations` —
+        // which is what makes the bug both loud (`fatalError` at launch) and harmless (nothing applied).
+        //
+        // The cost is that the three columns move to the end of the table. Nothing reads `workouts` by
+        // declaration order — `WorkoutRecord` maps by `CodingKeys` name — so this is invisible, and no
+        // test asserts the order.
+        //
+        // Requires SQLite ≥ 3.35 for `DROP COLUMN` (3.25 for `RENAME COLUMN`), which iOS 17 clears by
+        // a wide margin. The three columns are plain — no index, no `UNIQUE`, no generated column, and
+        // no view or trigger names them — which is what `DROP COLUMN` requires.
+        migrator.registerMigration("v18_workout_measurement_absence") { db in
+            for (name, type) in [
+                ("strain", Database.ColumnType.double),
+                ("average_heart_rate", .integer),
+                ("max_heart_rate", .integer),
+            ] {
+                let staging = "\(name)_unmeasured"
+                try db.alter(table: "workouts") { t in t.add(column: staging, type) }
+                try db.execute(sql: "UPDATE workouts SET \(staging) = \(name)")
+                try db.alter(table: "workouts") { t in t.drop(column: name) }
+                // Staging onto the old name, never the other way round — see the note above.
+                try db.alter(table: "workouts") { t in t.rename(column: staging, to: name) }
+            }
+        }
+
+        // ## v19 — a session remembers the offline map it downloaded
+        //
+        // `USE OFFLINE MAP` on the live session screen asks Mapbox for a tile region around the user,
+        // while they still have signal, so that the route card on this session's detail page can be
+        // drawn from disk afterwards. Mapbox owns the tiles — it has its own `TileStore` on disk — so
+        // there is no new table here and nothing to store but the *name* of the region.
+        //
+        // **One nullable column, and the reason it exists at all is that a session has no id while it
+        // is recording.** `LiveSessionUseCase.end()` builds its `WorkoutSession` without passing an
+        // `id`, so the `UUID` is minted by `WorkoutSession.init` at that moment — which means the
+        // region cannot simply be named after the session it belongs to. The id is minted when the
+        // toggle goes on, held on the use case for the length of the session, and carried onto the row
+        // here at `end()`. See `LiveSessionUseCase.offlineRegionID`.
+        //
+        // The two alternatives are both worse and both look simpler. Moving identity minting into
+        // `start()` would give the session an id early enough, but §18 asserts the lifecycle in detail
+        // and this is not a small change to it. Deriving the region name from `startedAt` would tie the
+        // tiles to a fact `ActivityEditSheet` rewrites — trim a session's start and the region is
+        // orphaned under a name nothing will ever ask for again.
+        //
+        // NULL is the honest value for every row written before this column existed and for every
+        // session recorded with the switch off, which is most of them. It is not an absence marker the
+        // way `strain` is: the reader is `RouteMapRenderer.resolve`, and its gate is the tile region
+        // being `.ready`, not this column being non-null.
+        migrator.registerMigration("v19_workout_offline_region") { db in
+            try Self.addMissingColumns(
+                to: "workouts", columns: [("offline_region_id", .text)], in: db)
+        }
+
         try migrator.migrate(queue)
     }
 
@@ -762,6 +848,7 @@ public actor LocalDatabaseManager {
     ///
     /// `date` is snapped for the reason `saveRecovery` gives: `getWorkouts(on:)` matches on
     /// `startOfDay`, so an unsnapped row would exist and be unreachable.
+    ///
     public func saveWorkout(
         _ record: WorkoutRecord,
         route: [WorkoutRoutePointRecord],
@@ -780,12 +867,88 @@ public actor LocalDatabaseManager {
         }
     }
 
+    /// Removes a session and everything filed under it, and reports **how many session rows** went.
+    ///
+    /// The inverse of `saveWorkout` and written to mirror it: the children are deleted **explicitly**,
+    /// in the same order and by the same filter `saveWorkout` rewrites them with, rather than left to
+    /// the schema's `onDelete: .cascade`. The cascade would probably work — but nothing in this type
+    /// relies on it (`Configuration` does not set `foreignKeysEnabled`, though it defaults true), and
+    /// the repo's own precedent is not to. A route point or a split that outlives its session is
+    /// invisible to every reader in this app: `makeSessions` fetches children *per session*, so an
+    /// orphan is never read, never drawn, and never noticed — it is only ever found as a row count.
+    ///
+    /// **The returned count is the whole point.** It is the only signal that separates "removed" from
+    /// "matched nothing", and `GRDBWorkoutRepository.delete` turns it into its `Bool`. Counting the
+    /// children here instead would let an orphaned route point make a failed session delete look
+    /// successful.
+    ///
+    /// Deleting an id that is not stored is not an error: it deletes nothing and returns `0`.
+    public func deleteWorkout(id: String) throws -> Int {
+        try dbQueue.write { db in
+            _ = try WorkoutRoutePointRecord
+                .filter(Column("workout_id") == id).deleteAll(db)
+            _ = try WorkoutSplitRecord
+                .filter(Column("workout_id") == id).deleteAll(db)
+            return try WorkoutRecord
+                .filter(Column("id") == id).deleteAll(db)
+        }
+    }
+
     /// The workouts recorded on `date`'s day, earliest first. Several per day is normal, which is
     /// why this returns an array where `getStrain(for:)` returns one row.
     public func getWorkouts(on date: Date) throws -> [WorkoutRecord] {
         try dbQueue.read { db in
             try WorkoutRecord
                 .filter(Column("date") == date.startOfDay)
+                .order(Column("started_at").asc)
+                .fetchAll(db)
+        }
+    }
+
+    /// The workouts **underway at any point during** `day`, earliest first — the other question.
+    ///
+    /// ## Two questions, two names, and they must not be merged
+    ///
+    /// ``getWorkouts(on:)`` above asks *which day is this row filed on* — it matches the snapped `date`
+    /// column, so a session appears on exactly one day, the day it started. This asks *which sessions
+    /// were underway on this day*, so an 86-hour fast appears on all five of its days. Home's
+    /// `ACTIVITIES` card is the only caller: a fast that ran over a day is a thing that happened on that
+    /// day and a user paging back through the week should see it.
+    ///
+    /// **Widening `getWorkouts(on:)` instead would be wrong, and the reason is a double count rather
+    /// than a wrong day key.** `WorkoutSession.zoneSeconds(_:)` scales WHOOP's published share by the
+    /// session's *whole* `durationSeconds`, so the export's three cross-midnight rows would contribute
+    /// their entire zone block to both the day they started on and the day they ended on — the same
+    /// measured time added to two days' `HEART RATE ZONES` rows. The mis-keying is the corollary:
+    /// `WorkoutZoneTime.aggregate` keys a whole day's array off `workouts.first?.startedAt.startOfDay`,
+    /// and on a day a fast merely covers the fast sorts first, so the day's zone time would be filed
+    /// under the fast's start day on a screen that shows the day.
+    ///
+    /// ``getWorkoutHistory(days:endingOn:)`` stays as it is for a third reason: it filters on `date` and
+    /// deliberately **not** on `started_at`, *"because a range test on the raw instant would disagree
+    /// with that lookup by one day at each boundary"*. That is a true statement about that read and the
+    /// opposite of what this one does on purpose — this read *is* the range test, and disagreeing with
+    /// the day-key lookup by design is the whole of what it is for. `WhoopExportImporter`'s day skip
+    /// depends on the day-key reading: a covering read there would make every day a fast passes through
+    /// look already recorded and silently drop the export's rows for it.
+    ///
+    /// ## The predicate
+    ///
+    /// `date <= day && ended_at > day`, which is the half-open overlap written as two chained filters so
+    /// this file keeps its no-`OR` house style. `date` is always `startOfDay(startedAt)` — `saveWorkout`
+    /// snaps it — so this is `startedAt < startOfNextDay(day) && endedAt > startOfDay(day)`
+    /// (``WorkoutSession/covers(_:)``) for every row except a zero-length session sitting exactly on
+    /// midnight, which that form covers and this one does not and which `ActivityEditDraft`'s 60-second
+    /// `minimumDuration` makes unreachable.
+    ///
+    /// **Nothing here avoids a table scan.** `started_at` and `ended_at` are unindexed and no formulation
+    /// bounds `started_at` from below, so the `date` index only halves it. At ~840 rows on a read that
+    /// runs once per chevron tap that is fine, and it is noted here rather than indexed.
+    public func getWorkouts(covering day: Date) throws -> [WorkoutRecord] {
+        try dbQueue.read { db in
+            try WorkoutRecord
+                .filter(Column("date") <= day.startOfDay)
+                .filter(Column("ended_at") > day.startOfDay)
                 .order(Column("started_at").asc)
                 .fetchAll(db)
         }

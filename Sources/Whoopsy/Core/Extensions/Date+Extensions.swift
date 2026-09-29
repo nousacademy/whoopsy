@@ -5,11 +5,39 @@ extension Date {
         Calendar.current.startOfDay(for: self)
     }
 
+    /// `23:59:59` — the last **instant** of this day, which is the right end for an inclusive bound.
+    ///
+    /// It is the wrong end for a **half-open** one, and reaching for it there costs exactly one second
+    /// per day. `getWorkouts(covering:)` and `WorkoutSession.elapsedSeconds(byEndOf:)` both ask "how much
+    /// of this day" rather than "up to and including", so they want ``startOfNextDay`` — measured against
+    /// the bundled fasts, the one-second under-count flips four real fast-days whose per-day elapsed
+    /// lands exactly on a zone edge, drawing three of them a zone too early. The `?? self` fallback here
+    /// is a further reason not to borrow it: it would return the day's own start and fabricate an
+    /// elapsed of `0`.
     public var endOfDay: Date {
         var components = DateComponents()
         components.day = 1
         components.second = -1
         return Calendar.current.date(byAdding: components, to: startOfDay) ?? self
+    }
+
+    /// Midnight at the start of the following day — the exclusive upper bound of this day.
+    ///
+    /// **Defined once and shared, because the two copies would drift by a second and the drift is
+    /// invisible.** The covering read's SQL argument and the fasting pill's elapsed arithmetic have to
+    /// agree about where a day ends, or a fast's last day and its row's zone disagree by a boundary
+    /// nothing on the screen would explain.
+    ///
+    /// **It snaps first, and that is load-bearing rather than defensive.** `startOfDay + 1 day` and
+    /// `self + 1 day` are the same instant only when `self` is already midnight. Callers pass instants:
+    /// `HomeDashboardView.selectedDate` is seeded with `Date()`, so it is *today at 14:23*. `self + 1 day`
+    /// would put the day's end at tomorrow 14:23 — up to 24 hours too late — so a fast still running
+    /// would read more elapsed time than the day holds, a two-day in-progress fast scoring 38 h and
+    /// drawing `KETOSIS` where it should draw `FAT BURNING`. On a day *after* a fast ended the `min`
+    /// clamp would hide the error entirely, so the feature would silently no-op on exactly the days it
+    /// exists for.
+    public var startOfNextDay: Date {
+        Calendar.current.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
     }
 
     public func formattedTime() -> String {

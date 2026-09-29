@@ -22,13 +22,23 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
 
     public let startedAt: Date
     public let endedAt: Date
-    public let strain: Double
-    public let averageHeartRate: Int
-    public let maxHeartRate: Int
 
-    /// Where the row came from, when that is worth recording — see `RecoveryRecord.source`. A
-    /// workout recorded here carries no source; a row imported from the export's `workouts.csv`
-    /// carries `WhoopExportImporter.sourceLabel`, which is what tells the two apart.
+    /// The session's cardiovascular load, and its two heart rates — all three `nil` for a session
+    /// nothing measured them on.
+    ///
+    /// `v6` declared these NOT NULL; `v18` relaxed all three, because the Zero fasting import is the
+    /// first producer with no sensor behind it. `nil` is not `0` — a heart rate of zero is the absence
+    /// of a measurement rather than a measurement of a still heart — so `nil` here is what
+    /// `ActivityFigure` draws as a dash. See `WorkoutSession.strain` for the full argument.
+    public let strain: Double?
+    public let averageHeartRate: Int?
+    public let maxHeartRate: Int?
+
+    /// Where the row came from, when that is worth recording — see `RecoveryRecord.source`. A live
+    /// session carries no source; a row imported from the export's `workouts.csv` carries
+    /// `WhoopExportImporter.sourceLabel`; and a fast this app recorded itself carries
+    /// `ActiveFast.sourceLabel`, which is one of the two values that tell a fast from a workout.
+    /// `ActiveFast.fastSourceValues` is the whole of that set and nothing here should restate it.
     public let source: String?
 
     /// What WHOOP called the workout, out of `workouts.csv`'s `Activity name` column — the file's own
@@ -55,18 +65,30 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
     /// carries a per-workout step count.
     public let steps: Int?
 
+    /// The name of the offline map region this session downloaded, when the user turned
+    /// `USE OFFLINE MAP` on for it. See `v19_workout_offline_region` for why the id is minted at the
+    /// toggle rather than derived from the session.
+    ///
+    /// `nil` on every session recorded with the switch off — which is most of them — and on every row
+    /// written before the column existed. Unlike ``strain`` this is not an absence a screen draws: it
+    /// is a join key into Mapbox's own tile store, and its only reader is
+    /// ``RouteMapRenderer/resolve(session:state:)``, whose gate is the region being `.ready` rather
+    /// than this being non-`nil`.
+    public let offlineRegionID: String?
+
     public init(
         id: String,
         date: Date,
         startedAt: Date,
         endedAt: Date,
-        strain: Double,
-        averageHeartRate: Int,
-        maxHeartRate: Int,
+        strain: Double?,
+        averageHeartRate: Int?,
+        maxHeartRate: Int?,
         source: String? = nil,
         activityName: String? = nil,
         hrZonePercents: [Double]? = nil,
-        steps: Int? = nil
+        steps: Int? = nil,
+        offlineRegionID: String? = nil
     ) {
         self.id = id
         self.date = date
@@ -79,6 +101,7 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         self.activityName = activityName
         self.hrZonePercents = hrZonePercents
         self.steps = steps
+        self.offlineRegionID = offlineRegionID
     }
 
     enum CodingKeys: String, CodingKey {
@@ -93,6 +116,7 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         case activityName = "activity_name"
         case hrZonePercents = "hr_zone_percents"
         case steps
+        case offlineRegionID = "offline_region_id"
     }
 }
 

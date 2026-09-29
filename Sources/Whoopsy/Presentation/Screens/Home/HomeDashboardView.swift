@@ -66,6 +66,52 @@ public struct HomeDashboardView: View {
     /// covers the `+` that opens this one.
     @State private var isPresentingActivityMenu = false
 
+    /// The activity row whose detail page is pushed, if any.
+    ///
+    /// **A state value rather than a `NavigationLink` destination, and the tab bar is why.** An activity
+    /// row used to be a plain `NavigationLink { ActivityDetailView(…) }`, which gives no flag for the
+    /// root view to read — and `.hidingTabBar(_:)` does nothing at all on a pushed destination
+    /// (see the `hidingTabBar` call below). So the *value* is held here and the destination is declared
+    /// from it, which is what gives this screen the flag. It is the same shape `isPresentingLiveSession`
+    /// has, for the same reason, with `navigationDestination(item:)` instead of `isPresented:` so the
+    /// page is not torn down mid-pop when the binding clears.
+    ///
+    /// `WorkoutSession` is `Hashable` for this one call site — see its own comment.
+    @State private var presentedActivity: WorkoutSession?
+
+    /// The running fast whose page is pushed, if any — a **second** item binding rather than a reuse of
+    /// `presentedActivity`, and the two are not interchangeable.
+    ///
+    /// `presentedActivity` is wired to `viewModel.removeWorkout(_:)` and
+    /// `viewModel.updateWorkout(_:on:)`, which mutate the list this screen is drawing. A live fast is
+    /// not *in* that list — it is the bar, by the user's own choice — so a delete or an edit reported
+    /// against its id would be a mutation of nothing. Keeping the two bindings apart is also what makes
+    /// the live page's no-op `onDeleted`/`onSaved` genuinely unreachable rather than merely unused: its
+    /// menu has no `Delete` and no `Edit` to reach them with.
+    @State private var presentedFast: PresentedFast?
+
+    /// The running fast, paired with the row it projected **at the moment of the tap**.
+    ///
+    /// **A wrapper rather than two state values, and the projection being stored is the whole point.**
+    /// `ActivityDetailView` takes a `WorkoutSession` as a plain `let` on its view model — that is what
+    /// keeps a re-render of Home from re-pointing a pushed page — and it additionally needs to know the
+    /// session is still *running*, which no projected row can say (see
+    /// `ActivityDetailViewModel.liveFast`). So the page takes both.
+    ///
+    /// **`session` is computed once, here, and never in the destination closure.** `projectedSession`
+    /// mints a fresh `UUID` per call, so recomputing it while SwiftUI builds the destination would give
+    /// the `item:` binding a new identity on every body evaluation — which tears the page down and
+    /// rebuilds it, re-running its `.task` and its 180-day recovery read under the reader's finger. The
+    /// `now` pinned here is the tap's, so the page opens showing the fast's length as of the tap and
+    /// ticks on from its own anchor from there.
+    ///
+    /// It is nested here rather than in `Domain` because it is a *presentation* pairing: nothing below
+    /// this screen has reason to hold a projected row beside the live fast it came from.
+    private struct PresentedFast: Hashable {
+        let session: WorkoutSession
+        let fast: ActiveFast
+    }
+
     /// Home's own device page, reached from the badge in the top bar.
     ///
     /// Built here rather than inside the badge's destination for the same reason every other screen's
@@ -90,6 +136,21 @@ public struct HomeDashboardView: View {
     /// this flag is the bridge between the two.
     @State private var isPresentingLiveSession = false
 
+    /// Whether the activity picker is pushed, and the name it is answering with.
+    ///
+    /// **The picker is what `START ACTIVITY` opens now, and it is how a fast is started.** The catalogue
+    /// it draws holds `Fast`, so the picker is the app's one entry point to both kinds of live session —
+    /// which is what makes the user's *"if a fast is started"* reachable at all, there having been no way
+    /// to start one before. `ActivityPickerView` is unchanged: a plain pushed view writing a
+    /// `Binding<String?>`, and on a `nil` selection its *Current* section and its checkmark are both
+    /// inert, which is why `presentActivityPicker()` clears the name before each opening.
+    ///
+    /// A flag and a value rather than `navigationDestination(item:)`, because the picker's subject *is*
+    /// that binding — an `item:` binding would need the picker's whole answer to be `Hashable` and would
+    /// clear it on the way out, taking the value `onChange` has to read with it.
+    @State private var isPresentingActivityPicker = false
+    @State private var pickedActivityName: String?
+
     /// One session's detail page, built on demand.
     ///
     /// **A factory rather than three more stored repositories**, and the reason is the shape of the
@@ -108,7 +169,12 @@ public struct HomeDashboardView: View {
     /// its one read in the destination's `.task`, so a per-push instance re-reads the history — which
     /// is what a reader returning to a session wants — and leaks nothing. Construction itself does no
     /// work, so it is also safe if SwiftUI evaluates this closure on a plain re-render of Home.
-    private let makeActivityDetailViewModel: (WorkoutSession) -> ActivityDetailViewModel
+    ///
+    /// **The second argument is the running fast, or `nil` on every other push.** It is not a second
+    /// factory: the page is about a session either way, and the fast is the one subject that also knows
+    /// it is still running — which the projection cannot say for itself, since a projected row's
+    /// `endedAt` is its own `now`.
+    private let makeActivityDetailViewModel: (WorkoutSession, ActiveFast?) -> ActivityDetailViewModel
 
     public init(
         viewModel: HomeViewModel,
@@ -117,7 +183,7 @@ public struct HomeDashboardView: View {
         strainViewModel: StrainViewModel,
         deviceDetailViewModel: DeviceDetailViewModel,
         liveSessionUseCase: LiveSessionUseCase,
-        makeActivityDetailViewModel: @escaping (WorkoutSession) -> ActivityDetailViewModel
+        makeActivityDetailViewModel: @escaping (WorkoutSession, ActiveFast?) -> ActivityDetailViewModel
     ) {
         _viewModel = State(initialValue: viewModel)
         _recoveryViewModel = State(initialValue: recoveryViewModel)
@@ -130,40 +196,103 @@ public struct HomeDashboardView: View {
 
     public var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 16) {
-                    topBar
-                    rings
-                    myDayHeader
-                    activitiesCard
-                    myDashboardHeader
-                    dashboardTiles
+            // The recording bar is the outermost thing on this screen, so the scroll view sits below it
+            // in a `VStack(spacing: 0)` rather than being overlaid by it. **An overlay would not work**,
+            // and that is a layout fact rather than a preference: the collapsed header is an
+            // `.overlay(alignment: .top)` on the scroll view, which aligns to that view's *frame* and
+            // therefore to the top of the screen — so it would be drawn over the bar instead of under
+            // it, and the only fix would be a height constant for the bar to offset it by.
+            //
+            // **It lives inside the `NavigationStack`, and that is what keeps it on this screen alone.**
+            // A pushed page covers the root view, so the session page — which draws its own banner —
+            // and the activity detail page — whose `•••` menu is anchored to the bottom edge — are both
+            // untouched by it.
+            VStack(spacing: 0) {
+                liveSessionBar
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        topBar
+                        rings
+                        myDayHeader
+                        activitiesCard
+                        myDashboardHeader
+                        dashboardTiles
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 32)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 32)
+                // iOS 17 has no scroll-geometry API (`onScrollGeometryChange` is iOS 18), so the sticky
+                // header is a preference key read through a named coordinate space. The `VStack` above
+                // must stay a `VStack`: a `LazyVStack` may release the rings row once it is scrolled
+                // past, and the preference that drives the header would go with it.
+                .coordinateSpace(.named(Self.scrollSpace))
+                .overlayPreferenceValue(RingsBottomKey.self, alignment: .top) { ringsBottom in
+                    collapsedHeader(collapse: collapse(for: ringsBottom))
+                }
+                // Inside the `NavigationStack`, which is not a style choice: the menu that sets the flag
+                // is an overlay applied to the view *below*, outside this stack, and a destination
+                // declared out there cannot push — the link would be inert with no error.
+                .navigationDestination(isPresented: $isPresentingLiveSession) {
+                    LiveSessionView(useCase: liveSessionUseCase)
+                }
+                // The picker `START ACTIVITY` opens. Declared here for `isPresentingLiveSession`'s own
+                // reason — see that flag — and it must be *inside* the stack even though the menu that
+                // sets the flag hangs outside it.
+                .navigationDestination(isPresented: $isPresentingActivityPicker) {
+                    ActivityPickerView(selection: $pickedActivityName)
+                }
+                // The picker's answer. See `startSession(named:)` for the fork and the one-turn hop.
+                //
+                // **`nil` is ignored**, and that is what lets `presentActivityPicker()` clear the value
+                // without starting anything: clearing is a write to this same binding, so without the
+                // guard, opening the picker a second time would start the session the first one chose.
+                .onChange(of: pickedActivityName) { _, name in
+                    guard let name else { return }
+                    startSession(named: name)
+                }
+                // Declared here rather than as a `NavigationLink` around each row, so that
+                // `presentedActivity` exists for the `hidingTabBar` call below to read. The subject is
+                // resolved by the row's own tap and not by a lookup, and because it is an `item:`
+                // binding rather than an `isPresented:` one, SwiftUI keeps the page alive through the
+                // pop animation instead of rebuilding it against a `nil` item half way out.
+                .navigationDestination(item: $presentedActivity) { workout in
+                    ActivityDetailView(
+                        viewModel: makeActivityDetailViewModel(workout, nil),
+                        onDeleted: { id in viewModel.removeWorkout(id) },
+                        onSaved: { updated in
+                            viewModel.updateWorkout(updated, on: selectedDate)
+                        },
+                        onEndFast: {})
+                }
+                // The running fast's page, off its own binding — see `presentedFast` for why it is not
+                // `presentedActivity`. **The two callbacks are no-ops and that is not laziness**: the
+                // initialiser requires them, and neither has a caller on this page. Its menu is
+                // `ActivityOverflowMenu.groups(isLive: true)`, which holds one `End Fast` row and
+                // `Cancel`; there is no `Delete` to report a removal with and no `Edit` to report a save
+                // from, and the fast is not a row of `viewModel.workouts` for either to act on.
+                //
+                // **`onEndFast` is the one that acts.** It ends the fast — which sets
+                // `liveSessionUseCase.activeFast` to `nil`, the value this screen's bar is drawn from,
+                // so the bar goes as the page dismisses — and then hands back the row that was written.
+                // Where that row lands on this screen is `updateWorkout(_:on:)`'s existing answer: a
+                // fast ended today is inserted if the day on screen is one it covers, which is the
+                // covering rule the stored rows are already drawn by and adds no second one.
+                .navigationDestination(item: $presentedFast) { presented in
+                    ActivityDetailView(
+                        viewModel: makeActivityDetailViewModel(presented.session, presented.fast),
+                        onDeleted: { _ in },
+                        onSaved: { _ in },
+                        onEndFast: { await endFast() })
+                }
+                .task {
+                    await viewModel.observeDevice()
+                    await viewModel.load(for: selectedDate)
+                }
+                .onChange(of: selectedDate) { _, newDate in
+                    Task { await viewModel.load(for: newDate) }
+                }
             }
-            // iOS 17 has no scroll-geometry API (`onScrollGeometryChange` is iOS 18), so the sticky
-            // header is a preference key read through a named coordinate space. The `VStack` above
-            // must stay a `VStack`: a `LazyVStack` may release the rings row once it is scrolled past,
-            // and the preference that drives the header would go with it.
-            .coordinateSpace(.named(Self.scrollSpace))
             .background(Theme.homeBackground.ignoresSafeArea())
-            .overlayPreferenceValue(RingsBottomKey.self, alignment: .top) { ringsBottom in
-                collapsedHeader(collapse: collapse(for: ringsBottom))
-            }
-            // Inside the `NavigationStack`, which is not a style choice: the menu that sets the flag is
-            // an overlay applied to the view *below*, outside this stack, and a destination declared
-            // out there cannot push — the link would be inert with no error.
-            .navigationDestination(isPresented: $isPresentingLiveSession) {
-                LiveSessionView(useCase: liveSessionUseCase)
-            }
-            .task {
-                await viewModel.observeDevice()
-                await viewModel.load(for: selectedDate)
-            }
-            .onChange(of: selectedDate) { _, newDate in
-                Task { await viewModel.load(for: newDate) }
-            }
         }
         .preferredColorScheme(.dark)
         // The bar is hidden while either overlay is up, and that is not only for the look of it. An
@@ -181,7 +310,22 @@ public struct HomeDashboardView: View {
         // position the calendar above already proves, does hide it, and un-hides it again on pop
         // because this flag is the binding `navigationDestination(isPresented:)` resets. So the
         // destination's own modifier is left in place as intent but is not the mechanism; this is.
-        .hidingTabBar(isPresentingCalendar || isPresentingActivityMenu || isPresentingLiveSession)
+        //
+        // **The activity detail page is the fourth case and the one that forced a change above.**
+        // That page's `•••` menu is a bar of rows pinned to the bottom edge of the screen, so the tab
+        // bar drawn over it would sit on top of the rows it is about — and the same measurement
+        // applies: nothing declared on `ActivityDetailView` can hide it. `presentedActivity` is
+        // therefore hoisted here, which is the only reason that page's push is a
+        // `navigationDestination(item:)` rather than a `NavigationLink`.
+        //
+        // **`presentedFast` is the fifth case and behaves exactly like the fourth**, because it is the
+        // same page: a running fast is the fasting layout of `ActivityDetailView`, so its menu is the
+        // same bottom-anchored bar of rows and the same measurement decides it. The picker is
+        // deliberately *not* on this list — it is an ordinary pushed list, like the three rings'
+        // detail pages, and no pushed page other than these two needs the bar out of the way.
+        .hidingTabBar(
+            isPresentingCalendar || isPresentingActivityMenu || isPresentingLiveSession
+                || presentedActivity != nil || presentedFast != nil)
         .overlay {
             if isPresentingCalendar { calendarOverlay }
         }
@@ -292,12 +436,20 @@ public struct HomeDashboardView: View {
     /// into a body is a list nothing can assert — `DayBarRules`' and `ActivityGlyph`'s reason, and §14
     /// drives it.
     ///
-    /// **The day is asked for its rows, not filtered here.** `ActivityMenu.entries(on:)` is what
-    /// withholds `START ACTIVITY` off today, so the rule stays where the runner — which has no
+    /// **The day is asked for its rows, not filtered here.** `ActivityMenu.entries(on:now:recording:)`
+    /// is what withholds `START ACTIVITY` off today, so the rule stays where the runner — which has no
     /// renderer — can read it, and this body holds no "is today" comparison to drift from the day bar's.
+    ///
+    /// **The second reason a row can be withheld is `recording`**, and it is an input rather than a
+    /// comparison here for the same reason: *only a live activity blocks another one* is the user's own
+    /// rule, and it is one sentence about two live states, so it lives beside the day rule rather than in
+    /// this drawing.
     private var activityMenu: some View {
         VStack(spacing: 0) {
-            ForEach(Array(ActivityMenu.entries(on: selectedDate).enumerated()), id: \.element.id) { index, entry in
+            ForEach(
+                Array(ActivityMenu.entries(on: selectedDate, recording: recording).enumerated()),
+                id: \.element.id
+            ) { index, entry in
                 if index > 0 { Divider().overlay(Theme.cardBorder) }
                 activityMenuRow(entry)
             }
@@ -326,7 +478,7 @@ public struct HomeDashboardView: View {
                 // here; there is no destination to reach.
                 break
             case .startSession:
-                isPresentingLiveSession = true
+                presentActivityPicker()
             }
         } label: {
             HStack(spacing: 10) {
@@ -353,6 +505,200 @@ public struct HomeDashboardView: View {
 
     private func dismissActivityMenu() {
         withAnimation(.snappy(duration: 0.26)) { isPresentingActivityMenu = false }
+    }
+
+    // MARK: - Starting a session
+
+    /// What the `+` menu should withhold, read off the live session.
+    ///
+    /// Three states rather than a `Bool`, because a fast and an activity answer the availability question
+    /// differently and one flag could not hold both answers — and it is derived here rather than stored,
+    /// so there is no second copy of the live state to go stale behind the use case's.
+    private var recording: ActivityMenu.Recording {
+        if liveSessionUseCase.isRunning { return .activity }
+        if liveSessionUseCase.activeFast != nil { return .fast }
+        return .none
+    }
+
+    /// Opens the picker, on an empty selection.
+    ///
+    /// **The selection is cleared first, and that is not tidiness.** The binding is a `String?` that the
+    /// picker draws its tick from, and it keeps whatever the last pick was — so a second opening would
+    /// draw a checkmark on the previous activity before the user had chosen anything. Clearing it to
+    /// `nil` first also makes the `onChange` below fire on a real pick rather than on a leftover.
+    private func presentActivityPicker() {
+        pickedActivityName = nil
+        isPresentingActivityPicker = true
+    }
+
+    /// Starts whichever kind of session the picked name means.
+    ///
+    /// **The dispatch is `ActivityFigure.isFastName`, and it is the whole of the feature.** Picking
+    /// `Fast` through the ordinary path would run the full activity machinery — accumulator, telemetry
+    /// consumer, step consumer, route, lock-screen card — and store a row named `Fast` that
+    /// `ActivityFigure.isFast` refuses because it carries a strain; with no strap connected it would
+    /// store nothing at all. Either way the fast the user asked for is unreachable through the flow they
+    /// described, and the picker's own `Fast` entry would be a lie.
+    ///
+    /// **One turn later, and that is the whole of why this is not a plain assignment.** The picker's row
+    /// sets the name and calls `dismiss()` in the same statement, so `NavigationStack` is being asked for
+    /// a pop and a push in one update; it processes one transition per frame, so the push is dropped with
+    /// the flag left `true`. That strands `hidingTabBar` — the tab bar hidden over a screen that never
+    /// appeared — and the next unrelated `true` then pushes the session spuriously. `Task { @MainActor in
+    /// … }` is what moves the push to its own turn.
+    ///
+    /// **A fast pushes nothing**, deliberately. The bar is the live indicator for a fast — the user's own
+    /// answer — and its page is one tap away on that bar; a run pushes `LiveSessionView`, which is the
+    /// screen that watches a session and holds its END. The asymmetry is the two screens' natures and not
+    /// an oversight: one is a session controller and the other is a reading.
+    ///
+    /// **The push is gated on `isRunning` rather than on the call returning**, because `start()` returns
+    /// nothing and can decline — a session already running, or a profile that could not be read. Pushing
+    /// onto a session that never started would draw `LiveSessionView` over a use case that is idle.
+    private func startSession(named name: String) {
+        Task { @MainActor in
+            if ActivityFigure.isFastName(name) {
+                await liveSessionUseCase.startFast()
+                return
+            }
+            await liveSessionUseCase.start(name: name)
+            guard liveSessionUseCase.isRunning else { return }
+            isPresentingLiveSession = true
+        }
+    }
+
+    /// Ends the running fast and puts the row it became on this screen, if this screen's day is one it
+    /// covers.
+    ///
+    /// **The row comes back off the use case rather than being projected here a second time.** `endFast()`
+    /// returns the `WorkoutSession` it wrote, which is the value the `workouts` table now holds — so Home
+    /// is handed the row itself and not a lookalike. A second `projectedSession(now:)` on this side would
+    /// mint a *different* `UUID`, and `updateWorkout`'s `firstIndex(where: { $0.id == workout.id })` would
+    /// then be comparing the stored row against an id that can never match it — harmless while the append
+    /// branch happens to run, and wrong the moment anything looks a workout up by that id.
+    ///
+    /// **`nil` means nothing was written** — the fast had already ended, or it was ended within the
+    /// second it started — and there is then no row to add. The bar goes either way, because the use
+    /// case clears `activeFast` above its own first `await`; this method is about the card, not the bar.
+    private func endFast() async {
+        guard let summary = await liveSessionUseCase.endFast() else { return }
+        viewModel.updateWorkout(summary.workout, on: selectedDate)
+    }
+
+    // MARK: - The recording bar
+
+    /// The bar pinned above everything else on this screen while a session is recording — red for a
+    /// regular activity, and the fill of the fasting zone reached for a fast.
+    ///
+    /// **The whole of its rule is `LiveSessionBar.subject`**, which is a plain value for this repo's
+    /// standing reason — the runner has no renderer, so a gate written here is a gate nothing can
+    /// assert. It answers `nil` for every state but a running session that also carries a start
+    /// instant, and the `isRunning` half is what takes the bar away the moment END is pressed rather
+    /// than when the session's state is finally cleared.
+    ///
+    /// **The colour is the whole of what a fast changes here, and it comes from `FastingZone`.** The
+    /// zone is read over the fast's *whole* elapsed span while the bar is up, which is deliberately the
+    /// other reading from the one a stored fast's row draws on this card: `ActivityFigure.fastingZone`
+    /// is day-clamped, because a Home row is about a day, and an 86-hour fast walks down the week one
+    /// zone at a time. The bar is about the fast, so it counts from the start with nothing clamped —
+    /// see `LiveSessionBar.Subject.zone(at:)` for why the two must not be reconciled.
+    ///
+    /// **The clock is the system's.** `Text(_:style: .timer)` is drawn from the anchor and needs no
+    /// tick and no `@State` — the same line `LiveSessionView` uses, and the reason a session's elapsed
+    /// time keeps counting while the app is suspended. Nothing here counts samples.
+    ///
+    /// **`TimelineView` is for the colour and the accessibility label, and for nothing else.** The
+    /// visible clock updates itself, but a label is built once per `body` evaluation, so without a
+    /// periodic re-render VoiceOver would announce the session's *first* second for as long as the
+    /// screen stayed up — and the fill would never move off the zone the fast was in when the screen was
+    /// built. A minute is that label's own resolution, and it is also why the zone colour is up to a
+    /// minute late at each boundary: a per-second timer for a colour that changes four times in three
+    /// days would re-render the bar sixty times as often to be wrong ninety-nine percent of the time.
+    ///
+    /// **Full-bleed**, which makes it the one thing on this screen outside the 16 pt gutter — the
+    /// reason it is a sibling of the scroll view rather than a row inside it. The tap opens the session
+    /// the bar is about — the same `LiveSessionView` the `+` menu's `START ACTIVITY` row pushes for an
+    /// activity, and the fasting detail page for a fast — so returning to a session and starting one
+    /// are one push. See `present(_:)` for the fork and why the fast's projection is made here.
+    @ViewBuilder
+    private var liveSessionBar: some View {
+        // **The read is here, in `body`, and not inside the `TimelineView`.** `LiveSessionBar.subject`
+        // asks the use case four questions and is what registers this screen's Observation dependency on
+        // it; a `TimelineView` closure is a *child* view's body, so a read placed inside it would be
+        // attributed to the timeline and Home would not be invalidated when a session ends — leaving the
+        // bar counting over Home for up to a minute after END was pressed. That is the exact property
+        // §18's `subject` assertions pin, and the reason the split exists at all.
+        if let subject = LiveSessionBar.subject(
+            isActivityRunning: liveSessionUseCase.isRunning,
+            activityName: liveSessionUseCase.activityName,
+            activityStartedAt: liveSessionUseCase.startedAt,
+            activeFast: liveSessionUseCase.activeFast
+        ) {
+            TimelineView(.everyMinute) { context in
+                Button {
+                    present(subject)
+                } label: {
+                    // The mark leads the clock — the activity the reader picked, drawn in the words
+                    // `ActivityGlyph` names it with. `subject.mark` rather than a lookup here, so which
+                    // mark the bar draws is a value §18 can assert; the four other sites that draw one
+                    // resolve it at the call site because each frames it differently, and this bar does
+                    // not frame it at all.
+                    HStack(spacing: 6) {
+                        ActivityGlyphLabel(subject.mark, size: 13, weight: .semibold)
+                        Text(subject.anchor, style: .timer)
+                            .monospacedDigit()
+                    }
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    // **`foregroundStyle` is on the `HStack` and not on the `Text`, and the ink is the
+                    // subject's rather than a fixed white.** The mark has to take the same colour the
+                    // clock does, because `FastingZone.inkDepth` exists for the reason this would break:
+                    // white is invisible on `ketosis`'s fill and near-invisible on `fatBurning`'s, so an
+                    // icon pinned to white would vanish on two of the five zones while the timer beside
+                    // it stayed legible — a mark missing from a bar that otherwise looks correct.
+                    .foregroundStyle(subject.ink(at: context.date))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                        // `ignoresSafeAreaEdges: []` is load-bearing and must not be dropped. This
+                        // `Color` takes the `ShapeStyle` overload of `background`, whose
+                        // `ignoresSafeAreaEdges` **defaults to `.all`** — so a bare
+                        // `.background(Theme.recoveryRed)` bleeds the fill up through the top safe
+                        // area. Measured on the iOS 26.5 simulator: the bar's text box sat correctly
+                        // at 62.3…90 pt while the red ran 0…90 pt, drawing a 90 pt red slab behind the
+                        // status bar with the clock stranded near its bottom. The bleed also scales
+                        // with the device's inset, so the bar would be a different height on every
+                        // phone. Pinned to `[]`, the bar is the 28 pt it is authored as, on every
+                        // device, directly under the status bar.
+                        .background(subject.fill(at: context.date), ignoresSafeAreaEdges: [])
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(
+                    LiveSessionBar.accessibilityLabel(for: subject, now: context.date))
+                .accessibilityHint(Text(LiveSessionBar.accessibilityHint(for: subject)))
+            }
+        }
+    }
+
+    /// The bar's tap: it opens whichever live session the bar is about.
+    ///
+    /// **The tap forks, which is why `LiveSessionBar.accessibilityHint` took a subject.** A regular
+    /// activity's page is `LiveSessionView`, off the same process-held use case the `+` menu's
+    /// `START ACTIVITY` row pushes — one push, two routes to it. A fast's page is `ActivityDetailView`
+    /// in its fasting layout, reached through the same factory an activity row uses, because that page's
+    /// subject is a `WorkoutSession` and a live fast can project itself as one.
+    ///
+    /// **The projection is made here, at the tap, and stored.** See `presentedFast`: computing it in the
+    /// destination closure would re-mint the item's identity on every body evaluation and rebuild the
+    /// page under the reader.
+    private func present(_ subject: LiveSessionBar.Subject) {
+        switch subject {
+        case .activity:
+            isPresentingLiveSession = true
+        case .fast(let startedAt):
+            let fast = ActiveFast(startedAt: startedAt)
+            presentedFast = PresentedFast(session: fast.projectedSession(now: Date()), fast: fast)
+        }
     }
 
     // MARK: - Top bar
@@ -673,7 +1019,7 @@ public struct HomeDashboardView: View {
             } else {
                 if let sleep = viewModel.sleep {
                     activityRow(
-                        symbol: "moon.fill",
+                        glyph: .single("moon.fill"),
                         tint: Theme.sleepPerformance,
                         value: sleep.totalTimeAsleepSeconds.formattedCompactHoursMinutes(),
                         label: "SLEEP",
@@ -683,19 +1029,36 @@ public struct HomeDashboardView: View {
 
                 // **The `ForEach` is wrapped and the helper is not.** `activityRow` above draws the
                 // `SLEEP` row as well, and a sleep row has no workout behind it — wrapping the helper
-                // would give it a destination that does not exist. So the `NavigationLink` goes here,
-                // around the rows that do have one, and the `SLEEP` row above stays inert.
+                // would give it a destination that does not exist. So the button goes here, around the
+                // rows that do have one, and the `SLEEP` row above stays inert.
+                //
+                // A `Button` setting `presentedActivity` rather than a `NavigationLink`, because the
+                // destination is declared from that flag so the tab bar can be hidden on it — see the
+                // `navigationDestination(item:)` and `hidingTabBar` calls above. The tap is the same
+                // tap: the row is drawn by `activityRow` either way, and the page it opens is the same
+                // page.
                 //
                 // `.buttonStyle(.plain)` for the rings' reason: the default styles tint the label and
                 // add a hit shape, which would recolour the strain figure and the chip.
                 ForEach(viewModel.workouts) { workout in
-                    NavigationLink {
-                        ActivityDetailView(viewModel: makeActivityDetailViewModel(workout))
+                    Button {
+                        presentedActivity = workout
                     } label: {
                         activityRow(
-                            symbol: ActivityGlyph.symbol(for: workout.activityName),
+                            glyph: ActivityGlyph.mark(for: workout.activityName),
                             tint: Theme.strainRing,
-                            value: workout.strain.formattedOneDecimal(),
+                            value: ActivityFigure.headlineText(for: workout),
+                            // The day on screen, not the session's own: a fast's zone is how far into
+                            // the fast *that day* got, so an 86-hour fast draws a different pill on
+                            // each of its five days. See `fastingZone(for:on:)`.
+                            zone: ActivityFigure.fastingZone(for: workout, on: selectedDate),
+                            // The trailing clock, on the same rule and for the same reason as the pill
+                            // above: a fast's own end belongs to the day it ended on, so on every other
+                            // day it covers the row prints that day's last minute instead — or `ACTIVE`
+                            // while the fast is still running. `nil` for every row that is not a fast,
+                            // which leaves the `SLEEP` row and every measured row printing their own
+                            // two clock times exactly as before.
+                            endText: ActivityFigure.fastingEndText(for: workout, on: selectedDate),
                             label: workout.activityName ?? "ACTIVITY",
                             startedAt: workout.startedAt,
                             endedAt: workout.endedAt)
@@ -719,29 +1082,51 @@ public struct HomeDashboardView: View {
     /// `textCase` is idempotent over the `SLEEP` row above, which passes an already-uppercase literal
     /// and therefore needs no branch of its own.
     ///
+    /// **The glyph is a `Drawing` and not an activity name.** This helper is shared with the `SLEEP` row
+    /// above, and a sleep row is built from a `SleepSession` — there is no activity behind it to look up,
+    /// so a name parameter would force that row to invent one. Taking the mark instead lets it pass
+    /// `.single("moon.fill")` and keeps the lookup at the one call site that has a workout.
+    ///
     /// `lineLimit(1)` because the two longest names in the export, `Yard Work/Gardening` and `American
     /// Football`, are the only rows that would otherwise wrap — and a wrapped label makes those rows
     /// taller than the ones beside them, which reads as a broken layout rather than as a long word.
+    ///
+    /// **`zone` defaults to `nil` so the `SLEEP` row above is untouched.** A fast is the only row that
+    /// draws a pill, and the pill replaces the `value` figure rather than accompanying it — so a caller
+    /// with no zone passes nothing and keeps the row shape it has always had. `value` is still required
+    /// and still computed by every caller, fasts included: the pill is drawn *instead of* the `Text`,
+    /// not instead of the computation, which keeps `ActivityFigure.headlineText` the one definition of
+    /// what a row prints when it is not a pill.
+    ///
+    /// **`endText` is the same shape for the trailing clock** — fasts are the only rows that pass it and
+    /// it is handed straight to `timeRange`, which is the shared drawing. It replaces a *half* of the
+    /// range, so a covered day reads `SUN 9:00 PM / 11:59 PM`: the start clock and the weekday badge
+    /// stay the fast's own.
     private func activityRow(
-        symbol: String,
+        glyph: ActivityGlyph.Drawing,
         tint: Color,
         value: String,
+        zone: FastingZone? = nil,
+        endText: String? = nil,
         label: String,
         startedAt: Date,
         endedAt: Date
     ) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 15, weight: .semibold))
+            ActivityGlyphLabel(glyph, size: 15, weight: .semibold)
                 .foregroundStyle(tint)
-                .frame(width: 38, height: 38)
+                .frame(width: ActivityGlyph.chipDiameter, height: ActivityGlyph.chipDiameter)
                 .background(tint.opacity(0.18))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(value)
-                    .font(.system(size: 19, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
+                if let zone {
+                    FastingZonePill(zone: zone)
+                } else {
+                    Text(value)
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
+                }
                 Text(label)
                     .font(.system(size: 10, weight: .bold))
                     .tracking(0.8)
@@ -752,7 +1137,7 @@ public struct HomeDashboardView: View {
 
             Spacer(minLength: 8)
 
-            timeRange(startedAt: startedAt, endedAt: endedAt)
+            timeRange(startedAt: startedAt, endedAt: endedAt, endText: endText)
         }
     }
 
@@ -761,7 +1146,17 @@ public struct HomeDashboardView: View {
     /// A session from 11:19 PM to 7:25 AM is on two calendar days and the clock times alone cannot say
     /// which; a session from 5:33 PM to 5:47 PM does not need telling. Prefixing both would put a
     /// redundant word on every row.
-    private func timeRange(startedAt: Date, endedAt: Date) -> some View {
+    ///
+    /// **`endText` is a parameter rather than a branch in here, and that is the whole reason the fast's
+    /// rule did not move the `SLEEP` row.** This helper is shared by all three kinds of row on the card,
+    /// so a fast-only rule written into it would apply to a night and to every measured activity too.
+    /// The override is computed at the one call site that has a fast — `ActivityFigure.fastingEndText`
+    /// — and every other caller passes nothing and keeps the session's own end clock.
+    ///
+    /// The **left** half is not overridable, and that is deliberate: the weekday badge and the start
+    /// clock are the fast's own on every day it covers, so a covered day reads `SUN 9:00 PM / 11:59 PM`
+    /// rather than pretending the fast began that morning.
+    private func timeRange(startedAt: Date, endedAt: Date, endText: String? = nil) -> some View {
         HStack(spacing: 5) {
             if startedAt.startOfDay != endedAt.startOfDay {
                 Text(startedAt.formattedWeekdayAbbreviation())
@@ -772,7 +1167,7 @@ public struct HomeDashboardView: View {
                     .background(Theme.ringTrack)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             }
-            Text("\(startedAt.formattedHourMinute()) / \(endedAt.formattedHourMinute())")
+            Text("\(startedAt.formattedHourMinute()) / \(endText ?? endedAt.formattedHourMinute())")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
                 .monospacedDigit()

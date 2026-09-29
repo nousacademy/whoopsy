@@ -21,6 +21,59 @@ import SwiftUI
     /// The sessions recorded on the selected day, earliest first. Empty when there are none.
     public var workouts: [WorkoutSession] = []
 
+    /// Drops one session from the list Home is drawing, after it has been deleted from storage.
+    ///
+    /// **A local removal rather than a reload, and that is the design rather than a shortcut.** Home
+    /// learns of a deletion from `ActivityDetailView`'s `onDeleted`, which fires on the way out of a
+    /// pushed page — and whether a `.task` re-fires when a destination pops is undocumented behaviour
+    /// that differs by OS version, so nothing may depend on it. `load(for:)` is also nine reads with a
+    /// `streamUseCase` re-subscription, and it is not reentrant; calling it here would race whatever else
+    /// is loading.
+    ///
+    /// It is exact because **no other figure on Home is built from a workout**: `metricWeek` comes from
+    /// the strain, recovery and sleep histories plus the profile's maximal heart rate, `monthTiers` is
+    /// recovery-only, and the steps and stress tiles read their own tables. So there is nothing else to
+    /// invalidate, and the removal converges whether or not the day is ever re-read.
+    ///
+    /// Removing an id that is not in the list is a no-op, not a fault: it can only mean the list was
+    /// already reloaded without it.
+    public func removeWorkout(_ id: UUID) {
+        workouts.removeAll { $0.id == id }
+    }
+
+    /// Replaces one session in the list Home is drawing, after the activity page has edited it.
+    ///
+    /// **It is not a mirror of `removeWorkout(_:)`, and the difference is the re-sort.** That method
+    /// drops a row and the order of what is left cannot move; this one can change the value the list is
+    /// ordered by, because a trim moves `startedAt` and Home's `ACTIVITIES` card draws the list in the
+    /// order it is stored. `getWorkoutHistory(days:endingOn:)` documents itself as returning *"earliest
+    /// first"*, so a replacement that kept its old slot would leave the card in an order no read of the
+    /// day would produce — and it would stay wrong until the day was reloaded. Re-sorting here is what
+    /// keeps the local list and a fresh read the same list.
+    ///
+    /// **There is a drop case, and the list is now the covering read's rather than the day key's.**
+    /// `ActivityEditDraft` clamps a session's *start* to `original.startedAt.endOfDay`, so it cannot
+    /// leave the day it was on — but that clamp constrains only one of the sheet's two handles, and the
+    /// *end* handle can be dragged down to `start + minimumDuration` (60 s). Shortening a three-day fast
+    /// that way removes it from days 2 and 3 while Home, showing one of them, would otherwise go on
+    /// drawing the row — and because that day is now **after** `endedAt`, `elapsedSeconds(byEndOf:)`
+    /// clamps to the whole duration and the pill shows the fast's *overall* zone. That is exactly the
+    /// wrong answer this screen's day-scoped pill exists to remove, so the drop is not an edge case to
+    /// leave: a session the day no longer covers is filtered out here, and a session it does not yet
+    /// cover is not appended either.
+    ///
+    /// Replacing an id that is in the list keeps its slot's identity, and the list is not otherwise
+    /// re-read, for `removeWorkout(_:)`'s reason: no other figure on Home is built from a workout.
+    public func updateWorkout(_ workout: WorkoutSession, on day: Date) {
+        if let index = workouts.firstIndex(where: { $0.id == workout.id }) {
+            workouts[index] = workout
+        } else if workout.covers(day) {
+            workouts.append(workout)
+        }
+        workouts.removeAll { !$0.covers(day) }
+        workouts.sort { $0.startedAt < $1.startedAt }
+    }
+
     /// The strap's step total for the selected day, or `nil` when it measured no motion for it.
     ///
     /// **Read from `StepRepository` and from nowhere else**, which is the change this property
@@ -155,7 +208,12 @@ import SwiftUI
             async let s = strainRepository.getStrain(for: date)
             async let sl = sleepRepository.getSleepSession(for: date)
             async let slPrevious = sleepRepository.getSleepSession(for: previousDay)
-            async let w = workoutRepository.getWorkouts(for: date)
+            // The **covering** read, not the day-key one: a fast that was underway on this day is a
+            // thing that happened on this day, so an 86-hour fast draws a row on all five of its days
+            // rather than on its start day alone. Every other reader of `workouts` — the strain page's
+            // zone rows, the zone aggregates, the export's day skip — keeps asking `getWorkouts(for:)`,
+            // and `WorkoutRepository` documents why the two must not be merged.
+            async let w = workoutRepository.getWorkouts(covering: date)
             async let st = analyzeStress.executeDay(for: date)
             // One day each, read rather than computed. These sit with the other repository reads
             // rather than in the HealthKit pair's old position outside the `do`: a step row is stored

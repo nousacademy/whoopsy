@@ -1,0 +1,30 @@
+// TEMPLATE — copy this file to `Mapbox.local.xcconfig` in this same directory and paste your token
+// in below. The copy is gitignored; this template is committed.
+//
+//     cp App/Config/Mapbox.local.xcconfig.example App/Config/Mapbox.local.xcconfig
+//
+// Then edit `App/Config/Mapbox.local.xcconfig` and put your token after the `=`. Nothing else needs
+// to change: `App/Config/Mapbox.xcconfig` already ends with
+//
+//     #include? "Mapbox.local.xcconfig"
+//
+// which is the optional include, so the file is picked up as soon as it exists and its absence is
+// not a build error.
+//
+// ## Which token
+//
+// The PUBLIC (`pk.…`) token — the one Mapbox shows on your account's Tokens page as the default
+// public token. It ships inside every built app and is designed to be embedded; it is untracked here
+// at the owner's request, not because it is dangerous.
+//
+// Do NOT put the SECRET (`sk.…`) token here. That one is scoped `Downloads:Read` and is a build-time
+// credential for SwiftPM's package resolution — it belongs in `~/.netrc` only, with `chmod 0600`,
+// and never in this repository, in `Info.plist`, or in the app. `MapboxSetup.configure()` refuses
+// anything that does not begin `pk.`, so pasting it here fails loudly rather than shipping it.
+//
+// ## The line to edit
+//
+// Uncomment and fill in — the `=` with nothing after it is what the committed base file already
+// sets, so leaving this file empty is the same as not having it at all:
+
+# MBX_ACCESS_TOKEN = pk.your_public_token_here

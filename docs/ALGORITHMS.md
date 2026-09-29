@@ -2100,3 +2100,364 @@ step row is a dash on **all 673 imported sessions**; and the heart-rate trace is
 `biometric_samples`, which holds 0 rows in every database on this machine while the export carries no
 heart-rate series at all. A passing suite here asserts the window, the percentile, the divisions, the
 storage round trip and the page's own strings — **not** that a strap produces any of them.
+
+---
+
+## 9. A fast's page: the nights a fast covered
+
+The activity detail page draws a second layout when the session is a fast — a duration, a recovery
+figure, a chart of the nights the fast covered, and a sentence under it. **That is the whole page**: the
+`TYPICAL RANGE` header and the five `HEART RATE ZONES` cards are dropped rather than dashed, on the
+user's own instruction, so a fast's page ends at the sentence. Everything on it is derived on read:
+**no migration, no new column, and no stored fasting state of any kind.** This section carries the one
+substitution, the enclosure rule that decides which nights the page is about, and the rules that keep
+one chart on one scale.
+
+### There is no fasting score here, and `docs/PATENTS.md` is the reason there is nothing to substitute against
+
+Every other model in this document has a WHOOP shape to substitute *for*. Fasting does not:
+**`docs/PATENTS.md` has no fasting section**, and its one occurrence of the word is unrelated. WHOOP
+ships no fasting feature, so there is no disclosed model, no claimed range and no anchor input for
+this app to be measured against — **nothing is being claimed, so there is no gap.**
+
+This is a stronger position than the other sections are in, and it is worth stating plainly rather
+than leaving to look like an oversight. §6 substitutes a published equation for WHOOP's undisclosed
+one, §5 substitutes this app's constants for WHOOP's undisclosed ones, and both must say which of
+their numbers are whose. Here there is no counterpart to be whose.
+
+**What that forbids is a "fast recovery score".** A fasting app can publish one because it also reads
+glucose and ketones; this app has no sensor for either — `biodata.json`'s `glucose_data` holds zero
+rows in every file on this machine — so such a figure would be a number with no ground truth anywhere
+and no way to falsify it. The reference screenshot's `METABOLICALLY IMPROVED` is that claim, and no
+element of this page makes it.
+
+### The figure is the mean of the enclosed nights' own stored Recovery scores
+
+The substitution, stated as one sentence: **the number above a fast's chart is the mean of the
+Recovery scores of the nights the fast covered.**
+
+It needs no new math, and that is the whole argument for it. `RecoveryMetric.score` is uniformly
+`RecoveryScoring`'s output — `WhoopExportImporter` recomputes the score rather than storing WHOOP's
+own column, and `CalculateRecoveryUseCase` writes the same function's answer — so every night in the
+mean is the same quantity on the same scale as the ring on Home. There are no new weights, no new
+scale and no constant that cannot be checked.
+
+It is a **worse claim than the reference's**, deliberately: it says *your recovery while fasting*, not
+*the fast worked*. It is documented as a substitution the way `SleepNeedMath` is.
+
+Two properties follow from where the figure comes from:
+
+- **A placeholder row is not a night.** Rows written before the no-placeholder change carry
+  `hrvValueMs == 0` beside a reserved `score: 0`, and averaging one in would drag the mean toward zero
+  and let `RecoveryState(score:)` colour it red — the trap `CLAUDE.md` records for the Home ring. The
+  night list is filtered on `hasMeasurement` **before** the mean, and the same filtered count is what
+  the badge under the figure states.
+- **The mean is rounded before it is tiered, and which tier 66.5 lands on is a decision rather than
+  arithmetic.** `Double.rounded()` is `.toNearestOrAwayFromZero`, so 66.5 is 67 — green — and 33.5 is
+  34 — yellow. A mean is not a score `RecoveryScoring` produced, so this is pinned by assertion.
+
+The badge reads `OVER N NIGHTS` — the basis, not a claim — which is the same provenance the page's
+`comparisonBasis` note already prints under its stat columns.
+
+### The enclosure rule, and why it is not `WorkoutSession.covers(_:)`
+
+> A `recoveries` row dated `D` describes the night that ended on the morning of `D`. The fast covered
+> it when the fast was **already running when `D` began**:
+> `startedAt.startOfDay < D && D <= endedAt.startOfDay`.
+
+Both sides are snapped to the calendar day and both halves are load-bearing. The right-hand side is
+snapped because the fast's end instant is on a day that day's night belongs to — a fast ending 11:01
+on 2024-10-10 covered the night that ended that morning. The left-hand side is snapped for the
+opposite reason: a fast that began at 21:00 on 2024-10-06 did **not** cover the night that ended that
+morning, since that night was over fifteen hours before it started.
+
+**`covers(_:)` is the wrong predicate here and it is a one-line change away.** It is the half-open day
+overlap and it is correct for Home's `ACTIVITIES` card, where the question is *which day was this
+session underway on*. As an enclosure test it credits the fast with **the night before it started**:
+`covers(2024-10-06)` is true for the flagship fast, so 10-06's row — from a night that had already
+ended — would land in the score's mean. Measured over the bundled files in America/New_York, the two
+predicates differ on **17** fasts, and `covers` reports **19** of the 170 enclosing at least one night
+against this rule's 18, with a maximum of **5** nights against its 4. The extra night is always the one
+before the start.
+
+**Its error direction, stated so the shape of the failure is known.** A fast that starts in the small
+hours of `D` and ends later the same day reads as covering nothing, though it ran through `D`'s
+morning reading. **The app cannot do better**: a `RecoveryMetric` stores a snapped day key and no wake
+instant — `WhoopExportImporter` writes `startOfDay(wakeOnset)` — so "the night's wake onset falls
+inside the fast" is not expressible from what is on disk. Where a day key cannot distinguish, an
+absence is the honest answer rather than a guess that would credit the fast with a night it may not
+have covered.
+
+**One consequence to know rather than discover:** two fasts on one day (a 04:00–08:00 and an
+18:00–22:00) draw on the same single recovery row, so one night can be enclosed by two fasts and
+neither page can say which of them it was about.
+
+**And the counts are zone-dependent, like every other export measurement here.** `startOfDay` is
+`Calendar.current`, so a fast near midnight encloses a different set of days in a different zone. Over
+the bundled files, measured in **America/New_York**:
+
+| | value |
+| :--- | ---: |
+| bundled fasts | 170 |
+| enclose at least one recovery night | **18** |
+| most nights any one fast encloses | **4** |
+| fasts drawing the absence line | **152** |
+
+At UTC the same files give 15, 3 and 155, and at Asia/Tokyo 8, 4 and 162. So **the chart is a
+small-multiples chart of one to four columns, not a week** — the reference's seven is unreachable on
+this file — and no count above belongs in an assertion without its zone.
+
+**Why the other 152 are empty is a fixture artifact and not a limit.** The recovery record begins
+2023-07-23 while 118 of the 170 fasts are from 2022 and 151 start before the record begins at all.
+Every fast a live user takes while wearing the strap encloses its nights; measured on the fasts that do
+have history, prior recovery days available within 30 days is 24–30, so `minimumBaselineDays` is always
+satisfied.
+
+### One baseline window, taken before the fast started
+
+Every bar on the chart is a z-score, and all three quantities are scored against **the same window**:
+`RecoveryScoring.baselineWindow(before: session.startedAt, in: history)`.
+
+- **One window and not one per night.** It is a single stated reference — *your baseline as it stood
+  before this fast* — so every column shares one denominator per metric. A window per night would let
+  two columns of one chart be drawn against two different scales while looking identical.
+- **Taken strictly before the fast started**, so the fast is never scored against itself.
+- **Read over `baselineWindowLookbackDays` (180) back, not 30**, because that window is the last 30
+  days *that have rows*: a caller fetching 30 calendar days can silently fill it from fewer days than
+  the score above it used.
+- **Each quantity is withheld below `RecoveryScoring.minimumBaselineDays` (3) days of its own**, and
+  the three thresholds are separate because the three windows differ in size: a month of HRV readings
+  routinely comes with four respiratory rates. `BaselineStatisticsMath.baseline` substitutes a
+  **cold-start constant** when handed nothing — 65 ms RMSSD, 54 bpm — which is right for scoring a
+  first day and wrong to draw, since a bar computed against a constant would be a confident statement
+  about the user's physiology made from a number nobody measured.
+
+### The never-mix rule narrows the plotted nights, not only the window
+
+SDNN and RMSSD are different quantities on different scales, and pooling them computes a z-score
+between two distributions and pins the answer to the clamp. **The failure is silent, because a wrong
+z-score is still a number in range.** The metric in force is **the newest enclosed night's**
+`hrvMetric` — `MetricWeek.hrvBaselineMetric`'s rule — and it narrows two things:
+
+1. **The window.** Only days matching the metric in force contribute to the HRV baseline.
+2. **The plotted nights.** A night whose own HRV is SDNN has **no reading on the scale every other bar
+   of the chart is drawn against**, so it draws no HRV bar at all. This is the half that is easy to
+   miss, and it is why the narrowing is at the `hrvZScore:` argument rather than only in the window.
+
+Drawing such a night against the window would put one column of one fast on a quantity the chart does
+not plot. It draws no bar instead — the same answer an absent reading gives, so the chart needs no
+third state.
+
+**Resting heart rate is deliberately not narrowed**, and that is not an oversight: it does not depend
+on which HRV quantity was recorded, so it legitimately draws on the whole window.
+`RecoveryScoring.baselines`' own reasoning, kept. The suite pins the two directions apart by sign: a
+mis-pooled HRV night reads ≈ −0.52 where the correct answer is +1, while the RHR night reads 0.9129
+against the pooled window and 0.0 against a wrongly narrowed one.
+
+### The respiratory rate's count gate, and why there is no fallback
+
+`BaselineStatisticsMath.baseline` requires a fallback mean and standard deviation, and **respiratory
+rate has no cold-start pair anywhere in this app** — `HRVMetric` has `coldStartMeanMs`/`coldStartStdDevMs`
+and `RecoveryScoring` has the resting-heart-rate pair, but RR has neither. So an ungated call would
+compute a z from numbers this app invented.
+
+The gate therefore is not `values.count >= minimumBaselineDays` as a quality floor; it is the only
+thing standing between the chart and a fabricated baseline. A thin RR window **withholds the RR bar
+entirely** rather than drawing one, and the fallbacks passed to `baseline` are `0`/`0` — the honest
+placeholder for *a constant this call is not allowed to reach for*, so no call site looks like it
+wants the cold start.
+
+### The 5% coefficient-of-variation floor, with its measured binding rates
+
+`BaselineStatisticsMath.baseline` returns `max(observedStdDev, |mean| × minimumCoefficientOfVariation)`,
+where the constant is `0.05`. Measured over the bundled export, that floor **binds** on:
+
+| quantity | windows where the floor is the denominator | median within-window CV |
+| :--- | ---: | ---: |
+| respiratory rate | **91%** | 3.1% |
+| resting heart rate | 15% | — |
+| HRV | 0.1% | — |
+
+So RR's denominator is usually `0.05 × mean` rather than its own observed spread. **The direction is
+the safe one and worth stating:** the floor *raises* the denominator, so a given respiratory-rate move
+draws a **smaller** bar than its own raw spread would give. RR reads conservatively. The alternative —
+dividing by the raw spread — would draw a 4σ bar off a three-breath difference on a thin window, which
+is the fabrication class this app forbids. And because all three metrics share one window, the floor
+cannot put two columns of one fast on two different scales.
+
+The practical consequence for anyone writing a fixture against a pinned z-score: **pick a spread that
+clears 5% of the mean first.** A window of 58/60/62 bpm has 3 as its denominator and not 2, and every
+literal downstream moves with it.
+
+### The σ axis is fixed, one-sided, and it is not `FittedAxis`
+
+The chart plots z-scores against an axis whose foot **is** the baseline. `0...4` is the standard scale,
+widening in whole units until it contains the tallest column the fast drew.
+
+**It is one-sided because the drawing is: a fall shrinks a segment rather than hanging one below the
+rule.** Every segment grows up from the baseline; a reading below its own mean draws a *shorter*
+segment, and one exactly at its mean draws none at all. That is the user's own instruction — *"if they
+go negative just shrink it"*, and *"the lower one goes the less it shows on the bar"* — and it is the
+one decision on this page whose alternative was a different picture rather than a different style. A
+diverging stack would have needed a lower bound, a second set of per-side offsets and the rule drawn
+across the middle of the frame; shrinking needs none of the three, and it keeps the reader's eye on the
+baseline as the single thing every column is measured from. `FastingRecoveryAxis` therefore stores **no
+lower bound at all** — it would be a number nothing can reach.
+
+**The cost is stated on the screen rather than left to be discovered.** A night whose readings all sat
+at or below their baselines draws an empty column, and an empty column is otherwise this chart's word
+for *nothing was measured*. Nothing in the drawing distinguishes the two, so the caption under the
+section label says it once: *a reading that fell shows less of it rather than a block below the line.*
+The sentence under the chart reads the same z-scores and is the other place a fall stays legible.
+
+Three things about the scale are decisions:
+
+- **It is not `FittedAxis`.** That type exists because HRV, RHR and RR have no definition to fix a
+  scale to. **A z-score has that definition**: the unit is one σ of the user's own window, `0` is the
+  baseline mean, and the quantity is already dimensionless. A fitted σ axis would also be the one thing
+  the house rule forbids — it would draw a 2σ night identically whether it fitted to 2 or to 4, which is
+  the same defect as an auto-scaled Stress Monitor.
+- **What it is fitted to is the column's total, not an individual z.** The chart stacks one night's
+  three quantities into one column, so a column reaches the *sum* of its excursions — up to `3 × 4σ`
+  if every reading were pinned at the clamp. The scale follows what is drawn, which is the only honest
+  thing for it to do: a segment's length is its own excursion read against this axis, so an axis too
+  short for the tallest column would measure every segment in it against the wrong ruler.
+- **The grid step is keyed to a *line count*, not to the bound.** `maximumLinesPerMargin` (9) is what
+  the 132 pt margin can carry at 10 pt type, and the step doubles until the count is inside it — so a
+  12σ night rules at `2/4/6/8/10`, five lines, rather than at every unit. Keying the step to the value
+  instead would leave a five-unit margin drawing only four comfortable rules while a twelve-unit one
+  doubled: the same rule expressed against the wrong quantity.
+- **`0` is a gridline the axis would otherwise draw, and it is excluded from the furniture**, because
+  it is the frame's own foot and the chart draws no rule there at all. The suite pins that the standard
+  scale rules exactly `+1σ`, `+2σ` and `+3σ`, and that every line it lists is strictly above zero.
+
+**Every z goes through `BaselineStatisticsMath.zScore` and never an inline division.** The clamp to
+`±maximumAbsoluteZScore` (4.0) lives only in that function, and `RecoveryMetric.restingHeartRate` is a
+non-optional `Int` carrying a reserved `0` on a placeholder row — an inline `(0 − 54) / 3.5` is `−15.4`.
+The shrink rule hides that number from the drawing, but it would not hide it from the *axis*: a fit
+reading a raw `−15.4` would widen the frame for a segment that is never drawn.
+
+### The three segment colours are a ramp of one hue, not a verdict scale
+
+**The user's own instruction** — *"make the bars 3 shades of blue"* — and the third palette this
+drawing has had. The two it replaces were rejected for different reasons that come to the same one.
+The first was the reference screen's own swatches, three unrelated tints borrowed from another app's
+screen and related to nothing here. The second was this app's three verdict accents, `recoveryGreen` /
+`recoveryYellow` / `recoveryRed`, which put the recovery **ring's** scale on a chart whose subject is
+not a verdict: a z-score is a distance from the user's own mean, and an HRV that fell is not a red
+night.
+
+A ramp of one hue claims exactly one thing — *these are three quantities on one scale* — which is what
+a stacked column is. **The ramp runs light at the top of the stack to deep at its foot**, which is the
+order the legend lists the three in (HRV, then resting heart rate, then respiratory rate) and the order
+the segments stack, so a reader holding the legend holds the key to the column as well. All three are
+pale enough to read on `homeBackground`; the deepest is a solid mid blue rather than a navy, because a
+segment is a filled area on a near-black ground and a shade that separates only from its two neighbours
+separates from nothing at all.
+
+Three tokens in `Theme.swift` (`fastingChartHRV` and its two siblings) and **one** mapping,
+`FastingMetric+Extensions.swift` — the fourth of the app's value-into-a-colour mappings, beside
+`RecoveryState.color`, `SleepStageType.color` and `FastingZone.color`, and the one rule they all
+follow: a value becomes a colour in exactly one place, so two screens cannot come to draw the same
+quantity two ways. Nothing in that mapping picks a hue; if the ramp is ever re-measured, `Theme` is the
+one file that moves.
+
+### The sentence under the chart
+
+The reference composes a narrative sentence from the same numbers its bars are drawn from, and so does
+this one — **from the same z-scores, so the sentence cannot describe a different set of nights than the
+bars above it.**
+
+Each metric gets one of three positions — **above**, **at** or **below** the baseline — read at a
+threshold of **half a σ**, and the vocabulary depends on how many nights there are:
+
+| nights | HRV, above the baseline |
+| :--- | :--- |
+| one | `HRV finished above your baseline` |
+| two or more | `HRV climbed above your baseline` |
+
+`finished` rather than `climbed` for a single night is not style: `climbed` and `fell` claim a
+*direction* from a single reading, which is a trend this arithmetic never looked at. The three
+positions are computed identically either way, which is what keeps the two vocabularies a change of
+verb rather than a change of rule. The two-or-more form compares the **last** column against the
+**first**.
+
+This is a statement about arithmetic on the user's own window, not about physiology: *HRV climbed above
+your baseline* means the newest night's z-score is more than half a σ above the mean of the window
+taken before the fast began. The sentence is a `nonisolated static` on the series type for the reason
+this page's other strings are statics — the runner has no renderer, so a sentence composed inside a
+`body` is a sentence nothing can assert.
+
+### The stop-fasting line, and the app's second band table
+
+Under the trend sentence the page prints one more line, and it answers a different question: not *what
+did these nights do* but **what should I do about it**. It bands the same figure the sentence above
+bands, and it bands it differently.
+
+| band | score | lead-in | live fast | ended fast |
+| :--- | :--- | :--- | :--- | :--- |
+| steady | ≥ 67 | `Recovery holding.` | *Your recovery is at 74% over the 4 nights so far. Nothing here says to stop.* | *Your recovery held at 74% across these 4 nights.* |
+| caution | 51–66 | `Recovery slipping.` | *Your recovery has averaged 60% over the 3 nights so far — worth watching if you carry on.* | *Your recovery averaged 60% across these 3 nights — worth watching if you fast this long again.* |
+| stop | ≤ 50 | `Stop signal.` | *Your recovery has averaged 28% over the 4 nights so far. This is the signal to end the fast.* | *Your recovery averaged 28% across these 4 nights — a fast that runs it this low is one to end earlier.* |
+
+**Two band tables now exist for one number, and that is a decision rather than a drift.** `RecoveryState`
+bands a recovery score 67 / 34 and is the one definition of the recovery tiers — Home's ring, the
+Recovery tab, and the figure immediately above this sentence all read it. `FastingRecoveryGuidance.Band`
+bands the *same* score 67 / **50**. The reason is that a fast is itself a stressor: a score that means
+*make it a hard day, you are recovered* for an ordinary morning does not mean that on day four of not
+eating, so the point at which the app says *stop* sits higher than the point at which it says *go easy*.
+
+**The cost is stated on the screen rather than left to be found.** At a score of 45 the figure above the
+line is **yellow** — it reads `RecoveryState` — and the words under it are a stop signal. The line is
+therefore drawn in `Theme.textSecondary` and in **no band colour at all**, with the band carried by the
+lead-in's own words. Two colour scales for one number on one screen is the fault this arrangement
+exists to avoid, and the alternative — re-tiering the figure for the fasting page so the two agree —
+would put a score that is green on Home and yellow here, which is worse.
+
+The numbers have **no published source and are not fitted.** `docs/PATENTS.md` holds no fasting section
+at all — WHOOP ships no fasting feature — so unlike the recovery tiers (WHOOP's own 66/33) there is no
+disclosed shape to substitute against and nothing to fit a constant to. They are this app's authored
+guidance, and they are asserted at all four edges plus the fallback, on the rule that a band table
+nobody can see is a band table nobody can correct.
+
+**The tense is the fast's own state and not the screen's.** A fast that has already ended cannot be
+stopped, and the page is drawn almost entirely for fasts that have: all 170 bundled ones have ended, and
+a fast only ever arrives from a Zero export. So the live arm is reachable only from a fixture, and the
+retrospective arm is what a reader actually sees — which is why the ended-stop arm turns the
+instruction to the *next* fast rather than printing *end the fast* under one that stopped three days
+ago. The predicate is `ActivityFigure.isInProgress(_:now:)` and **not** `DayBarRules.isToday`; the day
+test belongs to the row's `ACTIVE` label, and asking it here would make a fast's own tense depend on
+which day the user is looking at.
+
+**Nothing in the line claims the fast produced the number.** *Your recovery averaged 28%* is a statement
+about the user's own nights; there is no glucose and no ketone sensor anywhere in this app, so *the fast
+cost you recovery* would be the same fabrication this page's z-score sentence is forbidden. The named
+action is a response to a measurement, not a diagnosis of one, and a §19 assertion sweeps all six arms
+for causal wording so a future rewrite cannot quietly introduce one.
+
+### What this section is not evidence for
+
+**The page's own read is asserted, and the drawing is not.** `simctl` drops the synthetic drag that
+would move a trim handle, so a screenshot of a trimmed fast proves nothing about whether the page
+re-derived its nights; that is a database block's job, and it is the only place the fifth repository
+parameter, the 180-day window and the enclosure filter are exercised in one path.
+
+Three specific gaps:
+
+- **The chart has no renderer in the suite.** Its geometry constants, the legend and the column
+  arrangement are in `FastingRecoveryChartView`'s `body`, and what is asserted is the series they are
+  drawn from. **One constant has since been pulled out of that gap and asserted, and the way it got
+  there is the argument for pulling out the next one**: the date strip's height, which was `18`
+  against a two-line label whose own line boxes are `12` and `14`. The label is centred in the strip,
+  so a strip eight points too short spilled it out of *both* ends at once — the weekday's ascenders
+  drawn through the baseline rule the columns stand on, the day number down into the legend — on every
+  fast's page, through every green build and the whole of this suite. A screenshot caught it and
+  nothing else could. The strip is now derived from its own text and its inset rather than picked, and
+  §19 asserts that the label's top clears the rule and its foot stays inside the strip.
+- **No fast on this machine is in progress.** All 170 bundled fasts have ended, so *two* live branches
+  are reachable only from a fixture and a screenshot cannot show either: the row's `ACTIVE` label, and
+  the stop-fasting line's live tense. The second is the one that matters more — it is the only arm that
+  tells a user to stop, and it is the arm no user of the bundled data will ever see.
+- **The baselines on the bundled fasts are real but thin.** 24–30 prior days is above the floor, so
+  the page draws rather than withholds on every fast that has history at all — which means the
+  withhold branch is fixture-only here too.

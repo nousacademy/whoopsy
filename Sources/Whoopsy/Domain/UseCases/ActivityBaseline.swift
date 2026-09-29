@@ -53,14 +53,21 @@ public enum ActivityBaseline {
 
     /// The page's whole comparison content for one session.
     ///
-    /// **Two independent floors, not one.** `sessionCount` and `stepSessionCount` are the counts their
-    /// respective figures were taken over and are `0` exactly when those figures are `nil`, so
-    /// `sessionCount == 0 ⟺ typicalDuration == nil ⟺ meanStrain == nil` and, separately,
-    /// `stepSessionCount == 0 ⟺ meanSteps == nil`. They are separate rather than one condition because
-    /// the populations are: duration and strain are non-optional on every session, while a step count is
-    /// absent on every session this app did not record itself — so a window of ten named sessions can
-    /// band its durations and have nothing to say about steps, and a page that conflated the two would
-    /// draw a step badge off a mean taken over no step counts.
+    /// **Three independent floors, not one.** `sessionCount`, `stepSessionCount` and
+    /// `strainSessionCount` are the counts their respective figures were taken over and are `0` exactly
+    /// when those figures are `nil`, so `sessionCount == 0 ⟺ typicalDuration == nil`,
+    /// `stepSessionCount == 0 ⟺ meanSteps == nil` and `strainSessionCount == 0 ⟺ meanStrain == nil`.
+    /// They are separate rather than one condition because the populations are:
+    ///
+    /// - **duration** is non-optional on every session, so its population is the window itself — it and
+    ///   `sessionCount` are the same number by construction;
+    /// - **steps** are absent on every session this app did not record itself;
+    /// - **strain** is absent on every session nothing measured — which until `v18` was no session at
+    ///   all, and is now every fast.
+    ///
+    /// So a window of ten sessions can band its durations, have nothing to say about steps and have
+    /// nothing to say about strain, and a page that conflated any two of them would draw a badge off a
+    /// mean taken over no measurements.
     public struct Summary: Equatable, Sendable {
 
         /// How many sessions the bands were taken over. `0` when the window was too thin.
@@ -74,7 +81,8 @@ public enum ActivityBaseline {
         /// with no reader.
         public let typicalDuration: Typical?
 
-        /// The window's mean strain, or `nil` below the floor. The strain badge's basis.
+        /// The window's mean strain, or `nil` when fewer than the floor of prior sessions carried one.
+        /// The strain badge's basis.
         public let meanStrain: Double?
 
         /// The window's mean step count, or `nil` when fewer than the floor of prior sessions carried
@@ -84,18 +92,27 @@ public enum ActivityBaseline {
         /// How many prior sessions the step mean was taken over. `0` when there is no mean.
         public let stepSessionCount: Int
 
+        /// How many prior sessions the strain mean was taken over. `0` when there is no mean.
+        ///
+        /// The third of the three populations. It is **not** `sessionCount`: a window of ten sessions
+        /// of which three carry a strain has `sessionCount == 10` and `strainSessionCount == 3`, and
+        /// the badge is drawn off the second.
+        public let strainSessionCount: Int
+
         public init(
             sessionCount: Int,
             typicalDuration: Typical?,
             meanStrain: Double?,
             meanSteps: Double?,
-            stepSessionCount: Int
+            stepSessionCount: Int,
+            strainSessionCount: Int
         ) {
             self.sessionCount = sessionCount
             self.typicalDuration = typicalDuration
             self.meanStrain = meanStrain
             self.meanSteps = meanSteps
             self.stepSessionCount = stepSessionCount
+            self.strainSessionCount = strainSessionCount
         }
     }
 
@@ -107,7 +124,7 @@ public enum ActivityBaseline {
     ///    `startedAt` alone would admit a second copy of the same session that a caller had re-read
     ///    with a shifted start — and a session compared against itself draws a badge reading zero.
     /// 2. **The same activity name**, by `ActivityName.matches` — the rule `ActivityGlyph` keys its
-    ///    symbol table by, so the page cannot group sessions one way and draw them another. **WHOOP's
+    ///    drawing table by, so the page cannot group sessions one way and draw them another. **WHOOP's
     ///    abstention words are matched like any other name**: `Activity` and `Other` are names it
     ///    writes rather than absences it leaves, and 208 of the export's 673 rows carry one of them —
     ///    a group of that size is a history, not a hole.
@@ -139,9 +156,11 @@ public enum ActivityBaseline {
     /// one definition of it. The only filter applied here is the one belonging to these quantities.
     ///
     /// **A non-optional return, unlike its sleep sibling.** A `SleepSession` with no sleep period has
-    /// nothing to describe and the card is then absent; a `WorkoutSession` always has a span, a strain
-    /// and a name, so the page is always drawn and it is the *comparisons* that are withheld below the
-    /// floor. `RecoveryScoring.minimumBaselineDays` (3) is forwarded rather than restated, so this page
+    /// nothing to describe and the card is then absent; a `WorkoutSession` always has a span and a name,
+    /// so the page is always drawn and it is the *comparisons* that are withheld below the floor. (Since
+    /// `v18` a session need not have a strain either — a fast has none — but that withholds the strain
+    /// badge rather than the page, which is the third population below.)
+    /// `RecoveryScoring.minimumBaselineDays` (3) is forwarded rather than restated, so this page
     /// and the Recovery screen cannot come to disagree about how much history a baseline needs.
     public static func summary(
         for session: WorkoutSession, priorSessions: [WorkoutSession]
@@ -150,9 +169,19 @@ public enum ActivityBaseline {
         let banded = window.count >= RecoveryScoring.minimumBaselineDays
 
         let typicalDuration = banded ? band(window.map(\.durationSeconds)) : nil
-        let meanStrain = banded && !window.isEmpty
-            ? BaselineStatisticsMath.mean(window.map(\.strain))
-            : nil
+
+        // The strain mean is a **third population**, and it was not one until `v18`. While every
+        // session had a strain, the window and the strain population were the same set and taking the
+        // mean over the window was right by construction. A fast has no strain, so they part company —
+        // and averaging `?? 0` over one is worse than withholding the figure twice over: a window of
+        // ten fasts reports a **fabricated** `meanStrain` of `0.0`, and a mixed window dilutes the true
+        // mean with zeroes (three measured priors at `7.0` beside seven fasts would report `2.1`).
+        //
+        // So this is the step mean's own rule applied to strain, and it is the same second-population
+        // gate one block below for the same reason.
+        let strains = window.compactMap(\.strain)
+        let strainBanded = strains.count >= RecoveryScoring.minimumBaselineDays
+        let meanStrain = strainBanded ? BaselineStatisticsMath.mean(strains) : nil
 
         // The step mean is taken over a **second population**: the priors that carry a step count at
         // all. `nil` steps is the ordinary state of an imported session and of every row written before
@@ -168,7 +197,8 @@ public enum ActivityBaseline {
             typicalDuration: typicalDuration,
             meanStrain: meanStrain,
             meanSteps: meanSteps,
-            stepSessionCount: meanSteps == nil ? 0 : stepCounts.count)
+            stepSessionCount: meanSteps == nil ? 0 : stepCounts.count,
+            strainSessionCount: meanStrain == nil ? 0 : strains.count)
     }
 
     /// The middle half of `values`, or `nil` when there is nothing to take a percentile of.

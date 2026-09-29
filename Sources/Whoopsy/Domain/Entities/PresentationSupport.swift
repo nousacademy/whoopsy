@@ -1,6 +1,6 @@
 import Foundation
 
-public struct WorkoutRoutePoint: Identifiable, Equatable, Sendable {
+public struct WorkoutRoutePoint: Identifiable, Equatable, Hashable, Sendable {
     public let id: UUID
     public let latitude: Double
     public let longitude: Double
@@ -36,20 +36,49 @@ public struct WorkoutRoutePoint: Identifiable, Equatable, Sendable {
     }
 }
 
-public struct WorkoutSplit: Identifiable, Equatable, Sendable {
+public struct WorkoutSplit: Identifiable, Equatable, Hashable, Sendable {
     public let id: UUID
     public let elapsed: TimeInterval
     public let strain: Double
     public init(id: UUID = UUID(), elapsed: TimeInterval, strain: Double) { self.id = id; self.elapsed = elapsed; self.strain = strain }
 }
 
-public struct WorkoutSession: Identifiable, Equatable, Sendable {
+/// `Hashable` is spelled out for one call site and is not incidental: `HomeDashboardView` pushes this
+/// page through `navigationDestination(item:)`, whose item binding requires it. The three types
+/// involved are all plain values over `UUID`, `Date`, `Double`, `Int` and `String`, so the conformance
+/// is synthesised and carries no equality of its own — `==` still means what `Equatable` meant here
+/// before it, which matters because `HomeViewModel.workouts` is replaced wholesale on every day change.
+public struct WorkoutSession: Identifiable, Equatable, Hashable, Sendable {
     public let id: UUID
     public let startedAt: Date
     public let endedAt: Date
-    public let strain: Double
-    public let averageHeartRate: Int
-    public let maxHeartRate: Int
+    /// The session's cardiovascular load on WHOOP's 0–21 scale, and `nil` for a session nothing
+    /// measured one on.
+    ///
+    /// **`nil` and `0.0` are different answers**, and the distinction is the one every absence rule in
+    /// this app turns on. `0.0` is a measured session that never left zone 1 — `LiveSessionAccumulator`
+    /// produces exactly that for a session it watched at rest — while `nil` is a session with no sensor
+    /// behind it at all. The Zero fasting import is the producer that needs the second: a fasting window
+    /// is time held rather than work done, so there is no strain to report and a `0.0` would claim
+    /// *measured, and no strain at all*.
+    ///
+    /// It is optional on the same reasoning as `steps` below — optional on the entity, nullable in the
+    /// column (`v18`), `nil` written by the producer that measured nothing, a dash drawn by the reader
+    /// (`ActivityFigure.strainText`). What it is **not** is an invitation to default it: the parameter
+    /// has no default, so every construction site has to state which of the two answers it means.
+    public let strain: Double?
+
+    /// The session's mean and peak heart rate, in bpm, or `nil` for a session nothing measured them on.
+    ///
+    /// Two separate fields with two separate absences — a session can carry one and not the other, and
+    /// nothing here couples them. `nil` is not `0`: a heart rate of zero is not a measurement of a
+    /// still heart but the absence of one, which is why neither is defaulted at the initialiser.
+    ///
+    /// The three of them were non-optional until `v18`, with a doc comment recording that the fix
+    /// would be to make them optional once a producer without a sensor needed to say so. That producer
+    /// is `ZeroFastingImporter`, and this is that fix.
+    public let averageHeartRate: Int?
+    public let maxHeartRate: Int?
     public let route: [WorkoutRoutePoint]
     public let splits: [WorkoutSplit]
 
@@ -57,13 +86,23 @@ public struct WorkoutSession: Identifiable, Equatable, Sendable {
     ///
     /// `nil` rather than a `"strap"` label because a row written before the column existed is the
     /// same thing as a live session here — and because NULL is the honest value for a fact nobody
-    /// recorded at the time. An imported session carries `WhoopExportImporter.sourceLabel`.
+    /// recorded at the time. An imported session carries its own importer's label:
+    /// `WhoopExportImporter.sourceLabel` for a row out of `workouts.csv`, `ZeroFastingImporter`
+    /// `.sourceLabel` for one out of the Zero export.
     ///
-    /// **Nothing writes `nil` any more.** The app's own recording path was the workout HUD, which is
-    /// deleted, so `nil` now describes only rows an older build left on disk; `whoopExportImporter`
-    /// is the sole live producer and it labels everything. The meaning of the value is unchanged and a
-    /// future recorder should still write `nil` — but do not read a `nil` row as evidence that this
-    /// build recorded it.
+    /// **`LiveSessionUseCase` is the writer of `nil`.** Its `end()` is the app's own recording path and
+    /// stores `nil` for a session this app recorded live, so a `nil` row is that rather than only a
+    /// leftover from an older build. The two importers are the other producers and both label
+    /// everything. **One further value exists for one case**: `ActiveFast.sourceLabel`, written by
+    /// `LiveSessionUseCase.endFast()`. A hand-recorded fast is neither a measured live session nor an
+    /// import — it is a row this app recorded that carries no measurement at all — so it is a fourth
+    /// thing and says so. `ActiveFast.fastSourceValues` is the set of values meaning *this row is a
+    /// fast*, and it is the one place that set is written down, because `recordedWorkoutDays()` below
+    /// needs both members and the importer is `Data` while `ActiveFast` is `Domain`.
+    ///
+    /// **It is read, not just written.** `WhoopExportImporter.recordedWorkoutDays()` excludes rows
+    /// carrying a fast label, so the export's own day skip does not mistake a fast for a workout this
+    /// app already imported — which is why the label is a compared value rather than a note.
     public let source: String?
 
     /// WHOOP's own name for the session — `Walking`, `Yoga`, `Activity` — when it came out of
@@ -109,29 +148,85 @@ public struct WorkoutSession: Identifiable, Equatable, Sendable {
     /// session instead of one day, and it is the same test on both sides of the write.
     public let steps: Int?
 
+    /// The name of the offline map region this session downloaded, when `USE OFFLINE MAP` was on.
+    ///
+    /// **Defaulted, unlike the three measured fields above, and the difference is the point.** Those
+    /// have no default precisely so a construction site cannot silently let a measurement degrade to
+    /// `nil`. This is not a measurement — it is a join key into Mapbox's tile store — so a default
+    /// cannot turn a reading into an absence, and requiring every one of the app's construction sites
+    /// to pass it would be noise for a feature most sessions do not use.
+    ///
+    /// `nil` on every session recorded with the switch off and on every row written before `v19`. Its
+    /// only reader is `RouteMapRenderer.resolve(session:state:)`, and a `nil` there resolves to the
+    /// MapKit card rather than to a blank one.
+    public let offlineRegionID: String?
+
     public init(
         id: UUID = UUID(),
         startedAt: Date,
         endedAt: Date,
-        strain: Double,
-        averageHeartRate: Int,
-        maxHeartRate: Int,
+        strain: Double?,
+        averageHeartRate: Int?,
+        maxHeartRate: Int?,
         route: [WorkoutRoutePoint],
         splits: [WorkoutSplit],
         source: String? = nil,
         activityName: String? = nil,
         hrZonePercents: [Double]? = nil,
-        steps: Int? = nil
+        steps: Int? = nil,
+        offlineRegionID: String? = nil
     ) {
         self.id = id; self.startedAt = startedAt; self.endedAt = endedAt; self.strain = strain
         self.averageHeartRate = averageHeartRate; self.maxHeartRate = maxHeartRate
         self.route = route; self.splits = splits
         self.source = source; self.activityName = activityName; self.hrZonePercents = hrZonePercents
         self.steps = steps
+        self.offlineRegionID = offlineRegionID
     }
 
     /// The workout's own length, in seconds — the scale every zone figure is a share of.
     public var durationSeconds: Double { endedAt.timeIntervalSince(startedAt) }
+
+    /// How much of this session had elapsed by the end of `day`, clamped to the session's own end.
+    ///
+    /// This is what makes a fast's pill a function of the day rather than of the fast: an 86-hour fast
+    /// draws `KETOSIS` on its second day and `DEEP KETOSIS` on its fourth, because a zone is a claim
+    /// about how long the body has been fasting and on a day the fast merely passes through only part of
+    /// it has happened yet.
+    ///
+    /// **It snaps `day` itself**, which `Date.startOfNextDay` does and this depends on — see that
+    /// property for why a caller's `today at 14:23` must not become the day's end. The `max(0, …)` floor
+    /// is the other half: on a day entirely before the session started the subtraction is negative, and a
+    /// negative elapsed would run `FastingZone.zone(forDurationSeconds:)` backwards past `ANABOLIC` into
+    /// no zone at all. The `min` is the clamp — on a day after the session ended, the day's own end is
+    /// later than `endedAt`, and without it a long-finished fast would keep climbing zones forever.
+    ///
+    /// Lives on the entity and not inside `ActivityFigure` for this repo's standing reason: the runner
+    /// has no renderer, so a rule written into a `body` is a rule nothing can assert — and this
+    /// arithmetic *is* the feature. `Calendar.current` is required rather than merely acceptable,
+    /// because the day keys it must agree with are the ones `LocalDatabaseManager.saveWorkout` snapped
+    /// with the same calendar; a caller passing another zone's calendar would not shift a day key, it
+    /// would split it.
+    public func elapsedSeconds(byEndOf day: Date) -> TimeInterval {
+        max(0, min(endedAt, day.startOfNextDay).timeIntervalSince(startedAt))
+    }
+
+    /// Whether this session was underway at any point during `day`, by the half-open rule.
+    ///
+    /// `getWorkouts(covering:)`'s SQL predicate is this rule's index-friendly twin — it tests the same
+    /// thing against the snapped `date` column instead of `startedAt`, which are the same answer because
+    /// `saveWorkout` snaps. It exists as a value for the reason `FastingZone.zone(forDurationSeconds:)`
+    /// does: the boundary belongs somewhere a test can pin it, and this end of it is a comparison rather
+    /// than a query string.
+    ///
+    /// **Half-open is the whole of it.** `startedAt` at exactly the day's own end belongs to the *next*
+    /// day and not this one, and `endedAt` at exactly midnight belongs to the day it ended on and not
+    /// the one it ended at — a 23:00 → 00:00 session covers one day, not two. An inclusive test at
+    /// either end would draw a session on a day it was not running, which is the same over-claim as a
+    /// fabricated reading.
+    public func covers(_ day: Date) -> Bool {
+        startedAt < day.startOfNextDay && endedAt > day.startOfDay
+    }
 
     /// Time in zones 1–3 and 4–5, in seconds, or `nil` when the workout carries no zone block.
     ///

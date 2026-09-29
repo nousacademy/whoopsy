@@ -3,8 +3,8 @@ import SwiftUI
 
 @MainActor @Observable public final class SettingsViewModel {
     public var preferences = AppPreferences(); public var healthKitAvailable = false; public var status = ""; public var export: LocalExportResult?; public var isImporting = false
-    private let repository: any AppPreferencesRepository; private let healthKit: any HealthKitSyncing; private let whoopExport: any WhoopExportImporting; private let exportUseCase: ExportLocalDataUseCase
-    public init(repository: any AppPreferencesRepository, healthKit: any HealthKitSyncing, whoopExport: any WhoopExportImporting, exportUseCase: ExportLocalDataUseCase) { self.repository = repository; self.healthKit = healthKit; self.whoopExport = whoopExport; self.exportUseCase = exportUseCase }
+    private let repository: any AppPreferencesRepository; private let healthKit: any HealthKitSyncing; private let whoopExport: any WhoopExportImporting; private let fasting: any FastingImporting; private let exportUseCase: ExportLocalDataUseCase
+    public init(repository: any AppPreferencesRepository, healthKit: any HealthKitSyncing, whoopExport: any WhoopExportImporting, fasting: any FastingImporting, exportUseCase: ExportLocalDataUseCase) { self.repository = repository; self.healthKit = healthKit; self.whoopExport = whoopExport; self.fasting = fasting; self.exportUseCase = exportUseCase }
     public var healthKitUnavailableReason: String { healthKit.unavailableReason ?? "HealthKit is unavailable in this build." }
 
     public func load() async {
@@ -50,6 +50,31 @@ import SwiftUI
             status = try await whoopExport.importBundledExport().message
             preferences.hasImportedWhoopExport = true
             await save()
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    /// Imports the Zero fasting history bundled with the app, on the user's explicit request.
+    ///
+    /// **Its own button rather than a step inside `importWhoopExport()`**, which is the user's
+    /// decision: the two are separate files from separate services and one can be re-run without the
+    /// other. It is also the only import here that writes a session with **no measurement behind it** —
+    /// a fast has no strain and no heart rate — so folding it into a button labelled "WHOOP history"
+    /// would put rows in `workouts` that WHOOP never recorded under a control promising otherwise.
+    ///
+    /// **No `AppPreferences` key.** `hasImportedWhoopExport` exists only to switch one button's label
+    /// between "Import" and "Re-import"; a second key to move one word is more surface than it is
+    /// worth, and nothing else consults it.
+    ///
+    /// Idempotent, so a re-import is safe and rewrites the same rows. Unlike the export it is **not
+    /// durable against a delete**: a fast deleted on the activity detail page comes back on the next
+    /// press, which the caption beside the button says.
+    public func importFastingHistory() async {
+        isImporting = true
+        defer { isImporting = false }
+        do {
+            status = try await fasting.importBundledFasts().message
         } catch {
             status = error.localizedDescription
         }

@@ -261,6 +261,137 @@ public enum Theme {
     /// why a fourth case could not be added to that enum instead.
     public static let neutralDelta = Color(white: 0.62)
 
+    /// The `ActivityDeltaBadge` capsule's fill.
+    ///
+    /// **A token of its own for the same reason `neutralDelta` is one.** The badge is drawn on the
+    /// activity page's bare background rather than inside a card, so it needs a surface of its own to
+    /// read as a badge rather than as a word with a triangle beside it — and every existing candidate
+    /// means something else: `cardBackground` is the card surface itself (drawing it on the page
+    /// background would draw a card), `ringTrack` is an unfilled gauge arc and the charts' gridline,
+    /// and `cardBorder` is a hairline. A white wash reads as a chip on any dark surface it is placed
+    /// on without naming a meaning it does not have.
+    public static let deltaPillFill = Color.white.opacity(0.14)
+
+    /// The tint of a menu row that is neither destructive nor a refusal — the activity page's `Edit`
+    /// and `Cancel` rows.
+    ///
+    /// **A token of its own rather than a borrowed blue.** The two blues already in this file are
+    /// `strainRing` and `livePulseCyan`, and both mean a quantity: `strainRing` is the strain figure's
+    /// colour, drawn on this very page, and a second appearance of it three inches below would make
+    /// one colour say two things — the drift `neutralDelta`'s and `deltaPillFill`'s comments describe.
+    /// This one names a *role* rather than a measurement, and the destructive row beside it keeps
+    /// `recoveryRed`, the app's only *verdict* red — `fastingZoneAnabolic` below is the one other red
+    /// in this file and carries no judgement, which is why it is a second token rather than a reuse.
+    public static let actionTint = Color(red: 0.04, green: 0.52, blue: 1.00)
+
+    // MARK: Fasting zones
+
+    /// The five fills of the Zero fasting scale, and the two inks their letters take.
+    ///
+    /// **New tokens rather than borrowed ones**, on the rule `bandPoor`/`bandSufficient`/`bandOptimal`
+    /// above states: `recoveryRed`/`recoveryYellow`/`recoveryGreen` are the recovery *tier* scale and
+    /// each means a verdict — better, unchanged, worse — while a fasting zone is a category with no
+    /// judgement in it at all. Painting `CATABOLIC` in `recoveryYellow` would put a caution colour on
+    /// a metabolic phase that is not a caution, and `bandPoor`'s orange is a sleep band. Red is the
+    /// one place the two scales meet, so the two reds are different hues (#FF1744 crimson against
+    /// #FF3B30) and the pill is never drawn beside a recovery ring.
+    ///
+    /// **The ink is two tokens and not five**, because the rule is one rule: a fill dark enough to
+    /// carry white letters takes `zonePillInkOnDeep`, and the two pale fills take `zonePillInkOnPale`.
+    /// `FastingZone.inkDepth` is what decides which, and §20 pins that decision — the colour mapping
+    /// cannot state it in a form an assertion can reach, because asserting `inkColor == Theme.token`
+    /// would only prove the extension returns the token it returns.
+    ///
+    /// The five fills are the user's own specification (red, orange, yellow, white, blue/violet) and
+    /// are **not** legibility-driven, so their contrast against the ink is a property to record rather
+    /// than to tune. Computed with the WCAG 2.x relative-luminance formula against the ink each zone
+    /// actually takes: red **3.5:1**, orange **2.2:1**, yellow **12.2:1**, white **18.4:1**,
+    /// blue/violet **5.1:1**. Blue/violet is the only one that clears the 4.5:1 bar for small text on
+    /// white ink; orange is the one that does not, and it is deliberately left as specified —
+    /// deepening it to #E8730C would reach 3.1:1 and putting near-black on it would reach 8.6:1.
+    public static let fastingZoneAnabolic = Color(red: 1.00, green: 0.23, blue: 0.19)
+    public static let fastingZoneCatabolic = Color(red: 1.00, green: 0.58, blue: 0.00)
+    public static let fastingZoneFatBurning = Color(red: 1.00, green: 0.80, blue: 0.00)
+    public static let fastingZoneKetosis = Color.white
+    public static let fastingZoneDeepKetosis = Color(red: 0.37, green: 0.36, blue: 0.90)
+
+    /// The letters on a fill dark enough to carry them — red, orange and blue/violet.
+    public static let zonePillInkOnDeep = Color.white
+
+    /// The letters on the two pale fills — yellow and white, where white ink would be invisible.
+    ///
+    /// The app's own near-black rather than pure black, so it reads as ink on a card rather than as a
+    /// hole punched in the pill. `sleepNeedWell` happens to hold the same value and is **not** the
+    /// token to reach for: its name says a sleep figure's colour, and a borrowed token whose name
+    /// means one thing while a screen uses it to mean another is the drift this file exists to stop.
+    public static let zonePillInkOnPale = Color(red: 0.07, green: 0.08, blue: 0.10)
+
+    // The fasting detail page's three chart segments.
+    //
+    // **Three shades of one hue, which is the user's own instruction** — *"make the bars 3 shades of
+    // blue"*. It is the third palette this drawing has had, and the two it replaces were both rejected
+    // for the same underlying reason. The first was the reference screen's own swatches, a mint and a
+    // tan and a near-white, borrowed from another app's screen and related to nothing here. The second
+    // was this app's three verdict accents, `recoveryGreen`/`Yellow`/`Red` by reference, which put the
+    // recovery ring's scale on a chart whose subject is not a verdict: a z-score is a distance from the
+    // user's own mean, and an HRV that fell is not a red night.
+    //
+    // A ramp of one hue claims exactly one thing — *these are three quantities on one scale* — which is
+    // what a stacked column is. **The ramp runs light at the top of the stack to deep at its foot**,
+    // which is the order the legend lists them in (HRV, then RHR, then respiratory rate) and the order
+    // the segments stack, so a reader who has the legend has the key to the column as well. All three
+    // are pale enough to read against `homeBackground`; the deepest is a solid mid blue rather than a
+    // navy, because a segment is a filled area on a near-black ground and a shade that only separates
+    // from its two neighbours is a shade that vanishes into the page.
+    //
+    // They are tokens rather than a direct use of `Color(red:…)` at the chart so that
+    // `FastingMetric+Extensions.swift` stays the app's **one** metric-to-`Color` mapping. Nothing in
+    // that file picks a hue; if the ramp is ever re-measured, this is the one place it moves.
+    public static let fastingChartHRV = Color(red: 0.64, green: 0.87, blue: 1.00) // #A3DEFF
+    public static let fastingChartRestingHeartRate = Color(red: 0.29, green: 0.67, blue: 0.98) // #4AABFA
+    public static let fastingChartRespiratoryRate = Color(red: 0.11, green: 0.42, blue: 0.80) // #1C6BCC
+
+    // MARK: The route map
+
+    /// The line a recorded route is drawn with, and the fill of the dot marking where it began.
+    ///
+    /// **New tokens rather than borrowed ones, and every existing candidate names something else.**
+    /// `strainRing` is the strain figure's own blue and is drawn a few inches above this map on the same
+    /// page, so reusing it would make one colour say two things — the drift `neutralDelta` and
+    /// `actionTint` above are tokens to prevent. `sleepPerformance`, `weekLine` and `sleepConsistencyBar`
+    /// are all sleep quantities on other screens, and `livePulseCyan` means a live telemetry pulse,
+    /// which a stored path is not. The map's own blue is a *drawing* colour rather than a measurement,
+    /// which is the same distinction `actionTint` records for the menu rows.
+    ///
+    /// **It holds the same value as `actionTint`, and that is a coincidence rather than a reuse.** The
+    /// two are equal because both are the system's own route/link blue (#0A84FF) — the colour Apple Maps
+    /// draws a route in, which is what the reference the user supplied shows — and this file already
+    /// carries two tokens with one value (`neutralDelta` and `bandSufficient`) on the rule that a
+    /// token's *name* is what has to match its meaning, not its hex. Changing the menu rows' tint must
+    /// not move a route on a map.
+    public static let routeLine = Color(red: 0.04, green: 0.52, blue: 1.00) // #0A84FF
+
+    /// The ink every mark *on* the map is drawn in — the ring around the start dot, and the finish flag.
+    ///
+    /// **A token of its own although it is white**, which `textPrimary` and `zonePillInkOnDeep` also
+    /// are, for the reason `zonePillInkOnPale` records about `sleepNeedWell`: a name that says *text* or
+    /// *ink on a pill* while a map draws a marker with it is the drift this file exists to stop, and the
+    /// next person to change `textPrimary` would move a pin on a map. It is one token for both marks
+    /// because they answer one question — what separates a mark from the map beneath it — and the
+    /// checkered flag is drawn in whatever colour it is handed, so the two cannot diverge in practice.
+    public static let routeMarker = Color.white
+
+    /// The surface behind the two figures the route card lays over the bottom of its map.
+    ///
+    /// **`backgroundDark`'s hue carried at an opacity, and the opacity is the whole of why it is a token
+    /// and not a call-site modifier.** The caption sits *on* the drawing rather than beside it, so it
+    /// has to be opaque enough for a number to read over map labels and sheer enough that the map is
+    /// still visibly behind it — and an alpha written at the call site would be a colour decision made
+    /// in a `body`, which is what this file exists to hold. It is deliberately not `cardBackground`,
+    /// which would draw a second card inside the map, nor `deltaPillFill`, whose wash leaves map
+    /// lettering legible through a figure.
+    public static let routeOverlayFill = Color(red: 0.05, green: 0.06, blue: 0.08).opacity(0.86)
+
     // Telemetry Pulse
     public static let livePulseCyan = Color(red: 0.0, green: 0.95, blue: 1.0)
     public static let textPrimary = Color.white

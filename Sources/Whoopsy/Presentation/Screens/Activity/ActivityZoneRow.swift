@@ -148,6 +148,31 @@ public struct ActivityZoneRow: Equatable, Sendable {
         return seconds.formattedClockDuration()
     }
 
+    /// A clock duration split into its two halves for drawing — `0:00:12` becomes `("0:00", ":12")`.
+    ///
+    /// **This is a drawing rule and it lives here for `DayBarRules`' reason**: the runner has no
+    /// renderer, so a split written into a `body` is a split nothing can assert. The reference draws
+    /// the hours-and-minutes half dim and the seconds half bright, which is a reading a person takes in
+    /// at a glance — the seconds are the digit that moves while the minutes hold still, so the figure
+    /// that changes is the one at full strength.
+    ///
+    /// **The split is at the last colon, and that is what keeps the two halves one duration.** The
+    /// trailing half keeps its colon, so `0:15` + `:58` still reads as `0:15:58` if the two colours are
+    /// ignored, and the two pieces are never a pair of unrelated numbers. Splitting at the *first*
+    /// colon would put the minutes on the trailing side and leave `0` alone on the leading one.
+    ///
+    /// **A string with no colon comes back whole with an empty tail**, which is the dash an absent
+    /// block draws (`—`): the dash is not a duration and has no halves, so it is drawn undivided rather
+    /// than padded into a shape it does not have. That case is unreachable for a *measured* row —
+    /// `formattedClockDuration` always emits at least one colon — and is handled rather than trapped
+    /// because a total function needs no argument about which strings reach it.
+    public nonisolated static func durationParts(
+        _ text: String
+    ) -> (leading: String, trailing: String) {
+        guard let colon = text.lastIndex(of: ":") else { return (text, "") }
+        return (String(text[text.startIndex..<colon]), String(text[colon...]))
+    }
+
     /// The row in one sentence, for VoiceOver.
     ///
     /// `nonisolated static` rather than text composed inside the `body`, on the rule this page's other

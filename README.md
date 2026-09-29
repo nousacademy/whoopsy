@@ -8,9 +8,15 @@ uploaded to someone else's servers and handed back to you one screen at a time, 
 keep paying. Whoopsy talks to the same strap directly over Bluetooth, decodes the packets on-device,
 stores everything in a local SQLite file, and works out Recovery, Strain and Sleep itself.
 
-**There is no network code in this repository.** Not "we don't send much" — there is no `URLSession`,
-no HTTP client, no third-party SDK. `Package.swift` declares exactly one dependency, GRDB.swift, and
-it is a SQLite library.
+**There is no network code of this app's own, and no backend behind it.** Not "we don't send much" —
+no `URLSession`, no HTTP client, no server. `Package.swift` declares exactly one dependency,
+GRDB.swift, and it is a SQLite library.
+
+**One exception, and it is opt-in and off until you configure it.** The route card's offline map hands
+its tile requests to Mapbox's SDK — a third-party binary the *Xcode target* links, because it is
+iOS-only and this package also builds for macOS, so `Package.swift` could not carry it. It is off at
+every layer until two tokens exist, and a build without them behaves exactly as it did before the
+feature: no switch, no SDK, no request. See [§ Optional: the offline map](#optional-the-offline-map).
 
 ---
 
@@ -57,7 +63,7 @@ strap.** Being specific about that is more useful than a feature list:
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-a 1337-assertion test runner that pins the behaviour of all of them.
+a 1706-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -126,13 +132,16 @@ Requires Xcode 16+ and Swift 6.
 `Sources/Whoopsy/Data/Resources/*.csv` is **gitignored.** What lived there was one real person's
 physiological record — recovery score, HRV, resting heart rate, skin temperature, blood oxygen, sleep
 staging, and free-text journal notes — and it is not published. **A fresh clone will not compile
-until you put two files back.**
+until you put two files back.** `Sources/Whoopsy/Data/Resources/ZeroFasting/` is gitignored for the
+same reason and holds a third, which is a fasting tracker's history rather than a WHOOP export.
 
 | File | Needed? |
 | :--- | :--- |
 | `physiological_cycles.csv` | **Required to build.** `Package.swift` bundles it and `WhoopExportImporter` reads it through `Bundle.module`. Without it: `Invalid Resource … File not found` |
 | `sleeps.csv` | **Required to build**, for the same reason — it is the second `.process(…)` entry. Read only for the **eight nap rows** it carries and nothing else |
-| `journal_entries.csv`, `workouts.csv` | Not needed. Nothing bundles them and nothing reads them |
+| `ZeroFasting/fasts.json` | **Required to build.** The third `.process(…)` entry, read by `ZeroFastingParser` through `Bundle.module` for the 170 fasts it carries. A placeholder of `{"fast_data": []}` is enough to compile and imports nothing |
+| `workouts.csv` | Not required to build. `Package.swift` does bundle it, and §17/§19 of the suite read it for its `HR Zone 1 %`…`5 %` block and its `Activity name` column, so the two zone rows and the activity-name path can only be exercised against a real one |
+| `journal_entries.csv` | Not needed. Nothing bundles it and nothing reads it |
 
 Both required files are validated as they are read, so a wrong-shaped one fails loudly instead of
 importing a table of nils. The cycle file must carry `Cycle start time`, `Cycle timezone` and
@@ -155,7 +164,103 @@ CSV
 cat > Sources/Whoopsy/Data/Resources/sleeps.csv <<'CSV'
 Cycle start time,Cycle timezone,Wake onset,Nap
 CSV
+
+mkdir -p Sources/Whoopsy/Data/Resources/ZeroFasting
+echo '{"fast_data": []}' > Sources/Whoopsy/Data/Resources/ZeroFasting/fasts.json
 ```
+
+**If you use the [Zero](https://zerolongevity.com) fasting tracker**, its own export is a
+`biodata.json` of 19 top-level keys, of which this app reads exactly one. Project it down rather
+than bundling the whole thing — the trimmed file is 46,584 bytes and every byte of it is read, where
+the source is 599 KB and 92% of it is data nothing here consumes (`rhr_data` alone is 749 rows of a
+reserved-zero resting rate):
+
+```bash
+python3 -c "import json;d=json.load(open('Sources/Whoopsy/Data/Resources/ZeroFasting/biodata.json'));open('Sources/Whoopsy/Data/Resources/ZeroFasting/fasts.json','w').write(json.dumps({'fast_data':d['fast_data']},indent=4))"
+```
+
+The projection is faithful rather than a re-encoding: every value in `fast_data` is a string, a bool
+or an int, and the key keeps its own name, so the file the app reads is a subset of the producer's
+bytes. Drop it in and **Settings › Local backup › Import Zero fasting history** turns the 170 fasts
+into activities on Home.
+
+### Optional: the offline map
+
+`USE OFFLINE MAP` — the second switch on the live session screen — downloads a Mapbox tile region
+around where a session started, so the route card at the foot of the activity detail page draws
+without a connection. It exists for hiking: the decision is the user's, made **before** signal is
+lost, because there is nothing to check connectivity with once there is none. With it off the session
+records exactly as before and the card draws `MapKit`'s live tiles.
+
+**It is off at every layer until you supply two credentials, and neither is in this repository.**
+
+| Token | Scope | Where it goes | Why |
+| :--- | :--- | :--- | :--- |
+| **Public** `pk.…` | none | `App/Config/Mapbox.local.xcconfig` — **gitignored** | Expands into `MBXAccessToken` in `Info.plist` at build time. Kept out of the repository; a clone copies the example and pastes its own |
+| **Secret** `sk.…` | `Downloads:Read` | `~/.netrc` | Needed for SwiftPM to *resolve* the binary package at all — a build credential, not a runtime one |
+
+Neither is in this repository, and the public one is deliberately untracked even though Mapbox's model
+treats it as embeddable. The *key* it feeds — `MBXAccessToken` — stays in `App/iOS/Info.plist`, because
+that is Mapbox's own documented mechanism and the one read path `MapboxSetup` has; only its value
+changes.
+
+Create the secret token in your Mapbox account, then:
+
+```bash
+cat >> ~/.netrc <<'NETRC'
+machine api.mapbox.com
+  login mapbox
+  password sk.YOUR_SECRET_DOWNLOADS_READ_TOKEN
+NETRC
+chmod 0600 ~/.netrc
+```
+
+**Without it the iOS build fails at package resolution and the error reads like a network problem
+rather than an authorisation one** — that is the first thing to check if `make ios` cannot resolve
+`mapbox-maps-ios-binary`.
+
+Then the public one:
+
+```bash
+cp App/Config/Mapbox.local.xcconfig.example App/Config/Mapbox.local.xcconfig
+# edit it and set: MBX_ACCESS_TOKEN = pk.YOUR_PUBLIC_TOKEN
+```
+
+`App/Config/Mapbox.local.xcconfig` is where the token goes and it is gitignored, so it is never
+committed; `.example` is tracked purely so a clone knows what to create. With both credentials in
+place the switch appears; with either missing the app is exactly what it was before the feature, with
+no crash and no half-configured SDK.
+
+**The token is in the second of two xcconfig files, and which one is committed is the whole trick.**
+`App/Config/Mapbox.xcconfig` is **tracked** and carries no token — it sets `MBX_ACCESS_TOKEN` empty and
+then ends with `#include? "Mapbox.local.xcconfig"`, the *optional* include, which pulls in your file
+when it exists and is silently skipped when it does not. Because an xcconfig assignment is
+last-one-wins, the include coming last is what lets your token override the empty default.
+
+That split exists because of how Xcode treats a base configuration it cannot open. `Mapbox.xcconfig`
+is the app target's `baseConfigurationReference` on both Debug and Release, and a missing one is a
+hard build failure, not a warning:
+
+```
+Whoopsy.xcodeproj: error: Unable to open base configuration reference file '…/App/Config/Mapbox.xcconfig'
+```
+
+If the file holding the token were the base configuration, every fresh clone would be unbuildable.
+`#include?` makes a clone without credentials merely *unconfigured*: the built `Info.plist` gets an
+empty `MBXAccessToken`, `MapboxSetup.configure()` returns `false`, the `USE OFFLINE MAP` switch is
+never offered and the route card draws `MapKit`'s live tiles — the app exactly as it was before this
+feature. **Do not merge the two files, and do not delete the committed one.**
+
+`MapboxSetup.configure()` accepts only a value beginning `pk.`, and that guard catches what the empty
+default cannot: a secret `sk.…` token pasted into the wrong file, or a placeholder someone typed
+instead of their own token. Either way the SDK is skipped rather than half-configured, so no secret
+can be shipped inside a built app by accident.
+
+Note that `App/Map/` — the three files behind this feature — is compiled **only** by the Xcode target.
+It cannot be a dependency of `Package.swift`, which also declares `.macOS(.v14)` for the host binary
+and the test runner, so `swift build` and `make test` never see it. That is why the card's design keeps
+the drawing in `Presentation` and hands the unverifiable module a single `AnyView` to draw inside a
+frame the card has already fixed; the reasoning is in [`CLAUDE.md`](CLAUDE.md)'s gotchas.
 
 ### Then build
 
@@ -174,11 +279,11 @@ works around. Add `CODE_SIGNING_ALLOWED=NO` to check compilation without a signi
 
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 19 sections, 1337 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 20 sections, 1706 assertions, and no
 test discovery:
 
 ```bash
-make test                 # build + run all 19 sections
+make test                 # build + run all 20 sections
 make test SECTIONS=13,15  # just those two
 ```
 
@@ -187,7 +292,7 @@ deleted sources and the link fails) and hands the runner an absolute `#filePath`
 longer cares which directory you run it from. It ends with one machine-readable line:
 
 ```
-SUITE sections=1,2,...,19 assertions=1337 failed=0 exit=0
+SUITE sections=1,2,...,20 assertions=1706 failed=0 exit=0
 ```
 
 Read that line rather than the scrollback — the suite has no test discovery, so a section that
@@ -232,7 +337,19 @@ before it is built.
 ## Privacy
 
 The app stores your health data in a SQLite file inside its own sandbox. It has no account, no
-server, and no network code. It does not phone home, and there is nothing to opt out of.
+server, and no code of its own that makes a network request. It does not phone home, and there is
+nothing to opt out of.
+
+**One caveat, and it is opt-in.** The offline map above hands its tile requests to Mapbox's SDK, which
+is a third party — so a session that used `USE OFFLINE MAP` downloads map tiles from Mapbox, and the
+route's start coordinate goes with the request. That is the whole of the trade: it buys a route map
+that works in a dead zone, and it is off until the user turns the switch on and off entirely until the
+build is given a token. **Mapbox Maps v11 also sends telemetry**, and the only network kill switch in
+the SDK (`OfflineSwitch.isMapboxStackConnected`) has to stay on for downloads to work at all — so
+whether that telemetry can be disabled through a supported path is an open question recorded in
+[`CLAUDE.md`](CLAUDE.md) rather than a settled one. Nothing here reads your health data; the request
+carries a map position and nothing else. Everything else in the app — BLE, HealthKit, the export
+import, the fasting import — is local.
 
 HealthKit access is read-only, and iOS never tells an app whether read permission was granted — so
 Whoopsy treats a denial, an empty day and an unavailable store as the same thing and shows a dash

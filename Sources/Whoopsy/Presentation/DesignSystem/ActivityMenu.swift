@@ -98,8 +98,41 @@ public enum ActivityMenu {
     /// load-bearing and is not visible on today: the two agree there and disagree on **every past day**,
     /// which is the case this rule exists for — `DayBarRules.canStepForward` documents the same fork in
     /// the same direction. §14 drives it.
-    public static func entries(on day: Date, now: Date = Date()) -> [Entry] {
+    /// **`recording` is appended last, after `now:`, and that is a compatibility decision rather than
+    /// an ordering one.** Six call sites pass this function two arguments — five in the runner and one
+    /// in `HomeDashboardView` — and a defaulted parameter inserted before `now:` would break all six at
+    /// compile time. The suite reports nothing rather than reporting a failure when it does not build,
+    /// so the parameter goes where it costs nothing.
+    public static func entries(
+        on day: Date, now: Date = Date(), recording: Recording = .none
+    ) -> [Entry] {
+        // A live **activity** withholds the row, because there cannot be two of them: `start()` is
+        // idempotent, so a second tap would push a session screen onto a session that is already
+        // running and record nothing. A live **fast** does not, which is the user's own rule — a fast
+        // runs underneath an activity and 18 hours in is exactly when a run is worth recording.
+        if recording == .activity { return entries.filter { $0.action != .startSession } }
         guard !DayBarRules.isToday(day, now: now) else { return entries }
         return entries.filter { $0.action != .startSession }
+    }
+
+    /// What is live right now, as the menu sees it.
+    ///
+    /// **A UI-facing input rather than a policy store.** `LiveSessionUseCase` is still the only thing
+    /// that knows what is running, and this is the answer it hands to one caller; `start()`'s own
+    /// idempotence is what makes a *wrong* answer inert rather than a second recording. It is a plain
+    /// enum so the rule above stays a value the runner can drive with no use case, no database and no
+    /// session — which is the only form this claim can take in a build with no renderer.
+    ///
+    /// It is deliberately **not** a `Bool` named `isRecording`: a fast and an activity answer the
+    /// availability question differently, and one flag could not hold both answers.
+    public enum Recording: Sendable {
+        /// Nothing is live.
+        case none
+
+        /// A regular activity is recording. This is the state that withholds `START ACTIVITY`.
+        case activity
+
+        /// A fast is running and no activity is. The menu is unchanged.
+        case fast
     }
 }

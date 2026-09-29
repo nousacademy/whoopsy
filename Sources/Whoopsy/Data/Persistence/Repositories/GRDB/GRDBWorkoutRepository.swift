@@ -29,7 +29,8 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
             source: workout.source,
             activityName: workout.activityName,
             hrZonePercents: workout.hrZonePercents,
-            steps: workout.steps
+            steps: workout.steps,
+            offlineRegionID: workout.offlineRegionID
         )
         let route = workout.route.map {
             WorkoutRoutePointRecord(
@@ -57,6 +58,11 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
         return try await Self.makeSessions(from: records, db: db)
     }
 
+    public func getWorkouts(covering date: Date) async throws -> [WorkoutSession] {
+        let records = try await db.getWorkouts(covering: date)
+        return try await Self.makeSessions(from: records, db: db)
+    }
+
     public func getWorkoutHistory(days: Int, endingOn: Date) async throws -> [WorkoutSession] {
         let records = try await db.getWorkoutHistory(days: days, endingOn: endingOn)
         return try await Self.makeSessions(from: records, db: db)
@@ -65,6 +71,14 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
     public func latest() async throws -> WorkoutSession? {
         guard let record = try await db.getLatestWorkout() else { return nil }
         return try await Self.makeSessions(from: [record], db: db).first
+    }
+
+    /// The store's affected-row count is what makes this answer honest — see `delete(_:)`'s doc on
+    /// `WorkoutRepository`. The children are removed by `LocalDatabaseManager.deleteWorkout` and are
+    /// deliberately **not** counted here: the question is whether the *session* went, and a route point
+    /// that was somehow already orphaned must not make a failed session delete report success.
+    public func delete(_ id: UUID) async throws -> Bool {
+        try await db.deleteWorkout(id: id.uuidString) > 0
     }
 
     /// Route and splits are read per workout. A row whose `id` is not a UUID is skipped rather than
@@ -111,7 +125,8 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
                     source: record.source,
                     activityName: record.activityName,
                     hrZonePercents: record.hrZonePercents,
-                    steps: record.steps
+                    steps: record.steps,
+                    offlineRegionID: record.offlineRegionID
                 )
             )
         }

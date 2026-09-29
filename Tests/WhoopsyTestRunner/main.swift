@@ -1,5 +1,9 @@
 import CoreBluetooth
 import Foundation
+// For `AnyView` and nothing else, and only because `SpyOfflineMaps` has to name the return type
+// `OfflineMapRendering.map(route:unit:regionID:)` declares. The runner still renders nothing: no
+// `body` in this file is ever evaluated, and `ActivityRouteMapView` is constructed but never drawn.
+import SwiftUI
 import Whoopsy
 
 // MARK: - Section selection
@@ -131,7 +135,7 @@ let hello50 = Data([
 let decoder = WhoopPacketDecoder()
 
 if sectionEnabled(1) {
-    print("\n[1/19] Testing CRC Algorithms & Framing...")
+    print("\n[1/20] Testing CRC Algorithms & Framing...")
 
     // The 4.0 header CRC8 is over the two length bytes only, poly 0x07. Both values are the references'
     // own, quoted in §2.1.
@@ -707,7 +711,7 @@ if sectionEnabled(1) {
 
 // MARK: - 2. Packet Decoder Tests
 if sectionEnabled(2) {
-    print("\n[2/19] Testing WHOOP Packet Decoder...")
+    print("\n[2/20] Testing WHOOP Packet Decoder...")
 
     // Test Standard SIG Heart Rate Frame
     let sigData = Data([0x10, 72, 0x50, 0x03]) // 72 BPM, 848 in 1/1024s (~828ms)
@@ -858,7 +862,7 @@ if sectionEnabled(2) {
 
 // MARK: - 3. Mathematical & HRV Algorithms
 if sectionEnabled(3) {
-    print("\n[3/19] Testing HRV (RMSSD, SDNN, pNN50) & Artifact Rejection...")
+    print("\n[3/20] Testing HRV (RMSSD, SDNN, pNN50) & Artifact Rejection...")
     let rawRR: [Double] = [800.0, 805.0, 810.0, 795.0, 1500.0, 802.0, 808.0]
     let cleaned = HeartRateVariabilityMath.filterRRIntervals(rawRR)
     assertTest(!cleaned.contains(1500.0), "Ectopic beat (1500ms) successfully rejected by filter")
@@ -875,7 +879,7 @@ if sectionEnabled(3) {
 
 // MARK: - 4. Strain & Zone Accumulator
 if sectionEnabled(4) {
-    print("\n[4/19] Testing Strain Integrator & Karvonen Zones...")
+    print("\n[4/20] Testing Strain Integrator & Karvonen Zones...")
     let zones = StrainAccumulatorMath.computeZones(maxHR: 190, restHR: 50)
     assertTest(zones.count == 5, "Computed 5 distinct Heart Rate Zones")
     assertTest(zones[0].lowerBpm == 120, "Zone 1 threshold calculated via HRR: \(zones[0].lowerBpm)")
@@ -893,7 +897,7 @@ if sectionEnabled(4) {
 
 // MARK: - 5. Recovery Baseline Model
 if sectionEnabled(5) {
-    print("\n[5/19] Testing Recovery z-Score Baseline Model...")
+    print("\n[5/20] Testing Recovery z-Score Baseline Model...")
     let greenRecovery = BaselineStatisticsMath.computeRecoveryScore(
         todayHrv: 85.0,
         baselineHrvMean: 65.0,
@@ -941,7 +945,7 @@ Task {
 func runMainSections() async throws {
     // MARK: - 6. End-to-End Clean Architecture & Local Data Sovereignty
     if sectionEnabled(6) {
-        print("\n[6/19] Testing DI Container, Use Cases & Data Sovereignty Export...")
+        print("\n[6/20] Testing DI Container, Use Cases & Data Sovereignty Export...")
         let container = DIContainer(useMockBLE: true)
 
         // Calculate Recovery UseCase. As with Sleep below, this runs against the shared dev database and
@@ -986,80 +990,86 @@ func runMainSections() async throws {
 
     // MARK: - 7. Persistence Schema, Round-Trip & Day-Key Integrity
     if sectionEnabled(7) {
-        print("\n[7/19] Testing migrations, biometric round-trip and day-keyed writes...")
+        print("\n[7/20] Testing migrations, biometric round-trip and day-keyed writes...")
         await runPersistenceTests()
     }
 
     // MARK: - 8. HRV Metric Isolation & Baseline Guards
     if sectionEnabled(8) {
-        print("\n[8/19] Testing HRV metric isolation, baseline guards and formatters...")
+        print("\n[8/20] Testing HRV metric isolation, baseline guards and formatters...")
         runScoringAndFormatterTests()
     }
 
     // MARK: - 9. HealthKit Import (hermetic: fixture store + in-memory database)
     if sectionEnabled(9) {
-        print("\n[9/19] Testing HealthKit import attribution, skipping and idempotency...")
+        print("\n[9/20] Testing HealthKit import attribution, skipping and idempotency...")
         await runHealthKitImportTests()
     }
 
     // MARK: - 10. Days with no data
     if sectionEnabled(10) {
-        print("\n[10/19] Testing no-data days store zeros, and zeros never enter a baseline...")
+        print("\n[10/20] Testing no-data days store zeros, and zeros never enter a baseline...")
         await runNoDataDayTests()
     }
 
     // MARK: - 11. WHOOP export import (real CSV, in-memory database)
     if sectionEnabled(11) {
-        print("\n[11/19] Testing the WHOOP export import against the real file...")
+        print("\n[11/20] Testing the WHOOP export import against the real file...")
         await runWhoopExportImportTests()
     }
 
     // MARK: - 12. Choosing a day
     if sectionEnabled(12) {
-        print("\n[12/19] Testing that a chosen day is read, and an imported day is never overwritten...")
+        print("\n[12/20] Testing that a chosen day is read, and an imported day is never overwritten...")
         await runDaySelectionTests()
     }
 
     // MARK: - 13. Sleep Need
     if sectionEnabled(13) {
-        print("\n[13/19] Testing that a night's Sleep Need follows the previous day's Strain...")
+        print("\n[13/20] Testing that a night's Sleep Need follows the previous day's Strain...")
         await runSleepNeedTests()
     }
 
     // MARK: - 14. The Home screen's sources
     if sectionEnabled(14) {
-        print("\n[14/19] Testing the `+` menu's two rows, recorded workouts, HealthKit steps, the Stress Monitor, the recovery ring tiers and the seven-day MetricWeek join...")
+        print("\n[14/20] Testing the `+` menu's two rows, recorded workouts, HealthKit steps, the Stress Monitor, the recovery ring tiers and the seven-day MetricWeek join...")
         await runHomeSourceTests()
     }
 
     // MARK: - 15. The typical range
     if sectionEnabled(15) {
-        print("\n[15/19] Testing the sleep stage typical range, its whole-percent column, its absence rules, the night's heading, the hours-vs-needed card, the sleep-efficiency card and the within-sleep stress model...")
+        print("\n[15/20] Testing the sleep stage typical range, its whole-percent column, its absence rules, the night's heading, the hours-vs-needed card, the sleep-efficiency card and the within-sleep stress model...")
         await runTypicalRangeTests()
     }
 
     // MARK: - 16. Steps from the strap
     if sectionEnabled(16) {
-        print("\n[16/19] Testing the pedometer, both motion layouts, the step accumulator and the strap's step storage...")
+        print("\n[16/20] Testing the pedometer, both motion layouts, the step accumulator and the strap's step storage...")
         await runStepTests()
     }
 
     // MARK: - 17. Heart-rate zone time out of workouts.csv
     if sectionEnabled(17) {
-        print("\n[17/19] Testing the workouts parser, the derived workout id, the hr_zone_percents round trip, the day's zone aggregate and the export's zone properties...")
+        print("\n[17/20] Testing the workouts parser, the derived workout id, the hr_zone_percents round trip, the day's zone aggregate and the export's zone properties...")
         await runWorkoutZoneTests()
     }
 
     // MARK: - 18. The live session
     if sectionEnabled(18) {
-        print("\n[18/19] Testing the `+` menu's one actionable row, the session accumulator, the band labels, the profile form's parsing and the session's write...")
+        print("\n[18/20] Testing the `+` menu's one actionable row, the session accumulator, the band labels, the profile form's parsing and the session's write...")
         await runLiveSessionTests()
     }
 
     // MARK: - 19. The activity detail page
     if sectionEnabled(19) {
-        print("\n[19/19] Testing the activity window and its band, the five zone rows, the export's zone property, `workout.steps` and the two readers of one motion stream...")
+        print("\n[19/20] Testing the activity window and its band, the five zone rows, the export's zone property, `workout.steps` and the two readers of one motion stream...")
         await runActivityDetailTests()
+    }
+
+    // MARK: - 20. The Zero fasting import
+    if sectionEnabled(20) {
+        print("\n[20/20] Testing the Zero fasting parser, the import it writes and the two figures a session with no measurement behind it prints...")
+        await runZeroFastingImportTests()
     }
 
     print("\n==================================================")
@@ -4070,6 +4080,59 @@ func runHomeSourceTests() async {
         "…and no day draws an empty card, which is what separates withholding one row from hiding the "
             + "`+` — every one of the three still holds `ADD ACTIVITY`, a row that is not day-bound")
 
+    // ---- The second reason a recording row is withheld: something is already recording ----
+    //
+    // The rule above is about the *day*; this one is about the *session*, and the two are independent —
+    // a live fast on a past day still withholds `START ACTIVITY` for the day's own reason. The user's
+    // rule is the asymmetry between the two live states: **there cannot be two active activities**, so
+    // a recording activity closes the row, while a fast does not block an activity and leaves it open.
+    //
+    // Driven as a plain value, like everything else on this menu: `ActivityMenu.Recording` is an input
+    // and not a policy store, so the whole question is answerable with no use case, no database and no
+    // session — which is the only form it could take in a build with no renderer.
+    let activityRecordingTitles = ActivityMenu
+        .entries(on: menuNow, now: menuNow, recording: .activity).map(\.title)
+    assertTest(
+        activityRecordingTitles == ["ADD ACTIVITY"],
+        "An activity already recording withholds `START ACTIVITY` on today — a second activity cannot "
+            + "be started, and the row that would start one is dropped rather than greyed "
+            + "(\(activityRecordingTitles))")
+
+    let fastRecordingTitles = ActivityMenu
+        .entries(on: menuNow, now: menuNow, recording: .fast).map(\.title)
+    assertTest(
+        fastRecordingTitles == ["ADD ACTIVITY", "START ACTIVITY"],
+        "…and a **fast** does not, which is the user's own rule: a fast does not block an activity, so "
+            + "18 hours into one the row is still there and a run can be recorded beside it "
+            + "(\(fastRecordingTitles))")
+
+    assertTest(
+        fastRecordingTitles == menuTodayTitles,
+        "…and the fast's answer is byte-identical to the no-recording answer, which is the whole of the "
+            + "claim — `.fast` changes nothing about this menu rather than changing it in a way that "
+            + "happens to agree here (\(fastRecordingTitles) against \(menuTodayTitles))")
+
+    // The two rules are independent, so a live activity on a day that is not today withholds the row
+    // for *both* reasons at once and the answer must be the same single-row list. Asserted because a
+    // rule written as an `else if` chain would read correctly on today and drop one of the two here.
+    let pastDayWhileRecording = menuDays.map { day in
+        ActivityMenu.entries(on: day, now: menuNow, recording: .activity)
+            .contains { $0.action == .startSession }
+    }
+    assertTest(
+        pastDayWhileRecording == [false, false, false],
+        "…and a recording activity withholds the row on every day, not only on today — the day rule and "
+            + "the session rule are two independent clauses and this is the case where both are false "
+            + "(\(pastDayWhileRecording))")
+
+    let fastEveryDayHasRows = menuDays.allSatisfy {
+        !ActivityMenu.entries(on: $0, now: menuNow, recording: .fast).isEmpty
+    }
+    assertTest(
+        fastEveryDayHasRows,
+        "…while a running fast still leaves every day's card non-empty, so the fast state cannot hide "
+            + "the `+` the way a mistake in the day rule would")
+
     // ---- v6: recorded workouts now survive the launch that recorded them ----
 
     let db = LocalDatabaseManager(inMemory: true)
@@ -5354,6 +5417,13 @@ func runHomeSourceTests() async {
             imported.stressWindows == nil,
             "…and its chart is absent rather than empty, on every one of the \(recoveryDays.count) "
                 + "imported days — the export has no R-R series at all")
+        // A covering read cannot move this, and not for the reason the row total suggests:
+        // `importExport(at:)` parses **cycles only** and never reaches `importBundledWorkouts()`, so
+        // this database holds no `workouts` rows at all and the count is `0` under either read. The
+        // three cross-midnight export rows (2026-08-18, 2023-11-30, 2023-08-23) are never written
+        // here in the first place. Leaving the assertion byte-identical is the point: `importedDay` is
+        // *derived* — the newest day carrying a recovery, a night and a strain — so this stays true of
+        // a future export rather than describing one date someone pinned.
         assertTest(
             imported.activities == 0,
             "…and ACTIVITIES holds only the sleep row — the import writes no workouts")
@@ -10816,6 +10886,38 @@ func runWorkoutZoneTests() async {
         names.count == rows.count && names.allSatisfy { !$0.isEmpty },
         "All \(rows.count) rows carry a non-empty `Activity name` — the column is present on this "
             + "file, which is what makes reading it without requiring it free (got \(names.count))")
+    // **The name the file's biking rows carry — the one claim in this block that is not a count or a
+    // sweep.** Renaming those rows back to `Mountain Biking` moves neither the row total nor the glyph
+    // sweep, because that name has a table entry of its own too. It is however the one name the user
+    // has ruled on: they renamed these rows in the export and want the app to hold what the export
+    // says, and that is the whole of the export-side reason `Road Biking` is in
+    // `WhoopActivityCatalog`. `WhoopExportImporter.makeWorkout` passes this column straight through
+    // with no vocabulary check, so the string below is exactly what `workouts.activity_name` will hold
+    // after an import — on a fresh install, which is the only case the skip rule lets it be written.
+    //
+    // **It sits above the distinct-name count because that count is the blunter instrument for the same
+    // defect**, and the runner halts on the first failure: a half-done rename leaves both names in the
+    // file, so the count would read 22 and report a number rather than a bike. And the pair is ordered
+    // absent-half first so that **both** halves are reachable — a file that had lost its biking rows
+    // entirely passes the first and fails the second, where a present-half-first ordering would leave
+    // the absent half unreachable in every case.
+    let mountainBikingRows = names.filter { ActivityName.matches($0, "Mountain Biking") }
+    assertTest(
+        mountainBikingRows.isEmpty,
+        "The bundled export carries **no** `Mountain Biking` row (found \(mountainBikingRows.count)), "
+            + "because the user renamed them: this file is the producer, so its spelling is the "
+            + "convention. A partial rename would leave one ride filed under two names, splitting a "
+            + "single history across two entries in the picker")
+    let roadBikingRows = names.filter { ActivityName.matches($0, "Road Biking") }
+    assertTest(
+        !roadBikingRows.isEmpty,
+        "…and it names those rows `Road Biking` — **\(roadBikingRows.count)** of its \(rows.count) — "
+            + "which is the export-side half of the pair the catalogue answers on the picker side: a "
+            + "name the file writes is a name the picker has to be able to offer back, and the import "
+            + "stores it verbatim. `Mountain Biking` stays in the catalogue regardless, because WHOOP "
+            + "publishes it and a user may go and do it — a different question from what this file "
+            + "contains")
+
     let distinctNames = Set(names)
     assertTest(
         distinctNames.count == 21,
@@ -10825,40 +10927,47 @@ func runWorkoutZoneTests() async {
 
     // **A wrong SF Symbol name is not an error** — it draws an empty chip, which is indistinguishable
     // from a glyph that loaded slowly and from one this build's iOS is too old for. Nothing else in
-    // this suite can see `ActivityGlyph`'s table, so this block is the whole of its coverage, and it
-    // asserts over the names the file actually holds rather than over a list typed a second time.
+    // this suite can see `ActivityGlyph`'s table, so this block is the whole of its coverage **for the
+    // names the file holds** — §19 sweeps the catalogue's own vocabulary beside it, and neither sweep
+    // can see the other's names. It asserts over the names the file actually holds rather than over a
+    // list typed a second time.
+    //
+    // **`symbols.allSatisfy` rather than `!symbol.isEmpty` because a mark is now a `Drawing` that may
+    // hold two symbols.** On every name below it is a one-element array, so the assertion is exactly
+    // what it was — but the catalogue sweep in §19 covers `Fast`, the one mark with a second half,
+    // and a `!isEmpty` on the array would have passed for a pair whose knife was an empty string.
     assertTest(
-        distinctNames.allSatisfy { !ActivityGlyph.symbol(for: $0).isEmpty },
+        distinctNames.allSatisfy { ActivityGlyph.mark(for: $0).symbols.allSatisfy { !$0.isEmpty } },
         "Every one of the file's \(distinctNames.count) names resolves to a non-empty symbol, so no "
             + "imported row can draw a blank chip")
     assertTest(
-        !ActivityGlyph.symbol(for: nil).isEmpty
-            && !ActivityGlyph.symbol(for: "").isEmpty
-            && !ActivityGlyph.symbol(for: "   ").isEmpty
-            && !ActivityGlyph.symbol(for: "Paintball").isEmpty
-            && !ActivityGlyph.symbol(for: "Some Sport Invented Later").isEmpty,
+        ActivityGlyph.mark(for: nil).symbols.allSatisfy { !$0.isEmpty }
+            && ActivityGlyph.mark(for: "").symbols.allSatisfy { !$0.isEmpty }
+            && ActivityGlyph.mark(for: "   ").symbols.allSatisfy { !$0.isEmpty }
+            && ActivityGlyph.mark(for: "Paintball").symbols.allSatisfy { !$0.isEmpty }
+            && ActivityGlyph.mark(for: "Some Sport Invented Later").symbols.allSatisfy { !$0.isEmpty },
         "…and so does every input the table does not hold — `nil`, which is a session this app "
             + "recorded itself and every row written before `v15`; an empty and a whitespace-only "
             + "name; `Paintball`, the one bundled name with no entry of its own; and a name a future "
             + "export might add")
     assertTest(
-        ActivityGlyph.symbol(for: "Activity") == ActivityGlyph.symbol(for: nil)
-            && ActivityGlyph.symbol(for: "Other") == ActivityGlyph.symbol(for: nil),
+        ActivityGlyph.mark(for: "Activity") == ActivityGlyph.mark(for: nil)
+            && ActivityGlyph.mark(for: "Other") == ActivityGlyph.mark(for: nil),
         "WHOOP's own two words for an uncategorised activity take the fallback rather than a glyph of "
             + "their own — 208 rows of this file are named `Activity` or `Other`, and neither is an "
             + "activity a table could name. They draw exactly what every workout row drew before this "
             + "change, which is what keeps an unrecognised activity a missing nicety rather than a "
             + "regression")
     assertTest(
-        ActivityGlyph.symbol(for: "walking") == ActivityGlyph.symbol(for: "Walking")
-            && ActivityGlyph.symbol(for: "  Walking  ") == ActivityGlyph.symbol(for: "Walking"),
+        ActivityGlyph.mark(for: "walking") == ActivityGlyph.mark(for: "Walking")
+            && ActivityGlyph.mark(for: "  Walking  ") == ActivityGlyph.mark(for: "Walking"),
         "…and the lookup is case- and whitespace-insensitive, so a future export that changes a "
             + "name's casing or pads a cell lands on the same glyph instead of silently falling back")
     assertTest(
-        ActivityGlyph.symbol(for: "Walking") == "figure.walk"
-            && ActivityGlyph.symbol(for: "Yoga") == "figure.yoga"
-            && ActivityGlyph.symbol(for: "Ice Skating") == "figure.skating"
-            && ActivityGlyph.symbol(for: "Yard Work/Gardening") == "leaf.fill",
+        ActivityGlyph.mark(for: "Walking") == .single("figure.walk")
+            && ActivityGlyph.mark(for: "Yoga") == .single("figure.yoga")
+            && ActivityGlyph.mark(for: "Ice Skating") == .single("figure.skating")
+            && ActivityGlyph.mark(for: "Yard Work/Gardening") == .single("leaf.fill"),
         "…and the table names the symbols it means, pinned **by literal** — the two halves of the "
             + "mapping are otherwise unobservable, since a name that resolves to a symbol that does "
             + "not exist is still non-empty. `Ice Skating` is the one that pins the deployment "
@@ -10903,14 +11012,80 @@ func runWorkoutZoneTests() async {
                 + "is the file's own distinctness doing real work — a duplicated pair would silently "
                 + "merge two sessions onto one row")
 
+        // **This pair used to read `secondWrite == rows.count`.** That was the assertion for a path
+        // with no already-recorded skip: a second press re-saved all 673 rows, and the point being
+        // made was that GRDB's `save` is INSERT-or-UPDATE by primary key rather than an append. The
+        // workouts path now has the skip its three sibling tables always had, so the same property is
+        // stated in its stronger form — **nothing is written at all**, rather than that what was
+        // written happened to be an update. Both halves matter and they fail for different reasons:
+        // `0` alone would also be what a build with no `workouts.csv` reports, so the row count beside
+        // it is what says the rows are still there.
+        //
+        // The weaker statement is not a thing this suite should keep as well. A path that quietly went
+        // back to re-saving every row would satisfy it, and re-saving every row is exactly what
+        // reverts an edit made on the activity detail page.
         let secondWrite = try await importer.importWorkouts(at: workoutsURL)
         let afterSecond = try await repository.getWorkoutHistory(days: 4_000, endingOn: Date())
         assertTest(
-            secondWrite == rows.count && afterSecond.count == imported.count,
-            "…and a **second import writes no additional rows**: it reports \(secondWrite) rows "
-                + "written and the table still holds \(afterSecond.count). GRDB's `save` is "
-                + "INSERT-or-UPDATE *by primary key*, so a fresh `UUID()` per run would append 673 "
-                + "more rows every press of the button and read back perfectly well")
+            secondWrite == 0 && afterSecond.count == imported.count,
+            "…and a **second import writes nothing at all**, which is the day-already-recorded skip: "
+                + "it reports \(secondWrite) rows written and the table still holds "
+                + "\(afterSecond.count) of \(imported.count). The count is the half that catches a "
+                + "build whose bundle has lost `workouts.csv`, since that also imports "
+                + "\(secondWrite) — and the pair together is what fails if anyone drops the skip, "
+                + "because re-saving all \(rows.count) rows would satisfy a bare row-count check "
+                + "while quietly reverting every edit made on the activity detail page")
+
+        // **The edit survives, and that is the whole reason the skip exists.** Without it this block
+        // is the one that fails: a re-import re-saves every row from the file, so the edited name and
+        // the trimmed window would both be back to the file's values by the time the read returns —
+        // and the page that made the edit would have no way to know.
+        //
+        // The fixture trims **inward**, which is what the sheet can do and what the draft's clamp
+        // enforces, so the day cannot move: both new instants are inside the window the row already
+        // had. The inset is a quarter of the session's own length rather than a constant, because
+        // `workouts.csv` holds sessions as short as 76 s and a fixed minute at each end would make
+        // this fixture a negative-length session on a file whose shortest rows it did not anticipate.
+        if let target = afterSecond.first {
+            let inset = min(30, target.durationSeconds * 0.25)
+            let edited = WorkoutSession(
+                id: target.id,
+                startedAt: target.startedAt.addingTimeInterval(inset),
+                endedAt: target.endedAt.addingTimeInterval(-inset),
+                strain: target.strain,
+                averageHeartRate: target.averageHeartRate,
+                maxHeartRate: target.maxHeartRate,
+                route: target.route,
+                splits: target.splits,
+                source: target.source,
+                activityName: "Basketball",
+                hrZonePercents: target.hrZonePercents,
+                steps: target.steps)
+            try await repository.save(edited)
+
+            let thirdWrite = try await importer.importWorkouts(at: workoutsURL)
+            let afterThird = try await repository.getWorkoutHistory(days: 4_000, endingOn: Date())
+            let stored = afterThird.first { $0.id == target.id }
+            assertTest(
+                stored?.activityName == "Basketball"
+                    && stored?.startedAt == edited.startedAt
+                    && stored?.endedAt == edited.endedAt,
+                "**An edited session survives a re-import** — its new name and both its trimmed "
+                    + "boundaries read back as they were saved, where the file's own values for that "
+                    + "row are `\(target.activityName ?? "nil")` over "
+                    + "\(Int(target.durationSeconds)) s. The day-already-recorded skip is the only "
+                    + "thing standing between an edit and this assertion, and it is what makes the "
+                    + "Settings caption true: got name "
+                    + "\(stored?.activityName ?? "nil"), start \(stored?.startedAt.description ?? "nil")")
+            assertTest(
+                thirdWrite == 0 && afterThird.count == afterSecond.count,
+                "…and it survives **in place**: the re-import that would have reverted it wrote "
+                    + "\(thirdWrite) rows and the table still holds \(afterThird.count), so the edit "
+                    + "was neither overwritten nor duplicated. The `id` is what carries this — it is "
+                    + "derived from the row's two original instants, and an edit that minted a new one "
+                    + "would leave the file's row to be inserted beside the edit rather than skipped "
+                    + "against it")
+        }
 
         assertTest(
             afterSecond.allSatisfy { $0.source == WhoopExportImporter.sourceLabel },
@@ -11300,6 +11475,16 @@ final class SpyLocationTracking: LocationTracking {
     private(set) var startCount = 0
     private(set) var stopCount = 0
 
+    /// When set, `start()` hands back a stream that is **already finished**, so a caller waiting for a
+    /// fix sees the wait end at once rather than at its own timeout.
+    ///
+    /// It exists for one branch and one only: the offline map's "no position fix" refusal. That wait is
+    /// ten seconds by design (`offlineMapFixTimeoutSeconds`), so the alternative to this flag is a
+    /// block that makes the suite ten seconds slower — and a suite that pays that for one sentence is a
+    /// suite whose next author trims the block. Defaulted off, so no existing assertion moves: every
+    /// other block wants a stream it can push fixes into.
+    var finishesStreamImmediately = false
+
     /// The live stream's continuation, held so `yield` can push a fix through it the way
     /// `locationManager(_:didUpdateLocations:)` does. `= nil` is required by the `nonisolated init`
     /// below, exactly as it is on `LiveActivityController`.
@@ -11315,6 +11500,9 @@ final class SpyLocationTracking: LocationTracking {
 
     func start() -> AsyncStream<WorkoutRoutePoint> {
         startCount += 1
+        // See the flag's own comment: a stream that ends the moment it is read is how a block reaches
+        // the caller's "the fix never arrived" branch without sleeping through its timeout.
+        if finishesStreamImmediately { return AsyncStream { $0.finish() } }
         return AsyncStream { continuation in
             self.continuation = continuation
         }
@@ -11336,6 +11524,209 @@ final class SpyLocationTracking: LocationTracking {
             latitude: latitude, longitude: longitude, timestamp: timestamp, heartRate: 0))
         return true
     }
+}
+
+/// The offline map, in a build that has none — the runner's stand-in for Mapbox.
+///
+/// **The suite must not construct a Mapbox type, and in this build it cannot**: the SDK lives in
+/// `App/Map/`, which only the Xcode app target compiles, so `MapboxOfflineMaps` is not a symbol this
+/// file could name whatever it was handed. That makes the spy *necessary* rather than merely
+/// convenient — but the reason it must be a spy and not a real implementation is the one the runner
+/// already applies to `CLLocationManager` and `CBCentralManager`: a real one downloads over the
+/// network through a `TileStore` and needs a secret token merely to build, so a block that drove one
+/// would pass or fail on this machine's connection and on whether a credential file happens to exist.
+/// Neither is a fact about this app.
+///
+/// **Its answers are not placeholders.** `isSupported` is `false`, which is what the runner's build
+/// actually is, and `state(for:)` reads back whatever a block put there — so the type's whole purpose
+/// is that a block can place a region in `.ready` and assert that a session naming it resolves to
+/// `.offline`, the one branch that draws Mapbox, without a tile ever being fetched.
+///
+/// `nonisolated init()` for `SpyLocationTracking`'s reason: it is constructed in the argument list of
+/// a `nonisolated` initialiser, and every stored property below has a default so there is nothing for
+/// the main actor to protect at that moment.
+@MainActor
+final class SpyOfflineMaps: OfflineMapRendering {
+
+    /// What the build is. `false` by default because that is the truth here, and a block that wants the
+    /// supported path says so explicitly rather than the other way round — a default of `true` would
+    /// make every existing fixture silently claim a capability this build does not have.
+    var isSupported = false
+
+    /// The store, keyed by region id. Absent means `.absent`, which is the real service's own fallback
+    /// rather than something a block has to seed.
+    var states: [String: OfflineMapState] = [:]
+
+    /// The fractions a download reports, in order, through `onProgress` before it returns. Left empty
+    /// by default: a real download may report nothing at all, and a block that wants the `.downloading`
+    /// card to move has to say which values it moved through.
+    var progressValues: [Double] = []
+
+    /// When set, a download reports its progress and then waits instead of finishing, leaving the region
+    /// in `.downloading`.
+    ///
+    /// That is the state `LiveSessionUseCase` is documented to call `cancelDownload()` in and no other,
+    /// so a block has to be able to hold a download open to reach it — the switch is turned off while
+    /// the download is genuinely in flight rather than a moment after it landed. `Task.sleep` rather
+    /// than a continuation because **cancellation is the release**: the use case cancels its own task,
+    /// the sleep throws, and the download returns with nothing for the block to signal. Thirty seconds
+    /// is a bound on a hung case, not a wait anybody performs.
+    var holdsDownloadOpen = false
+
+    private(set) var downloadCount = 0
+    private(set) var cancelledCount = 0
+    private(set) var deletedRegionIDs: [String] = []
+
+    /// The centre the last download was asked for, so a block can assert that the switch asked about
+    /// the user's actual position rather than about a constant. Two separate fields rather than a
+    /// labelled tuple, because an optional tuple is not `Equatable` and the comparison would have to be
+    /// taken apart at the call site anyway.
+    private(set) var lastLatitude: Double?
+    private(set) var lastLongitude: Double?
+
+    nonisolated init() {}
+
+    func state(for regionID: String) -> OfflineMapState { states[regionID] ?? .absent }
+
+    /// Records the call, reports the configured progress, and lands the region in `.ready` — the only
+    /// state `RouteMapRenderer.resolve` will draw, so the state a block cares about is the one a
+    /// successful download actually produces.
+    func download(
+        regionID: String,
+        latitude: Double,
+        longitude: Double,
+        onProgress: @MainActor @Sendable (Double) -> Void
+    ) async {
+        downloadCount += 1
+        lastLatitude = latitude
+        lastLongitude = longitude
+        for value in progressValues { onProgress(value) }
+        if holdsDownloadOpen {
+            try? await Task.sleep(for: .seconds(30))
+            return
+        }
+        states[regionID] = .ready
+    }
+
+    func cancelDownload() { cancelledCount += 1 }
+
+    func delete(regionID: String) async {
+        deletedRegionIDs.append(regionID)
+        states[regionID] = nil
+    }
+
+    /// The same card `UnavailableOfflineMaps` draws, and it is never called by the suite: the runner
+    /// has no renderer, so nothing here evaluates a `body`. Returning the MapKit view rather than an
+    /// `EmptyView` keeps the spy honest about what the branch it stands for draws.
+    func map(route: ActivityRoute, unit: ActivityRoute.Unit, regionID: String) -> AnyView {
+        AnyView(ActivityRouteMapView(route: route, unit: unit))
+    }
+}
+
+/// The stored fast, in a field instead of `UserDefaults`.
+///
+/// **The suite must not be handed `UserDefaultsActiveFastRepository`**, and the reason is the same one
+/// that keeps §6 off the real database: `LiveSessionUseCase` restores from this store in its
+/// initialiser, so a session built over `.standard` would read — and, on `startFast()`, overwrite — the
+/// fast belonging to whoever is running the suite on this machine. That is a mutation of real state,
+/// and it is invisible, because a stray fast would surface as a bar over a recording nobody started.
+///
+/// **It counts as well as stores**, which is what makes persistence assertable at all: "the fast came
+/// back after a relaunch" is otherwise a claim only a human with a phone can check, while
+/// `saves == 1` and `saves == 0` are the two halves of `startFast()` and `endFast()` writing and
+/// clearing exactly once. `NSLock` rather than `@MainActor` because `load()` is called from the use
+/// case's `nonisolated init`, which the protocol requires to be synchronous.
+final class SpyActiveFastRepository: ActiveFastRepository, @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: ActiveFast?
+    private var saveCount = 0
+    private var clearCount = 0
+
+    init(seed: ActiveFast? = nil) { self.stored = seed }
+
+    var saved: ActiveFast? {
+        lock.lock(); defer { lock.unlock() }
+        return stored
+    }
+
+    var saves: Int {
+        lock.lock(); defer { lock.unlock() }
+        return saveCount
+    }
+
+    var clears: Int {
+        lock.lock(); defer { lock.unlock() }
+        return clearCount
+    }
+
+    func load() -> ActiveFast? {
+        lock.lock(); defer { lock.unlock() }
+        return stored
+    }
+
+    func save(_ fast: ActiveFast) {
+        lock.lock(); defer { lock.unlock() }
+        saveCount += 1
+        stored = fast
+    }
+
+    func clear() {
+        lock.lock(); defer { lock.unlock() }
+        clearCount += 1
+        stored = nil
+    }
+}
+
+/// A `WorkoutRepository` whose `save` **parks until it is let go**.
+///
+/// **This exists to make one ordering observable, and it is the only way that ordering is observable
+/// at all.** `endFast()` clears the live fast and the stored copy *above* its first `await`, so that a
+/// bar drawn from `activeFast` stops the instant END FAST is pressed rather than a SQLite write later.
+/// Against any real repository that window is invisible: the save returns before an assertion can run,
+/// so a build that cleared the state *below* the save would pass every other assertion in §18 while
+/// leaving the bar counting over Home through the write — and leaving a second END FAST callable in
+/// that window, which writes a duplicate row under a fresh `UUID`.
+///
+/// So the save blocks. `awaitSaveEntered()` waits until the write has been *reached*, and the
+/// assertions run at exactly that moment — the state a user would be looking at mid-write.
+///
+/// **An actor and not a lock-guarded class**, because the parking is `async`: the flag and the
+/// continuation are assigned in one actor-isolated region with no intervening `await`, so by the time
+/// `awaitSaveEntered()` observes the flag the continuation is certainly set and `open()` cannot
+/// resume `nil` and hang the suite. An `NSLock` around an `await` would be a data race rather than a
+/// guard.
+actor GatedWorkoutRepository: WorkoutRepository {
+    private(set) var saved: [WorkoutSession] = []
+    private var release: CheckedContinuation<Void, Never>?
+    private var didEnterSave = false
+
+    func save(_ workout: WorkoutSession) async throws {
+        saved.append(workout)
+        didEnterSave = true
+        await withCheckedContinuation { self.release = $0 }
+    }
+
+    /// Spins until `save` has been entered and is parked.
+    ///
+    /// `Task.yield()` rather than a sleep: the work being waited on is this process's own, so yielding
+    /// hands it the executor directly instead of guessing how long it needs.
+    func awaitSaveEntered() async {
+        while !didEnterSave { await Task.yield() }
+    }
+
+    /// Lets the parked save return.
+    func open() {
+        release?.resume()
+        release = nil
+    }
+
+    // The reads answer from what was written rather than from a database, because the only thing this
+    // fixture is used for is the write path — a `nil` here is "no row" and not a missing feature.
+    func latest() async throws -> WorkoutSession? { saved.last }
+    func getWorkouts(for date: Date) async throws -> [WorkoutSession] { [] }
+    func getWorkouts(covering date: Date) async throws -> [WorkoutSession] { [] }
+    func getWorkoutHistory(days: Int, endingOn: Date) async throws -> [WorkoutSession] { [] }
+    func delete(_ id: UUID) async throws -> Bool { false }
 }
 
 /// Spins until `condition` holds, or gives up after `timeout`.
@@ -11386,6 +11777,268 @@ func runLiveSessionTests() async {
         inert.map(\.title) == ["ADD ACTIVITY"],
         "…leaving `ADD ACTIVITY` with no destination at all (\(inert.map(\.title))), which is what "
             + "makes the import path's absence structural rather than a promise")
+
+    // ---- The bar Home pins over a running session ----
+    //
+    // A pure value with no database behind it, like the block above. `HomeDashboardView` builds the
+    // bar itself and the runner has no renderer, so what is assertable is the whole of
+    // `LiveSessionBar`: the rule that decides whether the bar exists, and the one sentence it
+    // announces. The drawing — full-bleed red, the system's clock, the tap that pushes the session —
+    // is the user's to check on a screen.
+    //
+    // **The gate is two questions and not one, and that is the assertion that matters.** A bar keyed
+    // on "does this session have a start instant" reads identically to the right one at rest and
+    // differently for the length of `end()`'s two awaits, where `isRunning` is already false and
+    // `startedAt` is still set — so the wrong gate keeps counting over Home while the `workouts` row
+    // is being written.
+    let barAnchor = Date(timeIntervalSinceReferenceDate: 0)
+
+    assertTest(
+        LiveSessionBar.subject(
+            isActivityRunning: true,
+            activityName: nil,
+            activityStartedAt: barAnchor,
+            activeFast: nil)?.anchor == barAnchor,
+        "A running session's bar counts from its own start instant")
+
+    assertTest(
+        LiveSessionBar.subject(
+            isActivityRunning: false,
+            activityName: nil,
+            activityStartedAt: barAnchor,
+            activeFast: nil) == nil,
+        "…and it is gone the moment the session stops, **not** when its start instant is cleared — "
+            + "`end()` clears `isRunning` at its top and `startedAt` only in `reset()`, after the card "
+            + "is ended and the row written, so a gate on the instant alone would leave the bar "
+            + "counting over Home through a database round trip")
+
+    assertTest(
+        LiveSessionBar.subject(
+            isActivityRunning: true,
+            activityName: nil,
+            activityStartedAt: nil,
+            activeFast: nil) == nil,
+        "A running session with no start instant draws no bar at all, because the clock "
+            + "(`Text(_:style: .timer)`) is drawn *from* an anchor and this app has no state in which "
+            + "a recording is underway and has no beginning — and nothing is left underneath it to "
+            + "fall through to")
+
+    assertTest(
+        LiveSessionBar.subject(
+            isActivityRunning: false,
+            activityName: nil,
+            activityStartedAt: nil,
+            activeFast: nil) == nil,
+        "…and a session that has stopped and been cleared draws none either")
+
+    // ---- The two live sessions, and which one the bar is about ----
+    //
+    // **The activity wins, and that is the user's own decision rather than a precedence accident.**
+    // A fast does not block an activity — 18 hours in, the user can go for a run — so while the run is
+    // on, the bar describes the run and the fast keeps counting underneath. The pair below is the
+    // assertion that fails if the two branches are ever swapped, since each of the first two passes
+    // with the wrong order and only the both-live case can see it.
+    let barFast = ActiveFast(startedAt: barAnchor.addingTimeInterval(-90_000))
+
+    assertTest(
+        LiveSessionBar.subject(
+            isActivityRunning: true,
+            activityName: "Basketball",
+            activityStartedAt: barAnchor,
+            activeFast: barFast) == .activity(name: "Basketball", startedAt: barAnchor),
+        "With both a fast and an activity live, the bar is about **the activity** — the run is the "
+            + "newer thing happening, and the fast is still there underneath it")
+
+    assertTest(
+        LiveSessionBar.subject(
+            isActivityRunning: false,
+            activityName: "Basketball",
+            activityStartedAt: barAnchor,
+            activeFast: barFast) == .fast(startedAt: barFast.startedAt),
+        "…and the moment the activity stops the bar returns to the fast, still anchored to the "
+            + "fast's own start instant rather than to the run's")
+
+    assertTest(
+        LiveSessionBar.subject(
+            isActivityRunning: true,
+            activityName: "Basketball",
+            activityStartedAt: barAnchor,
+            activeFast: nil) == .activity(name: "Basketball", startedAt: barAnchor),
+        "A recorded name reaches the bar, so the sentence it speaks is about the session the picker "
+            + "chose rather than about every session alike")
+
+    assertTest(
+        LiveSessionBar.subject(
+            isActivityRunning: true,
+            activityName: nil,
+            activityStartedAt: barAnchor,
+            activeFast: nil) == .activity(name: WhoopActivityCatalog.abstentionName, startedAt: barAnchor),
+        "…and a session with no name falls back to the same abstention word `end()` writes onto the "
+            + "row, so the bar and the stored session cannot disagree about what it was called")
+
+    assertTest(
+        LiveSessionBar.subject(
+            isActivityRunning: false,
+            activityName: nil,
+            activityStartedAt: nil,
+            activeFast: barFast) == .fast(startedAt: barFast.startedAt),
+        "A fast with no activity beside it is what the bar draws, which is the whole of the "
+            + "fasting-zone colouring: the subject is what the fill and the ink are derived from")
+
+    // ---- The fast's zone, and the two colours that follow from it ----
+    //
+    // `HomeDashboardView` asks for `fill(at:)` and `ink(at:)` inside a `TimelineView`, so what is
+    // assertable is the pair of answers for a given instant — and the sweep is over the **whole fast**,
+    // not a day-clamped span, because that is the reading the live bar means: `ActivityFigure
+    // .fastingZone(for:on:)` answers what a fast had reached *by the end of a day*, and this answers
+    // what it has reached *now*. The two diverge on every day a long fast merely passes through and
+    // must not be reconciled.
+    //
+    // The five boundaries are swept at the instant each one turns, because `zone(forDurationSeconds:)`
+    // is the rule and this is where the bar's colour is shown to follow it rather than to hold a second
+    // copy. Reaching `ketosis` on a screen means waiting 24 hours, so this is the only form that claim
+    // can take in this repo.
+    let barZoneCases: [(hours: Double, zone: FastingZone)] = [
+        (0, .anabolic), (4, .catabolic), (16, .fatBurning), (24, .ketosis), (72, .deepKetosis),
+    ]
+    for (hours, expected) in barZoneCases {
+        let subject = LiveSessionBar.Subject.fast(
+            startedAt: barAnchor.addingTimeInterval(-hours * 3600))
+        let now = barAnchor
+        assertTest(
+            subject.zone(at: now) == expected && subject.fill(at: now) == expected.color
+                && subject.ink(at: now) == expected.inkColor,
+            "A fast \(hours) h in is \(expected.rawValue): its zone, its fill and its ink all come "
+                + "off `FastingZone` rather than off a second table here "
+                + "(\(String(describing: subject.zone(at: now))))")
+    }
+
+    assertTest(
+        LiveSessionBar.Subject.activity(name: "Basketball", startedAt: barAnchor).zone(at: barAnchor)
+            == nil,
+        "An activity is in no fasting zone, and `nil` is the honest answer rather than a missing one — "
+            + "there is no duration at which a run becomes ketosis")
+
+    assertTest(
+        LiveSessionBar.Subject.activity(name: "Basketball", startedAt: barAnchor).fill(at: barAnchor)
+            == Theme.recoveryRed,
+        "…so an activity keeps the red the bar has always drawn, which is the user's own rule — a "
+            + "regular activity has that red timer on the Home page")
+
+    assertTest(
+        LiveSessionBar.Subject.activity(name: "Basketball", startedAt: barAnchor).ink(at: barAnchor)
+            == .white,
+        "…and white letters on it, which is what that red's contrast was chosen for")
+
+    // The bar is deliberately *not* the pill: the pill states what kind of fast it was on a day the
+    // fast covers, while the bar states what the fast is in **right now**. One fast, two readings,
+    // both correct — pinned here so a later reader does not "fix" one into the other.
+    assertTest(
+        LiveSessionBar.Subject.fast(startedAt: barAnchor.addingTimeInterval(-90_000)).zone(at: barAnchor)
+            == FastingZone.zone(forDurationSeconds: 90_000),
+        "The bar's zone is the fast's whole elapsed span, and a stored row's pill is its day-clamped "
+            + "one — a 25 h fast reads ketosis on the bar and fat burning on the day it began")
+
+    // The label is the only place the elapsed figure exists as text — the visible clock is the
+    // system's, which is what lets it keep counting while the app is suspended — so it is pinned at
+    // four spans. The past-an-hour case is the deliberate one: the sentence stays in minutes rather
+    // than rolling into hours, which is `LiveSessionView`'s own form, so the bar and the session
+    // screen cannot announce one recording's length two different ways.
+    let barActivity = LiveSessionBar.Subject.activity(name: "Activity", startedAt: barAnchor)
+
+    assertTest(
+        LiveSessionBar.accessibilityLabel(for: barActivity, now: barAnchor)
+            == "Activity recording, 0 minutes 0 seconds elapsed",
+        "A session at zero seconds announces zero rather than nothing "
+            + "(\(LiveSessionBar.accessibilityLabel(for: barActivity, now: barAnchor)))")
+
+    assertTest(
+        LiveSessionBar.accessibilityLabel(
+            for: barActivity, now: barAnchor.addingTimeInterval(754))
+            == "Activity recording, 12 minutes 34 seconds elapsed",
+        "…and 754 seconds announces as 12 minutes 34 seconds")
+
+    assertTest(
+        LiveSessionBar.accessibilityLabel(
+            for: barActivity, now: barAnchor.addingTimeInterval(3725))
+            == "Activity recording, 62 minutes 5 seconds elapsed",
+        "…and past an hour it stays in minutes, as the session screen's sentence does — 62 minutes, "
+            + "not `1 hour 2 minutes`")
+
+    assertTest(
+        LiveSessionBar.accessibilityLabel(
+            for: barActivity, now: barAnchor.addingTimeInterval(-30))
+            == "Activity recording, 0 minutes 0 seconds elapsed",
+        "…and a clock read before the anchor clamps at zero rather than announcing a negative span, "
+            + "which no state of this app can have measured")
+
+    assertTest(
+        !LiveSessionBar.accessibilityLabel(
+            for: barActivity, now: barAnchor.addingTimeInterval(60)).contains("ended"),
+        "…and the word is `recording`, never `ended`: the bar exists only while a session is running, "
+            + "so the second branch `LiveSessionView` needs could only be a lie here")
+
+    // The name is the half of the sentence that a fast added, so it needs its own assertion: without
+    // one, `subject.name` could return `WhoopActivityCatalog.fastingName` for both cases and every
+    // assertion above would still pass, because they all pin an activity and the default name is the
+    // abstention word they were written against.
+    assertTest(
+        LiveSessionBar.accessibilityLabel(
+            for: .activity(name: "Basketball", startedAt: barAnchor),
+            now: barAnchor.addingTimeInterval(60))
+            == "Basketball recording, 1 minutes 0 seconds elapsed",
+        "A session the picker named says its own name rather than the abstention word")
+
+    assertTest(
+        LiveSessionBar.accessibilityLabel(
+            for: .fast(startedAt: barAnchor), now: barAnchor.addingTimeInterval(60))
+            == "Fast recording, 1 minutes 0 seconds elapsed",
+        "…and a fast announces as `Fast` — the one word every layer of this app calls it, read off "
+            + "`WhoopActivityCatalog.fastingName` rather than typed here")
+
+    assertTest(
+        LiveSessionBar.accessibilityHint(for: barActivity) == "Opens the activity session",
+        "The bar's hint names what the tap does "
+            + "(\(LiveSessionBar.accessibilityHint(for: barActivity))) rather than leaving the button "
+            + "to be announced as a bare duration")
+
+    // **The tap forks, so the hint is a function of the subject and not a constant.** Both arms push a
+    // page off the same use case, but they are two different pages, and one sentence would describe a
+    // destination the tap does not always reach.
+    assertTest(
+        LiveSessionBar.accessibilityHint(for: .fast(startedAt: barAnchor))
+            == "Opens the fasting session",
+        "…and a fast's hint names the other page, because the tap opens the fasting detail layout "
+            + "rather than the session controller")
+
+    // ---- The mark the bar leads with ----
+    //
+    // The bar draws the activity's own glyph in front of its clock, so the figure a reader sees is the
+    // one they picked rather than one mark for every recording. Which mark that is lives on the subject
+    // and not in the `body`, for this whole type's reason — and the arm that makes it worth pinning is
+    // the fasting one: `ActivityGlyph.mark(for: nil)` is `figure.run`, so a `.fast` case that read its
+    // name off anything but `WhoopActivityCatalog.fastingName` would draw a *running* figure over a
+    // fasting bar. That is a wrong drawing rather than a missing one — the failure mode `ActivityGlyph`
+    // exists to catch — and no build and no screenshot of any other bar would report it.
+    assertTest(
+        LiveSessionBar.Subject.activity(name: "Basketball", startedAt: barAnchor).mark
+            == .single("figure.basketball"),
+        "The bar leads with the mark for the activity the picker chose "
+            + "(\(LiveSessionBar.Subject.activity(name: "Basketball", startedAt: barAnchor).mark.primary))")
+
+    assertTest(
+        barActivity.mark == .single(ActivityGlyph.fallback)
+            && barActivity.mark == ActivityGlyph.mark(for: nil),
+        "…and an unnamed session draws the fallback, the same mark Home's `ACTIVITIES` rows draw for "
+            + "the 197 rows WHOOP did not categorise — so the bar's icon and the card's chip cannot "
+            + "come to disagree about one session")
+
+    assertTest(
+        LiveSessionBar.Subject.fast(startedAt: barAnchor).mark == .pair("fork.knife", "timer"),
+        "…while a fast draws the app's one composite, reached through the subject's own name rather "
+            + "than a literal here — and it keeps both halves, since `ActivityGlyph` has no accessor "
+            + "that hands back a single symbol and dropping `timer` would mean reintroducing the one "
+            + "that must not come back")
 
     // ---- The five bands, defined once ----
 
@@ -11707,7 +12360,9 @@ func runLiveSessionTests() async {
             streamBiometricsUseCase: stream,
             saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
             userProfileRepository: profileRepository,
-            bleRepository: telemetry)
+            bleRepository: telemetry,
+            activeFastRepository: SpyActiveFastRepository(),
+            offlineMaps: SpyOfflineMaps())
 
         // ---- Session A: no weight on file, sixty samples a quarter-second apart ----
         //
@@ -11772,6 +12427,15 @@ func runLiveSessionTests() async {
             "…with no calorie figure, because no body weight is on file — the absence rule rather "
                 + "than a figure scaled by 75 kg this app invented")
         assertTest(await session.isRunning == false, "…and the session has stopped")
+        assertTest(
+            await LiveSessionBar.subject(
+                isActivityRunning: session.isRunning,
+                activityName: session.activityName,
+                activityStartedAt: session.startedAt,
+                activeFast: nil) == nil,
+            "…which is what takes the recording bar off Home, and it is the `isRunning` half of the "
+                + "gate that does it — `end()` clears that flag before its first await rather than "
+                + "after its last, so the bar does not outlive the END press by a database write")
         assertTest(
             await session.snapshot == nil,
             "…and its state is dropped, so a second session cannot inherit the first one's samples")
@@ -11846,14 +12510,48 @@ func runLiveSessionTests() async {
             "…carrying no `source`, which is what marks it as this app's own recording rather than "
                 + "an imported one")
         // The name is a label and not a measurement, which is why this is a string rather than a
-        // `nil`: this app records a session without classifying it, and WHOOP's own answer to that
-        // case is a word — 197 rows of the bundled export read exactly `Activity`. `ActivityGlyph`
-        // holds no entry for the string on purpose, so the chip falls back exactly as it did for
-        // `nil` and no screen moved.
+        // `nil`. **The name now comes from the picker**, so the claim has two halves and this session
+        // covers only the first: this app does not *classify* a session — it cannot, and nothing here
+        // infers an activity from the data — so when the user was asked and chose, the row carries
+        // their word, and when they were not asked it carries WHOOP's own answer to that case, a word
+        // rather than an absence — 197 rows of the bundled export read exactly `Activity`.
+        // `ActivityGlyph` holds no entry for the abstention string on purpose, so that chip falls back
+        // exactly as it did for `nil` and no screen moved.
         assertTest(
             recorded.activityName == "Activity",
-            "…and named with WHOOP's own abstention word rather than left NULL, which its export "
-                + "writes on 197 rows (\(recorded.activityName ?? "nil"))")
+            "…and named with WHOOP's own abstention word rather than left NULL when the picker chose "
+                + "nothing, which its export writes on 197 rows (\(recorded.activityName ?? "nil"))")
+
+        // **The other half, and it needs its own session.** `start(name:)` defaults to the abstention
+        // word, so every assertion above passes whether the name is threaded through or dropped on the
+        // floor — a recording that silently discarded the picker's answer and wrote `Activity` over it
+        // would fail nothing here. This is the assertion that fails in that case, and it is also what
+        // makes the recording bar's own sentence honest: the bar reads `activityName`, so a bar saying
+        // `Basketball` over a row saying `Activity` is the two-producer defect in miniature.
+        // It gets its own card and GPS, so the counters session A's block pins are untouched — and it
+        // is fed nothing, so it measures nothing, writes nothing, and leaves the day's row count where
+        // the two assertions below expect it. It attaches a reader to the scripted stream and releases
+        // it again on the way out.
+        let namedSession = LiveSessionUseCase(
+            controller: SpyLiveActivityController(),
+            locationTracking: SpyLocationTracking(),
+            streamBiometricsUseCase: stream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+            userProfileRepository: profileRepository,
+            bleRepository: telemetry,
+            activeFastRepository: SpyActiveFastRepository(),
+            offlineMaps: SpyOfflineMaps())
+        await namedSession.start(name: "Basketball")
+        assertTest(
+            await namedSession.activityName == "Basketball",
+            "A session started with a picked name reports it back, which is what the recording bar "
+                + "speaks (\(await namedSession.activityName ?? "nil"))")
+        let namedEnded = await namedSession.end()
+        let namedNameAfterEnd = await namedSession.activityName
+        assertTest(
+            namedEnded == nil && namedNameAfterEnd == nil,
+            "…and ending it drops the name with the rest of the session, so a second recording cannot "
+                + "inherit the first one's label the way `reset()` stops it inheriting its samples")
         assertTest(
             recorded.hrZonePercents == nil,
             "…and no zone block: that column is WHOOP's own, and this app's zones are a different "
@@ -11930,7 +12628,9 @@ func runLiveSessionTests() async {
             streamBiometricsUseCase: stream,
             saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
             userProfileRepository: profileRepository,
-            bleRepository: telemetry)
+            bleRepository: telemetry,
+            activeFastRepository: SpyActiveFastRepository(),
+            offlineMaps: SpyOfflineMaps())
 
         await refusingSession.start()
         assertTest(
@@ -11967,7 +12667,9 @@ func runLiveSessionTests() async {
             streamBiometricsUseCase: stream,
             saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
             userProfileRepository: profileRepository,
-            bleRepository: telemetry)
+            bleRepository: telemetry,
+            activeFastRepository: SpyActiveFastRepository(),
+            offlineMaps: SpyOfflineMaps())
 
         await sweepSession.endOrphanedLiveActivities()
         assertTest(
@@ -12030,7 +12732,9 @@ func runLiveSessionTests() async {
             streamBiometricsUseCase: routeStream,
             saveWorkoutUseCase: SaveWorkoutUseCase(repository: routeWorkouts),
             userProfileRepository: routeProfile,
-            bleRepository: routeTelemetry)
+            bleRepository: routeTelemetry,
+            activeFastRepository: SpyActiveFastRepository(),
+            offlineMaps: SpyOfflineMaps())
 
         await routeSession.start()
         assertTest(
@@ -12172,7 +12876,9 @@ func runLiveSessionTests() async {
                 bleRepository: deniedTelemetry, biometricRepository: EmptyBiometricStore()),
             saveWorkoutUseCase: SaveWorkoutUseCase(repository: routeWorkouts),
             userProfileRepository: routeProfile,
-            bleRepository: deniedTelemetry)
+            bleRepository: deniedTelemetry,
+            activeFastRepository: SpyActiveFastRepository(),
+            offlineMaps: SpyOfflineMaps())
 
         await deniedSession.start()
         await deniedSession.setRouteRecording(true)
@@ -12220,7 +12926,9 @@ func runLiveSessionTests() async {
             streamBiometricsUseCase: routeStream,
             saveWorkoutUseCase: SaveWorkoutUseCase(repository: routeWorkouts),
             userProfileRepository: routeProfile,
-            bleRepository: routeTelemetry)
+            bleRepository: routeTelemetry,
+            activeFastRepository: SpyActiveFastRepository(),
+            offlineMaps: SpyOfflineMaps())
         await offSession.setRouteRecording(true)
         let offError = await offSession.routeError
         assertTest(
@@ -12264,6 +12972,270 @@ func runLiveSessionTests() async {
             homeWorkouts.contains { $0.activityName == "Activity" },
             "…and the one this app recorded carries the abstention name all the way to the card, not "
                 + "just into the row (\(homeWorkouts.map { $0.activityName ?? "nil" }))")
+
+        // ---- The fast: the second live session, and the only one that is persisted ----
+        //
+        // **A fast is a live session that measures nothing**, which is the whole of why it is this
+        // shape: no accumulator, no BLE consumer, no step consumer, no route, no lock-screen card —
+        // because there is no figure any of them could produce that a fast would store. What is left
+        // is one instant, and one instant is the thing that can be persisted *honestly*.
+        //
+        // Both halves of that are asserted here: that the live state behaves (idempotent to start, one
+        // row out of `endFast()`, nothing out of a fast that never ran), and that the store is written
+        // and read exactly once per transition. The store is a spy and never
+        // `UserDefaultsActiveFastRepository`, because the restore happens in `LiveSessionUseCase`'s
+        // initialiser — a session built over `.standard` would read, and on `startFast()` overwrite,
+        // the fast belonging to whoever is running this suite.
+
+        // The store's own behaviour first, as a value with no session behind it: an absent key is
+        // `nil` rather than a fast at the unix epoch, which is the one subtlety the real
+        // implementation's `object(forKey:)` exists for.
+        let bareStore = SpyActiveFastRepository()
+        assertTest(
+            bareStore.load() == nil,
+            "An empty store has no fast, and `nil` is the honest answer rather than a zero instant — "
+                + "a fast started at the epoch would draw a bar counting fifty-six years")
+        let seededStore = SpyActiveFastRepository(
+            seed: ActiveFast(startedAt: Date(timeIntervalSince1970: 1_700_000_000)))
+        assertTest(
+            seededStore.load()?.startedAt == Date(timeIntervalSince1970: 1_700_000_000),
+            "…and a stored instant comes back as the fast it was, which is the whole of what a "
+                + "relaunch has to restore")
+
+        let fastStore = SpyActiveFastRepository()
+        let fastSession = LiveSessionUseCase(
+            controller: SpyLiveActivityController(),
+            locationTracking: SpyLocationTracking(),
+            streamBiometricsUseCase: stream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+            userProfileRepository: profileRepository,
+            bleRepository: telemetry,
+            activeFastRepository: fastStore,
+            offlineMaps: SpyOfflineMaps())
+
+        // **The restore, asserted without a relaunch.** A fresh use case built over a store that
+        // already holds a fast reports it after `restoreFast()` and nothing else — which is the same
+        // read `MainContainerView.init` makes at the first main-actor moment, so the bar is correct on
+        // Home's first body evaluation rather than a frame late.
+        fastStore.save(ActiveFast(startedAt: Date().addingTimeInterval(-3600)))
+        await MainActor.run { fastSession.restoreFast() }
+        assertTest(
+            await fastSession.activeFast != nil,
+            "A use case built over a store that holds a fast restores it — the relaunch, made to "
+                + "happen on a running process (\(await fastSession.activeFast.map { "\($0.startedAt)" } ?? "nil"))")
+        let restoredStart = await fastSession.activeFast?.startedAt
+        let savesAfterRestore = fastStore.saves
+
+        // Idempotent, on `start()`'s pattern and for a sharper reason: a fast has exactly one piece of
+        // state, so a second call that overwrote `startedAt` would silently restart a three-day fast
+        // from zero with nothing on screen to say so. The store's write count is captured either side,
+        // because the seed above already wrote once — a bare `saves == 1` here could not tell a
+        // re-write from the write that put the fast there.
+        await fastSession.startFast()
+        assertTest(
+            await fastSession.activeFast?.startedAt == restoredStart
+                && fastStore.saves == savesAfterRestore,
+            "…and `startFast()` on a fast already running changes neither the instant nor the store "
+                + "(\(savesAfterRestore) writes before, \(fastStore.saves) after), which is what stops a "
+                + "second tap restarting a three-day fast from zero")
+
+        // A second use case over a store that is already empty finds nothing, so `restoreFast()` cannot
+        // resurrect a fast the user ended.
+        let emptyStore = SpyActiveFastRepository()
+        let emptySession = LiveSessionUseCase(
+            controller: SpyLiveActivityController(),
+            locationTracking: SpyLocationTracking(),
+            streamBiometricsUseCase: stream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+            userProfileRepository: profileRepository,
+            bleRepository: telemetry,
+            activeFastRepository: emptyStore,
+            offlineMaps: SpyOfflineMaps())
+        await MainActor.run { emptySession.restoreFast() }
+        assertTest(
+            await emptySession.activeFast == nil,
+            "…and a store with nothing in it restores nothing, which is why a relaunch after END FAST "
+                + "does not bring the fast back")
+
+        // The start, on a session with no fast: one instant in memory, one write to the store, and the
+        // store written *after* the slot so the bar appears on the tap rather than a disk write later.
+        let freshStore = SpyActiveFastRepository()
+        let freshSession = LiveSessionUseCase(
+            controller: SpyLiveActivityController(),
+            locationTracking: SpyLocationTracking(),
+            streamBiometricsUseCase: stream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+            userProfileRepository: profileRepository,
+            bleRepository: telemetry,
+            activeFastRepository: freshStore,
+            offlineMaps: SpyOfflineMaps())
+        await freshSession.startFast()
+        let freshFast = await freshSession.activeFast
+        assertTest(
+            freshFast != nil && freshStore.saved == freshFast && freshStore.saves == 1,
+            "Starting a fast fills the slot and writes the store exactly once, with the same instant "
+                + "in both (\(freshStore.saves) write(s))")
+
+        // ---- The row a fast becomes ----
+        //
+        // `endFast()` returns the row it wrote and the store is cleared, so what is asserted here is
+        // the whole of a fast's storage: one `workouts` row, carrying the five measured fields as
+        // absences rather than as zeroes, named and labelled as a fast.
+        //
+        // **Its fast is restored 25 hours back rather than started a moment ago**, and that is not
+        // tidiness. `endFast()` refuses a fast it cannot show to have run (`now > startedAt`), and
+        // `startFast()` stamps `Date()` — so a fast started and ended in the same breath is a
+        // sub-microsecond race that would pass or fail by the clock's resolution. A seeded instant is
+        // the same code path with the variable removed, and it is also the state a real user is in:
+        // every fast anyone ends has been running for hours, because that is what a fast is.
+        let rowStore = SpyActiveFastRepository()
+        let rowSession = LiveSessionUseCase(
+            controller: SpyLiveActivityController(),
+            locationTracking: SpyLocationTracking(),
+            streamBiometricsUseCase: stream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+            userProfileRepository: profileRepository,
+            bleRepository: telemetry,
+            activeFastRepository: rowStore,
+            offlineMaps: SpyOfflineMaps())
+        let rowStart = Date().addingTimeInterval(-90_000)
+        rowStore.save(ActiveFast(startedAt: rowStart))
+        await MainActor.run { rowSession.restoreFast() }
+        let endedFast = await rowSession.endFast()
+        guard let endedFast else {
+            assertTest(false, "A fast 25 hours long produces a row")
+            return
+        }
+        assertTest(
+            await rowSession.activeFast == nil && rowStore.saved == nil && rowStore.clears == 1,
+            "…and ending it clears the live state and the store together, so a relaunch afterwards "
+                + "cannot bring back a fast that is already a row")
+
+        // Found on **its own day**, not by `latest()`. `latest()` orders by `started_at` descending, and
+        // this fast began 25 hours ago — so it is not the newest row in this database and asking for
+        // the newest would hand back Session A's session and assert nothing about the fast. The day-key
+        // read is also the read the screens use, which makes this the storage half of the same claim
+        // §18's first block makes about the session: a row written by `saveWorkoutUseCase` is a row
+        // `getWorkouts(for:)` finds.
+        let fastDay = try await workoutRepository.getWorkouts(for: rowStart)
+        let storedFast = fastDay.first { $0.id == endedFast.workout.id }
+        assertTest(
+            storedFast != nil && fastDay.count == 1,
+            "The row `endFast()` handed back is on the fast's own day and is the only row there — a "
+                + "summary is what the writer says and a stored row is what the screens read "
+                + "(\(fastDay.count) row(s) that day)")
+        guard let storedFast else { return }
+        assertTest(
+            storedFast.source == ActiveFast.sourceLabel
+                && ActiveFast.fastSourceValues.contains(storedFast.source ?? ""),
+            "**A fast carries a `source` and never `nil`.** `WhoopExportImporter.recordedWorkoutDays()` "
+                + "skips any day that already holds a workout, so a hand-ended fast written with `nil` "
+                + "would make its start day read as already recorded and silently drop the export's "
+                + "rows for that day — the 16-of-673 defect, re-opened from the other side "
+                + "(\(storedFast.source ?? "nil"))")
+        assertTest(
+            storedFast.strain == nil && storedFast.averageHeartRate == nil
+                && storedFast.maxHeartRate == nil && storedFast.hrZonePercents == nil
+                && storedFast.steps == nil,
+            "…and it measures nothing: no strain, no heart rate, no zone block and no step count. A "
+                + "`0` in any of those would read as a measurement, which is the fabrication every "
+                + "absence rule in this app forbids")
+        assertTest(
+            storedFast.activityName == WhoopActivityCatalog.fastingName
+                && ActivityFigure.isFast(storedFast),
+            "…and it is named `Fast`, which is what `ActivityFigure.isFast` reads to draw the fasting "
+                + "layout and the zone pill — so the row this use case writes is one its own readers "
+                + "recognise (\(storedFast.activityName ?? "nil"))")
+        assertTest(
+            storedFast.endedAt > storedFast.startedAt,
+            "…with a real span, since a fast of no length is not a fast that happened")
+
+        // **The page and the row are one function**, which is the claim `projectedSession(now:)`'s
+        // doc makes and the one thing a live fast's page depends on: it is handed a projection, and
+        // the row it becomes must be the same construction rather than a second one that agrees today.
+        // The two ids differ by construction — `WorkoutSession.init` mints a fresh `UUID()` — and that
+        // is the only field that may.
+        let reprojected = ActiveFast(startedAt: storedFast.startedAt)
+            .projectedSession(now: storedFast.endedAt)
+        assertTest(
+            reprojected.startedAt == storedFast.startedAt
+                && reprojected.endedAt == storedFast.endedAt
+                && reprojected.strain == storedFast.strain
+                && reprojected.averageHeartRate == storedFast.averageHeartRate
+                && reprojected.maxHeartRate == storedFast.maxHeartRate
+                && reprojected.hrZonePercents == storedFast.hrZonePercents
+                && reprojected.steps == storedFast.steps
+                && reprojected.source == storedFast.source
+                && reprojected.activityName == storedFast.activityName
+                && reprojected.route.isEmpty && storedFast.route.isEmpty
+                && reprojected.splits.isEmpty && storedFast.splits.isEmpty,
+            "Re-projecting the fast on the row's own end instant reproduces it field for field, so the "
+                + "page the user was looking at and the row they end with are one construction — the "
+                + "fresh `UUID` each `WorkoutSession` mints is the only field that differs")
+
+        // ---- A fast that never ran, and a write held open ----
+        //
+        // Two guards that no happy path reaches. The first is `endFast()` on a fast whose start is
+        // still ahead of the clock: it returns `nil` and writes nothing, which is the same guard that
+        // covers END FAST pressed in the same instant as the start — a row of zero length is not a
+        // fast that happened. It is driven with a *future* start rather than by racing the clock,
+        // because a race is exactly what makes an assertion say something different tomorrow.
+        let unbornStore = SpyActiveFastRepository()
+        let unbornSession = LiveSessionUseCase(
+            controller: SpyLiveActivityController(),
+            locationTracking: SpyLocationTracking(),
+            streamBiometricsUseCase: stream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+            userProfileRepository: profileRepository,
+            bleRepository: telemetry,
+            activeFastRepository: unbornStore,
+            offlineMaps: SpyOfflineMaps())
+        unbornStore.save(ActiveFast(startedAt: Date().addingTimeInterval(3600)))
+        await MainActor.run { unbornSession.restoreFast() }
+        let unbornSummary = await unbornSession.endFast()
+        let unbornStillRunning = await unbornSession.activeFast != nil
+        assertTest(
+            unbornSummary == nil && unbornStillRunning,
+            "`endFast()` on a fast that has not started yet writes nothing **and leaves it running** — "
+                + "a row of zero length is not a fast that happened, and clearing the live state over a "
+                + "write that never happened would lose the fast")
+
+        assertTest(
+            await emptySession.endFast() == nil && emptyStore.clears == 0,
+            "…and `endFast()` with no fast at all is inert: it returns nothing and does not touch the "
+                + "store, so it cannot clear a fast this session never had")
+
+        // The second is the ordering, and it is the one property in this block that is invisible
+        // against a real repository — the save returns before any assertion can run, so the window it
+        // opens is a window nothing can look into. Holding the write open is what makes it observable.
+        let gatedStore = SpyActiveFastRepository()
+        let gatedRepository = GatedWorkoutRepository()
+        let gatedSession = LiveSessionUseCase(
+            controller: SpyLiveActivityController(),
+            locationTracking: SpyLocationTracking(),
+            streamBiometricsUseCase: stream,
+            saveWorkoutUseCase: SaveWorkoutUseCase(repository: gatedRepository),
+            userProfileRepository: profileRepository,
+            bleRepository: telemetry,
+            activeFastRepository: gatedStore,
+            offlineMaps: SpyOfflineMaps())
+        await gatedSession.startFast()
+        let endingFast = Task { await gatedSession.endFast() }
+        await gatedRepository.awaitSaveEntered()
+        let liveDuringWrite = await gatedSession.activeFast
+        assertTest(
+            liveDuringWrite == nil && gatedStore.saved == nil,
+            "**`endFast()` clears the live fast and the stored one above its first `await`.** Asserted "
+                + "while the write is parked mid-flight, which is the only moment the ordering is "
+                + "visible: the bar is drawn from `activeFast`, so clearing it below the save would "
+                + "leave it counting over Home for the length of a SQLite write — and would leave a "
+                + "second END FAST callable in that window")
+        await gatedRepository.open()
+        let gatedSummary = await endingFast.value
+        assertTest(
+            gatedSummary != nil && gatedSummary?.calories == nil,
+            "…and the write it was waiting on still completes, handing back the row — with no calorie "
+                + "figure, because a fast burns nothing this app measured")
     } catch {
         assertTest(false, "The live session's round trip threw: \(error)")
     }
@@ -12276,9 +13248,10 @@ func runLiveSessionTests() async {
 /// page draws is `No Data` on every session this app can show, and the blocks below prove arithmetic,
 /// storage, screens and the two readers of one multicast stream — not whether a strap answers.
 ///
-/// It opens on values with no database behind them — `ActivityDelta`, `ActivityZoneRow`, and the
-/// window/band pair — so those blocks still assert if a database block below throws. What each block
-/// is for, in the order they run:
+/// It opens on values with no database behind them — `ActivityDelta`, `ActivityZoneRow`, the
+/// window/band pair, `ActivityEditDraft`, `WhoopActivityCatalog` with `ActivityGlyph`, the
+/// "reading in force" rule, and `ActivityRoute` — so those blocks still assert if a database block
+/// below throws. What each block is for, in the order they run:
 ///
 /// 1. **The delta carries no verdict.** `ActivityDelta` is deliberately a sibling of `MetricChange`
 ///    rather than a fourth verdict on it: strain rising against the last ten basketball sessions is
@@ -12287,11 +13260,34 @@ func runLiveSessionTests() async {
 ///    matters is that a row's percent and its time are **one share of one duration**, so they cannot
 ///    contradict each other — and the reference's `0% · 0:00:12` is therefore unreachable here.
 /// 3. **The window and the band**, on a fixture whose quartiles are exact in binary.
-/// 4. **`workout.steps`** through `v17`'s column, which is the one thing on this page with no
+/// 4. **The edit sheet's draft**, which is the one value both of the sheet's time controls write
+///    through: a drag handle at each end of the chart and a compact `DatePicker` under `Start Time`
+///    and `End Time`. Its rules are the whole of what an edit *is* — narrow-never-widen, the
+///    `min(60, the session's own length)` floor, the minute-write guard that keeps a merely-drawn
+///    picker from rewriting an untouched row, and the clamp that makes the day key invariant.
+/// 5. **The picker's vocabulary** — `WhoopActivityCatalog`'s two sections, and the glyph sweep over
+///    all 189 names. A wrong SF Symbol draws an empty chip rather than erroring, so a typo is invisible
+///    to the compiler and to any screenshot of a different row; §17 covers the file's 21 names and this
+///    is the other producer, whose vocabulary is neither a superset nor a subset of that one.
+/// 6. **The reading in force at a trim handle** — the bpm a handle's label prints is the sample at or
+///    before that instant and never an interpolation between two, on a synthetic series, because
+///    `biometric_samples` holds no rows here and every session this app can show draws the dash.
+/// 7. **`workout.steps`** through `v17`'s column, which is the one thing on this page with no
 ///    producer on any imported session.
-/// 5. **Two readers on one motion stream** — the assertion that fails if anyone replaces the
+/// 8. **The edit through the database**, which is where the save is proven to be an *update*: a
+///    fixture carrying a route, splits, zones, steps and a provenance label is edited and read back,
+///    and the day's session count must not move — an imported row's id is a function of its own two
+///    instants, so an edit that minted a new one would draw the session twice.
+/// 9. **Two readers on one motion stream** — the assertion that fails if anyone replaces the
 ///    multicast registry with a single continuation.
-/// 6. **The export as a property**, over all 673 rows.
+/// 10. **The export as a property**, over all 673 rows.
+/// 11. **The route**, which is the map the user asked to sit below the heart-rate panels: the
+///     two-point floor, the plausibility filter applied on the read as well as at the write, the
+///     chronological order and the stable-sort tie-break, the great-circle length pinned against a
+///     degree of latitude, the frame's padding and its floor, both unit systems driven explicitly, the
+///     speed divided by the path's own span rather than the session's, and the two figures the
+///     reference's overlay carries that this app **drops rather than fakes** — `ELEVATION`, which has
+///     no producer at any layer, and a speed on a route with no time in it.
 func runActivityDetailTests() async {
 
     // Every literal below is a duration or an offset from this instant rather than from `Date()`, so
@@ -12299,13 +13295,20 @@ func runActivityDetailTests() async {
     let anchor = Date(timeIntervalSince1970: 1_700_000_000)
 
     /// A session at a known offset, carrying only what the block needs.
+    ///
+    /// **`strain` is optional and not `Double`**, which is the one change the fasting blocks needed from
+    /// this helper. `WorkoutSession`'s own initialiser deliberately has no default on that parameter —
+    /// see its comment — so a helper whose default is a number cannot express a fast at all, and a fast
+    /// is precisely a session that measured no strain. Every existing call site still passes a `Double`
+    /// and is unmoved; a fasting fixture passes `nil` and says so at its own call site.
     func session(
         _ name: String?,
         startOffset: TimeInterval,
         durationSeconds: TimeInterval,
-        strain: Double = 5,
+        strain: Double? = 5,
         steps: Int? = nil,
-        zones: [Double]? = nil
+        zones: [Double]? = nil,
+        region: String? = nil
     ) -> WorkoutSession {
         WorkoutSession(
             startedAt: anchor.addingTimeInterval(startOffset),
@@ -12317,13 +13320,73 @@ func runActivityDetailTests() async {
             splits: [],
             activityName: name,
             hrZonePercents: zones,
-            steps: steps)
+            steps: steps,
+            offlineRegionID: region)
     }
 
     // The profile's table, off the cold-start 190/60 pair `GRDBUserProfileRepository` answers a fresh
     // install with. It is the same table `CalculateStrainUseCase` builds its zones from and the same
     // one the live session's band scale reads, so this page introduces no third edge.
     let zones = StrainAccumulatorMath.computeZones(maxHR: 190, restHR: 60)
+
+    // The fasting blocks' own calendar, and it must be `Calendar.current` for the reason the
+    // importer's day keys are: a fast's enclosure rule compares **calendar days**, and a day built in
+    // another zone does not shift a day key, it splits one. `dayCalendar` is the same calendar
+    // `Date.startOfDay` uses inside the app, so a fixture's days are the days the app would key.
+    let dayCalendar = Calendar.current
+    let baseDay = dayCalendar.startOfDay(for: anchor)
+
+    /// A calendar day at a wall-clock hour, built with `date(byAdding:)` rather than by adding seconds
+    /// so a spring-forward day does not move the fixture — §13's consistency block records the same
+    /// trap for the same reason.
+    func day(_ offset: Int, hour: Int = 0) -> Date {
+        let start = dayCalendar.date(byAdding: .day, value: offset, to: baseDay) ?? baseDay
+        return dayCalendar.date(byAdding: .hour, value: hour, to: start) ?? start
+    }
+
+    /// A recovery night on the day `offset`, keyed at `startOfDay` the way both producers key theirs.
+    ///
+    /// **This section's first `RecoveryMetric` fixture.** The spread a block hands it matters more than
+    /// it looks: `BaselineStatisticsMath.baseline` floors a window's spread at
+    /// `minimumCoefficientOfVariation × |mean|`, so a literal z-score is only reproducible on a window
+    /// that clears that floor — a resting-rate window of 58/60/62 has the floor as its denominator (3,
+    /// not 2) and every z downstream moves. The fasting blocks below pick spreads that clear it.
+    func night(
+        _ offset: Int,
+        score: Int,
+        hrv: Double,
+        rhr: Int,
+        rr: Double? = nil,
+        metric: HRVMetric = .rmssd
+    ) -> RecoveryMetric {
+        RecoveryMetric(
+            date: dayCalendar.date(byAdding: .day, value: offset, to: baseDay) ?? baseDay,
+            score: score,
+            hrvValueMs: hrv,
+            hrvMetric: metric,
+            restingHeartRate: rhr,
+            respiratoryRate: rr)
+    }
+
+    /// A fast between two instants.
+    ///
+    /// **It states the trio's absence at this one site rather than defaulting it**, which is the whole
+    /// reason it is not folded into `session(...)`: a Zero fast measures no strain, no average heart
+    /// rate and no maximum heart rate, and `WorkoutSession`'s initialiser has no default on any of the
+    /// three so that a construction site has to say which answer it means. A fixture builder with a
+    /// `nil` default would be that same trap one level down.
+    func fast(from start: Date, to end: Date) -> WorkoutSession {
+        WorkoutSession(
+            startedAt: start,
+            endedAt: end,
+            strain: nil,
+            averageHeartRate: nil,
+            maxHeartRate: nil,
+            route: [],
+            splits: [],
+            activityName: WhoopActivityCatalog.fastingName,
+            hrZonePercents: nil)
+    }
 
     // MARK: - The delta: a comparison with no verdict
 
@@ -12487,6 +13550,37 @@ func runActivityDetailTests() async {
         ActivityZoneRow.rows(for: zoned, zones: Array(zones.prefix(4))).isEmpty,
         "A zone **table** that is not five bands long answers no rows at all: a page drawing three of "
             + "five zones would report the session's time as though the two hardest bands did not exist")
+
+    // MARK: - The time's two halves
+
+    // The page draws a row's time as a dim hours-and-minutes half and a bright seconds half, so the
+    // split is a rule and it lives on the value type rather than in the `body` — the runner has no
+    // renderer, and a split written into a view is a split nothing can assert.
+    let clockParts = ActivityZoneRow.durationParts("0:15:58")
+    assertTest(
+        clockParts.leading == "0:15" && clockParts.trailing == ":58",
+        "A clock duration splits at its **last** colon, so `0:15:58` draws `0:15` then `:58` — the "
+            + "trailing half keeps its colon, so the two halves still read as one duration if the two "
+            + "colours are ignored. Splitting at the first colon would put the minutes on the trailing "
+            + "side and leave `0` alone on the leading one (got \(clockParts.leading), "
+            + "\(clockParts.trailing))")
+    assertTest(
+        ActivityZoneRow.durationParts("0:00:12") == (leading: "0:00", trailing: ":12"),
+        "**And the reference's own case off the export** — a 12-second share of a session draws "
+            + "`0:00` then `:12`, which is the whole reason the split is at the last colon: a shorter "
+            + "duration has the same two halves in the same two places, so the column does not move "
+            + "shape as the numbers shrink")
+    assertTest(
+        ActivityZoneRow.durationParts("0:00:00") == (leading: "0:00", trailing: ":00"),
+        "**And a measured zero keeps its two halves**, so a `0%` row from the 45 all-zero rows in the "
+            + "export draws a real `0:00` and `:00` rather than collapsing to the single undivided "
+            + "mark an absent block draws — the same distinction the row's values carry, carried "
+            + "through the drawing")
+    assertTest(
+        ActivityZoneRow.durationParts("—") == (leading: "—", trailing: ""),
+        "A string with no colon comes back **whole with an empty tail**, which is the dash an absent "
+            + "block draws: a dash is not a duration and has no halves, so it is drawn once and "
+            + "undivided rather than padded into a two-part shape it does not have")
 
     // MARK: - The window
 
@@ -12720,6 +13814,1598 @@ func runActivityDetailTests() async {
         "…and it is composed rather than a bare date: the two ends are distinguishable in it, which "
             + "is what a one-ended form would lose (\(subtitle))")
 
+    // MARK: - A fast's own layout
+
+    // Everything a fast's page decides is a value here, because the runner has no renderer:
+    // `ActivityFigure.isFast` chooses between the two arrangements, `FastingRecovery` chooses which
+    // nights, and `FastingRecoveryChartSeries` chooses the axis and the sentence. **What is left in
+    // the `body` is the arrangement itself and nothing else** — which is the shape this whole section
+    // exists in, and the reason the plan's "only the arrangement is left in `body`" is a claim these
+    // blocks can hold it to.
+
+    func near(_ left: Double, _ right: Double) -> Bool { abs(left - right) < 0.0001 }
+
+    // An optional printed into an assertion message. `Int?` has no `description` of its own —
+    // `description` belongs to `Int`, and the compiler will not reach through the optional for it —
+    // so a message that wants to show what it actually got goes through here. Without it a `nil` and
+    // a wrong figure print alike, which is the one thing a failure message must not do.
+    func shown<T>(_ value: T?) -> String { value.map { "\($0)" } ?? "nil" }
+
+    // MARK: - The gate
+
+    let namedFast = fast(from: day(0, hour: 21), to: day(3, hour: 11))
+    assertTest(
+        ActivityFigure.isFast(namedFast),
+        "A session that measured no strain and is named `Fast` draws the fasting layout — the two "
+            + "guards `fastingZone` and `fastingEndText` have each carried since §20, now written "
+            + "once and read from one place")
+
+    assertTest(
+        !ActivityFigure.isFast(session("Fast", startOffset: 0, durationSeconds: 3600, strain: 7.4)),
+        "…and **a `Fast` that carries a measured strain is not one**. The gate is the data and never "
+            + "the name — `headlineText`'s rule — which is what keeps a hand-recorded fast that has a "
+            + "sensor reading on the ordinary layout, and keeps this page and Home agreeing about it")
+
+    assertTest(
+        !ActivityFigure.isFast(session("Walking", startOffset: 0, durationSeconds: 3600)),
+        "…and a measured session of any other name is not one either")
+
+    assertTest(
+        ActivityFigure.isFast(session("  FAST  ", startOffset: 0, durationSeconds: 3600, strain: nil)),
+        "…and the name is compared through `ActivityName.normalised`, so the edit picker's own "
+            + "spelling and a stray space reach the same answer")
+
+    // The pair that fails if the extraction drifts back into copies. §20 pins these two rules on a
+    // `Fast` with no strain; what is added here is that all three now answer **the same question**,
+    // including on the strained `Fast` that only the gate's first guard refuses.
+    assertTest(
+        ActivityFigure.fastingZone(for: namedFast, on: day(0, hour: 23)) != nil
+            && ActivityFigure.fastingEndText(
+                for: namedFast, on: day(0, hour: 23), now: day(9)) != nil,
+        "…and the two rules extracted onto it answer for the same session, so the page's layout, "
+            + "Home's zone pill and Home's end clock hold one definition of which rows are fasts")
+
+    let strainedFast = session("Fast", startOffset: 0, durationSeconds: 3600, strain: 7.4)
+    assertTest(
+        !ActivityFigure.isFast(strainedFast)
+            && ActivityFigure.fastingZone(for: strainedFast, on: anchor) == nil
+            && ActivityFigure.fastingEndText(for: strainedFast, on: anchor, now: day(9)) == nil,
+        "…and all three refuse the same strained `Fast` — a fourth copy of the two guards is exactly "
+            + "what this extraction exists to prevent")
+
+    // The **name half on its own**, which is what the picker dispatches on: it has a `String?` the user
+    // just chose and no session yet to hold a strain, so the data gate cannot be asked. Driven over the
+    // same four names the gate above is driven over, so the extraction and its source cannot come to
+    // different answers about any of them — the whole risk of splitting one function in two.
+    assertTest(
+        ActivityFigure.isFastName(WhoopActivityCatalog.fastingName)
+            && ActivityFigure.isFastName("  FAST  ")
+            && !ActivityFigure.isFastName("Walking")
+            && !ActivityFigure.isFastName(nil),
+        "The name half answers `true` for the fasting name and for the edit picker's own spelling of "
+            + "it, and `false` for another activity and for no name at all — so the picker routes `Fast` "
+            + "to `startFast()` and everything else, including *nothing chosen*, to `start(name:)`")
+
+    assertTest(
+        ActivityFigure.isFastName("Fast") == ActivityFigure.isFast(namedFast)
+            && ActivityFigure.isFastName(strainedFast.activityName)
+                != ActivityFigure.isFast(strainedFast),
+        "…and it is deliberately **not** `isFast`: on a `Fast` that carries a measured strain the two "
+            + "disagree, and that disagreement is the whole reason the halves are separable. The picker "
+            + "asks about a name, the layout asks about a row, and a strained `Fast` is a fast to the "
+            + "first and an ordinary session to the second")
+
+    assertTest(
+        [nil, "", "activity", "Activity", "Walking", "Fasting", "F"].allSatisfy {
+            !ActivityFigure.isFastName($0)
+        },
+        "…and no near-miss reaches it: no name at all, the empty string, WHOOP's own abstention word "
+            + "in both spellings, another activity, and a one-letter prefix — a comparison that reached "
+            + "for `hasPrefix` or `contains` instead of equality would start a fast on the last of those "
+            + "and pass every assertion above it")
+
+    // MARK: - Which nights the fast covered
+
+    assertTest(
+        FastingRecovery.encloses(day(1), in: namedFast)
+            && FastingRecovery.encloses(day(2), in: namedFast)
+            && FastingRecovery.encloses(day(3), in: namedFast),
+        "A fast 21:00 D → 11:00 D+3 covers D+1, D+2 and D+3 — the three mornings it was running "
+            + "through the end of, which is the 86-hour fast's own answer on the bundled files")
+
+    assertTest(
+        !FastingRecovery.encloses(day(0), in: namedFast),
+        "…and **not D**. D's own morning reading came from a night that ended fifteen hours before "
+            + "the fast began, so crediting it would put a pre-fast reading into the fast's own mean "
+            + "— which is exactly what `covers(_:)` does, and this is the assertion that fails if "
+            + "anyone reaches for it because the two look like the same question")
+
+    assertTest(
+        !FastingRecovery.encloses(day(4), in: namedFast),
+        "…and not the morning after it ended either, so the rule is bounded at both ends")
+
+    // The two day boundaries, which is where an off-by-one in either comparison shows up.
+    let midnightFast = fast(from: day(0, hour: 20), to: day(2))
+    assertTest(
+        FastingRecovery.encloses(day(2), in: midnightFast)
+            && !FastingRecovery.encloses(day(0), in: midnightFast),
+        "A fast ending at exactly midnight covers the night that ended that morning. The fast ran "
+            + "to that day's first instant, so an exclusive comparison would drop the last night of "
+            + "every fast that ended on the hour — the same `>=` / `<=` half-open convention "
+            + "`fastingEndText` carries for a fast ending at `00:00:00`")
+
+    let smallHoursFast = fast(from: day(1, hour: 2), to: day(1, hour: 9))
+    assertTest(
+        !FastingRecovery.encloses(day(1), in: smallHoursFast)
+            && !FastingRecovery.encloses(day(2), in: smallHoursFast),
+        "…and a fast starting in the small hours of D and ending later the same day covers "
+            + "**nothing**, though it ran through D's morning. A `RecoveryMetric` stores a snapped "
+            + "day key and no wake instant, so the app cannot tell whether D's reading was taken "
+            + "before or after 02:00 — and where a day key cannot distinguish, an absence is the "
+            + "honest answer rather than a guess that credits the fast with a night it may not have "
+            + "covered")
+
+    // MARK: - The nights a fast's page draws
+
+    // The window is built so every literal below is hand-checkable rather than read back off the code
+    // under test: three values `a−d, a, a+d` have a **sample** standard deviation of exactly `d`, so
+    // the z-scores are ±1 and 0. The spreads also clear
+    // `BaselineStatisticsMath.minimumCoefficientOfVariation` — 10 against HRV's floor of 3.5, 10
+    // against RHR's 3, 3 against RR's 0.75 — which is the trap `CLAUDE.md` records: a window of
+    // 58/60/62 has the *floor* as its denominator and every literal downstream moves.
+    let fastingHistory = [
+        night(-5, score: 50, hrv: 60, rhr: 50, rr: 12),
+        night(-4, score: 50, hrv: 70, rhr: 60, rr: 15),
+        night(-3, score: 50, hrv: 80, rhr: 70, rr: 18),
+        night(1, score: 40, hrv: 60, rhr: 70, rr: 18),
+        night(2, score: 60, hrv: 70, rhr: 50, rr: 12),
+        night(3, score: 80, hrv: 80, rhr: 60, rr: 15),
+    ]
+    let fastingSummary = FastingRecovery.summary(for: namedFast, history: fastingHistory)
+
+    assertTest(
+        fastingSummary?.nights.count == 3,
+        "The fast covers exactly its three mornings — the window's own days and the fast's start "
+            + "day are not among them (\(shown(fastingSummary?.nights.count)))")
+
+    assertTest(
+        fastingSummary?.baselineObservationCount == 3,
+        "…and the baseline window is the three measured days before the fast started, so the "
+            + "comparison is against a stated reference and not against the fast's own nights "
+            + "(\(shown(fastingSummary?.baselineObservationCount)) days)")
+
+    assertTest(
+        fastingSummary?.meanScore == 60 && fastingSummary?.scoredNightCount == 3,
+        "The score is the **mean of the nights' own stored scores** — 40, 60 and 80 — carried "
+            + "beside the count it was taken across, so the figure and the badge under it cannot "
+            + "describe two different populations (\(shown(fastingSummary?.meanScore)) over "
+            + "\(shown(fastingSummary?.scoredNightCount)))")
+
+    let firstFastNight = fastingSummary?.nights.first
+    let secondFastNight = fastingSummary?.nights.dropFirst().first
+    let lastFastNight = fastingSummary?.nights.last
+
+    assertTest(
+        firstFastNight?.hrvZScore.map { near($0, -1) } == true
+            && secondFastNight?.hrvZScore.map { near($0, 0) } == true
+            && lastFastNight?.hrvZScore.map { near($0, 1) } == true,
+        "The HRV z-scores are against a baseline of 70 ms with a spread of 10, so 60/70/80 read "
+            + "−1, 0 and +1 — pinned from the window's own arithmetic rather than from a second "
+            + "implementation of it")
+
+    assertTest(
+        firstFastNight?.restingHeartRateZScore.map { near($0, 1) } == true
+            && secondFastNight?.restingHeartRateZScore.map { near($0, -1) } == true
+            && lastFastNight?.restingHeartRateZScore.map { near($0, 0) } == true,
+        "…and resting heart rate, against its own baseline of 60 with a spread of 10, moves the "
+            + "**opposite way on the same nights** — 70/50/60 read +1, −1 and 0 — which is what "
+            + "makes one shared axis meaningful rather than decorative")
+
+    assertTest(
+        firstFastNight?.respiratoryRateZScore.map { near($0, 1) } == true
+            && secondFastNight?.respiratoryRateZScore.map { near($0, -1) } == true
+            && lastFastNight?.respiratoryRateZScore.map { near($0, 0) } == true,
+        "…and respiratory rate, against 15 with a spread of 3, reads +1, −1 and 0 — the third "
+            + "quantity drawn on the same one ruler")
+
+    assertTest(
+        lastFastNight?.rawText(for: .hrv) == "80.0 ms"
+            && lastFastNight?.rawText(for: .restingHeartRate) == "60 bpm"
+            && lastFastNight?.rawText(for: .respiratoryRate) == "15.0 rpm",
+        "…and each bar's real magnitude reaches a reader through `rawText`, since a z-score is "
+            + "dimensionless and a chart of σ alone would never say a night's HRV was 80 ms "
+            + "(\(lastFastNight?.rawText(for: .hrv) ?? "nil"))")
+
+    // The mean's key absence rule, asserted in **both** directions: a placeholder night is not a
+    // night, and a fast whose only covered row is one has no score rather than a score of zero.
+    let partlyMeasured = FastingRecovery.summary(
+        for: namedFast,
+        history: [
+            night(1, score: 44, hrv: 60, rhr: 70),
+            // `hasMeasurement` is `hrvValueMs > 0`, so this is the row a build before the
+            // no-placeholder change would have written: a reserved score beside no reading.
+            night(2, score: 0, hrv: 0, rhr: 0),
+            night(3, score: 90, hrv: 80, rhr: 60),
+        ])
+    assertTest(
+        partlyMeasured?.meanScore == 67 && partlyMeasured?.scoredNightCount == 2
+            && partlyMeasured?.nights.count == 2,
+        "…and **a placeholder night is not a night**: 44 and 90 average to 67 over two, where "
+            + "counting the unmeasured middle row in would print a yellow 45 over three — the trap "
+            + "`CLAUDE.md` records for the Home ring (\(shown(partlyMeasured?.meanScore)) over "
+            + "\(shown(partlyMeasured?.scoredNightCount)))")
+
+    assertTest(
+        FastingRecovery.summary(
+            for: namedFast, history: [night(2, score: 0, hrv: 0, rhr: 0)]) == nil,
+        "…and a fast whose only covered row is a placeholder has **no score**, not a score of zero: "
+            + "`nil` is this app's whole vocabulary for *nothing was measured*, and a `0` here would "
+            + "draw a hard red 0% over a night nothing recorded")
+
+    // A mean is not a score the formula produced, so which tier 66.5 lands on is a decision rather
+    // than arithmetic. Both fixtures are chosen so a **truncating** mean gives a different *tier*,
+    // not merely a different digit — which is what makes them discriminating rather than cosmetic.
+    let roundsUpGreen = FastingRecovery.summary(
+        for: namedFast,
+        history: [night(1, score: 66, hrv: 70, rhr: 60), night(2, score: 67, hrv: 70, rhr: 60)])
+    assertTest(
+        roundsUpGreen?.meanScore == 67
+            && roundsUpGreen?.meanScore.map { RecoveryMetric.RecoveryState(score: $0) == .green }
+                == true,
+        "A mean of 66.5 rounds to 67 and is therefore **green**, where `Int(mean)` would print a "
+            + "yellow 66 — the rounding happens before the tiering, so the figure and the colour "
+            + "beside it can never disagree about which side of a boundary the nights were on "
+            + "(\(shown(roundsUpGreen?.meanScore)))")
+
+    let roundsUpYellow = FastingRecovery.summary(
+        for: namedFast,
+        history: [night(1, score: 33, hrv: 70, rhr: 60), night(2, score: 34, hrv: 70, rhr: 60)])
+    assertTest(
+        roundsUpYellow?.meanScore == 34
+            && roundsUpYellow?.meanScore.map { RecoveryMetric.RecoveryState(score: $0) == .yellow }
+                == true,
+        "…and the same at the other boundary: 33.5 rounds to 34, which is **yellow** where a "
+            + "truncating mean prints 33 and calls the same two nights red "
+            + "(\(shown(roundsUpYellow?.meanScore)))")
+
+    // MARK: - Two HRV quantities never share a baseline
+
+    // The window is built so the pooled answer and the correct one differ in **sign** and not merely
+    // in digits: the SDNN days sit *above* the newest night, so pooling drags the mean over it and a
+    // +1σ night reads −0.5σ. A defect that is only visible as a moved decimal is one a chart can
+    // absorb without looking wrong.
+    let mixedHistory = [
+        night(-6, score: 50, hrv: 110, rhr: 40, metric: .sdnn),
+        night(-5, score: 50, hrv: 120, rhr: 40, metric: .sdnn),
+        night(-4, score: 50, hrv: 130, rhr: 40, metric: .sdnn),
+        night(-3, score: 50, hrv: 60, rhr: 60, metric: .rmssd),
+        night(-2, score: 50, hrv: 70, rhr: 60, metric: .rmssd),
+        night(-1, score: 50, hrv: 80, rhr: 60, metric: .rmssd),
+        night(2, score: 50, hrv: 95, rhr: 60, metric: .sdnn),
+        night(3, score: 50, hrv: 80, rhr: 60, metric: .rmssd),
+    ]
+    // Named for what it is rather than `mixedSummary`: §19's `ActivityBaseline` block above already
+    // holds that name, and a redeclaration here would be a compile error rather than a wrong answer.
+    let mixedHRVSummary = FastingRecovery.summary(for: namedFast, history: mixedHistory)
+    let sdnnNight = mixedHRVSummary?.nights.first
+    let rmssdNight = mixedHRVSummary?.nights.last
+
+    assertTest(
+        mixedHRVSummary?.nights.count == 2 && mixedHRVSummary?.hrvMetric == .rmssd,
+        "The newest covered night is RMSSD, so that is the quantity in force — "
+            + "`MetricWeek.hrvBaselineMetric`'s rule, and the one thing that makes the pooled "
+            + "z-score meaningful (\(shown(mixedHRVSummary?.hrvMetric)))")
+
+    assertTest(
+        sdnnNight.map { $0.hrvMetric == .sdnn && $0.hrvZScore == nil } == true,
+        "…and **the nights are narrowed too, not only the window**. An SDNN night has no reading on "
+            + "the RMSSD scale every other bar of the chart is drawn against, so it draws no HRV bar "
+            + "— the same answer an absent reading gives, which is why the chart needs no third state")
+
+    assertTest(
+        rmssdNight.map { $0.hrvZScore.map { near($0, 1) } == true } == true,
+        "…and the RMSSD night's z is against the **RMSSD days alone** — 60/70/80, mean 70, σ 10, so "
+            + "80 reads +1. Pooling the three SDNN days in would give a mean of 95 and read this "
+            + "night as −0.52, a below-baseline night drawn as an above-baseline one "
+            + "(\(shown(rmssdNight?.hrvZScore)))")
+
+    assertTest(
+        rmssdNight.map { $0.restingHeartRateZScore.map { near($0, 0.9129) } == true } == true,
+        "…and **resting heart rate is not narrowed**, because it is the same measurement whichever "
+            + "variability figure was recorded. Its window is the whole six days — 40/40/40/60/60/60, "
+            + "mean 50, σ 10.95 — so a night at 60 reads 0.91; narrowed to the RMSSD days it would "
+            + "be a flat 60/60/60 and read 0.0, which is the pooling defect in this type's other "
+            + "direction (\(shown(rmssdNight?.restingHeartRateZScore)))")
+
+    // MARK: - The respiratory rate's count gate
+
+    // RR is the one of the three with **no cold-start pair anywhere in this app** — `HRVMetric` has
+    // one and `RecoveryScoring` has RHR's, but RR has neither — so an ungated
+    // `BaselineStatisticsMath.baseline` call would fall back to a mean of 0 with a spread of 1 and
+    // pin every bar to the clamp. The gate is the count, and the reading stays on the night so the
+    // chart can tell *nothing to compare it against* from *nothing was measured*.
+    let thinRRSummary = FastingRecovery.summary(
+        for: namedFast,
+        history: [
+            night(-5, score: 50, hrv: 60, rhr: 50),
+            night(-4, score: 50, hrv: 70, rhr: 60),
+            night(-3, score: 50, hrv: 80, rhr: 70),
+            night(1, score: 60, hrv: 70, rhr: 60, rr: 15),
+        ])
+    let thinRRNight = thinRRSummary?.nights.first
+    assertTest(
+        thinRRNight.map { $0.respiratoryRate == 15 && $0.respiratoryRateZScore == nil } == true,
+        "Two respiratory readings in the window is below the three-day floor, so the **bar is "
+            + "withheld while the reading stays**. `nil` there means *nothing to compare it "
+            + "against*, which is a different sentence from *nothing was measured*, and the two "
+            + "draw differently")
+
+    assertTest(
+        thinRRNight.map { $0.rawText(for: .respiratoryRate) == "15.0 rpm" } == true,
+        "…and the raw figure still reaches a reader through `rawText`, so a withheld bar costs the "
+            + "chart a mark and not the night its measurement "
+            + "(\(thinRRNight?.rawText(for: .respiratoryRate) ?? "nil"))")
+
+    // MARK: - The clamp, reached through `BaselineStatisticsMath.zScore`
+
+    // `RecoveryMetric.restingHeartRate` is a non-optional `Int` carrying a reserved `0` on a row
+    // written before the no-placeholder change, and the night gate is `hasMeasurement` — which reads
+    // **HRV**, not the rate — so a `0` is reachable in the data this block is handed. The clamp to
+    // ±4 lives only inside `zScore`, and an inline division is the way it gets lost.
+    let reservedRate = FastingRecovery.summary(
+        for: namedFast,
+        history: [
+            night(-5, score: 50, hrv: 60, rhr: 50),
+            night(-4, score: 50, hrv: 70, rhr: 60),
+            night(-3, score: 50, hrv: 80, rhr: 70),
+            night(1, score: 60, hrv: 70, rhr: 0),
+        ])
+    let reservedRateNight = reservedRate?.nights.first
+    assertTest(
+        reservedRateNight.map { $0.restingHeartRateZScore.map { near($0, -4) } == true } == true,
+        "A reserved `0` bpm against a baseline of 60 with a spread of 10 is six σ below it, and it "
+            + "reads **−4** because the clamp inside `BaselineStatisticsMath.zScore` is the only "
+            + "thing that puts a bound on it. An inline `(0 − 60) / 10` would draw a bar six σ long "
+            + "off a four-σ axis — a mark outside its own frame, which is a claim nothing measured "
+            + "(\(shown(reservedRateNight?.restingHeartRateZScore)))")
+
+    // MARK: - The σ axis
+
+    assertTest(
+        FastingRecoveryAxis.standard.upperBound == 4
+            && FastingRecoveryAxis.standard.gridLines == [1, 2, 3],
+        "The scale runs from the baseline up to **4σ**, ruled at 1, 2 and 3, for every fast this "
+            + "app will ever draw. A z-score is already dimensionless, so +2σ is the same height on "
+            + "one user's chart as on another's — the whole property normalising buys, and the one a "
+            + "fitted axis would destroy while looking more careful. `4` is "
+            + "`BaselineStatisticsMath.maximumAbsoluteZScore`, the top of the ladder every input has "
+            + "already been clamped to (\(FastingRecoveryAxis.standard.upperBound.formattedOneDecimal()), "
+            + "ruled at \(FastingRecoveryAxis.standard.gridLines))")
+
+    assertTest(
+        FastingRecoveryAxis.standard.fraction(FastingRecoveryAxis.baselineLine) == 0,
+        "…and **the baseline is the frame's foot**, because nothing is drawn below it: a quantity "
+            + "that fell contributes no length, so a lower half would be half a frame reserved for a "
+            + "mark that is never drawn — and it is why this axis holds one bound and not two")
+
+    let wideAxis = FastingRecoveryAxis.fit([6])
+    assertTest(
+        wideAxis.upperBound == 6,
+        "…and a 6σ column widens it to `0...6`, in whole σ: the axis is fitted to the **stacked** "
+            + "excursion, which is a sum of up to three clamped readings and therefore reaches past "
+            + "the range one z-score can occupy (\(wideAxis.upperBound.formattedOneDecimal()))")
+
+    assertTest(
+        wideAxis.gridLines == [1, 2, 3, 4, 5],
+        "…and its lines are **derived from the bound** rather than listed, so a widened axis is "
+            + "ruled at its own width instead of carrying the standard scale's three into a frame "
+            + "that no longer means the same thing by them (\(wideAxis.gridLines))")
+
+    assertTest(
+        FastingRecoveryAxis.fit([3.5]) == .standard,
+        "…and a night **inside** the standard range leaves the scale alone rather than fitting to "
+            + "the reading, so two fasts of ordinary nights are measured against one ruler "
+            + "(\(FastingRecoveryAxis.fit([3.5]).upperBound.formattedOneDecimal()))")
+
+    assertTest(
+        !FastingRecoveryAxis.standard.gridLines.contains(FastingRecoveryAxis.baselineLine)
+            && FastingRecoveryAxis.standard.gridLines.allSatisfy { $0 > 0 },
+        "…and `0` is **not among the gridlines**. The chart strokes `0` itself as the labelled rule "
+            + "every column stands on, so a scale that also listed it would draw that line twice "
+            + "(\(FastingRecoveryAxis.standard.gridLines))")
+
+    assertTest(
+        FastingRecoveryAxis.fit([]) == .standard
+            && FastingRecoveryAxis.fit([.nan]) == .standard
+            && FastingRecoveryAxis.fit([-3, -1]) == .standard,
+        "…and a chart with nothing to plot — or nothing that **rose** — falls back to the standard "
+            + "scale rather than to an infinite one. The guard is on finiteness and on sign "
+            + "together, because every comparison against a `NaN` is false and a fall is not a height")
+
+    // The margin is a scale, and these are the two rules that make it read as one. It carries a label
+    // per line rather than two at the frame's corners: the corners name `±4σ`, the pair a reader has no
+    // use for, while the lines between them — what a bar is actually read against — went unlabelled.
+    assertTest(
+        FastingRecoveryAxis.standard.gridLines.map(FastingRecoveryChartView.tickLabel)
+            == ["+1σ", "+2σ", "+3σ"]
+            && FastingRecoveryChartView.tickLabel(1.5) == "+1.5σ",
+        "**Every gridline's value prints**, so the right margin is a run a reader can count down "
+            + "rather than two numbers at the frame's corners "
+            + "(\((FastingRecoveryAxis.standard.gridLines.map(FastingRecoveryChartView.tickLabel))))")
+
+    assertTest(
+        FastingRecoveryChartView.tickLabel(FastingRecoveryAxis.baselineLine) == "0",
+        "…and the baseline's own tick is a bare `0` with **no sign and no glyph**, because neither "
+            + "`+0σ` nor `−0σ` is true of a line that is neither above the mean nor below it — and "
+            + "because at the foot of a scale the bare figure is what a reader expects to find there "
+            + "(\(FastingRecoveryChartView.tickLabel(FastingRecoveryAxis.baselineLine)))")
+
+    // **The property that makes the column a scale is even spacing, and it is the one a clamp
+    // breaks.** The tempting clamp is at the floor: the frame's bottom edge *is* the baseline, so the
+    // `0` label centres on the bar area's last pixel and hangs half its own height into the date
+    // strip. Nudging it up to sit inside the frame moves that one label and leaves the other three,
+    // which is exactly what this catches — a scale whose figures drift off the lines they name is
+    // worse than one whose last figure overhangs, and nothing is overlapped either way, since the
+    // date strip is `plotWidth` wide and this column is outside it.
+    let labelYs = (FastingRecoveryAxis.standard.gridLines + [FastingRecoveryAxis.baselineLine])
+        .map { FastingRecoveryChartView.axisLabelY(value: $0, axis: .standard) }
+        .sorted()
+    let labelSteps = zip(labelYs, labelYs.dropFirst()).map { $1 - $0 }
+    assertTest(
+        labelSteps.count == 3 && labelSteps.allSatisfy { abs($0 - labelSteps[0]) < 0.0001 }
+            && FastingRecoveryChartView.axisLabelY(
+                value: FastingRecoveryAxis.baselineLine, axis: .standard)
+                == FastingRecoveryChartView.barAreaHeight,
+        "…and the four labels are **evenly spaced** from the floor to the top of the frame, so the "
+            + "margin reads as one scale rather than as four numbers — a clamp on the lowest one, the "
+            + "obvious way to hold it inside the bar area, is precisely what breaks that "
+            + "(steps \(labelSteps.map { Double($0) }))")
+
+    // **The date strip has to be as tall as the label it holds, and it was not.** The label is a
+    // `VStack` of a `10` pt weekday over an `11` pt day number — two line boxes, `12` and `14` — and it
+    // is centred in the strip, so a strip shorter than `26` spills it out of *both* ends at once: the
+    // weekday's ascenders pushed up **through** the baseline rule the columns stand on, the day number
+    // down into the legend. The strip was `18`, which is the state the screenshots caught — the days
+    // sitting on the rule rather than under it — and nothing in this repo could see it, because the
+    // overflow is a `body`'s arrangement and the runner has no renderer. So the strip is derived from
+    // its two line boxes rather than picked, and the placement is asserted as a containment.
+    let dateLabelTop = FastingRecoveryChartView.dateLabelCentreY
+        - FastingRecoveryChartView.dateLabelTextHeight / 2
+    let dateLabelBottom = FastingRecoveryChartView.dateLabelCentreY
+        + FastingRecoveryChartView.dateLabelTextHeight / 2
+    assertTest(
+        FastingRecoveryChartView.dateLabelTextHeight >= 12 + 14
+            && dateLabelTop >= FastingRecoveryChartView.dateStripInset - 0.0001,
+        "**The date label starts below the baseline rule**, by the strip's own inset — a two-line label "
+            + "in a strip sized for one line is drawn *on* the rule the columns stand on, which is what "
+            + "`18` against `26` did (top \(Double(dateLabelTop)), text height "
+            + "\(Double(FastingRecoveryChartView.dateLabelTextHeight)))")
+
+    assertTest(
+        dateLabelBottom <= FastingRecoveryChartView.dateLabelHeight + 0.0001
+            && FastingRecoveryChartView.dateLabelHeight
+                == FastingRecoveryChartView.dateStripInset
+                    + FastingRecoveryChartView.dateLabelTextHeight,
+        "…and the day number under it finishes **inside the strip**, so the label is contained at both "
+            + "ends rather than centred in a box too short for it — the strip being the inset plus the "
+            + "text and nothing else (bottom \(Double(dateLabelBottom)), strip "
+            + "\(Double(FastingRecoveryChartView.dateLabelHeight)))")
+
+    // The margin's spacing is a scale too, and a unit step stops being one on the charts the merged
+    // column produces. A stacked night can reach `3 × maximumAbsoluteZScore`, so a bound of 12 is
+    // reachable and a unit step would rule eleven lines down a 132-point column — one every eleven
+    // points, which is a grey block rather than a scale. The step doubles where the lines stop fitting,
+    // and the guard is a **count** rather than a bound: keyed to the bound it would fire at 5, where a
+    // unit step draws four comfortable lines.
+    assertTest(
+        FastingRecoveryAxis.fit([5]).gridLines == [1, 2, 3, 4]
+            && FastingRecoveryAxis.fit([12]).gridLines == [2, 4, 6, 8, 10]
+            && FastingRecoveryAxis.fit([12]).gridLines.count < 11,
+        "**The margin's step coarsens where the lines stop fitting**, so a widened axis stays a scale "
+            + "rather than becoming a grey block: a bound of 5 is still ruled at every σ, and the "
+            + "`3 × 4σ` bound a three-segment column can reach doubles the step to two and draws five "
+            + "lines where a unit step would draw eleven "
+            + "(\(FastingRecoveryAxis.fit([12]).gridLines))")
+
+    // MARK: - The merged column
+
+    // Declared here rather than beside the sentence below, because the chart's own value is what both
+    // blocks read: the columns, the axis, the legend's entries and the sentence all come off this one
+    // series, which is the property that keeps a picture and its caption from describing two different
+    // sets of nights.
+    let fastingSeries = fastingSummary.flatMap { FastingRecoveryChartSeries(summary: $0) }
+
+    // The chart drew three bars side by side per night until the user asked for one merged column —
+    // *"how about a merged chart for all 3, the lower one goes the less it shows on the bar"* — and
+    // then for two changes on top of that: *"make the bars 3 shades of blue, and if they go negative
+    // just shrink it essentially"*. Merging changes three things the grouped chart got for free. A
+    // column's extent is now a **sum** rather than a single value, so the axis has to be fitted to
+    // that sum or the picture is measured against a ruler too short for it. A segment's length is still
+    // its own excursion, so a quantity that barely moved really does show less of the bar. And the
+    // order the segments stack in has to come from somewhere, because three pieces inside one column
+    // cannot be told apart by position the way three bars side by side could. Each of those is a block
+    // below.
+
+    /// A chart point from hand-picked z-scores, on a fixed day.
+    func point(_ zScores: [FastingMetric: Double]) -> FastingRecoveryChartSeries.Point {
+        FastingRecoveryChartSeries.Point(date: day(1), zScores: zScores)
+    }
+
+    assertTest(
+        FastingRecoveryChartSeries.Point.stackTotal(
+            of: [.hrv: 1, .restingHeartRate: 1, .respiratoryRate: -2]) == 2
+            && FastingRecoveryChartSeries.Point.stackTotal(
+                of: [.hrv: -1, .restingHeartRate: -1, .respiratoryRate: -2]) == 0,
+        "A column's extent is the **sum of the excursions that rose**, so the two quantities that "
+            + "went up add and the one that went down is not netted off against them — netting would "
+            + "draw a night that moved two ways as a night that barely moved — and a night on which "
+            + "**everything fell** has no extent at all "
+            + "(\(FastingRecoveryChartSeries.Point.stackTotal(of: [.hrv: 1, .restingHeartRate: 1, .respiratoryRate: -2]))), "
+            + "and \(FastingRecoveryChartSeries.Point.stackTotal(of: [.hrv: -1, .restingHeartRate: -1, .respiratoryRate: -2])) for a night that only fell)")
+
+    assertTest(
+        FastingRecoveryChartSeries.Point.stackTotal(
+            of: [.hrv: Double.infinity, .restingHeartRate: 2]) == 2
+            && FastingRecoveryChartSeries.Point.stackTotal(
+                of: [.hrv: -Double.infinity, .restingHeartRate: -2]) == 0
+            && FastingRecoveryChartSeries.Point.stackTotal(of: [.hrv: .nan]) == 0,
+        "…and a non-finite z is **dropped rather than summed**. Every comparison against a `NaN` is "
+            + "false, so it would take the column's whole extent with it — and the axis fitted to "
+            + "that column, and therefore every other column drawn on that axis, with it")
+
+    // **The axis is fitted to the columns and not to the z-scores inside them**, and this is the
+    // assertion the merge turns on. Three quantities at +3σ, +4σ and +3σ stack into a column reaching
+    // +10σ; an axis fitted to the individual z-scores tops out at 4 and draws that stack two and a
+    // half frames tall. The fixture's literals are hand-checkable the way this section's baselines
+    // are: 60/70/80 has a sample spread of exactly 10, so 100 is +3σ, and the resting-rate window
+    // 50/60/70 doubles as the clamp's edge — 100 is +4σ, reached exactly.
+    let stackedSummary = FastingRecovery.summary(
+        for: namedFast,
+        history: [
+            night(-5, score: 50, hrv: 60, rhr: 50, rr: 12),
+            night(-4, score: 50, hrv: 70, rhr: 60, rr: 15),
+            night(-3, score: 50, hrv: 80, rhr: 70, rr: 18),
+            night(1, score: 40, hrv: 100, rhr: 100, rr: 24),
+        ])
+    let stackedSeries = stackedSummary.flatMap { FastingRecoveryChartSeries(summary: $0) }
+    let stackedPoint = stackedSeries?.points.first
+
+    assertTest(
+        stackedPoint?.zScores[.hrv].map { near($0, 3) } == true
+            && stackedPoint?.zScores[.restingHeartRate].map { near($0, 4) } == true
+            && stackedPoint?.zScores[.respiratoryRate].map { near($0, 3) } == true,
+        "…on a night that really does reach those three, measured through the pipeline rather than "
+            + "handed in: +3σ HRV, +4σ resting rate and +3σ respiratory rate "
+            + "(\(shown(stackedPoint?.zScores[.hrv])), "
+            + "\(shown(stackedPoint?.zScores[.restingHeartRate])), "
+            + "\(shown(stackedPoint?.zScores[.respiratoryRate])))")
+
+    assertTest(
+        stackedSeries?.axis.upperBound == 10,
+        "**The scale is fitted to the columns and not to the σ inside them.** Those three excursions "
+            + "stack to +10σ, so the axis has to reach 10 — `fit([3, 4, 3])` gives 4 and draws the "
+            + "column off the top of the frame, which is a picture measured against a ruler too short "
+            + "for it (\(shown(stackedSeries?.axis.upperBound)))")
+
+    let stackedAxis = stackedSeries?.axis ?? .standard
+    let stackedHeight = FastingRecoveryChartView.segments(
+        for: stackedPoint ?? point([:]), metrics: stackedSeries?.metrics ?? [], axis: stackedAxis
+    ).map(\.height).reduce(0, +)
+
+    assertTest(
+        near(Double(stackedHeight),
+             Double(FastingRecoveryChartView.segmentHeight(zScore: 10, axis: stackedAxis))),
+        "…and the segments of one column therefore **sum to the height of a single segment at their "
+            + "total** — the identity that makes a stack equal to its own extent, and the one a fit "
+            + "taken from the individual z-scores breaks: under the standard `0...4` those same three "
+            + "sum to 330 points above the floor where the whole frame is 132 "
+            + "(\(Double(stackedHeight)) against "
+            + "\(Double(FastingRecoveryChartView.segmentHeight(zScore: 10, axis: stackedAxis))))")
+
+    assertTest(
+        FastingRecoveryChartView.segmentHeight(zScore: -2, axis: .standard) == 0
+            && FastingRecoveryChartView.segmentHeight(zScore: 0, axis: .standard) == 0
+            && FastingRecoveryChartView.segmentHeight(zScore: 2, axis: .standard)
+                < FastingRecoveryChartView.segmentHeight(zScore: 3, axis: .standard),
+        "**A fall shrinks the bar rather than dipping below the rule.** A reading at or under its "
+            + "baseline has no length on this drawing — the column simply shows less of that quantity "
+            + "— and the height grows only as a reading rises, since a column that grew as one fell "
+            + "would say the opposite of what the chart is for "
+            + "(\(Double(FastingRecoveryChartView.segmentHeight(zScore: -2, axis: .standard))) for −2σ, "
+            + "\(Double(FastingRecoveryChartView.segmentHeight(zScore: 3, axis: .standard))) for +3σ)")
+
+    /// How far each column's stack reaches up from the floor, in points.
+    func columnHeights(
+        _ points: [FastingRecoveryChartSeries.Point], _ axis: FastingRecoveryAxis
+    ) -> [CGFloat] {
+        points.map { point in
+            FastingRecoveryChartView.segments(
+                for: point, metrics: FastingMetric.allCases, axis: axis
+            ).map(\.height).reduce(0, +)
+        }
+    }
+
+    let heights = columnHeights(fastingSeries?.points ?? [], fastingSeries?.axis ?? .standard)
+        + columnHeights(stackedSeries?.points ?? [], stackedAxis)
+
+    assertTest(
+        !heights.isEmpty
+            && heights.allSatisfy { $0 >= 0 && $0 <= FastingRecoveryChartView.barAreaHeight + 0.0001 },
+        "…and **every column fits inside the bar area** — the standard three-night fixture and the "
+            + "widened one alike. The frame's top edge *is* the axis's top bound, so a stack reaching "
+            + "past it would be a segment drawn outside the scale it is read against "
+            + "(\(heights.map { Double($0) }))")
+
+    // The stacking order is not decoration. Three bars side by side could be told apart by position
+    // alone; three segments inside one column cannot, so a reader has the colours and the legend and
+    // nothing else. The rule that makes the reading mechanical is that the **first quantity listed
+    // that rose** is the one stacked furthest from the rule — so a column reads bottom-to-top against
+    // the legend's own order.
+    let firstNightPoint = fastingSeries?.points.first
+    let firstNightSegments = firstNightPoint.map {
+        FastingRecoveryChartView.segments(
+            for: $0, metrics: fastingSeries?.metrics ?? [], axis: fastingSeries?.axis ?? .standard)
+    } ?? []
+
+    assertTest(
+        firstNightSegments.map(\.metric) == [.restingHeartRate, .respiratoryRate],
+        "The segments come back in the **legend's own order** whatever order they are stacked in, so "
+            + "a caller — the drawing, or a block here — can read them positionally against the "
+            + "legend's entries; and on this night, whose HRV fell a σ, there are **two of them and "
+            + "not three**: the quantity that fell is not a short segment, it is no segment "
+            + "(\(firstNightSegments.map(\.metric)))")
+
+    assertTest(
+        firstNightSegments.map(\.isTopmost) == [true, false]
+            && near(Double(firstNightSegments.first?.offsetFromFloor ?? -1),
+                    Double(FastingRecoveryChartView.segmentHeight(zScore: 1, axis: .standard)))
+            && near(Double(firstNightSegments.last?.offsetFromFloor ?? -1), 0)
+            && firstNightSegments.filter(\.isTopmost).count == 1,
+        "…and on a night of −1σ HRV, +1σ resting rate and +1σ respiratory rate the first that rose "
+            + "takes the far end: the resting rate sits a segment's length up from the floor with the "
+            + "respiratory rate between it and the baseline. **Exactly one segment is rounded** — the "
+            + "top of the stack — which is what makes a column read as one bar divided rather than as "
+            + "a run of chips (\(firstNightSegments.map { Double($0.offsetFromFloor) }))")
+
+    // A quantity sitting on the baseline, one that fell, and one with no reading are the same picture
+    // and the chart must not manufacture a stub for any of them: "your HRV held at baseline" is a real
+    // answer, and a minimum segment height would draw it as a small move as well as drawing a missing
+    // reading as one. All three contribute nothing, and a night with none rising contributes no
+    // column.
+    let partialSegments = FastingRecoveryChartView.segments(
+        for: point([.hrv: 0, .restingHeartRate: -2, .respiratoryRate: .nan]),
+        metrics: FastingMetric.allCases,
+        axis: .standard)
+
+    assertTest(
+        partialSegments.isEmpty
+            && FastingRecoveryChartView.segments(
+                for: point([:]), metrics: FastingMetric.allCases, axis: .standard).isEmpty,
+        "A quantity **exactly on the baseline**, one that fell, a non-finite one and a missing one "
+            + "all draw no segment, and a night with none rising draws no column at all. There is no "
+            + "minimum segment height, deliberately: a floor would state a reading the night did not "
+            + "take, and on a scale whose whole subject is the distance from a mean, a quantity that "
+            + "did not move has no distance to draw (\(partialSegments.map(\.metric)))")
+
+    // The colours are the app's own three tokens, and this block is what keeps a fourth palette from
+    // arriving by hand. This chart has had three: the reference screen's borrowed swatches, which the
+    // user rejected as making *"no sense"*, then the app's three verdict accents, and now three shades
+    // of one blue. Both halves of the assertion are decisions rather than restatements — three
+    // distinct values, and a ramp that is **not** the verdict scale, since a z-score is a distance from
+    // the user's own mean and an HRV that fell is not a red night.
+    let metricColors = FastingMetric.allCases.map(\.color)
+
+    assertTest(
+        Set(metricColors).count == 3
+            && Set(metricColors) == Set([
+                Theme.fastingChartHRV, Theme.fastingChartRestingHeartRate,
+                Theme.fastingChartRespiratoryRate,
+            ])
+            && Set(metricColors).isDisjoint(
+                with: [Theme.recoveryGreen, Theme.recoveryYellow, Theme.recoveryRed]),
+        "The three segment fills are `Theme`'s fasting-chart ramp — **three shades of one blue** — "
+            + "and they are three distinct values that are **none of them a verdict colour**: a chart "
+            + "whose two segments shared a colour would draw a column nothing can decompose, and a "
+            + "ramp that reused the recovery accents would put that scale on a chart whose subject is "
+            + "a distance from a mean (\(metricColors.count) fills, \(Set(metricColors).count) distinct)")
+
+    // MARK: - The sentence under the chart
+
+    // Composed from the same z-scores the bars are drawn from, so it cannot describe a different set
+    // of nights than the picture above it — the reference's `Normalized Trends` reads as a summary of
+    // the drawing, and a sentence written independently would be free to disagree with it the first
+    // time either moved.
+    assertTest(
+        fastingSeries?.points.count == 3
+            && fastingSeries?.metrics == [.hrv, .restingHeartRate, .respiratoryRate],
+        "Three nights draw three columns and the legend carries all three quantities, in "
+            + "`FastingMetric.allCases` order "
+            + "(\(fastingSeries?.points.count.description ?? "nil"))")
+
+    assertTest(
+        fastingSeries?.sentence == "HRV climbed above your baseline, resting heart rate held at "
+            + "your baseline and respiratory rate held at your baseline.",
+        "With three nights the sentence compares the **last column against the first** per quantity, "
+            + "and the verbs are `climbed` / `held` / `fell` — a move, because two or more columns "
+            + "have a direction where one does not (\(fastingSeries?.sentence ?? "nil"))")
+
+    assertTest(
+        fastingSeries?.spokenSentence.hasPrefix("3 nights, ") == true
+            && fastingSeries?.spokenSentence.hasSuffix(fastingSeries?.sentence ?? "") == true,
+        "…and the spoken form names the span and the count before handing over to the same "
+            + "sentence, so VoiceOver hears the two things the columns encode structurally and then "
+            + "the directions (\(fastingSeries?.spokenSentence ?? "nil"))")
+
+    // One night states a position, and the vocabularies are different words rather than the same
+    // word on a shorter chart: a single reading has nothing to have moved from.
+    let singleNightSummary = FastingRecovery.summary(
+        for: namedFast,
+        history: [
+            night(-5, score: 50, hrv: 60, rhr: 70, rr: 18),
+            night(-4, score: 50, hrv: 70, rhr: 60, rr: 15),
+            night(-3, score: 50, hrv: 80, rhr: 50, rr: 12),
+            night(1, score: 60, hrv: 60, rhr: 70, rr: 18),
+        ])
+    let singleNightSeries = singleNightSummary.flatMap { FastingRecoveryChartSeries(summary: $0) }
+    assertTest(
+        singleNightSeries?.points.count == 1
+            && singleNightSeries?.sentence == "HRV finished below your baseline, resting heart rate "
+                + "finished above your baseline and respiratory rate finished above your baseline.",
+        "…and with **one** night every clause changes to `finished` — `climbed` / `fell` would claim "
+            + "a direction from a single reading, which is a trend this arithmetic never looked at. "
+            + "The three positions are the same either way, which is what keeps the two vocabularies "
+            + "a change of verb rather than a change of rule "
+            + "(\(singleNightSeries?.sentence ?? "nil"))")
+
+    assertTest(
+        FastingRecoveryChartSeries.Position(zScore: 0.5) == .at
+            && FastingRecoveryChartSeries.Position(zScore: -0.5) == .at
+            && FastingRecoveryChartSeries.Position(zScore: 0.50001) == .above
+            && FastingRecoveryChartSeries.Position(zScore: nil) == nil,
+        "The threshold is a **strict** half a σ, so a night sitting exactly on it reads `held at` — "
+            + "the honest word for a bar that short, since below half a σ a move and a night's own "
+            + "noise are the same picture on this chart. A `nil` z is not a position at all")
+
+    // MARK: - The two absence states, which are different sentences
+
+    // `nil` from `summary` means the fast covered no measured night. `nil` from the **series** means
+    // it covered nights the baseline was too thin to compare. Telling a user with four nights of
+    // readings that there were none would be a lie about their own data, so the page says two
+    // different things and this block is what keeps them apart.
+    let thinBaseline = FastingRecovery.summary(
+        for: namedFast,
+        history: [
+            night(-2, score: 50, hrv: 60, rhr: 60),
+            night(-1, score: 50, hrv: 70, rhr: 60),
+            night(1, score: 60, hrv: 80, rhr: 60),
+        ])
+    assertTest(
+        thinBaseline?.nights.count == 1 && thinBaseline?.baselineObservationCount == 2,
+        "Two days of history is below the three-day floor, so the night is covered and the "
+            + "comparison is not — the two counts are carried separately for exactly this state "
+            + "(\(thinBaseline?.baselineObservationCount.description ?? "nil") days)")
+
+    assertTest(
+        thinBaseline.flatMap { FastingRecoveryChartSeries(summary: $0) } == nil,
+        "…and a summary in that state yields **no chart**, which is what puts the *not enough "
+            + "history* sentence in the chart's slot rather than an empty frame or, worse, a frame "
+            + "of bars drawn against a fabricated baseline")
+
+    assertTest(
+        FastingRecovery.summary(
+            for: fast(from: day(0, hour: 21), to: day(3, hour: 11)),
+            history: [night(-9, score: 50, hrv: 60, rhr: 60)]) == nil,
+        "…while a fast that covered no measured night is `nil` from `summary` itself — 152 of the "
+            + "bundled 170, which is a fact about two fixture files' date ranges and must not read "
+            + "as an error")
+
+    // MARK: - The gate holds the ordinary layout
+
+    let measuredSession = session(
+        "Basketball", startOffset: 0, durationSeconds: 3_600, strain: 12.4, steps: 812)
+    assertTest(
+        !ActivityFigure.isFast(measuredSession)
+            && ActivityFigure.strainText(for: measuredSession) == "12.4"
+            && ActivityFigure.headlineText(for: measuredSession) == "12.4",
+        "A session that measured a strain keeps the page it had — two stat columns, its own strain "
+            + "figure and its steps — and its figure is the strain and not the duration "
+            + "(\(ActivityFigure.headlineText(for: measuredSession)))")
+
+    assertTest(
+        ActivityDetailViewModel.fastingBadgeText(nightCount: 1) == "OVER 1 NIGHT"
+            && ActivityDetailViewModel.fastingBadgeText(nightCount: 4) == "OVER 4 NIGHTS",
+        "The badge states the **basis** and not a claim. The reference's `METABOLICALLY IMPROVED` "
+            + "needs a glucose or ketone sensor this app does not have — `biodata.json`'s "
+            + "`glucose_data` holds zero rows in every file on this machine — so what is left to say "
+            + "honestly is what the figure above it was averaged over")
+
+    // MARK: - The stop-fasting line
+
+    // `FastingRecoveryGuidance` is the sentence under the chart, banded **67 / 50** where
+    // `RecoveryState` bands the same figure 67 / 34. That divergence is the user's own decision and
+    // the first assertion below is where it is recorded rather than left to be discovered: between 34
+    // and 50 the figure above the sentence is *yellow* — `fastingScoreColor` reads `RecoveryState` —
+    // and the words under it are a stop signal. The paragraph therefore draws in no band colour at
+    // all, which is why nothing here asserts a colour.
+
+    assertTest(
+        FastingRecoveryGuidance.Band(score: 50) == .stop
+            && FastingRecoveryGuidance.Band(score: 51) == .caution
+            && FastingRecoveryGuidance.Band(score: 66) == .caution
+            && FastingRecoveryGuidance.Band(score: 67) == .steady
+            && FastingRecoveryGuidance.Band(score: 100) == .steady
+            && FastingRecoveryGuidance.Band(score: 0) == .stop
+            && FastingRecoveryGuidance.Band(score: -5) == .stop,
+        "The band table's four edges, and the severe band as the fallback for anything below the "
+            + "floor — the same shape `RecoveryState.init(score:)` takes when it sends an out-of-band "
+            + "value to `.red`. A negative or nonsense score must not land on *nothing to see here* "
+            + "(50 → \(FastingRecoveryGuidance.Band(score: 50)), 51 → "
+            + "\(FastingRecoveryGuidance.Band(score: 51)), 66 → "
+            + "\(FastingRecoveryGuidance.Band(score: 66)), 67 → "
+            + "\(FastingRecoveryGuidance.Band(score: 67)))")
+
+    assertTest(
+        RecoveryMetric.RecoveryState(score: 45) == .yellow
+            && FastingRecoveryGuidance.Band(score: 45) == .stop
+            && RecoveryMetric.RecoveryState(score: 50) == .yellow
+            && FastingRecoveryGuidance.Band(score: 50) == .stop,
+        "**The second band table, recorded rather than hidden**: a 45% fast draws a yellow figure "
+            + "above and a `Stop signal.` under it, because a fast is itself a stressor and the reading "
+            + "that means *maintain* on an ordinary day does not mean it on day four of not eating. The "
+            + "colour is `RecoveryState`'s and the words are this type's — the alternative, a 45% fast "
+            + "green on Home and yellow here, would be the worse fault")
+
+    assertTest(
+        RecoveryMetric.RecoveryState(score: 67) == .green
+            && FastingRecoveryGuidance.Band(score: 67) == .steady
+            && RecoveryMetric.RecoveryState(score: 33) == .red
+            && FastingRecoveryGuidance.Band(score: 33) == .stop,
+        "…and the two tables agree at both ends they are meant to share, so the divergence is one "
+            + "deliberate band in the middle and not a second scale that drifted everywhere: at 67 both "
+            + "say the fast can carry on, at 33 both say it cannot")
+
+    // The fast's own state, which is what decides the sentence's tense. **Half-open at both ends**:
+    // a fast that has just begun is running, one that ended at exactly `now` is not.
+    let runningFast = fast(from: day(0, hour: 21), to: day(3, hour: 11))
+    assertTest(
+        ActivityFigure.isInProgress(runningFast, now: day(0, hour: 21))
+            && ActivityFigure.isInProgress(runningFast, now: day(1))
+            && ActivityFigure.isInProgress(runningFast, now: day(3, hour: 10))
+            && !ActivityFigure.isInProgress(runningFast, now: day(0, hour: 20))
+            && !ActivityFigure.isInProgress(runningFast, now: day(3, hour: 11))
+            && !ActivityFigure.isInProgress(runningFast, now: day(4)),
+        "`startedAt <= now` and `now < endedAt`, so the two instants on the fast's own boundary are "
+            + "decided the way `WorkoutSession.covers(_:)` decides them: running at the moment it "
+            + "starts, and **not** running at the moment it ends — the same half-open convention "
+            + "`fastingEndText`'s `11:59 PM` arm rests on")
+
+    assertTest(
+        ActivityFigure.fastingEndText(for: runningFast, on: day(1), now: day(1)) == "ACTIVE"
+            && ActivityFigure.fastingEndText(for: runningFast, on: day(1), now: day(4)) == "11:59 PM"
+            && ActivityFigure.fastingEndText(for: runningFast, on: day(3), now: day(4)) == nil,
+        "…and the extraction that made it a function is behaviour-preserving across all three of the "
+            + "rule's arms: the day the fast is running on prints `ACTIVE`, a day it ran *through* "
+            + "prints that day's own last minute once the fast has stopped, and only the day it really "
+            + "ended on falls through to `nil` — the caller's instruction to print the session's own "
+            + "end clock")
+
+
+
+    assertTest(
+        FastingRecoveryGuidance.nightPhrase(nightCount: 1, isInProgress: false) == "this night"
+            && FastingRecoveryGuidance.nightPhrase(nightCount: 1, isInProgress: true) == "the night so far"
+            && FastingRecoveryGuidance.nightPhrase(nightCount: 4, isInProgress: false) == "these 4 nights"
+            && FastingRecoveryGuidance.nightPhrase(nightCount: 4, isInProgress: true) == "the 4 nights so far",
+        "`1 nights` is the reason the noun phrase is a function, and the two arms differ by more than "
+            + "the numeral: a running fast says *the night so far* because it may have more, a finished "
+            + "one says *this night* because it will not "
+            + "(\(FastingRecoveryGuidance.nightPhrase(nightCount: 1, isInProgress: false)))")
+
+    let guidanceBodies = [
+        FastingRecoveryGuidance.sentence(band: .steady, score: 40, nightCount: 4, isInProgress: false),
+        FastingRecoveryGuidance.sentence(band: .steady, score: 40, nightCount: 4, isInProgress: true),
+        FastingRecoveryGuidance.sentence(band: .caution, score: 40, nightCount: 4, isInProgress: false),
+        FastingRecoveryGuidance.sentence(band: .caution, score: 40, nightCount: 4, isInProgress: true),
+        FastingRecoveryGuidance.sentence(band: .stop, score: 40, nightCount: 4, isInProgress: false),
+        FastingRecoveryGuidance.sentence(band: .stop, score: 40, nightCount: 4, isInProgress: true),
+    ]
+    let causalWords = ["cost", "caused", "because", "due to", "led to", "as a result"]
+    assertTest(
+        guidanceBodies.allSatisfy { $0.contains("40%") }
+            && guidanceBodies.allSatisfy { body in
+                !causalWords.contains { body.lowercased().contains($0) }
+            },
+        "All six arms name the user's own figure and **none of them claims the fast produced it**. This "
+            + "app has no glucose and no ketone sensor, so *the fast cost you recovery* would be the "
+            + "same fabrication the z-score sentence above is forbidden — what the line may say is what "
+            + "the measured nights showed, and the action it names is a response to that reading rather "
+            + "than a diagnosis of it. (Forbidden: \(causalWords.joined(separator: ", ")))")
+
+    assertTest(
+        FastingRecoveryGuidance.sentence(band: .stop, score: 28, nightCount: 4, isInProgress: true)
+            == "Your recovery has averaged 28% over the 4 nights so far. This is the signal to end the fast."
+            && FastingRecoveryGuidance.sentence(band: .stop, score: 28, nightCount: 4, isInProgress: false)
+                == "Your recovery averaged 28% across these 4 nights — a fast that runs it this low is "
+                    + "one to end earlier.",
+        "**The arm that carries the whole feature, and the one that has to change with the fast's "
+            + "state.** A running fast is told to stop; a fast that already ended cannot be, and every "
+            + "fast on a real install has ended — all 170 bundled ones have — so the instruction is "
+            + "turned to the *next* fast rather than dropped, because *end the fast* printed under a "
+            + "fast that stopped three days ago is advice the reader cannot take")
+
+    assertTest(
+        FastingRecoveryGuidance.sentence(band: .steady, score: 74, nightCount: 4, isInProgress: true)
+            == "Your recovery is at 74% over the 4 nights so far. Nothing here says to stop."
+            && FastingRecoveryGuidance.sentence(band: .caution, score: 60, nightCount: 3, isInProgress: false)
+                == "Your recovery averaged 60% across these 3 nights — worth watching if you fast this "
+                    + "long again.",
+        "…and the other two bands name their own action rather than the stop one: a holding fast is "
+            + "told there is nothing to act on, a slipping one is told to watch the length. A single "
+            + "sentence for both would make the middle band redundant, which is why the middle band "
+            + "exists at all")
+
+    let steadyStatement = FastingRecoveryGuidance.statement(
+        score: 74, nightCount: 4, isInProgress: false)
+    assertTest(
+        steadyStatement.band == .steady
+            && steadyStatement.leadIn == FastingRecoveryGuidance.Band.steady.leadIn
+            && steadyStatement.body
+                == FastingRecoveryGuidance.sentence(
+                    band: .steady, score: 74, nightCount: 4, isInProgress: false)
+            && FastingRecoveryGuidance.statement(score: 45, nightCount: 2, isInProgress: false).band == .stop,
+        "`statement(score:…)` chooses the band through `Band(score:)` and builds its body through "
+            + "`sentence(band:…)` rather than re-deriving either, so a caller holding a score cannot "
+            + "hold half a statement — and the lead-in is forwarded from the band, so the words the "
+            + "view draws bold live in exactly one place "
+            + "(\(steadyStatement.leadIn) / \(steadyStatement.body))")
+
+    // MARK: - The duration formatter
+
+    assertTest(
+        280_860.0.formattedDayHoursMinutes() == "3 days 6 hrs",
+        "78 h 01 m is the reference's own `3 days 6 hrs`, and above a day the minutes are dropped — "
+            + "which is what makes that figure reproduce exactly, and the honest precision for a "
+            + "span whose minutes are an artefact of when the user tapped "
+            + "(\(280_860.0.formattedDayHoursMinutes()))")
+
+    assertTest(
+        (86 * 3600.0 + 60).formattedDayHoursMinutes() == "3 days 14 hrs",
+        "…and the flagship 86-hour fast reads `3 days 14 hrs`, which is the figure the simulator "
+            + "check steps through (\((86 * 3600.0 + 60).formattedDayHoursMinutes()))")
+
+    assertTest(
+        52_320.0.formattedDayHoursMinutes() == "14 hrs 32 min"
+            && 1_920.0.formattedDayHoursMinutes() == "32 min"
+            && 3_600.0.formattedDayHoursMinutes() == "1 hr"
+            && 60.0.formattedDayHoursMinutes() == "1 min",
+        "…and below a day the minutes are kept, with singular forms elided — one hour reads `1 hr` "
+            + "and never `1 hrs` (\(52_320.0.formattedDayHoursMinutes()))")
+
+    assertTest(
+        86_400.0.formattedDayHoursMinutes() == "1 day"
+            && 93_600.0.formattedDayHoursMinutes() == "1 day 2 hrs"
+            && 0.0.formattedDayHoursMinutes() == "0 min",
+        "…and a component that is exactly zero is dropped rather than printed: 24 h is `1 day` and "
+            + "not `1 day 0 hrs`, and a span under a minute is `0 min` rather than an empty string "
+            + "under a label that promises a figure (\(86_400.0.formattedDayHoursMinutes()))")
+
+    // MARK: - The edit sheet's draft
+
+    // `ActivityEditDraft` is the one value both of the sheet's time controls write through — the drag
+    // handle at each end of the chart and the compact `DatePicker` under `Start Time`/`End Time` — so
+    // every rule about what an edit *is* lives here rather than in the sheet's `body`, for this repo's
+    // standing reason: a clamp written into a `View` is a rule nothing can check.
+    //
+    // The fixture carries **non-zero seconds**, which is the case the minute-write guard exists for:
+    // 381 of the bundled export's 673 rows do, and it is those rows a `.hourAndMinute` `DatePicker` can
+    // quietly move for a user who never touched a control.
+    // The fixture is anchored on a whole minute plus 33 s rather than on `anchor`, so **where in its
+    // minute it starts is a fact this block states** instead of a fact about `1_700_000_000`. Two
+    // assertions below turn on that: a write that lands in the same minute must be dropped, and one
+    // that crosses into the next must be kept, and both are unreadable if "same minute" depends on
+    // arithmetic the reader has to redo.
+    let minuteStart = Date(
+        timeIntervalSince1970: (anchor.timeIntervalSince1970 / 60).rounded(.down) * 60)
+    let secondRow = WorkoutSession(
+        startedAt: minuteStart.addingTimeInterval(33),
+        endedAt: minuteStart.addingTimeInterval(33 + 900),
+        strain: 5.2,
+        averageHeartRate: 121,
+        maxHeartRate: 164,
+        route: [],
+        splits: [],
+        source: WhoopExportImporter.sourceLabel,
+        activityName: "Basketball",
+        hrZonePercents: [12, 26, 34, 18, 4],
+        steps: 693)
+
+    let untouched = ActivityEditDraft(secondRow)
+    assertTest(
+        !untouched.hasChanges && untouched.start == secondRow.startedAt
+            && untouched.end == secondRow.endedAt,
+        "A draft opened on a session reports **no change** and holds that session's exact instants, "
+            + "seconds and all — this one carries \(Int(secondRow.startedAt.timeIntervalSince1970) % 60) "
+            + "s. A draft that clamped or minute-floored at `init` would move the window of all 381 "
+            + "such rows in the export, and the `SAVE` that did it would be one the user made over a "
+            + "name")
+    assertTest(
+        untouched.startFraction == 0 && untouched.endFraction == 1
+            && untouched.durationSeconds == 900,
+        "…and the untouched draft's two handles sit at the plot's own ends. The fractions are "
+            + "**computed from the draft on every read** rather than stored, which is what keeps a "
+            + "handle and the readout above it from naming two different times")
+
+    let shortSession = WorkoutSession(
+        startedAt: anchor, endedAt: anchor.addingTimeInterval(40),
+        strain: 1, averageHeartRate: 90, maxHeartRate: 110, route: [], splits: [])
+    assertTest(
+        untouched.minimumDuration == 60 && ActivityEditDraft(shortSession).minimumDuration == 40,
+        "The floor is **`min(60, the session's own length)`** and not a flat minute: on a session "
+            + "shorter than a minute, `end - 60` is *before* the original start, and the clamp's own "
+            + "lower bound would then push the start backwards and lengthen the session — the one "
+            + "thing a trim exists to forbid")
+
+    var inward = ActivityEditDraft(secondRow)
+    inward.setStart(secondRow.startedAt.addingTimeInterval(-600))
+    inward.setEnd(secondRow.endedAt.addingTimeInterval(600))
+    assertTest(
+        inward.start == secondRow.startedAt && inward.end == secondRow.endedAt
+            && !inward.hasChanges,
+        "**The window narrows and never widens.** Handles dragged past either end of the recording "
+            + "leave the draft exactly where it was, because the plot *is* the original window — a "
+            + "handle outside it would have nowhere to be drawn — and because extending a session "
+            + "would be inventing time the app never observed")
+
+    var floored = ActivityEditDraft(secondRow)
+    floored.setEnd(secondRow.startedAt.addingTimeInterval(27))
+    assertTest(
+        floored.end == secondRow.startedAt.addingTimeInterval(60)
+            && floored.durationSeconds == 60,
+        "…and an end dragged to less than a minute past the start clamps to exactly "
+            + "`minimumDuration` later rather than crossing it, so no edit this sheet can make "
+            + "produces a zero-length or negative session "
+            + "(\(floored.durationSeconds) s)")
+
+    // The minute-write guard, which is the rule that makes an untouched sheet *stay* untouched. Both
+    // fixtures move the instant **forward within the same minute**, which is the only direction where
+    // the guard is the thing doing the work: a backwards write is caught by the clamp's own low bound
+    // as well, so an assertion built on one cannot tell the two rules apart.
+    var sameMinute = ActivityEditDraft(secondRow)
+    sameMinute.setStart(secondRow.startedAt.addingTimeInterval(14))
+    assertTest(
+        sameMinute.start == secondRow.startedAt && !sameMinute.hasChanges,
+        "A `DatePicker` handed `2:17:33` shows `2:17` and can hand back **`2:17:00`** — and the "
+            + "minute it hands back can be the same one it was given. That write is dropped and the "
+            + "stored instant survives to the second — without this guard a picker that was merely "
+            + "drawn would report a change, enable `SAVE`, and rewrite the start of every row in the "
+            + "export that carries seconds")
+
+    var movedMinute = ActivityEditDraft(secondRow)
+    movedMinute.setStart(secondRow.startedAt.addingTimeInterval(27))
+    assertTest(
+        movedMinute.start == secondRow.startedAt.addingTimeInterval(27)
+            && movedMinute.hasChanges,
+        "…and once a minute *has* been chosen the draft stores that whole minute, because a minute is "
+            + "the finest value either surface can express — writing back a finer one would be a "
+            + "precision neither of them offered "
+            + "(\(movedMinute.start.timeIntervalSince(secondRow.startedAt)) s in)")
+
+    var renamed = ActivityEditDraft(secondRow)
+    renamed.setName("basketball")
+    assertTest(
+        renamed.activityName == "Basketball" && !renamed.hasChanges,
+        "Selecting the activity that is already selected is dropped, and `ActivityName.matches` is "
+            + "the test rather than `==`: a picker resolving its own selection offers back "
+            + "`Basketball` for a row stored as `basketball`, and a draft that took that write would "
+            + "report a change nobody made and enable `SAVE` over it. The cost is stated where the "
+            + "guard is — a name in the wrong case cannot be corrected from this sheet")
+
+    var renamedOnly = ActivityEditDraft(secondRow)
+    renamedOnly.setName("Walking")
+    assertTest(
+        renamedOnly.activityName == "Walking" && renamedOnly.hasChanges
+            && renamedOnly.start == secondRow.startedAt && renamedOnly.end == secondRow.endedAt,
+        "…and a real rename is a change that leaves **both instants byte-identical**, so the "
+            + "name-only `SAVE` the page's own mockup implies writes times the session already had")
+
+    // The day key, which is the reason the start's upper bound is clamped to its own midnight rather
+    // than to the end of the recording. `LocalDatabaseManager.saveWorkout` re-snaps `date` from
+    // `startedAt`, so a start dragged past midnight files the session on the next day — out of the day
+    // its `workouts.csv` row belongs to, and out of the day the import's already-recorded skip keys on,
+    // so a later re-import would insert a duplicate of a row still on disk.
+    let lateStart = Calendar.current.startOfDay(for: anchor).addingTimeInterval(23 * 3600 + 48 * 60)
+    let overnight = WorkoutSession(
+        startedAt: lateStart, endedAt: lateStart.addingTimeInterval(1_200),
+        strain: 3, averageHeartRate: 100, maxHeartRate: 140, route: [], splits: [])
+    var draggedPastMidnight = ActivityEditDraft(overnight)
+    draggedPastMidnight.setStart(lateStart.addingTimeInterval(1_500))
+    assertTest(
+        Calendar.current.startOfDay(for: draggedPastMidnight.start)
+            == Calendar.current.startOfDay(for: overnight.startedAt),
+        "A start dragged past midnight is held inside the session's own day — **the day key is "
+            + "invariant under every edit this sheet can make**, which is what lets the import's skip "
+            + "recognise the edited row on the next press of the button. The cost is that a session "
+            + "starting at 23:48 cannot be trimmed to start later than 23:59:59; its end is "
+            + "unconstrained, so it can still be shortened from the right")
+
+    // MARK: - The picker's vocabulary
+
+    // `WhoopActivityCatalog` is WHOOP's published list **curated** — five published names dropped
+    // (`Barre`, `Barre3`, `Barry's`, the whoop-specific `WHOOP Labs` and the redundant `Cycling`) and
+    // three added — and it is a pure value with no database behind it, so it asserts here, above every
+    // `LocalDatabaseManager` below.
+    //
+    // **The two counts are the curated list's own and must not be "corrected" back to WHOOP's
+    // published total.** They read `160`/`32` until the list was edited by hand, and the arithmetic
+    // that shows those were right *then* is `157 − 1 + 3 = 159` strain literals, `+ abstentionName =
+    // 160`. The stale figure was never wrong about the file, it was written for a *verbatim* copy of
+    // WHOOP's page — see the catalogue type's own comment for what moved and why. The user has since
+    // dropped `WHOOP Labs` and `Cycling`, which is `158 − 2 = 156`; neither name has a producer in the
+    // bundled export, so no row this app can import loses its label to that removal.
+    assertTest(
+        WhoopActivityCatalog.strainActivities.count == 156
+            && WhoopActivityCatalog.recoveryActivities.count == 33
+            && WhoopActivityCatalog.allNames.count
+                == WhoopActivityCatalog.strainActivities.count
+                    + WhoopActivityCatalog.recoveryActivities.count,
+        "The catalogue holds \(WhoopActivityCatalog.strainActivities.count) strain activities and "
+            + "\(WhoopActivityCatalog.recoveryActivities.count) recovery activities — the two sections "
+            + "the picker draws, and `allNames` is exactly their concatenation rather than a third list "
+            + "free to drift from either")
+    assertTest(
+        WhoopActivityCatalog.unpublishedNames.allSatisfy {
+            WhoopActivityCatalog.allNames.contains($0)
+        }
+            && WhoopActivityCatalog.unpublishedNames.count == 3,
+        "**The three names this catalogue offers that WHOOP's page does not carry are named, and every "
+            + "one of them is really in a list.** `Activity`, `Fast` and `Road Biking` are the whole "
+            + "of the divergence in this direction, so this is the assertion that fails if one is "
+            + "dropped from the catalogue while its `unpublishedNames` entry stays behind — a record "
+            + "outliving the fact it records. It pins the count as well as membership, so a fourth "
+            + "addition has to be declared rather than absorbed")
+    assertTest(
+        WhoopActivityCatalog.strainActivities.first == WhoopActivityCatalog.abstentionName,
+        "**`Activity` is the first row of the strain list, and it is not on WHOOP's published list at "
+            + "all.** It is what their classifier writes when it declines to categorise a session, and "
+            + "it is the stored name on 197 of the bundled export's 673 rows — so a picker without it "
+            + "would open the file's most common activity on a list with nothing selected, which reads "
+            + "as a bug rather than as an abstention")
+    assertTest(
+        WhoopActivityCatalog.recoveryActivities.first == WhoopActivityCatalog.fastingName
+            && WhoopActivityCatalog.fastingName == "Fast",
+        "**`Fast` is the first row of the recovery list**, mirroring `Activity` at the head of the "
+            + "strain list: the position is a decision this app makes rather than a consequence of the "
+            + "letter it starts with, so it is *prepended* rather than sorted in. It is in the recovery "
+            + "section rather than the strain one because the split's own test is whether a strain "
+            + "figure describes the session, and a fasting window is time held rather than work done. "
+            + "The literal is pinned beside the constant so renaming one does not silently move the "
+            + "other, and **the word is `Fast` and not `Fasting`**: the `ACTIVITIES` row draws a name "
+            + "uppercased under its figure, so `Fast` renders as `FAST` beside `SLEEP`. **This app now "
+            + "does produce one** — `ZeroFastingImporter` writes 170 of them, labelled `zero_fasting` "
+            + "and carrying no measurement at all, which is what §20 covers")
+    assertTest(
+        WhoopActivityCatalog.allNames.allSatisfy {
+            !$0.isEmpty && $0 == $0.trimmingCharacters(in: .whitespaces)
+        },
+        "Every entry is a non-empty name with no padding, so no row of the picker draws as a blank "
+            + "line and no name carries whitespace a stored one would not match")
+    assertTest(
+        Set(WhoopActivityCatalog.allNames.map { ActivityName.normalised($0) }).count
+            == WhoopActivityCatalog.allNames.count,
+        "**No two entries collapse to one name under `ActivityName.normalised`**, which is the rule "
+            + "the sheet resolves a selection by — two entries that fold together would give the "
+            + "picker two rows that select as one, and the tick would move between them")
+    assertTest(
+        WhoopActivityCatalog.allNames.allSatisfy { !$0.contains("*") && !$0.contains("^") },
+        "Neither of WHOOP's two footnote markers survives into the picker. `*` promises a muscular "
+            + "strain calculation and `^` a Strength Activity Time contribution, and this app computes "
+            + "neither — `CLAUDE.md` records `STRENGTH ACTIVITY TIME` as the one row on this page with "
+            + "no producer at all — so carrying a superscript would put a claim on a row that nothing "
+            + "behind it can answer")
+    assertTest(
+        WhoopActivityCatalog.contains(WhoopActivityCatalog.abstentionName)
+            && WhoopActivityCatalog.contains("  basketball ")
+            && WhoopActivityCatalog.contains("BASKETBALL")
+            && !WhoopActivityCatalog.contains("Not A Sport")
+            && !WhoopActivityCatalog.contains(nil)
+            && !WhoopActivityCatalog.contains(""),
+        "…and membership is decided by `ActivityName.matches` rather than by `==`, so a stored "
+            + "`  basketball ` is recognised as the list's own `Basketball` — while an unknown name is "
+            + "offered as an extra *current* row instead of silently selecting nothing, and `nil` and "
+            + "`\"\"` are both *not* members, because an empty name is the absence of one rather than a "
+            + "name WHOOP publishes")
+    // **The two biking names, pinned by name, because the counts above cannot see either of them.** Every
+    // assertion in this block is an aggregate or a sweep, so swapping one offerable name for another
+    // leaves all of them unchanged — and these two are the pair the vocabulary was reconciled over, the
+    // export writing one of them and the picker having to offer it back. Membership and a real mark are
+    // two separate claims: `contains` decides whether the row is offered at all, and `mark(for:)` decides
+    // whether it draws a bicycle or the running fallback.
+    assertTest(
+        ["Road Biking", "Mountain Biking"].allSatisfy {
+            WhoopActivityCatalog.contains($0)
+                && ActivityGlyph.mark(for: $0) == .single("figure.outdoor.cycle")
+        },
+        "**`Road Biking` and `Mountain Biking` are each offerable and each draw a bicycle.** They are "
+            + "the two names the export's own vocabulary and the picker's were reconciled over — the "
+            + "bundled `workouts.csv` writes `Road Biking` on 12 rows — and the aggregate counts in this "
+            + "block are blind to both: a swap of one offerable name for another moves no total, and the "
+            + "glyph sweep only counts. This fails if a future tidy drops a biking name from either list, "
+            + "or if either loses its own entry in `ActivityGlyph`'s table")
+
+    // **The glyph sweep, and the one figure in it that is a decision rather than a count.** A wrong SF
+    // Symbol name is not an error — it draws an empty chip — so the table's typo risk is invisible to
+    // the compiler and to any screenshot of a different row. §17 drives the file's own 21 names; this
+    // is the other producer, whose vocabulary is neither a superset nor a subset of that one.
+    let catalogued = WhoopActivityCatalog.allNames
+    let drawn = catalogued.filter { ActivityGlyph.mark(for: $0) != .single(ActivityGlyph.fallback) }
+    assertTest(
+        drawn.count == 96,
+        "**96 of the catalogue's \(catalogued.count) names draw a figure that is not the running "
+            + "one, and \(catalogued.count - drawn.count) draw the fallback**, which is a *wrong* "
+            + "drawing rather than a missing one — the same mark this card drew for every workout "
+            + "before the table existed. The split is pinned rather than asserted as a floor because it "
+            + "is a decision: SF Symbols has no figure for a sauna, a massage, `Poker`, `Cooking` or "
+            + "`Public Speaking` at all, and inventing one would claim a distinction the list does not "
+            + "make")
+    // The four that make "is in the table" and "draws something other than the fallback" two different
+    // counts. The running family's own entry *is* the fallback string, so `mark(for:)` cannot tell
+    // those four from a name the table has never heard of — which is why the figure above is 96 and not
+    // the table's 100 catalogue keys, and why this block is pinned beside it rather than left implicit.
+    assertTest(
+        ["Running", "Trail Running", "Sprint Training", "Obstacle Course Racing"]
+            .allSatisfy { ActivityGlyph.mark(for: $0) == .single(ActivityGlyph.fallback) },
+        "…and the four names where *the table has an entry* and *the drawing differs* come apart: the "
+            + "running family's own entry is written as `figure.run`, which is `ActivityGlyph.fallback` "
+            + "itself. They draw correctly and they draw exactly as an unmapped name does, so the count "
+            + "above is 96 rather than the 100 catalogue names the table holds a key for")
+    // **The arity sweep, and it is the one thing `drawn.count` cannot see.** A count of names that draw
+    // something other than the fallback is unchanged whether `Fast` draws a pair or a single symbol,
+    // so a typo that dropped the second half of its mark would leave every other assertion in this
+    // block passing and put a bare timer where the user asked for a timer *and* a knife.
+    let composites = catalogued.filter { ActivityGlyph.mark(for: $0).isComposite }
+    assertTest(
+        composites == [WhoopActivityCatalog.fastingName],
+        "**Exactly one name in the whole catalogue draws two symbols, and it is `Fast`.** Swept "
+            + "over `allNames` rather than over the table's keys, so it also fails if a second name is "
+            + "ever given a pair without this line moving. `Drawing` makes the two failure modes this "
+            + "guards against unrepresentable — an empty mark has no initialiser and a duplicate pair "
+            + "cannot be spelled — but it cannot say *which* names are composites, which is what this "
+            + "does")
+    assertTest(
+        ActivityGlyph.mark(for: "Fast") == .pair("fork.knife", "timer")
+            && ActivityGlyph.mark(for: "fast") == .pair("fork.knife", "timer")
+            && ActivityGlyph.mark(for: "  FAST  ") == .pair("fork.knife", "timer"),
+        "**The pair is `fork.knife` then `timer`, in that order**, which is the user's own "
+            + "specification — *\"fork and knife icon followed by clock icon\"* on the row whose label "
+            + "reads `FAST` — and which a set comparison would lose. The food mark leads because the "
+            + "label under it is the food half, so the pair reads as *fasting, for a duration*. Both "
+            + "symbols clear the iOS 17.0 deployment target, measured against `name_availability.plist` "
+            + "rather than recalled: `timer` is 2019 → iOS 13.0 and `fork.knife` is 2021 → iOS 15.0. "
+            + "**No SF Symbol combines a food mark with a time mark** — `figure.fasting` is absent from "
+            + "the plist altogether and no symbol's name contains \"fast\" — so this is a composite "
+            + "drawing rather than a table entry, and it is why the table holds a `Drawing` and no "
+            + "longer a `String`. The last two are the lookup's own rule: the name is normalised like "
+            + "every other, so a stored `fast` draws the same pair")
+    assertTest(
+        catalogued.allSatisfy { name in
+            let symbols = ActivityGlyph.mark(for: name).symbols
+            return !symbols.isEmpty && symbols.allSatisfy { !$0.isEmpty }
+        },
+        "**Every symbol of every mark is a non-empty name, a composite's second included.** §17 makes "
+            + "this sweep over the export's own 21 names and cannot see a pair at all — its names are "
+            + "the file's, and none of them is `Fast`. This one is over the whole catalogue and reads "
+            + "`Drawing.symbols`, so it covers both halves of the only composite. A wrong SF Symbol name "
+            + "is not an error, it draws an empty chip, so this is still the only kind of check that can "
+            + "see a typo — and the `symbols.isEmpty` half is the assertion that an absent mark is "
+            + "unrepresentable rather than merely unused")
+    let fastingMark = ActivityGlyph.mark(for: WhoopActivityCatalog.fastingName)
+    assertTest(
+        ActivityGlyph.drawnWidth(of: fastingMark, atPointSize: 15) <= ActivityGlyph.chipDiameter
+            && ActivityGlyph.drawnWidth(of: fastingMark, atPointSize: 16) <= ActivityGlyph.listGutter
+            && ActivityGlyph.drawnWidth(of: fastingMark, atPointSize: 18) <= ActivityGlyph.listGutter,
+        "**The pair fits both of the fixed frames it is drawn in, at the size each one draws it.** "
+            + "Home's chip is a 38pt square and the pair bounds at 33.45pt at its 15pt size; the "
+            + "picker's and the edit sheet's gutters are `listGutter` (42) and it bounds at 35.68pt at "
+            + "16 and 40.14pt at 18 — which is why `listGutter` is 42 and not the 26 a single symbol "
+            + "needed. **Both figures are `drawnWidth`'s bound and not a measurement**: the runner has "
+            + "no renderer and cannot know a glyph's aspect ratio, so what is asserted is that the "
+            + "arithmetic the frames were chosen from leaves headroom, not that the marks are those "
+            + "widths on a screen. The two gutters are a fixed width rather than a `minWidth` on "
+            + "purpose — they are the column every catalogue row aligns against, so a per-row width "
+            + "would put `Fast`'s name at a different x from its 190 neighbours")
+    assertTest(
+        ActivityGlyph.drawnWidth(of: fastingMark, atPointSize: 38)
+            > ActivityGlyph.activityHeaderMinWidth,
+        "**And the pair does not fit the header's old frame, which is why that frame is a `minWidth` "
+            + "and no longer a `width`.** The same bound is 84.7pt at the header's 38pt against a fixed "
+            + "48, so under `width:` the pair would overhang its frame and run into the session's title. "
+            + "It is deliberately **not** asserted that the other names are unaffected, because they are "
+            + "not: the bound for a *single* symbol at 38pt is 49.4, already past 48, and the five "
+            + "cycling names measure wider still — `figure.outdoor.cycle` is about 56pt — so those five "
+            + "grow the frame and their titles move right by roughly 8pt. That is the honest cost of "
+            + "this change, and it is recorded on `ActivityDetailView`'s header as well as here")
+    assertTest(
+        ActivityGlyph.mark(for: WhoopActivityCatalog.abstentionName) == .single(ActivityGlyph.fallback)
+            && ActivityGlyph.mark(for: "Other") == .single(ActivityGlyph.fallback),
+        "…and WHOOP's own two words for an activity it did not categorise are among the fallbacks. "
+            + "They are *in the catalogue* — the picker has to offer them or 208 of the file's rows "
+            + "open on an unticked list — so this is the pair where *the catalogue has a name* and "
+            + "*the table draws a figure for it* would otherwise look like one rule")
+    assertTest(
+        [
+            "Dry Sauna", "Ice Bath", "Foam Rolling", "Massage Therapy", "Poker", "Cooking", "Darts",
+            "Bartending", "Canoeing", "Snowshoeing", "Cheerleading", "Taekwondo", "Cleaning",
+            "Dog Walking", "Billiards",
+        ].allSatisfy { ActivityGlyph.mark(for: $0) == .single(ActivityGlyph.fallback) },
+        "…and the deliberately unmapped names are the ones with no counterpart in SF Symbols — "
+            + "`figure.cooking`, `figure.darts`, `figure.billiards`, `figure.taekwondo` and "
+            + "`figure.snowshoeing` are **absent from `name_availability.plist` altogether**, not "
+            + "merely newer than the target, so a table entry for any of them would draw an empty chip "
+            + "rather than a figure")
+    assertTest(
+        ActivityGlyph.mark(for: "Archercy") == .single("figure.archery")
+            && ActivityGlyph.mark(for: "Racquetball") == .single("figure.racquetball")
+            && ActivityGlyph.mark(for: "Curling") == .single("figure.curling")
+            && ActivityGlyph.mark(for: "F45 Training") == .single("figure.highintensity.intervaltraining")
+            && ActivityGlyph.mark(for: "Pickleball") == .single("figure.pickleball")
+            && ActivityGlyph.mark(for: "Table Tennis/Ping Pong") == .single("figure.table.tennis")
+            && ActivityGlyph.mark(for: "Track & Field") == .single("figure.track.and.field")
+            && ActivityGlyph.mark(for: "Weightlifting") == .single("figure.strengthtraining.traditional"),
+        "…and the catalogue's own sports resolve to the symbols the table means, pinned **by "
+            + "literal** — a name that resolves to a symbol which does not exist is still non-empty, "
+            + "so the two halves of the mapping are unobservable from `symbol(for:)` alone. `Archercy` "
+            + "is WHOOP's own typo, kept as published: the key is the string a producer writes, and "
+            + "correcting it here would leave the row unmatched")
+    assertTest(
+        ActivityGlyph.mark(for: "Rowing") == .single("figure.rower")
+            && ActivityGlyph.mark(for: "Ice Skating") == .single("figure.skating")
+            && ActivityGlyph.mark(for: "Field Hockey") == .single(ActivityGlyph.fallback)
+            && ActivityGlyph.mark(for: "Skateboarding") == .single(ActivityGlyph.fallback),
+        "**Four answers that exist because the deployment target is 17.0.** "
+            + "`figure.indoor.rowing`, `figure.outdoor.rowing`, `figure.ice.skating`, "
+            + "`figure.skateboarding` and `figure.field.hockey` are all **2024** symbols — iOS 18 — so "
+            + "each draws nothing on this build, and `name_availability.plist` is the measurement "
+            + "rather than recall. Rowing and ice skating have an older symbol that means the same "
+            + "thing (`figure.rower`, `figure.skating`, both 2022) and take it; field hockey and "
+            + "skateboarding have none, so they take the fallback. All four return a non-empty string "
+            + "either way, which is exactly why the sweep above cannot see any of this and these "
+            + "literals can")
+    assertTest(
+        ActivityGlyph.mark(for: "Breathwork") == .single("figure.mind.and.body")
+            && ActivityGlyph.mark(for: "Tai Chi") == .single("figure.mind.and.body")
+            && ActivityGlyph.mark(for: "Meditation") == .single("figure.mind.and.body")
+            && ActivityGlyph.mark(for: "QiGong") == .single("figure.mind.and.body")
+            && ActivityGlyph.mark(for: "Guided Breathing - Increase Alertness")
+                == .single("figure.mind.and.body")
+            && ActivityGlyph.mark(for: "Stretching") == .single("figure.flexibility")
+            && ActivityGlyph.mark(for: "Restorative Yoga") == .single("figure.yoga"),
+        "…and the recovery section's mapped names, which are the whole of that section's coverage "
+            + "and the reason its other rows draw a running figure: a sauna, a massage and a "
+            + "red-light session are not movements, and SF Symbols has no figure for any of them")
+
+    // MARK: - The reading in force at a trim handle
+
+    // The sheet labels each handle with the heart rate at that boundary, and *which* sample that is has
+    // to be a rule rather than an interpolation: a figure averaged between the two readings either side
+    // of a handle is a rate the strap never reported, which is the absence rule applied to a readout
+    // instead of to a chart.
+    //
+    // The fixture's two readings are 74 and 132 bpm — fifty-eight apart — so an interpolated answer is
+    // a number neither sample holds and is distinguishable from both. **It is synthetic**, on §16's,
+    // §17's and §18's terms: `biometric_samples` holds 0 rows in every database on this machine and the
+    // bundled export carries no series at all, so no session this app can show reaches this path, and
+    // nothing asserted here is evidence about a strap.
+    let inForceSeries = ActivityHeartRateSeries(
+        samples: [
+            BiometricSample(timestamp: anchor.addingTimeInterval(20), heartRate: 74),
+            BiometricSample(timestamp: anchor.addingTimeInterval(80), heartRate: 132),
+        ],
+        start: anchor,
+        end: anchor.addingTimeInterval(120))
+    assertTest(
+        inForceSeries != nil,
+        "The fixture builds a series at all — a rejected init would make every assertion below a "
+            + "statement about `nil`")
+    assertTest(
+        inForceSeries?.bpm(at: anchor.addingTimeInterval(50)) == 74,
+        "**A handle between two readings takes the earlier one, never a value between them.** At "
+            + "fifty seconds the session was still running at 74 bpm until the 132 arrived at eighty; "
+            + "an interpolated answer here would print `103bpm`, a rate nothing measured "
+            + "(\(String(describing: inForceSeries?.bpm(at: anchor.addingTimeInterval(50)))))")
+    assertTest(
+        inForceSeries?.bpm(at: anchor.addingTimeInterval(80)) == 132,
+        "…and **at** a sample's own instant that sample is the one in force, which is what `<=` in the "
+            + "lookup buys: a strict `<` would answer 74 for the very reading the handle is sitting on "
+            + "(\(String(describing: inForceSeries?.bpm(at: anchor.addingTimeInterval(80)))))")
+    assertTest(
+        inForceSeries?.bpm(at: anchor.addingTimeInterval(10)) == nil,
+        "…and before the first reading the answer is `nil` rather than the first reading carried "
+            + "backwards — extrapolating a measurement into time it does not cover is the same claim a "
+            + "point plotted at the axis foot would make, and it draws the dash an unmeasured session "
+            + "draws")
+    assertTest(
+        ActivityTimeTrimChartView.bpmText(inForceSeries, at: anchor.addingTimeInterval(50)) == "74bpm"
+            && ActivityTimeTrimChartView.bpmText(nil, at: anchor) == "—"
+            && ActivityTimeTrimChartView.bpmText(inForceSeries, at: anchor) == "—",
+        "The readout prints it as `74bpm`, and **every session on this machine draws the dash** — "
+            + "`nil` in gives `—`, which is the whole of what the two figures above the handles read "
+            + "on the 673 imported sessions, and a boundary before the first sample draws it too "
+            + "(\(ActivityTimeTrimChartView.bpmText(nil, at: anchor)))")
+
+    // MARK: - A fast's nights through the database
+
+    // Everything above hands `FastingRecovery` a history directly, which is what lets it pin literals —
+    // and it means nothing so far has proved **the page's own read**. This block drives the real
+    // `ActivityDetailViewModel` over an in-memory database: the fifth init parameter, the window
+    // `loadFastingRecovery()` asks for, and the trim that moves it.
+    //
+    // The trim is the reason this block exists rather than a flourish at the end of it. `save(_:)` re-runs
+    // the whole of `load()` on purpose, so a trim that moves the nights the fast enclosed has to move the
+    // figures above the chart. Nothing else in this suite can see that: `simctl` drops the synthetic drag
+    // that would move a handle, so a screenshot of a trimmed fast proves nothing about whether the page
+    // re-derived its nights.
+    //
+    // **Which trim can do it is a fact about `ActivityEditDraft` rather than a choice**, and this block
+    // asserts both halves of it: the enclosure rule reads the start's *day*, and `latestStart` is bounded
+    // by `original.startedAt.endOfDay`, so no trim the sheet permits can move that boundary — while
+    // `setEnd` is bounded only by `original.endedAt`, so the end is the boundary a trim can move.
+    do {
+        let db = LocalDatabaseManager(inMemory: true)
+        let workoutRepository = GRDBWorkoutRepository(db: db)
+        let recoveryRepository = GRDBRecoveryRepository(db: db)
+        let profileRepository = GRDBUserProfileRepository(db: db)
+
+        // Three measured days before the fast, then the three nights it ran through — 40/60/80, so the
+        // mean is a figure the three scores can be checked against by hand. The window's spread clears
+        // `minimumCoefficientOfVariation` (10 ms around a mean of 70, against a floor of 3.5), which is the
+        // trap the value blocks record: on a narrower window the floor becomes the denominator and every
+        // z-score downstream moves.
+        let storedHistory = [
+            night(-6, score: 50, hrv: 60, rhr: 50),
+            night(-5, score: 50, hrv: 70, rhr: 60),
+            night(-4, score: 50, hrv: 80, rhr: 70),
+            night(0, score: 40, hrv: 60, rhr: 70),
+            night(1, score: 60, hrv: 70, rhr: 50),
+            night(2, score: 80, hrv: 80, rhr: 60),
+        ]
+        for entry in storedHistory {
+            try await recoveryRepository.saveRecovery(entry, source: nil)
+        }
+
+        // 21:00 the day before through 11:00 on D+2, so the mornings it ran through are the three nights
+        // above — and the day it started on is not among them, since that night had already ended.
+        let fastingSession = fast(from: day(-1, hour: 21), to: day(2, hour: 11))
+        try await workoutRepository.save(fastingSession)
+
+        let page = await MainActor.run {
+            ActivityDetailViewModel(
+                session: fastingSession,
+                workoutRepository: workoutRepository,
+                userProfileRepository: profileRepository,
+                biometricRepository: GRDBBiometricRepository(db: db),
+                recoveryRepository: recoveryRepository,
+                offlineMaps: SpyOfflineMaps())
+        }
+        await page.load()
+        let loaded = await MainActor.run { page.fastingRecovery }
+
+        assertTest(
+            loaded?.nights.count == 3 && loaded?.scoredNightCount == 3,
+            "A fast's page finds the three nights it covered, **read off the database** rather than handed "
+                + "in — the fifth init parameter, the lookback-plus-span window and the enclosure filter in "
+                + "one path (\(shown(loaded?.nights.count)) found)")
+
+        assertTest(
+            loaded?.meanScore == 60 && loaded?.hrvMetric == .rmssd,
+            "…and the figure above the chart is the mean of their own stored scores, 40/60/80, with the "
+                + "quantity in force named beside it (\(shown(loaded?.meanScore)))")
+
+        assertTest(
+            loaded?.baselineObservationCount == 3,
+            "…and the baseline is the three measured days **before** the fast began rather than its own "
+                + "nights — a window that counted them would score the fast against itself "
+                + "(\(shown(loaded?.baselineObservationCount)) days)")
+
+        // The start boundary first, because it is the one the sheet **cannot** move across a day:
+        // `ActivityEditDraft.latestStart` is `min(end − minimumDuration, original.startedAt.endOfDay)`,
+        // so no trim the edit surface permits puts a fast's start on another calendar day. Pinning that
+        // here rather than discovering it is the point — the enclosure rule's left-hand side is the
+        // start's day, so a fast's covered mornings are invariant under a start trim, and the honest
+        // assertion is the one that says so.
+        var startDraft = ActivityEditDraft(fastingSession)
+        startDraft.setStart(day(-1, hour: 23))
+        let startSaved = await page.save(startDraft)
+        let afterStartTrim = await MainActor.run { page.fastingRecovery }
+        let startTrimmedSession = await MainActor.run { page.session }
+
+        assertTest(
+            startSaved && startTrimmedSession.startedAt == day(-1, hour: 23)
+                && afterStartTrim?.nights.count == 3 && afterStartTrim?.meanScore == 60,
+            "**A start trim inside the fast's own day moves the window and leaves the nights exactly "
+                + "where they were**: the start reaches 23:00, so `latestStart`'s end-of-day bound is "
+                + "what it is there for, and the enclosure rule reads the start's *day* — which no "
+                + "permitted start trim can change. The figures are re-derived from the saved session "
+                + "all the same, which is what makes this a statement about the re-read and not about "
+                + "a page that never looked (\(shown(startTrimmedSession.startedAt)))")
+
+        // …and the end boundary is the one that **can**, because `setEnd` is bounded by
+        // `original.endedAt` and by nothing on its own day. Bringing the end back to D+1 23:00 drops the
+        // morning of D+2 out of the fast, so the nights go 40/60/80 → 40/60 and the mean 60 → 50.
+        var endDraft = ActivityEditDraft(startTrimmedSession)
+        endDraft.setEnd(day(1, hour: 23))
+        let endSaved = await page.save(endDraft)
+        let afterEndTrim = await MainActor.run { page.fastingRecovery }
+
+        assertTest(
+            endSaved && afterEndTrim?.nights.count == 2 && afterEndTrim?.meanScore == 50,
+            "**A trim moves the mornings a fast covered, and the figures above the chart move with "
+                + "them.** Ending it on D+1 takes the D+2 morning out, so two nights average 50 where "
+                + "three averaged 60 — the assertion that fails if `loadFastingRecovery()` is left out "
+                + "of `save(_:)`'s re-read (\(shown(afterEndTrim?.nights.count)) nights at "
+                + "\(shown(afterEndTrim?.meanScore)))")
+
+        assertTest(
+            afterEndTrim?.baselineObservationCount == 3
+                && afterEndTrim?.hrvMetric == .rmssd,
+            "…and the baseline window does **not** move with either trim, because a night inside the "
+                + "fast was never in a window taken before it started, and the quantity in force is read "
+                + "off the newest enclosed night rather than from the window "
+                + "(\(shown(afterEndTrim?.baselineObservationCount)) days)")
+
+        // Read on the fast's **start** day and not on `day(0)`: `workouts` is keyed on `id` with `date` an
+        // ordinary column snapped to the start, so the row is filed where the fast began and a read on any
+        // morning it merely ran through returns nothing — which is the same one-day-off shape the covering
+        // read exists beside, and the reason this fetch names the day it was written on.
+        let trimmedRow = try await workoutRepository.getWorkouts(for: day(-1))
+            .first { $0.id == fastingSession.id }
+        assertTest(
+            trimmedRow?.startedAt == day(-1, hour: 23) && trimmedRow?.endedAt == day(1, hour: 23),
+            "…and both trimmed instants are on **disk**, read back through the repository rather than "
+                + "off the view model that has just written them — the same write/read pair the `steps` "
+                + "block makes, and the one that fails if the page re-derived its nights without "
+                + "persisting the edit (\(shown(trimmedRow?.startedAt)) to \(shown(trimmedRow?.endedAt)))")
+
+        // A fast with no recovery history behind it at all. That is the state 152 of the 170 bundled fasts
+        // are in, and it is reached here through a real read of an empty window rather than through an
+        // empty array handed in — which is the difference between the page's absence branch and a fixture.
+        let earlyFast = fast(from: day(-400, hour: 21), to: day(-397, hour: 11))
+        let earlyPage = await MainActor.run {
+            ActivityDetailViewModel(
+                session: earlyFast,
+                workoutRepository: workoutRepository,
+                userProfileRepository: profileRepository,
+                biometricRepository: GRDBBiometricRepository(db: db),
+                recoveryRepository: recoveryRepository,
+                offlineMaps: SpyOfflineMaps())
+        }
+        await earlyPage.load()
+        let earlyRecovery = await MainActor.run { earlyPage.fastingRecovery }
+        assertTest(
+            earlyRecovery == nil,
+            "…and a fast the recovery record does not reach has **no** summary rather than an empty chart, "
+                + "so the chart's slot draws the absence line and not a frame with nothing in it")
+
+        // The gate, asserted at the page and not only at the value: a measured session's page carries no
+        // fasting summary at all, so the ordinary layout can never be handed a fast's figure to draw.
+        let ordinaryPage = await MainActor.run {
+            ActivityDetailViewModel(
+                session: session("Basketball", startOffset: 0, durationSeconds: 3_600, strain: 12.4),
+                workoutRepository: workoutRepository,
+                userProfileRepository: profileRepository,
+                biometricRepository: GRDBBiometricRepository(db: db),
+                recoveryRepository: recoveryRepository,
+                offlineMaps: SpyOfflineMaps())
+        }
+        await ordinaryPage.load()
+        let ordinaryRecovery = await MainActor.run { ordinaryPage.fastingRecovery }
+        assertTest(
+            ordinaryRecovery == nil,
+            "…and a session that measured a strain loads with no fasting summary, which is the gate read "
+                + "through the page rather than through `ActivityFigure.isFast` alone")
+    } catch {
+        assertTest(false, "The fasting database round trip threw: \(error)")
+    }
+
     // MARK: - `workout.steps` through the database
 
     do {
@@ -12757,6 +15443,405 @@ func runActivityDetailTests() async {
         assertTest(false, "The `workout.steps` round trip threw: \(error)")
     }
 
+    // MARK: - The `•••` menu's rows
+
+    // The menu is a pure value with no database behind it, so it asserts here — above the delete block
+    // and above every `LocalDatabaseManager` below it. **What is asserted is the rows and not the
+    // drawing**: the runner has no renderer and `simctl` drops a synthetic tap, so the menu's scrim, its
+    // full-width rows and its animation are the user's to check. What the value can say is which rows
+    // there are, in which order, what each one does and which of them is the destructive one — and that
+    // is what a hand-built menu can get wrong in a way that still looks like a working menu.
+    assertTest(
+        ActivityOverflowMenu.entries().map(\.title) == ["Edit", "Delete", "Cancel"],
+        "The `•••` menu holds exactly three rows, in the reference's own order: Edit, Delete, Cancel. "
+            + "The order is pinned rather than left to the drawing because it is the one thing about a "
+            + "hand-built menu a screenshot of a different build cannot check "
+            + "(\(ActivityOverflowMenu.entries().map(\.title)))")
+    assertTest(
+        ActivityOverflowMenu.entries().map(\.action) == [.edit, .delete, .cancel],
+        "…and each row carries the action its title names, so a row renamed without its case being "
+            + "moved fails here rather than becoming a menu where *Delete* closes the sheet and "
+            + "*Cancel* removes the session")
+    assertTest(
+        ActivityOverflowMenu.entries().filter(\.isDestructive).map(\.title) == ["Delete"],
+        "**Exactly one row is destructive, and it is `Delete`.** This is the assertion that fails if a "
+            + "second destructive row is added without anyone deciding to — and it is a property of the "
+            + "value rather than of the drawing, which matters because the tint is what tells a reader "
+            + "which row cannot be undone")
+    assertTest(
+        ActivityOverflowMenu.entries().first { $0.action == .delete }?.tint == Theme.recoveryRed
+            && ActivityOverflowMenu.entries().filter { $0.action != .delete }
+                .allSatisfy { $0.tint == Theme.actionTint },
+        "…and the destructive row is the only one drawn in the red. `Theme.recoveryRed` is the app's "
+            + "only red and `Theme.actionTint` is the role-named blue the other two take: `strainRing` "
+            + "is deliberately **not** borrowed here, because it is the strain figure's colour and is "
+            + "drawn a few inches above this menu, so one colour would be saying two things")
+    assertTest(
+        ActivityOverflowMenu.scrimOpacity > 0 && ActivityOverflowMenu.scrimOpacity < 1,
+        "The scrim is partial — `\(ActivityOverflowMenu.scrimOpacity)`, Home's own number — so the page "
+            + "the menu belongs to stays legible behind it. A menu that blacked the screen out would "
+            + "read as a different kind of modal from the calendar and the `+` menu, which are the same "
+            + "arrangement at the opposite edge")
+    assertTest(
+        ActivityOverflowMenu.groups().map { $0.map(\.title) } == [["Edit", "Delete"], ["Cancel"]],
+        "**The rows are split into two cards, and the split is what puts the gap between `Delete` and "
+            + "`Cancel` and nowhere else.** The page draws one card per group and separates them by "
+            + "`groupSpacing`, so this shape is the gap's position: a third row moved into the first "
+            + "group, or `Cancel` listed with the two above it, draws a menu with no separation at all "
+            + "and every other assertion in this block still passes "
+            + "(\(ActivityOverflowMenu.groups().map { $0.map(\.title) }))")
+    assertTest(
+        ActivityOverflowMenu.groupSpacing > 0
+            && ActivityOverflowMenu.groupSpacing < ActivityOverflowMenu.rowHeight,
+        "The separation is a small space: positive, so the two cards are genuinely apart, and shorter "
+            + "than a row (\(ActivityOverflowMenu.groupSpacing) pt against "
+            + "\(ActivityOverflowMenu.rowHeight) pt), because a gap the height of a row reads as a "
+            + "fourth, empty button rather than as a division")
+    assertTest(
+        ActivityOverflowMenu.rowHeight >= 44,
+        "Every row clears the 44 pt minimum tap target "
+            + "(\(ActivityOverflowMenu.rowHeight) pt), which is a fact about the drawing that nothing "
+            + "on a screen can be asked to confirm — and `Cancel` is one of those rows: it is the same "
+            + "height and the same full width as the two above it, and the gap is the whole of what "
+            + "sets it apart")
+    assertTest(
+        ActivityOverflowMenu.cardCornerRadius > 0
+            && ActivityOverflowMenu.cardCornerRadius < ActivityOverflowMenu.rowHeight,
+        "Both cards are rounded by one radius — `\(ActivityOverflowMenu.cardCornerRadius)` pt — at "
+            + "every one of their eight corners. **One value and not two is the assertion**: a card "
+            + "rounded at a different radius from its neighbour is the one defect in this menu that "
+            + "nothing else can see, because both cards still look rounded and only their corners "
+            + "disagree. It is held under `rowHeight` so a radius can never eat a whole row's edge, and "
+            + "over zero so the rounding is really there — at `0` the menu would be a rectangle and a "
+            + "card's end would be invisible")
+
+    // ---- The live fast's menu: one row, one card, and no second destructive one ----
+    //
+    // A running fast's page is the ordinary fasting layout with `END FAST` where the `•••` was, so this
+    // menu's live shape is reachable only from that page — and like every other menu here it is a value,
+    // because the runner has no renderer and a row written into a `body` is a row nothing can assert.
+    //
+    // **`isDestructive` staying `Delete` alone is the assertion that matters most**, and it is the one
+    // a live menu could plausibly break: `End Fast` is a verb that ends something, and marking it red
+    // would put two red rows on one screen's vocabulary while §19's own count above says there is one.
+    let liveTitles = ActivityOverflowMenu.entries(isLive: true).map(\.title)
+    assertTest(
+        liveTitles == ["End Fast", "Cancel"],
+        "A running fast's menu holds two rows — `End Fast`, then the `Cancel` every menu here carries "
+            + "— rather than the three a stored session's does, and the assertion is on the whole list "
+            + "because a live menu that kept `Edit` would offer to re-time a session with no stored row "
+            + "to write (\(liveTitles))")
+
+    assertTest(
+        ActivityOverflowMenu.entries(isLive: true).map(\.action) == [.endFast, .cancel],
+        "…and `End Fast` carries `.endFast` and not `.delete`, which is what makes it a distinct case at "
+            + "`ActivityDetailView`'s exhaustive switch rather than a delete under another title")
+
+    assertTest(
+        ActivityOverflowMenu.entries(isLive: true).filter(\.isDestructive).isEmpty
+            && ActivityOverflowMenu.entries().filter(\.isDestructive).map(\.title) == ["Delete"],
+        "…and **not one row of the live menu is destructive**, where the stored menu has exactly one. "
+            + "Ending a fast writes a row rather than removing one, so a red `End Fast` would be this "
+            + "menu telling the reader a session is about to be lost when it is about to be kept")
+
+    assertTest(
+        ActivityOverflowMenu.groups(isLive: true).map { $0.map(\.title) } == [["End Fast"], ["Cancel"]],
+        "…and it is still two cards, so `groupSpacing` puts its gap between `End Fast` and `Cancel` and "
+            + "nowhere else. The grouping is what makes `Cancel` its own row here too — a live menu drawn "
+            + "as one card would put the way out of the menu flush against the way out of the fast "
+            + "(\(ActivityOverflowMenu.groups(isLive: true).map { $0.map(\.title) }))")
+
+    assertTest(
+        ActivityOverflowMenu.groups().count == ActivityOverflowMenu.groups(isLive: true).count
+            && ActivityOverflowMenu.entries().count != ActivityOverflowMenu.entries(isLive: true).count,
+        "…and the live flag moves the **rows** without moving the card count, which is the pair that "
+            + "keeps `isLive` from being read as a second menu — it withholds two rows and changes no "
+            + "layout constant")
+
+    // MARK: - Delete
+
+    // The app's first destructive operation, reached from the `•••` menu. **What is asserted here is
+    // the storage path, not the menu**: the runner has no renderer and `simctl` drops a synthetic tap —
+    // so the rows' appearance and their taps are not something this suite can see, and the block above
+    // is the whole of what it can say about them. What it can see is everything Delete does, and the
+    // discriminations below are the ones a passing delete would otherwise hide.
+    do {
+        let db = LocalDatabaseManager(inMemory: true)
+        let repository = GRDBWorkoutRepository(db: db)
+
+        /// The same session, carrying a route and a split.
+        ///
+        /// Children matter here in a way they do not anywhere else in this section: they live in their
+        /// own tables behind a `workout_id` filter, and **every reader in the app fetches them per
+        /// session** — so an orphan is never read, never drawn and never noticed. A row count is the
+        /// only place it can surface, which is why the assertions below read the tables directly rather
+        /// than through `WorkoutRepository`, where they would be invisible.
+        func withChildren(_ base: WorkoutSession) -> WorkoutSession {
+            WorkoutSession(
+                id: base.id,
+                startedAt: base.startedAt,
+                endedAt: base.endedAt,
+                strain: base.strain,
+                averageHeartRate: base.averageHeartRate,
+                maxHeartRate: base.maxHeartRate,
+                route: [
+                    WorkoutRoutePoint(
+                        latitude: 51.50, longitude: -0.12,
+                        timestamp: base.startedAt, heartRate: 120),
+                    WorkoutRoutePoint(
+                        latitude: 51.51, longitude: -0.13,
+                        timestamp: base.endedAt, heartRate: 150),
+                ],
+                splits: [
+                    WorkoutSplit(elapsed: 300, strain: 2.5),
+                    WorkoutSplit(elapsed: 600, strain: 5.0),
+                ],
+                activityName: base.activityName)
+        }
+
+        // Two sessions **on one day**, which is the fixture this whole block rests on: `workouts` is
+        // keyed on `id` precisely because a day holds several, and a neighbour on the same day is what
+        // makes a table-wide wipe visible.
+        let doomed = withChildren(session("Basketball", startOffset: 0, durationSeconds: 600))
+        let survivor = withChildren(session("Basketball", startOffset: 3600, durationSeconds: 900))
+        try await repository.save(doomed)
+        try await repository.save(survivor)
+
+        // `LocalDatabaseManager` is an actor, so the child reads are awaited into locals rather than
+        // called inside the assertion.
+        let stored = try await repository.getWorkouts(for: doomed.startedAt)
+        let doomedPointsBefore = try await db.getRoutePoints(for: doomed.id.uuidString).count
+        let doomedSplitsBefore = try await db.getSplits(for: doomed.id.uuidString).count
+        let survivorPointsBefore = try await db.getRoutePoints(for: survivor.id.uuidString).count
+        let survivorSplitsBefore = try await db.getSplits(for: survivor.id.uuidString).count
+        assertTest(
+            stored.count == 2
+                && doomedPointsBefore == 2 && doomedSplitsBefore == 2
+                && survivorPointsBefore == 2 && survivorSplitsBefore == 2,
+            "Two sessions on one day are stored, each with its own two route points and two splits — "
+                + "the fixture every assertion below reads (sessions: \(stored.count))")
+
+        let removed = try await repository.delete(doomed.id)
+        assertTest(
+            removed,
+            "Deleting a session reports that a row really went. The `Bool` is the store's "
+                + "affected-row count and not *did it throw*: an id that matched nothing would "
+                + "otherwise report success, and the page would dismiss over a row still on disk")
+
+        let afterDelete = try await repository.getWorkouts(for: doomed.startedAt)
+        assertTest(
+            !afterDelete.contains { $0.id == doomed.id },
+            "…and it is gone from the day's list, which is the read Home's ACTIVITIES card is built "
+                + "from (\(afterDelete.count) sessions left)")
+
+        let doomedPointsAfter = try await db.getRoutePoints(for: doomed.id.uuidString)
+        let doomedSplitsAfter = try await db.getSplits(for: doomed.id.uuidString)
+        assertTest(
+            doomedPointsAfter.isEmpty && doomedSplitsAfter.isEmpty,
+            "…and **its route points and splits went with it**. Read off the tables directly rather "
+                + "than through `WorkoutRepository`, which fetches children per session and could "
+                + "never see an orphan: a deleted session leaving its route behind would be invisible "
+                + "to every reader in the app")
+
+        // The survivor is the assertion that catches a table-wide `deleteAll` on either child table —
+        // the failure a repository-level read cannot see, because both sessions would still be
+        // reported as present and the survivor would simply come back with an empty route.
+        assertTest(
+            afterDelete.contains { $0.id == survivor.id },
+            "…and the session beside it on the same day is untouched (\(afterDelete.count) left)")
+        let survivorPointsAfter = try await db.getRoutePoints(for: survivor.id.uuidString).count
+        let survivorSplitsAfter = try await db.getSplits(for: survivor.id.uuidString).count
+        assertTest(
+            survivorPointsAfter == 2 && survivorSplitsAfter == 2,
+            "…**including its own route points and splits**. This is the pair that fails if the "
+                + "worker deletes the children by table rather than by `workout_id`: that wipe takes "
+                + "the neighbour's route with it, and nothing short of counting the surviving "
+                + "session's children can see it")
+
+        // Deleting something that is not there is an ordinary answer rather than an error — the same
+        // shape every reader in this app gives an absent row.
+        let removedAgain = try await repository.delete(doomed.id)
+        assertTest(
+            !removedAgain,
+            "Deleting an id that is already gone does not throw and reports `false` — an absent row "
+                + "is not a failure, but it is not a success either, so the page must not dismiss on it")
+
+        // The id no longer round-trips, so the page's own guard is the second half of that rule: a
+        // delete is only worth dismissing on when the store says a row went.
+        assertTest(
+            (try await repository.getWorkouts(for: doomed.startedAt))
+                .allSatisfy { $0.id != doomed.id },
+            "…and a second delete left the day exactly as the first one did")
+    } catch {
+        assertTest(false, "The delete round trip threw: \(error)")
+    }
+
+    // MARK: - The edit, through the database
+
+    // `Edit`'s destination, and the block that proves the save is an **update and not an insert**. The
+    // distinction is the whole feature: an imported row's `id` is a function of its own two instants, so
+    // an edit that minted a new id would leave the file's row on disk and put the edit beside it — one
+    // session on the day before the edit and two after — and every read in the app would draw both.
+    // `WorkoutRepository.save` is INSERT-or-UPDATE by primary key, which is what makes the id the
+    // carrying half of this; nothing else here would notice a second row, since both would read back.
+    //
+    // **The fixture is anchored at local noon**, and that is not tidiness: this is the one block that
+    // trims a window and then reads the day back, so a session near either midnight would let the trim
+    // change the day key and the assertion would be about the time zone rather than about the edit.
+    // §1's clamp forbids that, and the two together are why a fixed offset from `anchor` is not enough
+    // — `anchor` is 22:13 UTC in a zone this suite does not pick.
+    do {
+        let db = LocalDatabaseManager(inMemory: true)
+        let repository = GRDBWorkoutRepository(db: db)
+
+        let noon = Calendar.current.startOfDay(for: anchor).addingTimeInterval(12 * 3600)
+        let fixture = WorkoutSession(
+            startedAt: noon,
+            endedAt: noon.addingTimeInterval(1_200),
+            strain: 5.2,
+            averageHeartRate: 121,
+            maxHeartRate: 164,
+            route: [
+                WorkoutRoutePoint(
+                    latitude: 51.50, longitude: -0.12, timestamp: noon, heartRate: 120),
+                WorkoutRoutePoint(
+                    latitude: 51.51, longitude: -0.13,
+                    timestamp: noon.addingTimeInterval(1_200), heartRate: 150),
+            ],
+            splits: [
+                WorkoutSplit(elapsed: 300, strain: 2.5),
+                WorkoutSplit(elapsed: 600, strain: 5.0),
+            ],
+            source: WhoopExportImporter.sourceLabel,
+            activityName: "Basketball",
+            hrZonePercents: [12, 26, 34, 18, 4],
+            steps: 693)
+        try await repository.save(fixture)
+        let dayBefore = try await repository.getWorkouts(for: noon)
+
+        var draft = ActivityEditDraft(fixture)
+        draft.setName("Walking")
+        draft.setStart(noon.addingTimeInterval(120))
+        draft.setEnd(noon.addingTimeInterval(1_020))
+        let edited = draft.applying(to: fixture)
+        try await repository.save(edited)
+
+        let dayAfter = try await repository.getWorkouts(for: noon)
+        assertTest(
+            dayBefore.count == 1 && dayAfter.count == 1,
+            "**An edit leaves the day holding the same number of sessions.** One before, "
+                + "\(dayAfter.count) after — so the save updated the row it was handed rather than "
+                + "inserting a second one beside it, which is the failure that would double every "
+                + "imported session the moment anyone edited it")
+
+        let stored = dayAfter.first { $0.id == fixture.id }
+        assertTest(
+            stored != nil && dayAfter.first?.id == fixture.id,
+            "…and the row it updated is **found by the id the fixture was saved under** — the edit did "
+                + "not mint a new one, which is what keeps the edited session the same session to "
+                + "everything downstream: the day's list, the pushed page's `navigationDestination`, "
+                + "and the import's own skip on the next press of the button")
+        assertTest(
+            stored?.activityName == "Walking"
+                && stored?.startedAt == noon.addingTimeInterval(120)
+                && stored?.endedAt == noon.addingTimeInterval(1_020),
+            "…with the new name and both trimmed boundaries read back off disk — "
+                + "\(stored?.activityName ?? "nil") over "
+                + "\(Int(stored?.durationSeconds ?? 0)) s against the file's 1200 s")
+
+        assertTest(
+            stored?.strain == 5.2 && stored?.averageHeartRate == 121
+                && stored?.maxHeartRate == 164 && stored?.steps == 693
+                && stored?.source == WhoopExportImporter.sourceLabel
+                && stored?.hrZonePercents == [12, 26, 34, 18, 4],
+            "…and **everything the sheet does not touch survives the write**: the strain, the two "
+                + "heart rates, the step count, the provenance label and WHOOP's own five zone shares. "
+                + "`applying(to:)` builds the new session from the old one rather than from a fresh "
+                + "initialiser, so a field nobody edited cannot take an initialiser's default — "
+                + "`steps` would otherwise come back `nil` on an edit that only renamed the session")
+
+        let pointsAfter = try await db.getRoutePoints(for: fixture.id.uuidString)
+        let splitsAfter = try await db.getSplits(for: fixture.id.uuidString)
+        assertTest(
+            pointsAfter.count == 2 && splitsAfter.count == 2,
+            "…and the children are **still exactly the two that were stored, not four**. The child "
+                + "tables are written per `workout_id` on every save (`saveWorkout` mirrors the delete "
+                + "rather than trusting a cascade), so an update that inserted instead of replaced "
+                + "would leave the session with a duplicated route — invisible to every reader in the "
+                + "app, because they all fetch by session rather than by table")
+        assertTest(
+            pointsAfter.first?.heartRate == 120 && pointsAfter.last?.heartRate == 150
+                && splitsAfter.first?.elapsed == 300 && splitsAfter.last?.strain == 5.0,
+            "…and they are the **same** two rather than two replacements, read off their own fields: "
+                + "timestamps and heart rates, elapsed and strain. A count alone would pass for a "
+                + "delete-and-reinsert that lost the order, and the route's order is its shape")
+
+        // The user's decision on a trim, as one assertion: WHOOP's own five percentages are kept and
+        // the seconds recompute against the shorter span. `ActivityZoneRow` derives each row's time as
+        // `percent / 100 × durationSeconds`, so the two figures on a row cannot contradict each other
+        // before or after an edit — which is the whole reason keeping the share is safe.
+        assertTest(
+            fixture.zoneSeconds(.zone1) == 144 && stored?.zoneSeconds(.zone1) == 108,
+            "**A trim rescales the zone times against the unchanged share.** Zone 1 is 12% of the "
+                + "session both before and after: 12% of 1200 s is "
+                + "\(fixture.zoneSeconds(.zone1) ?? -1) s, and 12% of the trimmed 900 s is "
+                + "\(stored?.zoneSeconds(.zone1) ?? -1) s. The percentage is WHOOP's and cannot be "
+                + "recomputed from a shorter window — the strap was in zone 1 for the time it was, and "
+                + "trimming the ends does not move that — so it is kept and the derived figure moves "
+                + "with the span it is a share of")
+        assertTest(
+            stored?.zone1to3Seconds == 108 + 234 + 306 && stored?.zone4to5Seconds == 162 + 36,
+            "…and the two aggregate rows follow, so the pair of figures the page prints under them "
+                + "cannot disagree with the five rows above either "
+                + "(\(stored?.zone4to5Seconds ?? -1) s across zones 4 and 5)")
+    } catch {
+        assertTest(false, "The edit round trip threw: \(error)")
+    }
+
+    // MARK: - Home drops the row without re-reading the day
+
+    // `removeWorkout` is what stops Home drawing a session the user just deleted: the deletion happens
+    // on a pushed page, and whether a `.task` re-fires when that page pops is undocumented and
+    // version-dependent, so nothing may depend on it. No other figure on Home is built from a workout,
+    // so a local removal is exact — and it is asserted here because a closure calling `load(for:)`
+    // instead would be un-assertable and would race whatever else is loading.
+    do {
+        let db = LocalDatabaseManager(inMemory: true)
+        let home = await MainActor.run {
+            HomeViewModel(
+                recoveryRepository: GRDBRecoveryRepository(db: db),
+                sleepRepository: GRDBSleepRepository(db: db),
+                strainRepository: GRDBStrainRepository(db: db),
+                workoutRepository: GRDBWorkoutRepository(db: db),
+                userProfileRepository: GRDBUserProfileRepository(db: db),
+                stepRepository: GRDBStepRepository(db: db),
+                analyzeStress: AnalyzeStressUseCase(biometricRepository: EmptyBiometricStore()),
+                manage: ManageBLEConnectionUseCase(
+                    bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
+                streamUseCase: StreamBiometricsUseCase(
+                    bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
+                    biometricRepository: GRDBBiometricRepository(db: db)))
+        }
+        let doomed = session("Basketball", startOffset: 0, durationSeconds: 600)
+        let survivor = session("Basketball", startOffset: 3600, durationSeconds: 900)
+        await MainActor.run {
+            home.workouts = [doomed, survivor]
+            home.removeWorkout(doomed.id)
+        }
+        let left = await MainActor.run { home.workouts }
+        assertTest(
+            left.count == 1 && left.first?.id == survivor.id,
+            "Home drops exactly the deleted session and leaves the rest of the day (\(left.count) "
+                + "of 2 left)")
+
+        await MainActor.run { home.removeWorkout(UUID()) }
+        let stillThere = await MainActor.run { home.workouts }
+        assertTest(
+            stillThere.count == 1 && stillThere.first?.id == survivor.id,
+            "…and removing an id that is not in the list is a no-op rather than a fault, which is "
+                + "what a day re-read without it looks like")
+    }
+
     // MARK: - Two readers on one motion stream
 
     // The app really does run two: `TrackStepsUseCase` fills the day's tile and `LiveSessionUseCase`
@@ -12781,7 +15866,9 @@ func runActivityDetailTests() async {
                 bleRepository: telemetry, biometricRepository: EmptyBiometricStore()),
             saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
             userProfileRepository: GRDBUserProfileRepository(db: db),
-            bleRepository: telemetry)
+            bleRepository: telemetry,
+            activeFastRepository: SpyActiveFastRepository(),
+            offlineMaps: SpyOfflineMaps())
 
         await session.start()
         assertTest(
@@ -12857,12 +15944,16 @@ func runActivityDetailTests() async {
     let exported = ((try? WhoopExportParser.parseWorkouts(at: workoutsURL)) ?? []).compactMap {
         row -> WorkoutSession? in
         guard let start = row.workoutStart, let end = row.workoutEnd else { return nil }
+        // The three figures are `nil` and not `0`, which they were written as before `v18`. Nothing in
+        // this block reads any of them — it is the zone rows under test — so the choice is about what
+        // the fixture *says*: a `0` is a claim that something measured a strain of zero and a heart
+        // rate of zero, and `nil` is the honest filler for a field the fixture does not care about.
         return WorkoutSession(
             startedAt: start,
             endedAt: end,
-            strain: 0,
-            averageHeartRate: 0,
-            maxHeartRate: 0,
+            strain: nil,
+            averageHeartRate: nil,
+            maxHeartRate: nil,
             route: [],
             splits: [],
             activityName: row.activityName,
@@ -12911,6 +16002,2116 @@ func runActivityDetailTests() async {
         "…and each of those reads back a **measured** `0%` beside `0:00:00` rather than the dash an "
             + "absent block draws — 45 sessions this app would otherwise report as having no zone "
             + "data at all")
+
+    // MARK: - The route map
+
+    // A pure value with no database behind it, like the delta and the zone rows above: `ActivityRoute`
+    // is the whole of the rule, and `ActivityRouteMapView` is construction with nothing in it that
+    // could be got wrong in a way an assertion could see.
+    //
+    // **The block is shaped by the fact that no session this app can show has a route.** The
+    // `RECORD ROUTE` toggle is the only producer of `workout_route_points`, it is off by default, and
+    // `biometric_samples` holds 0 rows here — so every literal below is built by hand, and the
+    // `nil`-at-fewer-than-two gate is not an edge case but the state every screen is in. What the
+    // block proves is the arithmetic and the gates; nothing here is evidence that a recorded path is
+    // accurate.
+    //
+    // The two absences the reference's own overlay carries get an assertion each, because each is a
+    // figure this app could be tempted to invent: ELEVATION has no producer at any layer, and a route
+    // whose fixes share one instant has no span to divide a speed by. Both are *dropped* and neither is
+    // drawn as a `—`, which is the whole of what the assertions below pin.
+    do {
+        /// A fix at a known place and instant, with a heart rate the map never draws.
+        func fix(
+            _ latitude: Double,
+            _ longitude: Double,
+            at seconds: TimeInterval,
+            hr: Int = 120
+        ) -> WorkoutRoutePoint {
+            WorkoutRoutePoint(
+                latitude: latitude,
+                longitude: longitude,
+                timestamp: anchor.addingTimeInterval(seconds),
+                heartRate: hr)
+        }
+
+        // MARK: The gate
+
+        // One fix is a place, not a path. This pair is the whole absence rule: the page draws no
+        // section at all on `nil`, so a route that admitted one point would put a marker on a map and
+        // claim a session moved.
+        let onePoint = ActivityRoute(points: [fix(51.5, -0.12, at: 0)])
+        let twoPoints = ActivityRoute(points: [fix(51.5, -0.12, at: 0), fix(51.51, -0.12, at: 60)])
+        assertTest(
+            onePoint == nil && twoPoints?.points.count == 2,
+            "A route is two positions or it is nothing: one plausible fix is a place rather than a path "
+                + "and is the same absence a session with none draws (\(shown(onePoint?.points.count)))")
+
+        // MARK: The filter, applied on the read
+
+        // The same test the recording path drops fixes with, applied again here. The column has no
+        // constraint behind it, so a row written by an older build or by a hand-run probe would
+        // otherwise be drawn — and a `(0, 0)` on a route is a polyline striking across the map to the
+        // Gulf of Guinea.
+        let filtered = ActivityRoute(points: [
+            fix(51.5, -0.12, at: 0),
+            fix(0, 0, at: 10),  // CoreLocation's "not resolved yet" placeholder
+            fix(91, -0.12, at: 20),  // latitude past ±90
+            fix(51.5, 181, at: 30),  // longitude past ±180
+            fix(.nan, -0.12, at: 40),  // arithmetic that went wrong
+            fix(51.51, -0.12, at: 50),
+        ])
+        assertTest(
+            filtered?.points.count == 2
+                && filtered?.points.allSatisfy { $0.isPlausible } == true,
+            "…and the plausibility filter is applied **on the read as well as at the write**: a `(0, 0)`, "
+                + "a latitude past ±90, a longitude past ±180 and a `NaN` are all dropped from a stored "
+                + "route (\(shown(filtered?.points.count)) of 6 kept)")
+
+        // MARK: The ordering, and the tie-break that is not available
+
+        // Sorted by instant, because a polyline is an ordered sequence by definition. The equal pair is
+        // the assertion that matters: `sorted(by:)` is stable (SE-0372), so two fixes sharing an instant
+        // keep the order they arrived in — and `id` is a fresh `UUID`, so a secondary sort on it would
+        // order the same two rows differently on every launch.
+        let arrivedFirst = fix(51.5, -0.12, at: 0, hr: 100)
+        let arrivedSecond = fix(51.51, -0.12, at: 0, hr: 110)
+        let ordered = ActivityRoute(points: [
+            fix(51.53, -0.12, at: 120),
+            fix(51.52, -0.12, at: 60),
+            arrivedFirst,
+            arrivedSecond,
+        ])
+        assertTest(
+            ordered?.points.map(\.heartRate) == [100, 110, 120, 120],
+            "…and the path is ordered by its own instants, with two fixes sharing one keeping the order "
+                + "they arrived in — the stable sort, since `id` is a fresh `UUID` and would order the "
+                + "same two rows differently on every launch "
+                + "(\(shown(ordered?.points.map(\.heartRate))))")
+
+        // MARK: The length
+
+        // One degree of latitude on the IUGG mean sphere. Pinned against a literal rather than against
+        // `CLLocation.distance(from:)`, which is the whole reason the haversine is hand-rolled: a runner
+        // that must not build a `CLLocationManager` cannot ask the framework for this figure.
+        let oneDegree = ActivityRoute(points: [fix(10, 20, at: 0), fix(11, 20, at: 60)])
+        assertTest(
+            abs((oneDegree?.distanceMeters ?? 0) - 111_195.08) < 1,
+            "A degree of latitude is 111,195 m on the mean sphere — the haversine pinned to a literal, so "
+                + "a wrong radius or a degrees/radians slip fails rather than agreeing with itself "
+                + "(\((oneDegree?.distanceMeters ?? 0).formattedOneDecimal()) m)")
+
+        // **The length is a sum along the path and not the distance between its ends.** A three-point
+        // route whose middle fix is off the straight line is longer than the two-endpoint route through
+        // the same start and finish, and a value that quietly measured end-to-end would report a
+        // switchback as a straight line.
+        let dogleg = ActivityRoute(points: [
+            fix(51.50, -0.12, at: 0),
+            fix(51.51, -0.12, at: 60),
+            fix(51.51, -0.11, at: 120),
+        ])
+        let endToEnd = ActivityRoute(points: [fix(51.50, -0.12, at: 0), fix(51.51, -0.11, at: 120)])
+        assertTest(
+            (dogleg?.distanceMeters ?? 0) > (endToEnd?.distanceMeters ?? .infinity) + 1,
+            "…and the length is the sum of the consecutive legs rather than the span between the two "
+                + "ends, so a route that doubles back is longer than the same two endpoints in a "
+                + "straight line (\((dogleg?.distanceMeters ?? 0).formattedOneDecimal()) m over "
+                + "\((endToEnd?.distanceMeters ?? 0).formattedOneDecimal()) m)")
+
+        // MARK: The frame
+
+        // A path that covered no ground at all is framed at the floor rather than at a zero-height box,
+        // and the floor is applied *under* the padding so a route that exactly fills it still gets its
+        // margin. The centre is the midpoint of the path's own extremes either way.
+        let tiny = ActivityRoute(points: [fix(51.5000, -0.1200, at: 0), fix(51.5001, -0.1201, at: 60)])
+        assertTest(
+            abs((tiny?.region.latitudeSpan ?? 0) - ActivityRoute.minimumSpanDegrees) < 1e-9
+                && abs((tiny?.region.longitudeSpan ?? 0) - ActivityRoute.minimumSpanDegrees) < 1e-9
+                && abs((tiny?.region.centerLatitude ?? 0) - 51.50005) < 1e-9,
+            "A route that barely moved is framed at `minimumSpanDegrees` on both axes rather than at a "
+                + "box metres wide, with its centre still the midpoint of its own extremes "
+                + "((\(shown(tiny?.region.latitudeSpan))))")
+
+        let wide = ActivityRoute(points: [fix(51.0, -1.0, at: 0), fix(52.0, 0.0, at: 600)])
+        assertTest(
+            abs((wide?.region.latitudeSpan ?? 0) - 1.4) < 1e-9
+                && abs((wide?.region.longitudeSpan ?? 0) - 1.4) < 1e-9,
+            "…and a route that covered a degree is framed at 1.4 of it, so the path sits inside its "
+                + "frame with a margin on every side (\((wide?.region.latitudeSpan ?? 0).formattedOneDecimal())°)")
+
+        // MARK: The two figures
+
+        // Both unit systems driven explicitly, because the unit is a parameter rather than a read of
+        // `Locale.current` inside the formatter — a figure that only holds in one region is a test that
+        // fails on someone else's machine, and this app ships to both.
+        assertTest(
+            ActivityRoute.Unit.forLocale(Locale(identifier: "en_US")) == .imperial
+                && ActivityRoute.Unit.forLocale(Locale(identifier: "en_GB")) == .imperial
+                && ActivityRoute.Unit.forLocale(Locale(identifier: "de_DE")) == .metric,
+            "The unit is the locale's own measurement system, with **metric as the one named case** and "
+                + "everything else falling to imperial — `en_US` and `en_GB` both get miles, which is "
+                + "right for road distance")
+
+        // Exactly one mile, so the two systems' answers are a conversion rather than a rounding.
+        let mile = ActivityRoute(points: [
+            fix(0.01, 0.01, at: 0),
+            fix(0.01 + 1_609.344 / 111_195.08, 0.01, at: 3_600),
+        ])
+        assertTest(
+            mile?.distanceText(in: .imperial) == "1.0 mi"
+                && mile?.distanceText(in: .metric) == "1.6 km",
+            "…and one statute mile prints `1.0 mi` where the same distance prints `1.6 km`, through the "
+                + "app's own one-decimal formatter — which is `String(format:)` with no locale, so the "
+                + "point is a point in every region "
+                + "(\(shown(mile?.distanceText(in: .metric))))")
+
+        // MARK: The speed, and the span it divides by
+
+        // 1.6 km in 3600 s is 1609.344 / 3600 = 0.44704 m/s, which is 1.609 km/h and 1.0 mph. The
+        // assertion that matters is not the arithmetic but the **divisor**: the route's own span and
+        // never the session's duration, since the toggle can be turned on two minutes into a run and
+        // dividing by the session's own length would report an average over distance never measured.
+        assertTest(
+            mile?.averageSpeedText(in: .imperial) == "1.0 mph"
+                && mile?.averageSpeedText(in: .metric) == "1.6 km/h"
+                && abs((mile?.durationSeconds ?? 0) - 3_600) < 0.5,
+            "…and its average is the path's own length over **the path's own span**, so a route whose "
+                + "toggle was flipped on mid-session reports the average it actually covered "
+                + "(\(shown(mile?.averageSpeedText(in: .metric))))")
+
+        // Every fix at one instant is a route with no time in it. A speed is a distance over a time, so
+        // with no time there is no answer rather than a fast one — and the overlay drops the cell
+        // rather than drawing a `—` beside a real distance, which is the same rule that keeps ELEVATION
+        // off it.
+        let instantaneous = ActivityRoute(points: [
+            fix(51.50, -0.12, at: 0),
+            fix(51.51, -0.12, at: 0),
+        ])
+        // **Flattened to one optional before it is compared**, and that is not tidiness: on the
+        // failable initialiser's own optional this reads `String??`, and `instantaneous?.
+        // averageSpeedText(…) == nil` then asks whether *`instantaneous`* is nil and answers `false`
+        // while the speed is `nil` — the same trap §18 records against `recorded?.source == nil`.
+        let instantaneousSpeed = instantaneous.flatMap { $0.averageSpeedText(in: .imperial) }
+        assertTest(
+            instantaneous != nil
+                && instantaneous?.durationSeconds == 0
+                && instantaneousSpeed == nil
+                && instantaneous?.distanceText(in: .metric) == "1.1 km",
+            "…and a route whose every fix shares one instant has no span to divide by, so it draws the "
+                + "distance alone rather than a speed and never a `—` "
+                + "(speed \(shown(instantaneousSpeed)))")
+
+        // MARK: The words
+
+        // The spoken sentence is the card's whole accessible content, because a map is a drawing and
+        // says nothing to VoiceOver. Two things about it are rules rather than phrasing: it names the
+        // route rather than only reciting figures, and **it never speaks a duration** — the page prints
+        // the session's own `DURATION` above this card, and a second span in a reader's ear with
+        // nothing to tell the two apart is worse than silence.
+        //
+        // The fixture's own span is a full hour, so the duration clause has something to say and its
+        // absence is a fact rather than an accident of a zero-length route.
+        let spoken = mile?.spokenSummary(in: .imperial) ?? ""
+        assertTest(
+            spoken == "Map of the recorded route. 1.0 miles, averaging 1.0 miles per hour.",
+            "…and the card speaks one sentence naming the route and its two figures, through the same "
+                + "one-decimal formatter the caption uses (\(spoken))")
+        assertTest(
+            !spoken.contains("1 hour") && !spoken.lowercased().contains("duration"),
+            "…and **no duration is spoken**: that route's fixes span a full hour, so a sentence that "
+                + "recited its own span would say so — and the page's own `DURATION` is already on "
+                + "screen a few inches above this card, with nothing in a reader's ear to tell the two "
+                + "apart (\(spoken))")
+
+        // A route with no span drops the speed clause rather than speaking a zero, on the same rule
+        // that drops the cell from the overlay. Its distance is a ten-thousandth of a degree of
+        // latitude, which in kilometres prints `1.1` — the kilometre figured rather than the mile one
+        // so the assertion beside it is not a second copy of the same conversion.
+        assertTest(
+            instantaneous?.spokenSummary(in: .metric)
+                == "Map of the recorded route. 1.1 kilometres.",
+            "…and with no span to divide by the speed clause is dropped rather than spoken as zero "
+                + "(\(shown(instantaneous?.spokenSummary(in: .metric))))")
+    }
+
+    // MARK: - The page's own route property, through the database
+
+    // The block above proves the value; this one proves **the page is handed it**. `ActivityRoute` is
+    // drawn only from `ActivityDetailViewModel.route`, which forwards `session.route` — and `session`
+    // comes back through `GRDBWorkoutRepository`, which fetches `workout_route_points` per workout. So
+    // the chain this block walks is the whole distance between a stored fix and a polyline: storage →
+    // repository → the page's own property. A read that dropped the children would leave every
+    // assertion above passing while every screen drew nothing.
+    do {
+        let db = LocalDatabaseManager(inMemory: true)
+        let workoutRepository = GRDBWorkoutRepository(db: db)
+        let profileRepository = GRDBUserProfileRepository(db: db)
+
+        let path = [
+            WorkoutRoutePoint(
+                latitude: 51.50, longitude: -0.12,
+                timestamp: anchor.addingTimeInterval(0), heartRate: 110),
+            WorkoutRoutePoint(
+                latitude: 51.51, longitude: -0.12,
+                timestamp: anchor.addingTimeInterval(300), heartRate: 130),
+        ]
+        let withRoute = WorkoutSession(
+            startedAt: anchor,
+            endedAt: anchor.addingTimeInterval(1_800),
+            strain: 8,
+            averageHeartRate: 120,
+            maxHeartRate: 150,
+            route: path,
+            splits: [],
+            activityName: "Running")
+        let withoutRoute = WorkoutSession(
+            startedAt: anchor,
+            endedAt: anchor.addingTimeInterval(1_800),
+            strain: 8,
+            averageHeartRate: 120,
+            maxHeartRate: 150,
+            route: [],
+            splits: [],
+            activityName: "Running")
+        try await workoutRepository.save(withRoute)
+        try await workoutRepository.save(withoutRoute)
+
+        let stored = try await workoutRepository.getWorkouts(for: withRoute.startedAt.startOfDay)
+        let readBack = stored.first { $0.id == withRoute.id }
+        let blank = stored.first { $0.id == withoutRoute.id }
+
+        assertTest(
+            readBack?.route.map(\.heartRate) == [110, 130]
+                && ActivityRoute(points: readBack?.route ?? [])?.durationSeconds == 300,
+            "A route survives the round trip through `workout_route_points`, in order and with its own "
+                + "instants: two fixes 300 s apart, which is the span `ActivityRoute` measures the "
+                + "speed over rather than the session's 1,800 "
+                + "(\(shown(readBack?.route.count)) points, "
+                + "\((ActivityRoute(points: readBack?.route ?? [])?.durationSeconds ?? -1).formattedOneDecimal()) s)")
+
+        assertTest(
+            blank?.route.isEmpty == true && ActivityRoute(points: blank?.route ?? []) == nil,
+            "…and a session that recorded none is `nil` rather than an empty route, which is the page's "
+                + "whole absence for this block: no heading, no frame and no note "
+                + "(\(shown(blank?.route.count)) points)")
+
+        // Built from the **read-back** session and not from the one just saved, which is the point of
+        // the block: a page handed the in-memory object would draw a map off a route that might never
+        // have reached the column.
+        if let readBack, let blank {
+            let recordedPage = await MainActor.run {
+                ActivityDetailViewModel(
+                    session: readBack,
+                    workoutRepository: workoutRepository,
+                    userProfileRepository: profileRepository,
+                    biometricRepository: GRDBBiometricRepository(db: db),
+                    recoveryRepository: GRDBRecoveryRepository(db: db),
+                    offlineMaps: SpyOfflineMaps())
+            }
+            let blankPage = await MainActor.run {
+                ActivityDetailViewModel(
+                    session: blank,
+                    workoutRepository: workoutRepository,
+                    userProfileRepository: profileRepository,
+                    biometricRepository: GRDBBiometricRepository(db: db),
+                    recoveryRepository: GRDBRecoveryRepository(db: db),
+                    offlineMaps: SpyOfflineMaps())
+            }
+            let pageRoute = await MainActor.run { recordedPage.route }
+            let blankRoute = await MainActor.run { blankPage.route }
+
+            assertTest(
+                pageRoute?.points.map(\.heartRate) == [110, 130] && blankRoute == nil,
+                "…and both reach the page's own `route` property — the one the view draws from — as a "
+                    + "route and as an absence, so the map is on the sessions that recorded a path and "
+                    + "no section at all is drawn on the ones that did not "
+                    + "(\(shown(pageRoute?.points.count)) and \(shown(blankRoute?.points.count)))")
+        }
+    } catch {
+        assertTest(false, "The route round-trip block threw: \(error)")
+    }
+
+    // MARK: - The offline map's renderer decision
+
+    // The whole of `RouteMapRenderer` is a pure function of two values, so the part of this feature that
+    // decides *which* map a page draws is asserted here with no database and no spy behind it — and it
+    // sits above every `LocalDatabaseManager` in this section, so it still asserts if one below throws.
+    //
+    // **What it cannot see is the drawing.** `map(route:unit:regionID:)` returns an `AnyView` built by a
+    // type in a module this build never compiles, and the runner has no renderer, so the offline card's
+    // own pixels are the user's to check on a device. What is assertable is the gate.
+    do {
+        let hike = session("Hiking", startOffset: 0, durationSeconds: 3_600, region: "whoopsy-7c1f")
+
+        assertTest(
+            RouteMapRenderer.resolve(session: hike, state: .ready)
+                == .offline(regionID: "whoopsy-7c1f"),
+            "A row that names a region, against a store that says those tiles are on disk, draws the "
+                + "offline card — and the identifier handed to the renderer is the row's own rather than "
+                + "one re-derived, which is what lets the renderer open the store the session wrote to")
+
+        // Every other answer, swept rather than sampled. `.ready` is the only state that reaches the
+        // offline renderer, so a half-finished download, a failed one, a build with no SDK behind it and
+        // a region the user simply never asked for all have to draw the iOS map.
+        let notReady: [OfflineMapState] = [
+            .unsupported,
+            .absent,
+            .downloading(fraction: 0),
+            .downloading(fraction: 0.5),
+            .downloading(fraction: 1),
+            .failed("No connection."),
+        ]
+        let drawnOffline = notReady.filter {
+            RouteMapRenderer.resolve(session: hike, state: $0) != .mapKit
+        }
+        assertTest(
+            drawnOffline.isEmpty,
+            "…and every one of the other \(notReady.count) states draws the iOS map instead, which is the "
+                + "half that matters: a card drawn over tiles that are not there is a blank rectangle on a "
+                + "hillside, where the standard map is at worst missing its imagery and at best fine "
+                + "(\(drawnOffline.count) state(s) reached the offline branch)")
+
+        assertTest(
+            RouteMapRenderer.resolve(
+                session: session("Hiking", startOffset: 0, durationSeconds: 3_600),
+                state: .ready) == .mapKit,
+            "…and a store that says `.ready` changes nothing for a session whose row names no region, "
+                + "which is what makes the gate a pair rather than one flag: the tiles have to exist *and* "
+                + "the row has to have asked for them")
+
+        let fallback = await MainActor.run { UnavailableOfflineMaps() }
+        let fallbackSupported = await fallback.isSupported
+        let fallbackState = await fallback.state(for: "whoopsy-7c1f")
+        assertTest(
+            fallbackSupported == false && fallbackState == .unsupported,
+            "…and the service every build without the SDK is handed reports the capability itself as "
+                + "absent rather than answering with an empty store: `.unsupported` and not `.absent`, "
+                + "because `.absent` means *this app could download here and has not*, which is a state "
+                + "the user can act on (isSupported \(fallbackSupported), state \(fallbackState))")
+    }
+
+    // MARK: - The offline switch, through the spy
+
+    // The runner must not build a `TileStore`, for `SpyOfflineMaps`' own reason — a real one downloads
+    // over the network and needs a secret token merely to be constructed — so the store is spied and
+    // this block drives the use case's own decisions: what it asks, what it refuses, and which of the
+    // two turns `cancelDownload()` is called on. That pair is the whole contract the protocol states,
+    // and it is a pair no single fixture can see.
+    do {
+        let db = LocalDatabaseManager(inMemory: true)
+        let workoutRepository = GRDBWorkoutRepository(db: db)
+        let profileRepository = GRDBUserProfileRepository(db: db)
+
+        /// One session per case, because the switch's state is per session and every field below is read
+        /// off the one that was just driven. The telemetry repository is shared between the use case and
+        /// its biometric stream the way §19's two-readers block shares it, so a session that never
+        /// starts is still a session that *could*.
+        func makeSession(
+            _ location: SpyLocationTracking, _ maps: SpyOfflineMaps
+        ) -> LiveSessionUseCase {
+            let telemetry = ScriptedTelemetryRepository()
+            return LiveSessionUseCase(
+                controller: SpyLiveActivityController(),
+                locationTracking: location,
+                streamBiometricsUseCase: StreamBiometricsUseCase(
+                    bleRepository: telemetry, biometricRepository: EmptyBiometricStore()),
+                saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+                userProfileRepository: profileRepository,
+                bleRepository: telemetry,
+                activeFastRepository: SpyActiveFastRepository(),
+                offlineMaps: maps)
+        }
+
+        // ---- A build with no map SDK behind the switch ----
+
+        let noSDKLocation = SpyLocationTracking()
+        let noSDKMaps = SpyOfflineMaps()
+        let noSDKSession = makeSession(noSDKLocation, noSDKMaps)
+        let supported = await noSDKSession.isOfflineMapSupported
+        await noSDKSession.setOfflineMap(true)
+        let noSDKError = await noSDKSession.offlineMapError
+        let noSDKRequested = await noSDKSession.isOfflineMapRequested
+        let noSDKRegion = await noSDKSession.offlineRegionID
+        let noSDKState = await noSDKSession.offlineMapState
+        let noSDKPrompts = await MainActor.run { noSDKLocation.requestPermissionCount }
+        let noSDKDownloads = await MainActor.run { noSDKMaps.downloadCount }
+
+        assertTest(
+            supported == false,
+            "A build with no SDK behind the switch reports the capability as absent before anything is "
+                + "asked, which is what lets the screen draw the switch disabled and say why rather than "
+                + "accepting a flip that does nothing")
+        assertTest(
+            noSDKError?.contains("build") == true,
+            "…and flipping it anyway is refused with an authored sentence naming the build as the reason "
+                + "rather than the user's position or their permission (\(noSDKError ?? "nil"))")
+        assertTest(
+            noSDKPrompts == 0 && noSDKDownloads == 0 && !noSDKRequested && noSDKRegion == nil
+                && noSDKState == .absent,
+            "…and it gets no further than that: the location prompt is not raised, no download is "
+                + "attempted, the switch does not latch and no region is minted — the whole refusal is one "
+                + "sentence and nothing else (prompts \(noSDKPrompts), downloads \(noSDKDownloads), "
+                + "region \(shown(noSDKRegion)), state \(noSDKState))")
+
+        // ---- A permission the user refused earlier ----
+
+        let deniedLocation = SpyLocationTracking()
+        let deniedMaps = SpyOfflineMaps()
+        await MainActor.run {
+            deniedLocation.permission = .denied
+            deniedMaps.isSupported = true
+        }
+        let deniedSession = makeSession(deniedLocation, deniedMaps)
+        await deniedSession.setOfflineMap(true)
+        let deniedError = await deniedSession.offlineMapError
+        let deniedPrompts = await MainActor.run { deniedLocation.requestPermissionCount }
+        let deniedDownloads = await MainActor.run { deniedMaps.downloadCount }
+
+        assertTest(
+            deniedPrompts == 0,
+            "A permission already refused is read rather than re-requested: `requestPermission()` on a "
+                + "settled status is a no-op that iOS answers with no delegate callback at all, so a "
+                + "continuation parked behind it is never resumed and the switch would wait forever "
+                + "(\(deniedPrompts) prompt(s))")
+        assertTest(
+            deniedError?.contains("Privacy & Security") == true,
+            "…and the refusal is reported as a sentence naming where the user changes it "
+                + "(\(deniedError ?? "nil"))")
+        assertTest(
+            deniedDownloads == 0,
+            "…with no download attempted, because there is no centre to download around "
+                + "(\(deniedDownloads) download(s))")
+
+        // ---- The *other* refusal ----
+        //
+        // Still `.undetermined` after a request means Location Services are off for the whole device,
+        // which the user fixes on a different screen entirely. The two get different sentences, and the
+        // assertion that carries this case is that it is **not** the sentence above: one generic message
+        // would send the user to a per-app setting that is not the problem.
+        let offLocation = SpyLocationTracking()
+        let offMaps = SpyOfflineMaps()
+        await MainActor.run {
+            offLocation.permission = .undetermined
+            offLocation.permissionAfterRequest = .undetermined
+            offMaps.isSupported = true
+        }
+        let offSession = makeSession(offLocation, offMaps)
+        await offSession.setOfflineMap(true)
+        let offError = await offSession.offlineMapError
+        let offPrompts = await MainActor.run { offLocation.requestPermissionCount }
+
+        assertTest(
+            offPrompts == 1,
+            "…and the case that *does* prompt asks exactly once (\(offPrompts) prompt(s))")
+        assertTest(
+            offError?.contains("Location Services") == true
+                && offError?.contains("Privacy & Security") != true,
+            "…and gets its own sentence about Location Services being off for the device rather than the "
+                + "per-app one above, which is the pair a single generic message would collapse "
+                + "(\(offError ?? "nil"))")
+
+        // ---- The switch on, and a fix in hand ----
+
+        let liveLocation = SpyLocationTracking()
+        let liveMaps = SpyOfflineMaps()
+        await MainActor.run { liveMaps.isSupported = true }
+        let liveSession = makeSession(liveLocation, liveMaps)
+        await liveSession.setOfflineMap(true)
+
+        let stateOnFlip = await liveSession.offlineMapState
+        let regionOnFlip = await liveSession.offlineRegionID
+        assertTest(
+            stateOnFlip == .downloading(fraction: 0) && regionOnFlip?.hasPrefix("whoopsy-") == true,
+            "On the way on the card is already `.downloading` at zero with a region minted, before a "
+                + "single tile is asked for — the region is named by this app and not by the store, "
+                + "because `end()` builds its session without an id and there is no session name to "
+                + "borrow while it is still recording (\(stateOnFlip), \(shown(regionOnFlip)))")
+
+        assertTest(
+            await waitUntil { await MainActor.run {
+                liveLocation.yield(latitude: 51.5074, longitude: -0.1278)
+            } },
+            "The switch waits for one position fix, read off a GPS stream the session starts for itself: "
+                + "the two switches are independent, so this one cannot borrow the route's fix and has to "
+                + "ask for its own")
+
+        assertTest(
+            await waitUntil { await MainActor.run { liveMaps.downloadCount } == 1 },
+            "…and only then asks the store to download, once")
+        assertTest(
+            await waitUntil { await liveSession.offlineMapState == .ready },
+            "…and the card lands on `.ready`, which is the answer the route map's gate is waiting for — "
+                + "read back off the store rather than assumed, so a download that failed inside the "
+                + "store would leave the card in `.failed` with its own sentence")
+
+        let liveRegion = await liveSession.offlineRegionID
+        let storedForRegion = await MainActor.run {
+            liveRegion.map { liveMaps.state(for: $0) }
+        }
+        let centre = await MainActor.run { (liveMaps.lastLatitude, liveMaps.lastLongitude) }
+        let released = await liveLocation.stopCount
+
+        assertTest(
+            centre.0 == 51.5074 && centre.1 == -0.1278,
+            "…and the centre it downloaded around is the fix that was handed in rather than a constant or "
+                + "a later reading taken somewhere else (\(shown(centre.0)), \(shown(centre.1)))")
+        assertTest(
+            storedForRegion == .ready,
+            "…and the identifier the session recorded is the one the store holds tiles under, so the "
+                + "answer the detail page gets later is about the region this session actually downloaded "
+                + "(\(shown(storedForRegion)))")
+        assertTest(
+            released == 1,
+            "…and the GPS is released the moment the fix is in hand: a tile download is a one-shot, and "
+                + "leaving the radio running for it would put the blue indicator up for a session that is "
+                + "recording no route (\(released) stop(s))")
+
+        // ---- The switch off *after* the tiles landed ----
+        //
+        // This and the mid-download block below are a pair, and the pair is the whole contract
+        // `cancelDownload()` states. Off here must **not** cancel: the tiles are already on disk, and
+        // revoking them would take back the thing the user asked for a moment earlier.
+        await liveSession.setOfflineMap(false)
+        let offRequested = await liveSession.isOfflineMapRequested
+        let clearedRegion = await liveSession.offlineRegionID
+        let clearedState = await liveSession.offlineMapState
+        let keptCancels = await MainActor.run { liveMaps.cancelledCount }
+
+        assertTest(
+            !offRequested && clearedRegion == nil && clearedState == .absent,
+            "Turning the switch off clears the card and the region, so the flag and the identifier the "
+                + "stored row is written from cannot disagree about what this session asked for "
+                + "(\(shown(clearedRegion)), \(clearedState))")
+        assertTest(
+            keptCancels == 0,
+            "…and cancels nothing, because the download had already finished — a cancel here is the one "
+                + "the protocol forbids, and it is unreachable only because the state is read before it is "
+                + "cleared (\(keptCancels) cancellation(s))")
+
+        // ---- The switch off *while* the tiles are still arriving ----
+
+        let pendingLocation = SpyLocationTracking()
+        let pendingMaps = SpyOfflineMaps()
+        await MainActor.run {
+            pendingMaps.isSupported = true
+            pendingMaps.holdsDownloadOpen = true
+            pendingMaps.progressValues = [0.25, 0.75]
+        }
+        let pendingSession = makeSession(pendingLocation, pendingMaps)
+        await pendingSession.setOfflineMap(true)
+        assertTest(
+            await waitUntil { await MainActor.run {
+                pendingLocation.yield(latitude: 51.5074, longitude: -0.1278)
+            } },
+            "…and the same holds with a store that does not come back: the fix went in, so what follows "
+                + "is about the download rather than about the wait for a centre")
+        assertTest(
+            await waitUntil { await pendingSession.offlineMapState == .downloading(fraction: 0.75) },
+            "The store's progress reaches the card: two fractions are reported and the card holds the last "
+                + "of them, which is what makes the bar on the session screen move rather than sit at zero "
+                + "for the whole download")
+
+        let pendingRegion = await pendingSession.offlineRegionID
+        await pendingSession.setOfflineMap(false)
+        let pendingState = await pendingSession.offlineMapState
+        let pendingRegionAfter = await pendingSession.offlineRegionID
+        let pendingCancels = await MainActor.run { pendingMaps.cancelledCount }
+        let orphan = await MainActor.run {
+            pendingRegion.map { pendingMaps.state(for: $0) }
+        }
+
+        assertTest(
+            pendingCancels == 1,
+            "…and turning the switch off while it is still `.downloading` cancels it, which is the one "
+                + "turn this call exists for (\(pendingCancels) cancellation(s))")
+        assertTest(
+            pendingState == .absent && pendingRegionAfter == nil,
+            "…leaving the card and the region cleared (\(pendingState), \(shown(pendingRegionAfter)))")
+        assertTest(
+            orphan == .absent,
+            "…and nothing half-downloaded behind it: a cancelled download leaves the store as it found it, "
+                + "so a later attempt is a fresh one rather than a resumed partial (\(shown(orphan)))")
+
+        // A second flip while one is already in flight is a no-op rather than a second download over the
+        // first, and the region it leaves alone is the proof: re-entering would mint a new one.
+        await pendingSession.setOfflineMap(true)
+        let secondRegion = await pendingSession.offlineRegionID
+        await pendingSession.setOfflineMap(true)
+        let afterSecondFlip = await pendingSession.offlineRegionID
+        assertTest(
+            secondRegion != nil && afterSecondFlip == secondRegion,
+            "…and flipping it on again starts a fresh attempt while a second flip against one already in "
+                + "flight is a no-op, so a double tap cannot put two downloads over each other "
+                + "(\(shown(secondRegion)), \(shown(afterSecondFlip)))")
+        await pendingSession.setOfflineMap(false)
+
+        // ---- No position fix ----
+
+        let blindLocation = SpyLocationTracking()
+        let blindMaps = SpyOfflineMaps()
+        await MainActor.run {
+            blindMaps.isSupported = true
+            blindLocation.finishesStreamImmediately = true
+        }
+        let blindSession = makeSession(blindLocation, blindMaps)
+        await blindSession.setOfflineMap(true)
+        let blindGaveUp = await waitUntil { await blindSession.offlineMapError != nil }
+        let blindError = await blindSession.offlineMapError
+        let blindRequested = await blindSession.isOfflineMapRequested
+        let blindRegion = await blindSession.offlineRegionID
+        let blindDownloads = await MainActor.run { blindMaps.downloadCount }
+        let blindStops = await blindLocation.stopCount
+
+        assertTest(
+            blindGaveUp,
+            "A session that cannot get a position fix gives up rather than leaving the switch latched, and "
+                + "does so when the stream ends rather than when the ten-second wait expires — which is "
+                + "what the spy's already-finished stream stands in for (\(blindError ?? "nil"))")
+        assertTest(
+            blindError?.contains("position fix") == true,
+            "…and says so in its own words, naming the sky rather than the network: the tiles have to be "
+                + "fetched while there is still signal, and a fix is what they are fetched *around* "
+                + "(\(blindError ?? "nil"))")
+        assertTest(
+            !blindRequested && blindRegion == nil && blindDownloads == 0,
+            "…with the switch back off and no region left behind, so the card is not left claiming a "
+                + "download that never happened (\(blindRequested), \(shown(blindRegion)), "
+                + "\(blindDownloads) download(s))")
+        assertTest(
+            blindStops == 1,
+            "…and the GPS released even on the failing path, which is the one place a leaked radio would go "
+                + "unnoticed because nothing is waiting on it anymore (\(blindStops) stop(s))")
+    }
+
+    // MARK: - The region on the stored row, and the gate that reads it
+
+    // The block above proves the switch; this one proves the **row it leaves behind**, and then the
+    // distance from that row to the card. The chain is the whole feature: `end()` writes the region
+    // exactly when the user left the switch on, `GRDBWorkoutRepository` carries it, and
+    // `RouteMapRenderer.resolve` turns the pair (row, store) into the one branch that draws offline. A
+    // read that dropped the column would leave every assertion above passing while every page drew the
+    // standard map.
+    do {
+        let db = LocalDatabaseManager(inMemory: true)
+        let workoutRepository = GRDBWorkoutRepository(db: db)
+
+        let named = session(
+            "Hiking", startOffset: 0, durationSeconds: 3_600, region: "whoopsy-7c1f")
+        let nameless = session("Hiking", startOffset: 0, durationSeconds: 3_600)
+        try await workoutRepository.save(named)
+        try await workoutRepository.save(nameless)
+
+        let stored = try await workoutRepository.getWorkouts(for: anchor.startOfDay)
+        let namedRow = stored.first { $0.id == named.id }
+        let namelessRow = stored.first { $0.id == nameless.id }
+
+        assertTest(
+            namedRow?.offlineRegionID == "whoopsy-7c1f",
+            "A session's region survives the round trip through `workouts`, which is what makes the detail "
+                + "page's answer about it a fact about the database rather than about the process that "
+                + "wrote it (\(shown(namedRow?.offlineRegionID)))")
+        assertTest(
+            namelessRow?.offlineRegionID == nil,
+            "…and a session that never asked reads back `nil` rather than an empty string — the same "
+                + "distinction `source` and `steps` carry: asking for no region is not asking for one "
+                + "called `\"\"`, and a mapper that substituted one would put a session on a region that "
+                + "does not exist (\(shown(namelessRow?.offlineRegionID)))")
+
+        let bridged = namedRow.map { RouteMapRenderer.resolve(session: $0, state: .ready) }
+        assertTest(
+            bridged == .offline(regionID: "whoopsy-7c1f"),
+            "…and the row that came back **off the database** is what the gate reads: the stored region "
+                + "beside a store that says `.ready` resolves to the offline card, which is the whole "
+                + "distance between a switch the user flipped during a session and the map they see "
+                + "afterwards (\(shown(bridged)))")
+    } catch {
+        assertTest(false, "The offline region round-trip block threw: \(error)")
+    }
+
+    // MARK: - The page's own renderer
+
+    // `ActivityDetailViewModel.routeRenderer` is the property `ActivityDetailView` switches on, and it is
+    // resolved once in `load()` rather than recomputed in the `body` — so what this block drives is the
+    // page's own answer, through the same `load()` the screen calls. **The view's two branches are not
+    // assertable here**: one of them is a `Map` and the other is an `AnyView` built in a module this
+    // build does not compile, and the runner has no renderer at all.
+    do {
+        let db = LocalDatabaseManager(inMemory: true)
+        let workoutRepository = GRDBWorkoutRepository(db: db)
+        let profileRepository = GRDBUserProfileRepository(db: db)
+
+        func page(_ subject: WorkoutSession, _ maps: SpyOfflineMaps) async -> ActivityDetailViewModel {
+            let model = await MainActor.run {
+                ActivityDetailViewModel(
+                    session: subject,
+                    workoutRepository: workoutRepository,
+                    userProfileRepository: profileRepository,
+                    biometricRepository: GRDBBiometricRepository(db: db),
+                    recoveryRepository: GRDBRecoveryRepository(db: db),
+                    offlineMaps: maps)
+            }
+            await model.load()
+            return model
+        }
+
+        let readyMaps = SpyOfflineMaps()
+        await MainActor.run {
+            readyMaps.isSupported = true
+            readyMaps.states["whoopsy-7c1f"] = .ready
+        }
+        let asked = await page(
+            session("Hiking", startOffset: 0, durationSeconds: 3_600, region: "whoopsy-7c1f"),
+            readyMaps)
+        assertTest(
+            await asked.routeRenderer == .offline(regionID: "whoopsy-7c1f"),
+            "A page handed a session whose region has tiles on disk resolves to the offline card, so the "
+                + "session screen's switch is what the detail page draws from afterwards")
+
+        let emptyMaps = SpyOfflineMaps()
+        await MainActor.run { emptyMaps.isSupported = true }
+        let pending = await page(
+            session("Hiking", startOffset: 0, durationSeconds: 3_600, region: "whoopsy-7c1f"),
+            emptyMaps)
+        assertTest(
+            await pending.routeRenderer == .mapKit,
+            "…and a region named on the row that the store has never heard of draws the standard map, "
+                + "which is the state a session is in the moment it ends: the row is written before the "
+                + "tiles land, so a page opened in that window is drawn rather than left blank")
+
+        let unasked = await page(
+            session("Hiking", startOffset: 0, durationSeconds: 3_600), readyMaps)
+        assertTest(
+            await unasked.routeRenderer == .mapKit,
+            "…and a store holding a ready region changes nothing for a session whose row names none, "
+                + "because the two halves of the gate are asked of different things — the row and the "
+                + "store — and neither alone is enough")
+
+        let unavailable = await page(
+            session("Hiking", startOffset: 0, durationSeconds: 3_600, region: "whoopsy-7c1f"),
+            SpyOfflineMaps())
+        assertTest(
+            await unavailable.routeRenderer == .mapKit,
+            "…and a build with no SDK behind the switch draws the standard map like every other build, "
+                + "which is the property the whole seam was built for: forgetting to link Mapbox costs "
+                + "this app nothing but the offline option")
+    }
+}
+
+// MARK: - 20. The Zero fasting import
+
+/// `fasts.json`, trimmed from the Zero tracker's own `biodata.json`.
+///
+/// Read here as a **repo file** and never through `Bundle.module`, which is how `ZeroFastingImporter`
+/// reaches it inside a built app. `scripts/test.sh` links object files and no resource bundle, so
+/// `Bundle.module` **traps** rather than returning `nil` — the same reason §11 reads the CSVs from
+/// `#filePath`, and the reason §20 asserts `parseFasts(at:)` and `importFasts(at:)` and never calls
+/// `bundledFastsURL()`. That accessor's whole job is to answer this same path with the resource
+/// bundle's prefix, so testing it here would test the bundle lookup and not the import.
+func zeroFastingURL() -> URL {
+    URL(fileURLWithPath: #filePath)  // …/Tests/WhoopsyTestRunner/main.swift
+        .deletingLastPathComponent()  // …/Tests/WhoopsyTestRunner
+        .deletingLastPathComponent()  // …/Tests
+        .deletingLastPathComponent()  // repo root
+        .appendingPathComponent("Sources/Whoopsy/Data/Resources/ZeroFasting/fasts.json")
+}
+
+/// The Zero fasting import — a fourth producer of `workouts` rows, and the first one in this app with
+/// **no measurement behind it at all**.
+///
+/// ## What this section is shaped by
+///
+/// 1. **A fast has no strain and no heart rate, and that is the whole reason `v18` exists.** `v6`
+///    declared `strain`, `average_heart_rate` and `max_heart_rate` NOT NULL, which was correct while a
+///    strap was the only writer; a fasting window has none of the three, and a NOT NULL column leaves
+///    it only one thing to write — a `0` that reads as *measured, and no strain at all*. The
+///    migration relaxes the three, and block B is where the absences are asserted one at a time on a
+///    row **read back out of the database**, because the failure this guards against is a mapper or a
+///    record quietly turning NULL into `0` on the way out.
+/// 2. **The parser throws on a row it cannot place; it never skips one.** That is
+///    `WhoopExportParser`'s hard-won rule — a `guard … else { continue }` once discarded every row of
+///    a file and reported a successful import of nothing — and block A asserts the throwing half
+///    directly, because an import that silently drops rows reports the same green as one that does not.
+/// 3. **The export's day-already-recorded skip must not count a fast.** `recordedWorkoutDays()` asks
+///    whether a day holds *any* workout and refuses every export row landing on one; once fasts are in
+///    `workouts`, a fast's start day would read as recorded and the export's rows for it would be
+///    dropped — **measured, 16 of the file's 673 rows sit on the 10 days that are also fast start
+///    days**. So the two imports would erase each other's days depending on which button was pressed
+///    first. Block B asserts the fix from **both directions**, which is the only shape that can see it:
+///    a one-direction assertion passes on whichever order happens to work.
+/// 4. **The two figures a session prints are absence rules, and until `v18` neither could be
+///    exercised** — `WorkoutSession.strain` was non-optional, so there was no such thing as a session
+///    with no strain to draw. `ActivityFigure` is a value type rather than two expressions in the two
+///    views that draw them for this repo's standing reason (the runner has no renderer), and block C
+///    is its only coverage.
+/// 5. **`ActivityBaseline`'s strain mean is a third population.** While every session had a strain the
+///    window and the strain population were the same set; a fast parts them, and averaging `?? 0` over
+///    a mixed window is worse than withholding the figure — a window of ten fasts reports a
+///    **fabricated** `0.0`, and three measured priors at `7.0` beside seven fasts reports `2.1`.
+///
+/// **None of it is evidence about a strap.** Like §16–§19, `biometric_samples` holds 0 rows on every
+/// database on this machine; what this proves is parsing, storage, the day-skip fix and the two figure
+/// rules. The 170 fasts are a real file, so the row count, the instants and the id syntax are facts
+/// about a producer — and the three figures are facts about no producer at all, which is the point.
+func runZeroFastingImportTests() async {
+
+    // MARK: - A. The parser, over the real file, with no database behind it
+
+    let fastsURL = zeroFastingURL()
+    let rows = (try? ZeroFastingParser.parseFasts(at: fastsURL)) ?? []
+    assertTest(
+        rows.count == 170,
+        "The bundled `fasts.json` parses to its 170 finished fasts — a subset of the producer's own "
+            + "`biodata.json`, so a re-generation that trimmed either end of the history would fail "
+            + "here rather than importing a shorter one and reporting success (got \(rows.count))")
+
+    // The id is the row's storage key and the reason this is asserted before anything is written:
+    // `GRDBWorkoutRepository.makeSessions` **skips** any row whose id is not a UUID, so an id that
+    // will not parse writes a row that no reader in this app can ever fetch — stored and invisible,
+    // which is the worse of the two failure modes and the one a row count alone cannot see.
+    assertTest(
+        rows.allSatisfy { UUID(uuidString: $0.fastID) != nil },
+        "Every one of the file's `FastID`s is a UUID, which is what `WorkoutSession.id` takes and "
+            + "what `makeSessions` requires — a non-UUID id is a row this app stores and can never read "
+            + "back")
+    assertTest(
+        Set(rows.map(\.fastID)).count == rows.count,
+        "…and all 170 are distinct, so the primary key is one row per fast rather than a collision "
+            + "that would make the import write \(rows.count - Set(rows.map(\.fastID)).count) fewer "
+            + "rows than it reports")
+
+    assertTest(
+        rows.allSatisfy { $0.endedAt > $0.startedAt },
+        "Every fast ends after it starts — the one structural fact a duration headline on Home's "
+            + "`ACTIVITIES` card rests on, and the assertion that fails if the two instants are ever "
+            + "read from the wrong keys")
+    let durations = rows.map { $0.endedAt.timeIntervalSince($0.startedAt) }
+    assertTest(
+        durations.min() ?? 0 > 3600,
+        "…and the shortest is over an hour (measured \(String(format: "%.1f", (durations.min() ?? 0) / 3600)) "
+            + "h, longest \(String(format: "%.1f", (durations.max() ?? 0) / 3600)) h), which is what "
+            + "keeps a stray non-fast row — a goal reminder, a Zero onboarding record — out of the "
+            + "import even if the producer adds one to `fast_data`")
+
+    // The two ends of the history, pinned as epochs rather than through a `DateFormatter`, so the
+    // literals are independent of the parser's own instant grammar: a test that built its expected
+    // value with the same format string the parser uses would move with it.
+    assertTest(
+        rows.map(\.startedAt).min() == Date(timeIntervalSince1970: 1_645_928_140),
+        "The earliest start is `2022-02-27T02:15:40Z`, pinned as an epoch — a re-generated file that "
+            + "lost the oldest fasts, or one whose instants were read in a different zone, fails here "
+            + "rather than silently importing a history that begins later")
+    assertTest(
+        rows.map(\.endedAt).max() == Date(timeIntervalSince1970: 1_781_377_210),
+        "…and the latest end is `2026-06-13T19:00:10Z`, pinned the same way, so the file's other end "
+            + "cannot move either")
+
+    // The parser's refusal, which is the half a row count cannot see. A `guard … else { continue }`
+    // here would return a *shorter array* — or an empty one — and every assertion above would fail
+    // with a row count rather than with the reason.
+    func errorThrown(by text: String) -> ZeroFastingError? {
+        do {
+            _ = try ZeroFastingParser.parseFasts(text)
+            return nil
+        } catch let error as ZeroFastingError {
+            return error
+        } catch {
+            return nil
+        }
+    }
+
+    /// Whether one `StartDTM` value is refused as an unparseable instant, with everything else in the
+    /// document well-formed so the refusal cannot be about another field.
+    func refusesInstant(_ raw: String) -> Bool {
+        let document = #"{"fast_data":[{"FastID":"8B1A4A64-1C3E-4E1F-9E2E-2B5C9A7D0E11","StartDTM":"\#(raw)","EndDTM":"2022-02-27T06:00:00Z"}]}"#
+        guard let error = errorThrown(by: document) else { return false }
+        if case .unparseableDate = error { return true }
+        return false
+    }
+
+    assertTest(
+        refusesInstant("2022-02-27 02:15:40"),
+        "A space-separated instant is **refused**, not skipped: the export writes a literal `T` and a "
+            + "literal `Z`, and the CSV files' `2026-08-22 00:17:13` shape — which is what "
+            + "`ISO8601DateFormatter` silently returns `nil` for — must throw with the record's id on "
+            + "it rather than drop the row")
+    assertTest(
+        refusesInstant("2022-02-27T02:15:40.000Z"),
+        "…and so is a fractional-second instant, which is the other shape a JSON producer drifts to "
+            + "and the one a `dateDecodingStrategy` would have accepted without anyone noticing the "
+            + "grammar had widened")
+    assertTest(
+        refusesInstant(""),
+        "…and an absent instant, which is the case that matters most: `\"\"` is what a missing key "
+            + "reads as, and a parser that let it through would place a fast at the reference date")
+
+    func isMissingFastData(_ text: String) -> Bool {
+        guard let error = errorThrown(by: text) else { return false }
+        if case .missingFastData = error { return true }
+        return false
+    }
+    assertTest(
+        isMissingFastData("{}"),
+        "`{}` throws `.missingFastData` rather than returning zero rows — the analogue of the CSV "
+            + "parser's `missingColumns`, and the check that makes pointing this importer at "
+            + "`biodata.json`'s eighteen *other* keys, or at `firestore.json`, fail loudly instead of "
+            + "reporting a successful import of nothing")
+    assertTest(
+        isMissingFastData(#"{"fast_data": {}}"#),
+        "…and so does a `fast_data` that is present but not an array of records, which is the shape a "
+            + "producer changing the key's type would produce")
+    assertTest(
+        errorThrown(by: "not json at all") != nil,
+        "…while a document that is not JSON at all throws rather than answering with an empty array")
+
+    // MARK: - B. The import, against an in-memory database
+
+    /// The whole export importer, built the way §17 builds it, so the two walks this block compares
+    /// run through the same repositories over the same database.
+    func makeExportImporter(db: LocalDatabaseManager, calendar: Calendar) -> WhoopExportImporter {
+        WhoopExportImporter(
+            recoveryRepository: GRDBRecoveryRepository(db: db),
+            sleepRepository: GRDBSleepRepository(db: db),
+            strainRepository: GRDBStrainRepository(db: db),
+            napRepository: GRDBNapRepository(db: db),
+            workoutRepository: GRDBWorkoutRepository(db: db),
+            userProfileRepository: GRDBUserProfileRepository(db: db),
+            calendar: calendar)
+    }
+
+    let workoutsURL = whoopExportURL().deletingLastPathComponent()
+        .appendingPathComponent("workouts.csv")
+
+    let db = LocalDatabaseManager(inMemory: true)
+    let repository = GRDBWorkoutRepository(db: db)
+    let importer = ZeroFastingImporter(workoutRepository: repository)
+
+    let summary = try? await importer.importFasts(at: fastsURL)
+    assertTest(
+        summary?.fastsWritten == 170 && summary?.rowsInFile == 170 && summary?.rowsUnreadable == 0,
+        "All 170 fasts are written and none is refused: a row reaches the importer only with a "
+            + "UUID id and two placeable instants, and both are properties of the file asserted above "
+            + "(wrote \(summary?.fastsWritten ?? -1), unreadable \(summary?.rowsUnreadable ?? -1))")
+
+    // The day count is **recomputed here** rather than pinned as a literal. 136 is the UTC answer and
+    // the two instants either side of midnight move with the device zone, so a hardcoded count is a
+    // test that fails on someone else's machine — §11's rule, and the reason it derives its day keys.
+    let dayCalendar = Calendar.current
+    let expectedDays = Set(rows.map { dayCalendar.startOfDay(for: $0.startedAt) })
+    assertTest(
+        summary?.daysWritten == expectedDays.count,
+        "…and they land on \(expectedDays.count) distinct start days, recomputed from the parsed rows "
+            + "in this device's own calendar rather than pinned — the count is the day each fast "
+            + "**started** on, so a fast crossing midnight is filed under the evening it began")
+
+    let firstDay = rows.map(\.startedAt).min().map(dayCalendar.startOfDay)
+    let earliest = rows.min { $0.startedAt < $1.startedAt }
+    let stored = (try? await repository.getWorkouts(for: firstDay ?? Date())) ?? []
+    let fastRow = stored.first { $0.id.uuidString == earliest?.fastID }
+    assertTest(
+        fastRow != nil,
+        "The earliest fast is read back through `getWorkouts(for:)` — the day-keyed reader Home's "
+            + "`ACTIVITIES` card is built from — which asks for the day the fast **started** on and "
+            + "gets the row whose id is the file's own `FastID` rather than a freshly minted one "
+            + "(\(stored.count) rows on that day)")
+    assertTest(
+        fastRow?.strain == nil && fastRow?.averageHeartRate == nil && fastRow?.maxHeartRate == nil,
+        "…and the three figures come back **`nil` and not `0`** — the whole of `v18`, asserted on a "
+            + "row read out of the database rather than on the value `makeSession` built, so a record "
+            + "or a mapper that decoded NULL as `0` fails here (strain \(String(describing: fastRow?.strain)))")
+    assertTest(
+        fastRow?.hrZonePercents == nil && fastRow?.steps == nil,
+        "…as do the two optional columns beside them, which a fast also has nothing to say about — "
+            + "a `0` in either would draw a measured `0:00` zone row and a measured step count on the "
+            + "activity detail page")
+    assertTest(
+        fastRow?.route.isEmpty == true && fastRow?.splits.isEmpty == true,
+        "…and the route and the split list are empty rather than absent, because a fasting window was "
+            + "not walked and has no laps — there is no producer of either for this row and no way for "
+            + "one to appear")
+    assertTest(
+        fastRow?.source == ZeroFastingImporter.sourceLabel,
+        "…and the row is labelled `\(ZeroFastingImporter.sourceLabel)`, the app's **second** `source` "
+            + "value. It is the label `recordedWorkoutDays()` excludes and the only way a reader can "
+            + "tell a fast from a session something measured (got \(fastRow?.source ?? "nil"))")
+    assertTest(
+        fastRow?.activityName == WhoopActivityCatalog.fastingName
+            && WhoopActivityCatalog.fastingName == "Fast",
+        "…and it is named `Fast`, which is the name the picker's recovery section leads with, the one "
+            + "`ActivityGlyph` draws as a pair, and the label Home's row uppercases to `FAST` (got "
+            + "\(fastRow?.activityName ?? "nil"))")
+
+    // ── The second producer of a fast, asserted against this one ────────────────────────────────────
+    //
+    // A fast now reaches `workouts` two ways: this importer, and `LiveSessionUseCase.endFast()` writing
+    // `ActiveFast.projectedSession(now:)` for one the user started by picking `Fast`. The section above
+    // pins the imported shape; **what is asserted here is that the hand-recorded one is the same row**,
+    // which is the claim that makes Home's pill, the detail page's fasting layout and the export's day
+    // skip work on both without any of them learning about a second producer.
+    //
+    // It is asserted **here**, in the import section, rather than only in §18's live-session block,
+    // because the comparison is against a real imported row and there is no other place in the suite
+    // where both are in hand.
+    let liveFastRow = ActiveFast(startedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        .projectedSession(now: Date(timeIntervalSince1970: 1_700_007_200))
+    assertTest(
+        liveFastRow.strain == nil && liveFastRow.averageHeartRate == nil
+            && liveFastRow.maxHeartRate == nil && liveFastRow.hrZonePercents == nil
+            && liveFastRow.steps == nil && liveFastRow.route.isEmpty && liveFastRow.splits.isEmpty,
+        "A fast this app recorded itself carries the **same five absences and the same two empty "
+            + "lists** as one read out of Zero's export — so `v18`'s nullable trio, the zone block and "
+            + "the route reach a hand-recorded fast without a second set of decisions about what a fast "
+            + "has, and the fasting layout draws one shape rather than two")
+    assertTest(
+        liveFastRow.activityName == fastRow?.activityName
+            && liveFastRow.activityName == WhoopActivityCatalog.fastingName,
+        "…and the same name, which is what `ActivityFigure.isFast` and `ActivityGlyph.mark(for:)` both "
+            + "key on — a hand-recorded fast named anything else would draw the ordinary layout while "
+            + "the export's 170 drew the fasting one (got \(liveFastRow.activityName ?? "nil") against "
+            + "\(fastRow?.activityName ?? "nil"))")
+
+    // **The two producers do *not* share a `source`, and that is the deliberate correction to this
+    // plan's own first draft.** `source` answers *which producer wrote this row*, and a fast the user
+    // started is not an import — `nil` already means *recorded live by this app* and `zero_fasting`
+    // means *an importer read it out of a file*, so a hand-recorded fast is a fourth thing and says so.
+    // What the two share is the *consequence*: the export's day skip must leave both alone, and that is
+    // `ActiveFast.fastSourceValues` — one set in `Domain`, because the importer is `Data` and the fast
+    // is the thing being described, and neither may own the other's literal.
+    assertTest(
+        liveFastRow.source == ActiveFast.sourceLabel
+            && fastRow?.source == ZeroFastingImporter.sourceLabel
+            && liveFastRow.source != fastRow?.source,
+        "A hand-recorded fast and an imported one carry **different** `source` values — `"
+            + "\(ActiveFast.sourceLabel)` against `\(ZeroFastingImporter.sourceLabel)` — because the "
+            + "column answers *which producer* and one of these is a button and the other a file "
+            + "(\(liveFastRow.source ?? "nil") against \(fastRow?.source ?? "nil"))")
+    assertTest(
+        ActiveFast.fastSourceValues.contains(liveFastRow.source ?? "")
+            && ActiveFast.fastSourceValues.contains(fastRow?.source ?? "")
+            && !ActiveFast.fastSourceValues.contains("")
+            && !ActiveFast.fastSourceValues.contains(WhoopExportImporter.sourceLabel),
+        "…and **both labels are members of `ActiveFast.fastSourceValues`**, which is the whole of what "
+            + "the two share: the export's day skip filters against that one set, so a fast's start day "
+            + "is left alone whichever producer wrote it. `nil`-as-a-string and the export's own label "
+            + "are asserted out of the set, because either one inside it would make the skip refuse "
+            + "every day this app ever exported — the failure running the other way "
+            + "(\(ActiveFast.fastSourceValues.sorted()))")
+
+    // Idempotence. GRDB's `save` is INSERT-or-UPDATE **by primary key**, and the id is the file's own
+    // `FastID` — so a second press rewrites the same 170 rows. A `UUID()` minted per run would append
+    // 170 more and read back perfectly well, which is why the count is asserted and not the return.
+    let secondSummary = try? await importer.importFasts(at: fastsURL)
+    let afterSecondImport = (try? await repository.getWorkoutHistory(days: 4000, endingOn: Date())) ?? []
+    assertTest(
+        secondSummary?.fastsWritten == 170 && afterSecondImport.count == 170,
+        "A second import reports the same 170 and the table still holds 170 rows — the id is the "
+            + "producer's own, so this is an update rather than an append (wrote "
+            + "\(secondSummary?.fastsWritten ?? -1), table \(afterSecondImport.count))")
+
+    // ── The day-skip fix, which is the pair of assertions this whole block exists for ──────────────
+    //
+    // A fast is a `workouts` row, and `recordedWorkoutDays()` refuses every export row landing on a
+    // day that already holds one. Without the `source` filter a fast's start day reads as recorded and
+    // the export's rows for it are dropped — measured, 16 rows over 10 days. **Asserted from both
+    // directions**, because an order-dependent bug passes whichever single order a test happens to run.
+    let fastsFirstDB = LocalDatabaseManager(inMemory: true)
+    let fastsFirstRepo = GRDBWorkoutRepository(db: fastsFirstDB)
+    _ = try? await ZeroFastingImporter(workoutRepository: fastsFirstRepo).importFasts(at: fastsURL)
+    let exportAfterFasts = try? await makeExportImporter(db: fastsFirstDB, calendar: dayCalendar)
+        .importWorkouts(at: workoutsURL)
+    assertTest(
+        exportAfterFasts == 673,
+        "With 170 fasts already in `workouts`, the export still writes all **673** of its rows — the "
+            + "day-already-recorded skip filters `zero_fasting` out, so a fast's start day does not "
+            + "read as a day the export must leave alone. **`673` is the assertion and the shortfall is "
+            + "not**, deliberately: without the filter this writes 657 in UTC and 656 in this device's "
+            + "zone, because how many export rows share a day with a fast depends on where midnight "
+            + "falls (measured: 16 rows over 10 days at UTC, 17 over 12 at UTC−4). The number that holds "
+            + "everywhere is the one asserted — every row is written — and a suite that pinned the "
+            + "shortfall would fail on someone else's machine, which is §11's rule about hardcoded "
+            + "counts (wrote \(exportAfterFasts.map(String.init) ?? "nil"))")
+
+    let exportFirstDB = LocalDatabaseManager(inMemory: true)
+    let exportFirstRepo = GRDBWorkoutRepository(db: exportFirstDB)
+    let exportBeforeFasts = try? await makeExportImporter(db: exportFirstDB, calendar: dayCalendar)
+        .importWorkouts(at: workoutsURL)
+    _ = try? await ZeroFastingImporter(workoutRepository: exportFirstRepo).importFasts(at: fastsURL)
+    let fastsFirstTotal = ((try? await fastsFirstRepo.getWorkoutHistory(days: 4000, endingOn: Date())) ?? []).count
+    let exportFirstTotal = ((try? await exportFirstRepo.getWorkoutHistory(days: 4000, endingOn: Date())) ?? []).count
+    assertTest(
+        exportBeforeFasts == 673,
+        "…and in the other order the export also writes 673 on its own, before any fast exists — the "
+            + "baseline the line below compares against (wrote \(exportBeforeFasts.map(String.init) ?? "nil"))")
+    assertTest(
+        fastsFirstTotal == 843 && exportFirstTotal == 843,
+        "**The two buttons are order-independent**: fasts-then-export and export-then-fasts both leave "
+            + "843 rows — 170 fasts plus 673 export workouts — because a fast's id is Zero's own "
+            + "`FastID`, disjoint from every other producer's, so the second import can only add to a "
+            + "day rather than skip it (got \(fastsFirstTotal) and \(exportFirstTotal))")
+
+    // The same pair seen from a day's side rather than the table's, which is what a reader of Home's
+    // card actually sees: a day the two files share carries one of each.
+    // Parsed **once**, above the closure — an earlier draft called `parseWorkouts` inside `.first`'s
+    // predicate and re-read the whole 673-row file once per fast start day, which is the sort of thing
+    // that shows up as a suite that outgrows the runner's timeout rather than as a failure.
+    let exportDays = Set(
+        ((try? WhoopExportParser.parseWorkouts(at: workoutsURL)) ?? [])
+            .compactMap { $0.workoutStart.map(dayCalendar.startOfDay) })
+    let sharedDay = rows.map { dayCalendar.startOfDay(for: $0.startedAt) }
+        .first { exportDays.contains($0) }
+    let sharedRows = (try? await fastsFirstRepo.getWorkouts(for: sharedDay ?? Date())) ?? []
+    assertTest(
+        sharedRows.count >= 2
+            && sharedRows.contains { $0.source == ZeroFastingImporter.sourceLabel }
+            && sharedRows.contains { $0.source != ZeroFastingImporter.sourceLabel },
+        "A day the two files share draws **both** rows on Home's `ACTIVITIES` card — the fast and the "
+            + "export's workout beside it, not one replacing the other, which is the visible form of "
+            + "the fix (\(sharedRows.count) rows on \(sharedDay.map(String.init(describing:)) ?? "nil"))")
+
+    // An edit survives the other import, and does **not** survive a re-import of its own source. Both
+    // halves are recorded rather than left to be discovered: the Settings caption promises the first
+    // and warns about the second.
+    let editedDB = LocalDatabaseManager(inMemory: true)
+    let editedRepo = GRDBWorkoutRepository(db: editedDB)
+    let editedImporter = ZeroFastingImporter(workoutRepository: editedRepo)
+    _ = try? await editedImporter.importFasts(at: fastsURL)
+    let editTargetDay = rows.map { dayCalendar.startOfDay(for: $0.startedAt) }.min() ?? Date()
+    if let original = ((try? await editedRepo.getWorkouts(for: editTargetDay)) ?? [])
+        .first(where: { $0.source == ZeroFastingImporter.sourceLabel }) {
+        var draft = ActivityEditDraft(original)
+        draft.setName("Yoga")
+        let edited = draft.applying(to: original)
+        try? await editedRepo.save(edited)
+
+        _ = try? await makeExportImporter(db: editedDB, calendar: dayCalendar)
+            .importWorkouts(at: workoutsURL)
+        let afterExport = (try? await editedRepo.getWorkouts(for: editTargetDay)) ?? []
+        assertTest(
+            afterExport.contains { $0.id == original.id && $0.activityName == "Yoga" },
+            "An edit to a fast **survives** the export import — the export skips a day that already "
+                + "holds a workout once the fast is filtered out of that set, and its own row for the "
+                + "day is a different primary key entirely, so the two cannot overwrite each other")
+
+        _ = try? await editedImporter.importFasts(at: fastsURL)
+        let afterReimport = (try? await editedRepo.getWorkouts(for: editTargetDay)) ?? []
+        assertTest(
+            afterReimport.contains { $0.id == original.id && $0.activityName == "Fast" },
+            "…and **does not** survive a re-import of the fasts, because the import has no skip at "
+                + "all and rewrites the row from the file. Asserted so the behaviour is recorded: the "
+                + "Settings caption beside the button says a deleted fast comes back, and this is the "
+                + "same fact one step further — an edited one reverts")
+    } else {
+        assertTest(false, "A fast was readable on its own start day, which the blocks above assert")
+    }
+
+    // An absence this section deliberately does **not** re-assert: `LiveSessionUseCase.end()` writing
+    // nothing for a session with no samples is §18's, and it is a different rule about a different
+    // producer. What §20 owns is the other side — a session written with no *measurement* while still
+    // carrying a span, which is a row that exists and reports nothing.
+
+    // MARK: - C. The two figures a session prints
+
+    let anchor = Date(timeIntervalSince1970: 1_700_000_000)
+
+    /// A session at a known offset carrying only what the block needs.
+    func session(
+        _ name: String?, strain: Double?, durationSeconds: TimeInterval = 3600
+    ) -> WorkoutSession {
+        WorkoutSession(
+            startedAt: anchor,
+            endedAt: anchor.addingTimeInterval(durationSeconds),
+            strain: strain,
+            averageHeartRate: strain == nil ? nil : 121,
+            maxHeartRate: strain == nil ? nil : 164,
+            route: [], splits: [],
+            source: ZeroFastingImporter.sourceLabel,
+            activityName: name)
+    }
+
+    let fast = session("Fast", strain: nil, durationSeconds: 16 * 3600 + 40 * 60)
+    let measured = session("Basketball", strain: 5.2, durationSeconds: 3600)
+    let zeroStrain = session("Basketball", strain: 0.0, durationSeconds: 3600)
+
+    assertTest(
+        ActivityFigure.strainText(for: fast) == "—",
+        "A session with no strain prints the dash on the activity detail page's `ACTIVITY STRAIN` cell "
+            + "— and `nil` is the only input that reaches it, since `v18` is what made the column "
+            + "nullable (got \(ActivityFigure.strainText(for: fast)))")
+    assertTest(
+        ActivityFigure.strainText(for: zeroStrain) == "0.0",
+        "…while a **measured** `0.0` prints `0.0` and not the dash. The two are different answers and "
+            + "collapsing them is the fabrication: `LiveSessionAccumulator` produces exactly `0.0` for "
+            + "a session it watched that never left zone 1, so a reader that dashed it would hide a "
+            + "real reading (got \(ActivityFigure.strainText(for: zeroStrain)))")
+    assertTest(
+        ActivityFigure.strainText(for: measured) == "5.2",
+        "…and an ordinary strain prints to one decimal, which is the formatter every other figure on "
+            + "that page uses (got \(ActivityFigure.strainText(for: measured)))")
+
+    assertTest(
+        ActivityFigure.headlineText(for: fast) == "16:40",
+        "Home's headline for a fast is the session's **own length** — `formattedCompactHoursMinutes`, "
+            + "the same formatter the `SLEEP` row above it uses, so a fast and a night read as the "
+            + "same kind of quantity under the same kind of word (got "
+            + "\(ActivityFigure.headlineText(for: fast)))")
+    assertTest(
+        ActivityFigure.headlineText(for: measured) == "5.2",
+        "…and for a session something measured it is the strain, unchanged from before `v18`, so this "
+            + "type moved no figure that already had a producer (got "
+            + "\(ActivityFigure.headlineText(for: measured)))")
+    assertTest(
+        ActivityFigure.headlineText(for: session("Fast", strain: 7.4)) == "7.4",
+        "**The gate is the data and not the label.** A session *named* `Fast` that carries a strain "
+            + "prints the strain, because what decides this figure is whether a sensor measured "
+            + "something rather than what the session is called — the regression most likely to be "
+            + "introduced here, since a name-keyed rule reads as the obvious simplification and lies "
+            + "the first time an activity is both (got "
+            + "\(ActivityFigure.headlineText(for: session("Fast", strain: 7.4))))")
+    assertTest(
+        ActivityFigure.headlineText(for: session("Activity", strain: nil, durationSeconds: 90)) == "0:01",
+        "…and an unmeasured session of under a minute still prints a figure rather than a dash, which "
+            + "is why this rule has no dash branch: a `WorkoutSession` always has a span (got "
+            + "\(ActivityFigure.headlineText(for: session("Activity", strain: nil, durationSeconds: 90))))")
+
+    // MARK: - C2. The fasting zone a fast's row draws instead
+
+    // The boundaries, both sides of every edge. **Zero publishes its zones as ranges that overlap on
+    // their upper edge** — `0–4` and `4–16` both claim 4 h — so `<` against `<=` is a decision rather
+    // than an implementation detail, and the convention taken is that the upper edge belongs to the
+    // *next* zone. Every point below is a place a wrong comparison shows up, and the sweep accumulates
+    // its mismatches so one run names all of them instead of halting at the first.
+    let zoneEdges: [(seconds: TimeInterval, expected: FastingZone, label: String)] = [
+        (0, .anabolic, "0s"),
+        (4 * 3600 - 1, .anabolic, "3h59m59s — the last second before the first edge"),
+        (4 * 3600, .catabolic, "4h exactly — the shared edge, which must open Catabolic"),
+        (16 * 3600 - 1, .catabolic, "15h59m59s"),
+        (16 * 3600, .fatBurning, "16h exactly — the shared edge, which must open Fat Burning"),
+        (24 * 3600 - 1, .fatBurning, "23h59m59s"),
+        (24 * 3600, .ketosis, "24h exactly — the shared edge, which must open Ketosis"),
+        (72 * 3600 - 1, .ketosis, "71h59m59s — the longest fast that is not yet Deep"),
+        (72 * 3600, .deepKetosis, "72h exactly — the floor of the open-ended zone"),
+    ]
+    let wrongZones = zoneEdges
+        .filter { FastingZone.zone(forDurationSeconds: $0.seconds) != $0.expected }
+        .map { "\($0.label) gave \(FastingZone.zone(forDurationSeconds: $0.seconds).rawValue), expected \($0.expected.rawValue)" }
+    assertTest(
+        wrongZones.isEmpty,
+        "Every zone boundary falls where the published ranges say, with the upper edge of each range "
+            + "opening the next zone — which is what puts a fast of exactly 16 h in `fatBurning` rather "
+            + "than in `catabolic`, and it is a real row of the bundled file rather than a hypothetical "
+            + "(mismatches: \(wrongZones.joined(separator: "; ")))")
+
+    assertTest(
+        FastingZone.allCases.count == 5,
+        "There are five zones and no more, so a sixth case cannot be added without this failing and "
+            + "the colour mapping, the label table and the ink rule all being revisited (got "
+            + "\(FastingZone.allCases.count))")
+    let expectedZoneLabels = [
+        "ANABOLIC", "CATABOLIC", "FAT BURNING", "KETOSIS", "DEEP KETOSIS",
+    ]
+    assertTest(
+        FastingZone.allCases.map(\.label) == expectedZoneLabels,
+        "The five labels the pills draw are stated literals rather than the raw value uppercased, so a "
+            + "case rename cannot silently change what a row reads (got "
+            + "\(FastingZone.allCases.map(\.label)))")
+    assertTest(
+        FastingZone.allCases.map(\.hoursRange) == ["0-4H", "4-16H", "16-24H", "24-72H", "72H+"],
+        "…and each carries the published range it covers, with the last one's `+` stating that 72 h is "
+            + "a floor rather than an interval (got \(FastingZone.allCases.map(\.hoursRange)))")
+
+    // The gate. These four are the whole of the rule, and the second is the one that matters: it is
+    // `headlineText`'s documented "the gate is the data and never the label" holding *through* a
+    // function that does consult the label, which is the reading most likely to look like a
+    // regression.
+    //
+    // **The day handed in is the one the fast ended on, and for the two assertions that pin a zone
+    // that is not a detail.** This fixture sits at anchor `1_700_000_000` — 18:13 local — with a
+    // 16 h 40 m span, so it crosses midnight. Its *start* day clamps to 5 h 47 m and answers
+    // `.catabolic`, and would answer `.anabolic` at UTC where the anchor is 22:13: the same literal
+    // failing differently in different device zones. Handed the end day, `elapsedSeconds(byEndOf:)`
+    // is `endedAt − startedAt` on **every** device, because `endedAt` is always inside its own day —
+    // so the two `.fatBurning` literals survive byte-identically and these go on testing the gates
+    // they were written to test rather than the arithmetic. It is also the honest reading of the
+    // rule: a fast's last day *is* its own zone.
+    assertTest(
+        ActivityFigure.fastingZone(for: fast, on: fast.endedAt) == .fatBurning,
+        "A `Fast` carrying no strain gets the pill — 16h40m is in Fat Burning, the zone the block's own "
+            + "`fast` fixture sits in (got "
+            + "\(String(describing: ActivityFigure.fastingZone(for: fast, on: fast.endedAt))))")
+    assertTest(
+        ActivityFigure.fastingZone(for: session("Fast", strain: 7.4), on: anchor.addingTimeInterval(3600)) == nil,
+        "**The gate is the data and never the label, and it survives this function.** A session *named* "
+            + "`Fast` that carries a strain gets **no** pill, so `headlineText` still prints `7.4` "
+            + "beside it exactly as before — the pill occupies the slot the *duration* would have "
+            + "occupied, never the slot the strain has (got "
+            + "\(String(describing: ActivityFigure.fastingZone(for: session("Fast", strain: 7.4), on: anchor.addingTimeInterval(3600)))))")
+    assertTest(
+        ActivityFigure.fastingZone(for: session("Walking", strain: nil), on: anchor.addingTimeInterval(3600)) == nil,
+        "…and an unmeasured session that is not a fast is untouched, printing its duration as it always "
+            + "has. Its source is `zero_fasting`, the block's helper stamping every fixture — which is "
+            + "the point: the gate is the *name* and not the source, so a fast the user re-labelled, and "
+            + "a non-fast the importer wrote, both read correctly (got "
+            + "\(String(describing: ActivityFigure.fastingZone(for: session("Walking", strain: nil), on: anchor.addingTimeInterval(3600)))))")
+    // Deliberately the *same* duration `fast` carries, so the only thing differing from the assertion
+    // above it is the padding and the casing — which is what makes this a test of the normalisation
+    // rather than of the zone arithmetic a second time.
+    let paddedFast = session("  FAST  ", strain: nil, durationSeconds: 16 * 3600 + 40 * 60)
+    assertTest(
+        ActivityFigure.fastingZone(for: paddedFast, on: paddedFast.endedAt) == .fatBurning,
+        "…while a padded and differently-cased name still reaches it, because the comparison goes "
+            + "through `ActivityName.normalised` — the same normaliser `ActivityGlyph.mark(for:)` "
+            + "resolves through, so the row's chip and its pill can never disagree about which rows are "
+            + "fasts (got "
+            + "\(String(describing: ActivityFigure.fastingZone(for: paddedFast, on: paddedFast.endedAt))))")
+
+    // The ink decision. Asserted as `inkDepth` rather than as a `Color`, because comparing `inkColor`
+    // against the `Theme` token it returns would only prove the switch returns the arm it returns —
+    // the "expected value computed by the code under test" trap. The depth is the decision the user
+    // made and the one thing a screenshot of a single zone cannot see: white letters on the yellow and
+    // the white fill would measure 1.5:1 and 1.0:1.
+    let expectedInkDepths: [(FastingZone, FastingZone.InkDepth)] = [
+        (.anabolic, .onDeep), (.catabolic, .onDeep), (.fatBurning, .onPale),
+        (.ketosis, .onPale), (.deepKetosis, .onDeep),
+    ]
+    let wrongInks = expectedInkDepths
+        .filter { $0.0.inkDepth != $0.1 }
+        .map { "\($0.0.rawValue) is \($0.0.inkDepth)" }
+    assertTest(
+        wrongInks.isEmpty,
+        "The two pale fills take the near-black ink and the other three take white, which is the whole "
+            + "of the legibility rule — a white `KETOSIS` pill would be white letters on white and a "
+            + "white `FAT BURNING` pill would measure 1.5:1 (wrong: \(wrongInks.joined(separator: ", ")))")
+
+    // The property over the real file, in this section's shape for a claim about `fasts.json`: a
+    // regenerated file that added a short fast would otherwise introduce a pill nobody has ever seen.
+    let zoneCounts = rows.reduce(into: [FastingZone: Int]()) { counts, row in
+        counts[FastingZone.zone(forDurationSeconds: row.endedAt.timeIntervalSince(row.startedAt)), default: 0] += 1
+    }
+    assertTest(
+        zoneCounts[.anabolic] == nil,
+        "**No fast in the bundled file is Anabolic *as a whole session*, and this is where that is "
+            + "recorded.** The shortest of the 170 is \(String(format: "%.2f", (durations.min() ?? 0) / 3600)) h, "
+            + "so no fast in it is under 4 h — the zone ships because it is Zero's own scale and a "
+            + "hand-recorded 3-hour fast lands there, and this assertion is what fails loudly the day a "
+            + "short fast appears rather than the pill drawing untested (got "
+            + "\(String(describing: zoneCounts[.anabolic])))")
+    assertTest(
+        zoneCounts == [.catabolic: 89, .fatBurning: 76, .ketosis: 4, .deepKetosis: 1],
+        "…and the file's 170 fasts fall 89 / 76 / 4 / 1 across the four zones it does reach, which is "
+            + "the distribution every screenshot of this pill is drawn from (got "
+            + "\(zoneCounts.map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: " ")))")
+    assertTest(
+        durations.filter { $0 == 16 * 3600 }.count >= 1,
+        "…and at least one fast sits **exactly** on a shared edge — measured, one fast at precisely "
+            + "16 h — which is what makes the `<` versus `<=` decision above load-bearing on real data "
+            + "rather than on a synthetic fixture (got "
+            + "\(durations.filter { $0 == 16 * 3600 }.count))")
+
+    // MARK: - C2b. The pill follows the day, and the row follows the fast
+
+    // Everything above is about a session's **own** zone — what `durationSeconds` answers. From here
+    // down the question is the one Home actually asks, which is day-scoped: a fast that was underway
+    // on the day the user is looking at draws a pill naming the zone it had **reached by the end of
+    // that day**. That makes an 86-hour fast draw five different pills, and it is the user's own
+    // choice over marking the unfinished days `IN PROGRESS`.
+    //
+    // **Every day below is built through `dayCalendar`, never through the `utc(...)` helper.** §20
+    // already documents the reason at the `expectedDays` block above: a `Date` computed in another
+    // zone does not *shift* a day key, it *splits* it. `elapsedSeconds(byEndOf:)` snaps with
+    // `Calendar.current` — correctly, so that it agrees with the `date` column `saveWorkout` wrote —
+    // so an assertion built on a UTC instant passes at UTC and fails in America/New_York.
+
+    /// A local wall-clock instant on a named day.
+    func localInstant(
+        _ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int, _ second: Int = 0
+    ) -> Date {
+        dayCalendar.date(from: DateComponents(
+            year: year, month: month, day: day, hour: hour, minute: minute, second: second))
+            ?? Date(timeIntervalSince1970: 0)
+    }
+
+    /// A fast of `seconds` starting at `start`, carrying what `ZeroFastingImporter` actually writes:
+    ///
+    /// no strain, no heart rates, and the label. Built rather than run through the importer because
+    /// these fixtures are about the arithmetic, and the importer's own output is asserted above.
+    func fastSession(startingAt start: Date, seconds: TimeInterval) -> WorkoutSession {
+        WorkoutSession(
+            startedAt: start,
+            endedAt: start.addingTimeInterval(seconds),
+            strain: nil, averageHeartRate: nil, maxHeartRate: nil,
+            route: [], splits: [],
+            source: ZeroFastingImporter.sourceLabel,
+            activityName: "Fast")
+    }
+
+    /// Every calendar day a session's span *touches*, as candidates.
+    ///
+    /// **Candidates and not answers, deliberately.** A session ending exactly at `00:00:00` touches
+    /// the day it ends at without covering it, so the caller must still apply the half-open rule —
+    /// the two assertions below that compare a covering read against a derived expectation build
+    /// their map by applying it per candidate rather than including the range blindly, which is what
+    /// makes that off-by-one-day visible instead of built in.
+    func coveredDayCandidates(of session: WorkoutSession) -> [Date] {
+        var days: [Date] = []
+        var day = dayCalendar.startOfDay(for: session.startedAt)
+        let last = dayCalendar.startOfDay(for: session.endedAt)
+        while day <= last {
+            days.append(day)
+            day = dayCalendar.date(byAdding: .day, value: 1, to: day) ?? day
+        }
+        return days
+    }
+
+    // The shape of the longest fast in `fasts.json` — which runs 2024-10-06 21:00 → 2024-10-10 11:01,
+    // 86.01 h. This fixture is the round 86 h at the same clock time, so the five day-ends land on
+    // whole hours and the literals below can be read at a glance rather than derived. Days 1–4 end
+    // while it is still running, so their elapsed is the whole day; day 5 ends after it, so its
+    // elapsed is the clamp — the assertion that catches a missing `min`.
+    let longFast = fastSession(startingAt: localInstant(2024, 10, 6, 21, 0), seconds: 86 * 3600)
+    let longFastDays = (0..<5).compactMap {
+        dayCalendar.date(byAdding: .day, value: $0, to: longFast.startedAt.startOfDay)
+    }
+    let expectedDayElapsed: [TimeInterval] = [3 * 3600, 27 * 3600, 51 * 3600, 75 * 3600, 86 * 3600]
+    var elapsedMismatches: [String] = []
+    for (index, day) in longFastDays.enumerated() {
+        let got = longFast.elapsedSeconds(byEndOf: day)
+        // A one-second tolerance rather than exact equality, so a device zone whose midnight shift
+        // lands inside these five days moves nothing — the literals are hours apart and any of the
+        // three ways this arithmetic can be wrong (no snap, no floor, no clamp) misses by far more.
+        if abs(got - expectedDayElapsed[index]) > 1 {
+            elapsedMismatches.append(
+                "day \(index + 1) gave \(Int(got / 3600))h, expected \(Int(expectedDayElapsed[index] / 3600))h")
+        }
+    }
+    assertTest(
+        elapsedMismatches.isEmpty,
+        "An 86-hour fast's elapsed time at the end of each of its five days is 3 h, 27 h, 51 h, 75 h "
+            + "and **86 h** — the last one is the clamp, since that day's own end is after `endedAt` "
+            + "and without the `min` it would keep climbing (mismatches: "
+            + "\(elapsedMismatches.joined(separator: "; ")))")
+
+    // A single-day fast is untouched by all of this, which is the claim that says the change is
+    // confined to the fasts that actually cross a boundary: its own end is inside its own day, so the
+    // clamp returns exactly its duration and the pill it draws is the one it drew before.
+    //
+    // **06:00 for 15 h, and both numbers are chosen.** The end lands on 21:00 of the same day, which
+    // is what makes this a single-day fast at all — 18 h would end at exactly midnight and so be a
+    // two-day one, and the assertion would pass while testing the crossing case under a comment
+    // claiming it did not. And 15 h is `catabolic`, not `anabolic`: the two rules agreeing on the
+    // *first* zone would be a weaker claim than agreeing on a zone that has thresholds on both sides.
+    let sameDayFast = fastSession(startingAt: localInstant(2024, 10, 6, 6, 0), seconds: 15 * 3600)
+    assertTest(
+        abs(sameDayFast.elapsedSeconds(byEndOf: sameDayFast.startedAt) - sameDayFast.durationSeconds) < 1
+            && ActivityFigure.fastingZone(for: sameDayFast, on: sameDayFast.startedAt)
+                == FastingZone.zone(forDurationSeconds: sameDayFast.durationSeconds),
+        "A fast that starts and ends on one day is **unaffected**: its own end is inside its own day, "
+            + "so the clamp returns its duration exactly and its pill is the one the whole-duration "
+            + "table above gives it (got "
+            + "\(Int(sameDayFast.elapsedSeconds(byEndOf: sameDayFast.startedAt) / 3600))h against a "
+            + "\(Int(sameDayFast.durationSeconds / 3600))h fast)")
+
+    // The two days outside the fast read **different** answers, and the asymmetry is the design rather
+    // than an oversight. Before the start the subtraction would go negative, so the `max` floor returns
+    // `0` — without it `zone(forDurationSeconds:)` is handed a number below its first threshold, which
+    // is not a zone at all. After the end the `min` clamps to `endedAt`, which is *earlier* than that
+    // day's own end, so the answer is the fast's whole duration. **That second one is load-bearing**:
+    // it is exactly why a session left on a day it no longer covers draws the fast's *overall* zone in
+    // the pill, which is what `HomeViewModel.updateWorkout`'s drop branch exists to prevent — so this
+    // assertion is the mechanism behind that branch, pinned where it can be seen.
+    let dayBefore = dayCalendar.date(byAdding: .day, value: -1, to: longFastDays[0]) ?? longFastDays[0]
+    let dayAfter = dayCalendar.date(byAdding: .day, value: 1, to: longFastDays[4]) ?? longFastDays[4]
+    assertTest(
+        longFast.elapsedSeconds(byEndOf: dayBefore) == 0
+            && abs(longFast.elapsedSeconds(byEndOf: dayAfter) - longFast.durationSeconds) < 1,
+        "A day before the fast starts reads `0` elapsed, the `max` floor that stops the zone scale "
+            + "running backwards — while a day after it ended reads the fast's **whole duration**, "
+            + "because the `min` clamps to `endedAt`, which is earlier than that day's own end. The "
+            + "second answer is why a row left on a day the session does not cover draws the overall "
+            + "zone, and so is the reason `HomeViewModel.updateWorkout` filters by `covers(_:)` (before: "
+            + "\(longFast.elapsedSeconds(byEndOf: dayBefore)), after: "
+            + "\(Int(longFast.elapsedSeconds(byEndOf: dayAfter) / 3600))h against an "
+            + "\(Int(longFast.durationSeconds / 3600))h fast)")
+
+    // **The user's decision, made assertable.** This is the one thing a screenshot of a single day
+    // cannot see, and the monotonic progression is the tell that the day-scoped rule is the intended
+    // reading: the alternative — the fast's overall zone on day 1 and the reached zone after it —
+    // would draw `DEEP KETOSIS` above `KETOSIS`.
+    let longFastPills = longFastDays.map { ActivityFigure.fastingZone(for: longFast, on: $0) }
+    assertTest(
+        longFastPills == [.anabolic, .ketosis, .ketosis, .deepKetosis, .deepKetosis],
+        "The 86-hour fast reads `ANABOLIC → KETOSIS → KETOSIS → DEEP KETOSIS → DEEP KETOSIS` down its "
+            + "five days, and **not** the same pill five times or the fast's own `DEEP KETOSIS` on "
+            + "every one of them (got \(longFastPills.map { $0?.rawValue ?? "nil" }))")
+    // Monotonic in the zone scale's own order. Read off `allCases`, which is declaration order and is
+    // therefore the published progression — a `FastingZone` carries no rank of its own and does not
+    // need one, since the ordering it would state is already this array's.
+    let pillRanks = longFastPills.map { pill in
+        pill.flatMap { FastingZone.allCases.firstIndex(of: $0) } ?? -1
+    }
+    assertTest(
+        zip(pillRanks, pillRanks.dropFirst()).allSatisfy { $0 <= $1 },
+        "…and the five are monotonic, which is the property that rules out the alternative rule: a "
+            + "zone that moved backwards down the week would mean the start day was drawing the whole "
+            + "fast's zone while the days after it drew a smaller one (got "
+            + "\(longFastPills.map { $0?.rawValue ?? "nil" }))")
+
+    // The snapping requirement, asserted as an invariance. `HomeDashboardView.selectedDate` is seeded
+    // with `Date()`, stepped by `Calendar.date(byAdding:.day,…)` and written by the month calendar —
+    // **none of them snap** — so the day Home hands this function on first load is `today at 14:23`.
+    // Nothing else in the suite can see the difference: with `self + 1 day` instead of
+    // `startOfDay + 1 day` a mid-fast day inflates by up to 24 h and a day after the fast's end
+    // clamps the error away entirely, so the feature would silently no-op on the days it exists for.
+    let midAfternoon = localInstant(2024, 10, 8, 14, 23)
+    assertTest(
+        longFast.elapsedSeconds(byEndOf: midAfternoon)
+            == longFast.elapsedSeconds(byEndOf: midAfternoon.startOfDay),
+        "The elapsed time for a day is the same whether the day is handed in as midnight or as "
+            + "`14:23` — the shape `HomeDashboardView.selectedDate` actually holds — because "
+            + "`startOfNextDay` snaps before it adds a day. Without that snap the day would end at "
+            + "tomorrow 14:23 and this day would read "
+            + "\(Int((midAfternoon.addingTimeInterval(86400).timeIntervalSince(longFast.startedAt)) / 3600))h "
+            + "instead of \(Int(longFast.elapsedSeconds(byEndOf: midAfternoon) / 3600))h")
+
+    // The one-second edge, which is the `startOfNextDay`-versus-`endOfDay` decision made visible.
+    // `Date.endOfDay` is 23:59:59, so a boundary built on it under-counts every day by exactly one
+    // second — and on the real file that flips four fast-days sitting exactly on a zone edge, three
+    // of them a whole zone early.
+    let onTheEdge = fastSession(startingAt: localInstant(2024, 10, 7, 20, 0), seconds: 30 * 3600)
+    let aSecondLater = fastSession(startingAt: localInstant(2024, 10, 7, 20, 0, 1), seconds: 30 * 3600)
+    assertTest(
+        ActivityFigure.fastingZone(for: onTheEdge, on: onTheEdge.startedAt) == .catabolic
+            && ActivityFigure.fastingZone(for: aSecondLater, on: aSecondLater.startedAt) == .anabolic,
+        "A fast starting at exactly `20:00:00` has run exactly 4 h by its day's end and opens "
+            + "`CATABOLIC`; one starting at `20:00:01` has run 3 h 59 m 59 s and stays `ANABOLIC`. That "
+            + "pair is the whole of the `startOfNextDay` decision — against `endOfDay` both would read "
+            + "`ANABOLIC`, and nothing else in this suite can see a one-second under-count (got "
+            + "\(String(describing: ActivityFigure.fastingZone(for: onTheEdge, on: onTheEdge.startedAt))) "
+            + "and \(String(describing: ActivityFigure.fastingZone(for: aSecondLater, on: aSecondLater.startedAt))))")
+
+    // The boundary, on real data rather than on a fixture, in the style of the 16-hour canary above.
+    // The rule is already swept above as arithmetic; what this adds is that the edges are **reached**
+    // by day-appearances in `fasts.json`, so the one-second decision above is load-bearing on the
+    // file a user actually imports rather than on a hypothetical.
+    // The elapsed figure here is the rule stated out rather than `endedAt − day.startOfDay`, which is
+    // a different number on every day but the fast's last: the quantity that decides the pill is
+    // cumulative from the fast's own start, so it is `min(endedAt, the day's end) − startedAt`. The
+    // two agree only when a fast starts at midnight, which none of these does.
+    var dayAppearances: [(day: Date, elapsed: TimeInterval)] = []
+    for row in rows {
+        var day = dayCalendar.startOfDay(for: row.startedAt)
+        let last = dayCalendar.startOfDay(for: row.endedAt)
+        while day <= last {
+            let dayEnd = dayCalendar.date(byAdding: .day, value: 1, to: day) ?? day
+            dayAppearances.append((day, min(row.endedAt, dayEnd).timeIntervalSince(row.startedAt)))
+            day = dayEnd
+        }
+    }
+    let exactFourHourDays = dayAppearances.filter { abs($0.elapsed - 4 * 3600) < 1 }
+    let exactSixteenHourDays = dayAppearances.filter { abs($0.elapsed - 16 * 3600) < 1 }
+    assertTest(
+        exactFourHourDays.count >= 3 && exactSixteenHourDays.count >= 1,
+        "The bundled file genuinely reaches those edges — measured, three day-appearances land on "
+            + "exactly 4 h and one on exactly 16 h. Asserting the *counts* are at least these rather "
+            + "than pinning which days, because the number of day-appearances a fast has moves with the "
+            + "device's midnight and a pinned list of dates is a test that fails on someone else's "
+            + "machine (got \(exactFourHourDays.count) at 4 h, \(exactSixteenHourDays.count) at 16 h)")
+    // **And this is what makes them load-bearing**, which the count above cannot say: a boundary built
+    // on `Date.endOfDay` is `23:59:59`, so the elapsed comes out one second short and every one of
+    // these day-appearances lands in the band *below* the edge it actually sits on. Stated as a count
+    // of flips rather than as "the zone is correct", because the latter is a tautology —
+    // `zone(forDurationSeconds: 4 * 3600)` is `.catabolic` by definition and cannot fail.
+    let wouldFlipUnderEndOfDay = (exactFourHourDays + exactSixteenHourDays).filter {
+        FastingZone.zone(forDurationSeconds: $0.elapsed - 1)
+            != FastingZone.zone(forDurationSeconds: $0.elapsed)
+    }
+    let edgeDayCount = exactFourHourDays.count + exactSixteenHourDays.count
+    assertTest(
+        wouldFlipUnderEndOfDay.count == edgeDayCount,
+        "…and every one of them would draw a **different** zone against `endOfDay`, which is the "
+            + "whole reason `startOfNextDay` exists: one second short, each lands a band below the edge "
+            + "it sits on — \(wouldFlipUnderEndOfDay.count) of \(edgeDayCount) would flip. This is the "
+            + "assertion that fails if a half-open bound is ever built on `endOfDay` (did not flip: "
+            + "\(edgeDayCount - wouldFlipUnderEndOfDay.count))")
+
+    // The per-day distribution over the whole file, and the reason it is a *property* rather than a
+    // literal: **it is zone-dependent.** How many days a fast spans moves with the device's midnight,
+    // so `[catabolic: 185, fatBurning: 76, anabolic: 55, ketosis: 8, deepKetosis: 2]` is one machine's
+    // answer and not the file's — §11's rule, and the same shape §13's and §15's export guards take.
+    let fileFasts = rows.compactMap { row -> WorkoutSession? in
+        guard let id = UUID(uuidString: row.fastID) else { return nil }
+        return WorkoutSession(
+            id: id, startedAt: row.startedAt, endedAt: row.endedAt,
+            strain: nil, averageHeartRate: nil, maxHeartRate: nil,
+            route: [], splits: [],
+            source: ZeroFastingImporter.sourceLabel, activityName: "Fast")
+    }
+    var perDayZoneCounts: [FastingZone: Int] = [:]
+    for fast in fileFasts {
+        for pill in coveredDayCandidates(of: fast)
+            .compactMap({ ActivityFigure.fastingZone(for: fast, on: $0) }) {
+            perDayZoneCounts[pill, default: 0] += 1
+        }
+    }
+    // The bridge between the per-day scale and the session scale. A fast's **last** day is the only day
+    // whose elapsed reaches its whole span, so it is the one day whose pill must equal the zone the
+    // whole-duration table above gives — and that equality is the clamp's `min` and nothing else.
+    // Without it the last day reads past `endedAt`, so a 15 h fast ending at 21:00 draws the zone of a
+    // 24 h one. **Do not restate this as "every fast draws a pill"**: `fastingZone` returns non-`nil`
+    // for every session that is a fast with no strain, so a presence check is a tautology that cannot
+    // fail. It also closes the gap `coveredDayCandidates` leaves open — that walk over-counts a fast
+    // ending exactly at midnight, and this says such a day still answers the fast's own zone.
+    let wholeDurationPillMismatches = fileFasts.compactMap { fast -> String? in
+        let lastDay = dayCalendar.startOfDay(for: fast.endedAt)
+        guard let pill = ActivityFigure.fastingZone(for: fast, on: lastDay) else {
+            return "\(lastDay) drew no pill on the fast's own last day"
+        }
+        let whole = FastingZone.zone(forDurationSeconds: fast.durationSeconds)
+        return pill == whole
+            ? nil
+            : "\(lastDay): \(pill.rawValue) against a whole-duration \(whole.rawValue)"
+    }
+    assertTest(
+        wholeDurationPillMismatches.isEmpty,
+        "…and every fast's **last** day draws exactly the pill its whole duration scores, which is what "
+            + "the `min` in the elapsed clamp buys and the only place the per-day scale is tied back to "
+            + "the session scale (wrong: \(wholeDurationPillMismatches))")
+    assertTest(
+        perDayZoneCounts[.anabolic] != nil,
+        "**The red Anabolic pill stops being unreachable.** It is absent from the whole-duration table "
+            + "above and present here, because a start day now scores a few hours — measured, it is the "
+            + "third most common pill per-day. This is the assertion that fails if the pill ever goes "
+            + "back to the session's whole duration (got "
+            + "\(String(describing: perDayZoneCounts[.anabolic])))")
+    assertTest(
+        perDayZoneCounts.values.reduce(0, +) > fileFasts.count,
+        "…and there are now more day-appearances than fasts, which is the whole of what this change "
+            + "buys: \((perDayZoneCounts.values.reduce(0, +))) appearances over \(fileFasts.count) fasts "
+            + "(got \(perDayZoneCounts.map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: " ")))")
+
+    // Both days of the block's own 16 h 40 m fixture, deliberately. The two gate assertions above are
+    // handed its **end** day so their literals survive on every device; this states the day-dependence
+    // itself, so the fact that the start day answers `.catabolic` is asserted rather than incidental —
+    // and so nobody "simplifies" the two reads back into one on the strength of the end-day literals.
+    assertTest(
+        ActivityFigure.fastingZone(for: fast, on: fast.startedAt) == .catabolic,
+        "The same 16 h 40 m fast draws a *different* pill on its start day than on its end day, which "
+            + "is the deliberate rewrite of every multi-day fast's first row: only 5 h 47 m of it had "
+            + "happened by that day's end, so it reads `CATABOLIC` where it used to read the whole "
+            + "fast's `FAT BURNING` (got "
+            + "\(String(describing: ActivityFigure.fastingZone(for: fast, on: fast.startedAt))))")
+
+    // MARK: - C2c. The end clock a fast's row prints, and what "in progress" means
+
+    // The other half of the same day-scoped rule, and the user's own second request:
+    //
+    //     a day the fast ran to the end of   →  `11:59 PM`, that day's own last minute
+    //     the day it is running on right now →  `ACTIVE`
+    //     the day it ended on, and every single-day fast → its own end clock, unchanged
+    //
+    // The reason it is a rule at all: without it a covered day prints the fast's **own end clock**, so a
+    // fast that ended at 11:01 on its last day claims to have ended at 11:01 on each of the four days
+    // before it too — four rows stating a finished fast on days it was still running.
+    //
+    // **`now` is handed in everywhere below rather than read inside the function**, which is
+    // `DayBarRules`' reason: a rule about "in progress" that read `Date()` would assert something
+    // different tomorrow, and this one is asserted as a *pair* of `now` values where the only thing
+    // that moves is whether the fast is running.
+    let longAfter = localInstant(2030, 1, 1, 12, 0)
+    assertTest(
+        (rows.map(\.endedAt).max() ?? .distantFuture) < longAfter,
+        "Pinning `now` to 2030 puts every fast in the bundled file in the past, which is what makes the "
+            + "whole-day rule the only one in play in the assertions below and makes "
+            + "`ActivityFigure.inProgressText` unreachable from the file — it is reachable only from the "
+            + "fixture further down. The file's last fast ends "
+            + "\(rows.map(\.endedAt).max().map { $0.formattedShortDate() } ?? "nil")")
+    let longFastEndTexts = longFastDays.map {
+        ActivityFigure.fastingEndText(for: longFast, on: $0, now: longAfter)
+    }
+    assertTest(
+        longFastEndTexts == ["11:59 PM", "11:59 PM", "11:59 PM", "11:59 PM", nil],
+        "The 86-hour fast prints `11:59 PM` on each of the four days it was still running at the end of, "
+            + "and `nil` on the fifth — the one day it ended on, where the row falls back to the fast's "
+            + "own end clock. `nil` is the *absent override* rather than an absence: it is what hands "
+            + "the trailing half back to `timeRange`, which is the shared drawing every other row on the "
+            + "card uses (got "
+            + "\(longFastEndTexts.map { $0 ?? "the real end" }))")
+    // The row as it is actually composed: `HomeDashboardView.timeRange` prints
+    // `"\(start.formattedHourMinute()) / \(endText ?? end.formattedHourMinute())"`, so this is the
+    // string a reader sees on the first day — the user's own example, `Sun 9:00 PM / 11:59`, with this
+    // fixture's Sunday. It also pins the *left* half, which must not move: the start clock and the
+    // weekday badge stay the fast's own on every day it covers.
+    let firstDayRow = "\(longFast.startedAt.formattedHourMinute()) / "
+        + (longFastEndTexts[0] ?? longFast.endedAt.formattedHourMinute())
+    assertTest(
+        firstDayRow == "9:00 PM / 11:59 PM",
+        "…and the row for that first day reads `9:00 PM / 11:59 PM` — the fast's own start clock on the "
+            + "left, unchanged, and that day's last minute instead of the fast's `11:00 AM` end on the "
+            + "right (got \(firstDayRow))")
+    let lastDayRow = "\(longFast.startedAt.formattedHourMinute()) / "
+        + (longFastEndTexts[4] ?? longFast.endedAt.formattedHourMinute())
+    assertTest(
+        lastDayRow == "9:00 PM / 11:00 AM",
+        "…while the day the fast actually ended on still prints the fast's own end, so the five rows "
+            + "read as one fast shortening to its real end rather than as five identical claims (got "
+            + "\(lastDayRow))")
+
+    // The in-progress branch. It needs a fixture because the bundled file cannot produce one — every
+    // fast in it has ended, which the assertion above records — and it is asserted as a **pair** of the
+    // same session under two `now` values, so what flips the text is the fast's state and not the day
+    // being drawn.
+    let now = localInstant(2026, 3, 11, 10, 0)
+    let running = fastSession(startingAt: localInstant(2026, 3, 9, 21, 0), seconds: 60 * 3600)
+    let runningDays = coveredDayCandidates(of: running).filter { running.covers($0) }
+    let runningTexts = runningDays.map {
+        ActivityFigure.fastingEndText(for: running, on: $0, now: now)
+    }
+    assertTest(
+        runningTexts == ["11:59 PM", "11:59 PM", "ACTIVE", nil],
+        "A fast that started on the 9th at 21:00 and runs 60 hours reads `ACTIVE` on the day it is "
+            + "running *now* — and `11:59 PM` on the two days behind it, and its own end clock on the "
+            + "day it will end on. Both halves matter: an `ACTIVE` on every covered day would say the "
+            + "fast is still running on days that are over, and an `11:59 PM` on today would claim an "
+            + "end it has not reached (got \(runningTexts.map { $0 ?? "the real end" }))")
+    let afterItEnded = runningDays.map {
+        ActivityFigure.fastingEndText(for: running, on: $0, now: localInstant(2026, 3, 13, 10, 0))
+    }
+    assertTest(
+        afterItEnded == ["11:59 PM", "11:59 PM", "11:59 PM", nil],
+        "…and the **same session** two days later reads `11:59 PM` on that third day, so `ACTIVE` is a "
+            + "fact about the fast still running and not about which day the card happens to be drawing. "
+            + "This is the pair the branch is asserted as, and neither half alone can tell the two rules "
+            + "apart (got \(afterItEnded.map { $0 ?? "the real end" }))")
+
+    // The day it stopped on. A fast that ended this morning is not in progress, so today's row prints
+    // its real end rather than `ACTIVE` — the "running" test is `now < endedAt` and not "the card is
+    // showing today".
+    let endedThisMorning = fastSession(
+        startingAt: localInstant(2026, 3, 10, 20, 0), seconds: 13 * 3600)
+    let endedTexts = coveredDayCandidates(of: endedThisMorning)
+        .filter { endedThisMorning.covers($0) }
+        .map { ActivityFigure.fastingEndText(for: endedThisMorning, on: $0, now: now) }
+    assertTest(
+        endedTexts == ["11:59 PM", nil],
+        "A fast that ended at 09:00 this morning reads `11:59 PM` on yesterday and its own `9:00 AM` "
+            + "end on today — *not* `ACTIVE`. A rule keyed on the day being today rather than on the "
+            + "fast still running would say a finished fast is in progress for the whole of the day it "
+            + "ended on, which is the failure this pair exists to catch (got "
+            + "\(endedTexts.map { $0 ?? "the real end" }))")
+    assertTest(
+        ActivityFigure.fastingEndText(for: endedThisMorning, on: now.startOfDay, now: now) == nil,
+        "…stated once more on its own so the `nil` is unambiguous: today's row for a fast that stopped "
+            + "this morning is the absent override, which is what makes `timeRange` print the fast's own "
+            + "end clock (got "
+            + "\(String(describing: ActivityFigure.fastingEndText(for: endedThisMorning, on: now.startOfDay, now: now))))")
+
+    // The single-day fast, which is the 19 of the 170 the pill's block above shows are untouched — and
+    // it is untouched here for the same reason: its own end is inside its own day, so the override is
+    // never reached and the row prints `6:00 AM / 9:00 PM` exactly as it always has.
+    assertTest(
+        ActivityFigure.fastingEndText(for: sameDayFast, on: sameDayFast.startedAt, now: longAfter) == nil,
+        "A fast that starts and ends on one day gets no override at all, so the change is confined to "
+            + "the fasts that actually cross a midnight — the same claim the pill's block makes, asserted "
+            + "on the other half of the row (got "
+            + "\(String(describing: ActivityFigure.fastingEndText(for: sameDayFast, on: sameDayFast.startedAt, now: longAfter))))")
+
+    // The one case where `>=` and `>` differ, and it is the half-open convention again: a fast ending at
+    // exactly `00:00:00` ran to the day's last instant, so the day reads `11:59 PM`. Under `>` the row
+    // would print `12:00 AM` — a clock time belonging to a day the covering read excludes, so no row
+    // anywhere would be about it.
+    let midnightFast = fastSession(startingAt: localInstant(2024, 5, 1, 23, 0), seconds: 3600)
+    assertTest(
+        ActivityFigure.fastingEndText(
+            for: midnightFast, on: dayCalendar.startOfDay(for: midnightFast.startedAt), now: longAfter
+        ) == "11:59 PM",
+        "A fast ending at exactly `00:00:00` reads `11:59 PM` on the day it ran to the last instant of, "
+            + "rather than `12:00 AM` — the `>=` in the day-end comparison, and the boundary case that "
+            + "decides it (got "
+            + "\(String(describing: ActivityFigure.fastingEndText(for: midnightFast, on: dayCalendar.startOfDay(for: midnightFast.startedAt), now: longAfter))))")
+
+    // The gate, and it is `fastingZone`'s gate rather than a second one: this app holds **one**
+    // definition of which rows are fasts, so the two rules cannot come to disagree about a row that is
+    // drawn with a pill on one half and a day-end clock on the other.
+    let measuredLongFast = WorkoutSession(
+        startedAt: longFast.startedAt, endedAt: longFast.endedAt,
+        strain: 7.4, averageHeartRate: 121, maxHeartRate: 164,
+        route: [], splits: [],
+        source: ZeroFastingImporter.sourceLabel, activityName: "Fast")
+    assertTest(
+        ActivityFigure.fastingEndText(for: measuredLongFast, on: longFastDays[0], now: longAfter) == nil
+            && ActivityFigure.fastingZone(for: measuredLongFast, on: longFastDays[0]) == nil,
+        "A session named `Fast` that **measured a strain** gets neither the pill nor the day-end clock: "
+            + "its headline is the strain and its range is its own two clock times, exactly as before "
+            + "`v18`. Two gates that could drift would let a row draw a pill over a figure it is not "
+            + "drawing, or claim a fast's day-span on a row that is being drawn as a measured session "
+            + "(end text "
+            + "\(String(describing: ActivityFigure.fastingEndText(for: measuredLongFast, on: longFastDays[0], now: longAfter))), "
+            + "pill \(String(describing: ActivityFigure.fastingZone(for: measuredLongFast, on: longFastDays[0]))))")
+    // …and the name gate, on a session with **the same span**, so the only thing differing from
+    // `longFast` is what it is called. A day on which the rule would otherwise fire is the only place
+    // this can be tested: a short session is `nil` for the span reason and would pass either way.
+    let longWalk = WorkoutSession(
+        startedAt: longFast.startedAt, endedAt: longFast.endedAt,
+        strain: nil, averageHeartRate: nil, maxHeartRate: nil,
+        route: [], splits: [],
+        source: "whoop_export", activityName: "Walking")
+    assertTest(
+        longFastDays.allSatisfy {
+            ActivityFigure.fastingEndText(for: longWalk, on: $0, now: longAfter) == nil
+        },
+        "…while an identically-spanning session that is not a fast prints its own end on every one of "
+            + "those days, so the rule is keyed on the row being a fast and not on a session merely "
+            + "being long. That is the user's scope — *home screen **fasting** activity update* — and it "
+            + "is what keeps the export's three cross-midnight workouts, the `SLEEP` row and every "
+            + "measured row printing their own two clock times (got "
+            + "\(longFastDays.map { ActivityFigure.fastingEndText(for: longWalk, on: $0, now: longAfter) ?? "the real end" }))")
+
+    // The property over the real file, in this section's shape: a pinned count would break on a device
+    // zone that merges two day keys, so the claim is stated as a shape every fast must have.
+    //
+    // **The day it printed its own end on is exactly one per fast** — the day it ended on — and every
+    // other day it covers reads the day's own last minute. That is stated without calling the function
+    // under test to derive the expectation: the covering population comes from `covers(_:)`, which is
+    // §20's own statement of the half-open rule and the twin of the SQL read.
+    var endTextProblems: [String] = []
+    for fast in fileFasts {
+        let covered = coveredDayCandidates(of: fast).filter { fast.covers($0) }
+        let texts = covered.map { ActivityFigure.fastingEndText(for: fast, on: $0, now: longAfter) }
+        let ownEndDays = texts.filter { $0 == nil }.count
+        if ownEndDays != 1 {
+            endTextProblems.append(
+                "\(fast.startedAt.startOfDay): \(ownEndDays) days printed its own end, expected 1")
+        }
+        for (day, text) in zip(covered, texts) where text != nil && text != "11:59 PM" {
+            endTextProblems.append("\(day.startOfDay) read \(text ?? "nil")")
+        }
+    }
+    assertTest(
+        endTextProblems.isEmpty,
+        "Over all 170 fasts and every day one covers, each fast hands back the override on every day "
+            + "but the one it ended on, and the override it hands back is always the day's own last "
+            + "minute — the whole rule as a property rather than a pinned count, since how many days a "
+            + "fast covers moves with the device's midnight (problems: "
+            + "\(endTextProblems.sorted().prefix(5).joined(separator: "; ")))")
+
+    // MARK: - C2d. The covering read, and the day-key read it must not be merged with
+
+    // The half-open rule at both of its edges, as a Domain value first: `covers(_:)` is the rule the
+    // SQL predicate is the index-friendly twin of, and without it the boundary would live only in a
+    // query string where the sole coverage is an opaque database fixture.
+    let endsAtMidnight = fastSession(startingAt: localInstant(2024, 5, 1, 23, 0), seconds: 3600)
+    // Half a second **past** midnight, not half a second before it. The distinction is the whole of this
+    // pair: `seconds: 3599.5` ends at 23:59:59.5 and is a session that never reached the second day at
+    // all, which would make the assertion below pass for the wrong reason on a fixture that is not the
+    // contrast it claims to be.
+    let endsPastMidnight = fastSession(startingAt: localInstant(2024, 5, 1, 23, 0), seconds: 3600.5)
+    let startsAtMidnight = fastSession(startingAt: localInstant(2024, 5, 3, 0, 0), seconds: 3600)
+    let may1 = localInstant(2024, 5, 1, 0, 0)
+    let may2 = localInstant(2024, 5, 2, 0, 0)
+    let may3 = localInstant(2024, 5, 3, 0, 0)
+    assertTest(
+        endsAtMidnight.covers(may1) && !endsAtMidnight.covers(may2),
+        "A session from 23:00 to exactly `00:00:00` covers the day it started on and **not** the day "
+            + "it ended at — the half-open upper edge, and the difference between a fast drawn on four "
+            + "days and on five (covers 05-01: \(endsAtMidnight.covers(may1)), covers 05-02: "
+            + "\(endsAtMidnight.covers(may2)))")
+    assertTest(
+        endsPastMidnight.covers(may1) && endsPastMidnight.covers(may2),
+        "…while half a second **past** midnight is still underway on the second day, which is what makes "
+            + "the edge a boundary rather than an off-by-one the other way — the two fixtures differ by "
+            + "one second of span and by a whole day of coverage (covers 05-02: "
+            + "\(endsPastMidnight.covers(may2)))")
+    assertTest(
+        startsAtMidnight.covers(may3) && !startsAtMidnight.covers(may2),
+        "…and a session starting exactly at `00:00:00` covers that day and not the one before it — "
+            + "the lower edge, which an inclusive test would get wrong in the opposite direction "
+            + "(covers 05-02: \(startsAtMidnight.covers(may2)), covers 05-03: "
+            + "\(startsAtMidnight.covers(may3)))")
+
+    // The twin: for every probe day, the Domain rule and the SQL read must name the same sessions.
+    // This is the assertion that keeps the two honest — the SQL is what the app runs, and `covers` is
+    // what a test can pin, so a change to either that the other does not follow fails here.
+    let edgeDB = LocalDatabaseManager(inMemory: true)
+    let edgeRepo = GRDBWorkoutRepository(db: edgeDB)
+    let edgeFixtures = [endsAtMidnight, endsPastMidnight, startsAtMidnight]
+    for fixture in edgeFixtures { try? await edgeRepo.save(fixture) }
+    let probeDays = [may1, may2, may3, localInstant(2024, 4, 30, 12, 0), localInstant(2024, 5, 4, 12, 0)]
+    var disagreements: [String] = []
+    for day in probeDays {
+        let byRule = Set(edgeFixtures.filter { $0.covers(day) }.map(\.id))
+        let bySQL = Set(((try? await edgeRepo.getWorkouts(covering: day)) ?? []).map(\.id))
+        if byRule != bySQL {
+            disagreements.append("\(day.startOfDay): rule \(byRule.count), read \(bySQL.count)")
+        }
+    }
+    assertTest(
+        disagreements.isEmpty,
+        "`WorkoutSession.covers(_:)` and `getWorkouts(covering:)` return the same sessions on every "
+            + "probe day, including the two days outside every fixture — the assertion that keeps the "
+            + "Domain rule and the SQL predicate from drifting apart, since only one of the two is what "
+            + "the app runs and only the other is what a value-level test can pin (disagreements: "
+            + "\(disagreements.joined(separator: "; ")))")
+
+    // **The two reads disagree by design, and this is the assertion that fails if someone simplifies
+    // them back into one.** The covering read is Home's; the day-key read is the strain page's, the
+    // zone aggregates' and the export's day skip. Merging them would double-count a crossing session's
+    // zone block, because `WorkoutSession.zoneSeconds(_:)` scales WHOOP's share by the session's whole
+    // span.
+    let splitDB = LocalDatabaseManager(inMemory: true)
+    let splitRepo = GRDBWorkoutRepository(db: splitDB)
+    try? await splitRepo.save(longFast)
+    var coveringDays = 0
+    var dayKeyDays = 0
+    for day in longFastDays {
+        if ((try? await splitRepo.getWorkouts(covering: day)) ?? []).contains(where: { $0.id == longFast.id }) {
+            coveringDays += 1
+        }
+        if ((try? await splitRepo.getWorkouts(for: day)) ?? []).contains(where: { $0.id == longFast.id }) {
+            dayKeyDays += 1
+        }
+    }
+    assertTest(
+        coveringDays == 5 && dayKeyDays == 1,
+        "On the 86-hour fast's five covered days the **covering** read returns it on all five while the "
+            + "**day-key** read returns it on exactly one — the day it started. Both numbers are the "
+            + "point: five is the feature, and one is why the two reads cannot be merged (covering "
+            + "\(coveringDays), day-key \(dayKeyDays))")
+    // Hoisted out of the assertion rather than awaited inside it: `&&`'s right operand is an
+    // `@autoclosure`, which cannot be `async`, so an `await` on either side of it is a compile error.
+    let beforeDayCount = ((try? await splitRepo.getWorkouts(covering: dayBefore)) ?? []).count
+    let afterDayCount = ((try? await splitRepo.getWorkouts(covering: dayAfter)) ?? []).count
+    assertTest(
+        beforeDayCount == 0 && afterDayCount == 0,
+        "…and the day before it started and the day after it ended are both empty from the covering "
+            + "read, so the extra rows are exactly the days it was underway on and not a wider net "
+            + "(before: \(beforeDayCount), after: \(afterDayCount))")
+
+    // The same property over the whole file, against the database the import actually wrote. The
+    // expected map is derived from the half-open rule stated independently — a day is covered when
+    // the fast had started before the day ended and had not ended before the day began — rather than
+    // by calling `covers(_:)`, so this compares the app's SQL against a reader's own statement of the
+    // rule instead of against itself.
+    var expectedCovering: [Date: Set<String>] = [:]
+    for row in rows {
+        var day = dayCalendar.startOfDay(for: row.startedAt)
+        let last = dayCalendar.startOfDay(for: row.endedAt)
+        while day <= last {
+            let nextDay = dayCalendar.date(byAdding: .day, value: 1, to: day) ?? day
+            if row.startedAt < nextDay && row.endedAt > day {
+                expectedCovering[day, default: []].insert(row.fastID)
+            }
+            day = nextDay
+        }
+    }
+    var coveringMismatches: [String] = []
+    for (day, expected) in expectedCovering {
+        let actual = Set(((try? await repository.getWorkouts(covering: day)) ?? []).map(\.id.uuidString))
+        if actual != expected {
+            coveringMismatches.append(
+                "\(day.startOfDay): got \(actual.count), expected \(expected.count)")
+        }
+    }
+    assertTest(
+        coveringMismatches.isEmpty,
+        "Over all 170 fasts and every day any of them touches (\(expectedCovering.count) days), the "
+            + "covering read returns exactly the fasts that were underway on that day — as a property "
+            + "rather than a pinned count, because how many days a fast spans and therefore how many "
+            + "day-appearances there are moves with the device's midnight (mismatches: "
+            + "\(coveringMismatches.sorted().prefix(5).joined(separator: "; ")))")
+    assertTest(
+        expectedCovering.values.reduce(0) { $0 + $1.count } > rows.count,
+        "…and those appearances outnumber the fasts, which is the whole of the change: "
+            + "\(expectedCovering.values.reduce(0) { $0 + $1.count }) day-appearances over "
+            + "\(rows.count) fasts, on \(expectedCovering.count) distinct days")
+
+    // The fit. `drawnWidth` is a bound from nominal character metrics rather than a measurement, so
+    // this proves the arithmetic leaves room and not that a label lands inside the row on a given OS.
+    assertTest(
+        FastingZonePill.widest == .deepKetosis,
+        "The widest label is `DEEP KETOSIS`, which is the one the fit below has to be made against — "
+            + "`widest` is computed so a longer label added later moves the assertion with it (got "
+            + "\(FastingZonePill.widest.rawValue))")
+    let pillWidth = FastingZonePill.drawnWidth(
+        of: FastingZonePill.widest, atPointSize: FastingZonePill.fontSize)
+    // The slot the pill draws in on the narrowest iPhone this app runs on. The device is 375pt wide,
+    // Home insets the card by 16 a side and the card insets its rows by 14, leaving a 315pt row. From
+    // that the leading chip takes `chipDiameter`, the `HStack(spacing: 12)` one gap, the
+    // `Spacer(minLength: 8)` its floor, and the two-line trailing time range an allowance of 90.
+    let pillSlot = CGFloat(375 - 32 - 28) - ActivityGlyph.chipDiameter - 12 - 8 - 90
+    assertTest(
+        pillWidth < pillSlot,
+        "The widest pill fits the slot the figure it replaces occupies, on the narrowest screen this "
+            + "app runs on — a label wider than its row is invisible to every build and to any "
+            + "screenshot of a different row, which is why the arithmetic is asserted rather than "
+            + "looked at (bound \(String(format: "%.1f", pillWidth))pt against a \(String(format: "%.1f", pillSlot))pt slot)")
+
+    // The baseline's third population. `window(for:in:)` is what selects the priors in the app, and
+    // these are handed in directly so the block is about `summary`'s own floors.
+    let threeFasts = [
+        session("Fast", strain: nil, durationSeconds: 15 * 3600),
+        session("Fast", strain: nil, durationSeconds: 16 * 3600),
+        session("Fast", strain: nil, durationSeconds: 17 * 3600),
+    ]
+    let fastSummary = ActivityBaseline.summary(
+        for: session("Fast", strain: nil, durationSeconds: 16 * 3600), priorSessions: threeFasts)
+    assertTest(
+        fastSummary.meanStrain == nil && fastSummary.strainSessionCount == 0,
+        "A window of ten fasts withholds the strain rather than reporting `0.0` — the fabricated "
+            + "figure `BaselineStatisticsMath.mean([])` would otherwise print, and exactly the claim "
+            + "*measured, and no strain at all* that a fast cannot make (mean "
+            + "\(fastSummary.meanStrain.map(String.init(describing:)) ?? "nil"))")
+    assertTest(
+        fastSummary.sessionCount == 3 && fastSummary.typicalDuration != nil,
+        "…while the window itself is still counted and still bands, so the page draws and only the "
+            + "**strain badge** is withheld — a session's duration and its strain are different "
+            + "populations and one being empty says nothing about the other (count "
+            + "\(fastSummary.sessionCount))")
+    assertTest(
+        fastSummary.meanSteps == nil && fastSummary.stepSessionCount == 0,
+        "…and the step mean is withheld for its own reason on the same card, which is what makes the "
+            + "two independent floors worth asserting apart rather than together")
+
+    let mixedPriors = threeFasts + [
+        session("Fast", strain: 6.0), session("Fast", strain: 7.0), session("Fast", strain: 8.0),
+        session("Fast", strain: nil), session("Fast", strain: nil), session("Fast", strain: nil),
+        session("Fast", strain: nil),
+    ]
+    let mixedSummary = ActivityBaseline.summary(for: fast, priorSessions: mixedPriors)
+    assertTest(
+        mixedSummary.meanStrain == 7.0 && mixedSummary.strainSessionCount == 3,
+        "Three measured seeds inside ten priors give the mean of the **three** — `7.0`, not the "
+            + "`2.1` an average over the whole window with `?? 0` produces, which is the diluted "
+            + "figure that would look like a plausible strain and be wrong by a factor of three "
+            + "(mean \(mixedSummary.meanStrain.map(String.init(describing:)) ?? "nil"), over "
+            + "\(mixedSummary.strainSessionCount))")
+    assertTest(
+        mixedSummary.sessionCount == 10,
+        "…and the count that names the window is still 10, so a fourth of the priors carrying a "
+            + "strain does not narrow what the card says it compared against — the same rule "
+            + "`stepSessionCount` already follows beside it (count \(mixedSummary.sessionCount))")
+
+    // The zone aggregate, which is the strain detail page's two HR ZONE rows. `aggregate` filters to
+    // the sessions carrying a block, so a fast beside a zoned row contributes nothing and does not
+    // turn the answer into a `0:00`.
+    let zoned = WorkoutSession(
+        startedAt: anchor, endedAt: anchor.addingTimeInterval(600),
+        strain: 4.0, averageHeartRate: 130, maxHeartRate: 170,
+        route: [], splits: [],
+        source: "whoop_export", activityName: "Basketball",
+        hrZonePercents: [10, 20, 30, 20, 10])
+    assertTest(
+        WorkoutZoneTime.aggregate([fast]) == nil,
+        "A day holding only a fast aggregates to `nil` rather than to `0:00` — `aggregate` filters to "
+            + "the sessions that carry a zone block and a fast carries none, so the absent answer is "
+            + "the one the reader already knows how to draw as a dash")
+    let aggregate = WorkoutZoneTime.aggregate([fast, zoned])
+    assertTest(
+        aggregate != nil && aggregate?.zone1to3Seconds == zoned.zone1to3Seconds
+            && aggregate?.zone4to5Seconds == zoned.zone4to5Seconds,
+        "…and a fast beside a zoned session aggregates to the zoned session's own two figures, "
+            + "neither diluted by the fast nor doubled by it — the pair `WorkoutZoneTime.aggregate` "
+            + "already filtered for and that `v18` gives a second chance to get wrong (got "
+            + "\(aggregate.map { "\($0.zone1to3Seconds)/\($0.zone4to5Seconds)" } ?? "nil") against "
+            + "\(zoned.zone1to3Seconds.map(String.init(describing:)) ?? "nil")/"
+            + "\(zoned.zone4to5Seconds.map(String.init(describing:)) ?? "nil"))")
 }
 
 /// One `MotionBatch` carrying `bumps` acceleration transients on the x axis.

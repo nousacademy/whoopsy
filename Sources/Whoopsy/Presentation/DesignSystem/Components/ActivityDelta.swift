@@ -136,14 +136,23 @@ public struct ActivityDeltaBadge: View {
 
     public var body: some View {
         if let delta {
-            HStack(spacing: 4) {
-                Image(systemName: delta.symbolName)
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(delta.color)
+            HStack(spacing: 6) {
+                // **The pill carries the movement and nothing else.** It is the badge's own surface,
+                // so what sits inside it is what the badge *is* — how far the figure moved — while the
+                // mean it moved against is context and stays outside on the page's background. That is
+                // also the reference's split: its capsule holds `▲ 2.5` and no more.
+                HStack(spacing: 4) {
+                    Image(systemName: delta.symbolName)
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(delta.color)
 
-                Text(delta.magnitudeText)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(delta.color)
+                    Text(delta.magnitudeText)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(delta.color)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Theme.deltaPillFill, in: Capsule())
 
                 if showsMean {
                     Text("vs \(delta.meanText)")

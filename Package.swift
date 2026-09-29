@@ -66,10 +66,27 @@ let package = Package(
             // through `Bundle.module` and resolves identically under `swift build`, the test runner,
             // and the app. `Bundle.main` never found these files and never would have: the app
             // target's resource phase is empty.
+            // **`fasts.json` is the Zero fasting tracker's history**, trimmed from the producer's own
+            // 599 KB `biodata.json` to the one key this app reads — every byte of the bundled file is
+            // read, where 92% of `biodata.json` is nineteen keys of data nothing here touches. It is
+            // the fourth input's only resource, and unlike the three CSVs its absence is an error
+            // rather than a shrug: `ZeroFastingImporter.importBundledFasts()` throws
+            // `ZeroFastingError.notBundled` for it, because this file *is* the import. The generation
+            // recipe and the `{"fast_data": []}` placeholder for a fresh clone are in `README.md`.
+            //
+            // The whole `Data/Resources/ZeroFasting/` directory is gitignored — it is a real person's
+            // fasting history — which is why the path sits inside it rather than beside the CSVs: the
+            // existing ignore line already covers this file, and a sibling at `Data/Resources/` would
+            // need a new one, whose absence commits that history.
+            //
+            // Declared here rather than in the Xcode project's resource phase, for the same reason as
+            // the CSVs above: `Bundle.module` resolves identically under `swift build`, the test
+            // runner, and the app, and `Bundle.main` would find none of them.
             resources: [
                 .process("Data/Resources/physiological_cycles.csv"),
                 .process("Data/Resources/sleeps.csv"),
                 .process("Data/Resources/workouts.csv"),
+                .process("Data/Resources/ZeroFasting/fasts.json"),
             ]
         ),
         .executableTarget(
@@ -84,7 +101,7 @@ let package = Package(
             //
             // So every Xcode-only source directory under `App/` needs a matching entry here, and this
             // is the list to extend rather than a one-off.
-            exclude: ["LiveActivity"]
+            exclude: ["LiveActivity", "Map"]
         )
     ]
 )

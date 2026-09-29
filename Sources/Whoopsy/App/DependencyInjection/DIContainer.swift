@@ -35,6 +35,10 @@ public final class DIContainer: @unchecked Sendable {
     public let preferencesRepository: any AppPreferencesRepository
     public let healthKitSync: any HealthKitSyncing
     public let whoopExportImport: any WhoopExportImporting
+    /// The Zero fasting tracker's history, as a fourth input. Its own slot rather than a second method
+    /// on `whoopExportImport` — different file, different format, different idempotence rule, and its
+    /// rows are the first ones in this app with no measurement behind them. See `FastingImporting`.
+    public let fastingImport: any FastingImporting
     /// Which model the user has said each strap is. Read by the BLE layer to resolve a generation and
     /// written by the device screen.
     public let strapModelRepository: any StrapModelRepository
@@ -58,6 +62,37 @@ public final class DIContainer: @unchecked Sendable {
     /// resource that has to be released.
     @MainActor public let liveActivityController: any LiveActivityControlling
 
+    /// The offline map, for the route card at the foot of the activity detail page.
+    ///
+    /// **Injected rather than built here, and this is the one service in this container where that is
+    /// true.** Every other capability is constructed in `init` because the package can name its type.
+    /// This one it cannot: the implementation is Mapbox, which cannot be a dependency of `Package.swift`
+    /// at all — it is an iOS-only binary artifact and this manifest also declares `.macOS(.v14)` for the
+    /// host executable and the test runner. So the SDK lives outside the package in `App/Map/`, and
+    /// `WhoopsyApp.init` is the only place in the app that can see it. See `OfflineMapServing` for the
+    /// whole of that argument.
+    ///
+    /// **The default is `UnavailableOfflineMaps`, and it is not a stub.** That type draws the same
+    /// `MapKit` card this page drew before the feature existed, so the host build, the runner, a preview
+    /// and any iOS build whose package failed to resolve all behave exactly as they did — a card that
+    /// needs a network, never a blank one.
+    ///
+    /// Stored as a `let` for `liveActivityController`'s reason rather than `locationTracking`'s former
+    /// one: a computed property would build a fresh tile-store client per read, and the instance that
+    /// started a download has to be the one that can report on it.
+    ///
+    /// **Typed as the drawing half**, so the one instance serves both callers: `LiveSessionUseCase`
+    /// takes it as `any OfflineMapServing` — the control surface, all `Domain` may see — and
+    /// `ActivityDetailViewModel` takes the same object as `any OfflineMapRendering`, which is what can
+    /// draw. One object, two views of it, and no second instance that could disagree about which tiles
+    /// are on disk.
+    ///
+    /// **It is injected into the view model, not read out of the environment.** An earlier version put
+    /// an `\.offlineMapService` environment value on this type as a second route to the same object;
+    /// that was removed, because a page that can be reached with the value absent and the object
+    /// present gives one screen two answers about whether the offline card is available.
+    @MainActor public let offlineMaps: any OfflineMapRendering
+
     /// The live session — **the app's only recording path**, and the reason it is held here rather than
     /// by a screen.
     ///
@@ -68,7 +103,13 @@ public final class DIContainer: @unchecked Sendable {
 
     private let useMockBLE: Bool
 
-    public init(useMockBLE: Bool = true) {
+    /// - Parameter offlineMaps: the offline map implementation, defaulting to the one that is honest
+    ///   for a build with no map SDK behind it. `WhoopsyApp` passes the real one on the branch where
+    ///   Mapbox was linked; see `offlineMaps` above for why it cannot be constructed here.
+    public init(
+        useMockBLE: Bool = true,
+        offlineMaps: any OfflineMapRendering = UnavailableOfflineMaps()
+    ) {
         self.useMockBLE = useMockBLE
         let db = LocalDatabaseManager.shared
         // Built before the BLE repository, which is handed it: the manager resolves a strap's
@@ -165,6 +206,10 @@ public final class DIContainer: @unchecked Sendable {
         // `StreamBiometricsUseCase` `HomeViewModel` does — the BLE streams are multicast, so a second
         // consumer is an addition and not a theft, and the first one is never orphaned.
         self.liveActivityController = LiveActivityController()
+        // Whatever the app target could build. Assigned here rather than at the property declaration
+        // because `liveSessionUseCase` below takes it, and a session that started a download has to
+        // hold the same instance the detail page later reads the region's state from.
+        self.offlineMaps = offlineMaps
         // Built here rather than per read, so the instance that starts the GPS is the one that stops
         // it — see the note on `locationTracking` above.
         self.locationTracking = useMockBLE
@@ -177,7 +222,19 @@ public final class DIContainer: @unchecked Sendable {
             userProfileRepository: userProfileRepository,
             // The session's own step reader. `TrackStepsUseCase` above is registered on the same
             // multicast `motionStream`, and both must hold it — see `LiveSessionUseCase`.
-            bleRepository: bleRepository
+            bleRepository: bleRepository,
+            // Where a running fast is kept across a relaunch. **Required rather than defaulted**, so a
+            // production path cannot quietly ship without one and lose the user's fast at the next
+            // launch — the failure would be a fast that silently vanished, which is worse than a
+            // compile error. `UserDefaults` for the reason `UserDefaultsStrapModelRepository` records:
+            // a shipped migration is frozen and a failing one `fatalError`s at launch, and one start
+            // instant is not worth a schema version.
+            activeFastRepository: UserDefaultsActiveFastRepository(),
+            // The offline map switch on the session screen. **Required rather than defaulted**, so a
+            // path that builds a session without one cannot quietly ship a switch that does nothing —
+            // the same argument `activeFastRepository` above records. Passed as the control half: the
+            // use case has no use for `map(route:unit:regionID:)`, which returns a `SwiftUI` view.
+            offlineMaps: offlineMaps
         )
         self.whoopExportImport = WhoopExportImporter(
             recoveryRepository: recoveryRepository,
@@ -186,5 +243,6 @@ public final class DIContainer: @unchecked Sendable {
             napRepository: napRepository,
             workoutRepository: workoutRepository,
             userProfileRepository: userProfileRepository)
+        self.fastingImport = ZeroFastingImporter(workoutRepository: workoutRepository)
     }
 }

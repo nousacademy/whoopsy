@@ -2,7 +2,16 @@ import SwiftUI
 
 public struct MainContainerView: View {
     private let container: DIContainer
-    public init(container: DIContainer = .preview) { self.container = container }
+    public init(container: DIContainer = .preview) {
+        self.container = container
+        // **The one live session that outlives the process is restored here**, in the initialiser
+        // rather than in the `.task` below, because that task runs a frame late — and a frame with no
+        // bar over a running fast is a lie about the state of the session. This is the earliest
+        // main-actor moment the use case is reachable; see `restoreFast()` for why the use case cannot
+        // do it for itself in its own `init`. Idempotent, so a re-created view is harmless, and it
+        // cannot resurrect a fast the user has ended, since ending one clears the store.
+        container.liveSessionUseCase.restoreFast()
+    }
     public var body: some View {
         TabView {
             HomeDashboardView(
@@ -59,12 +68,23 @@ public struct MainContainerView: View {
                 // tapped. Building it here keeps `MainContainerView` the only place a view model is
                 // constructed — the closure closes over `container` and nothing else, and the screen
                 // supplies the session.
-                makeActivityDetailViewModel: { session in
+                //
+                // **The second parameter is the running fast, or `nil`.** A live fast has no stored row
+                // to be handed, so Home projects one from the start instant it holds — and this closure
+                // is where the two say the same thing: the page is *about* a session either way, and the
+                // fast is the one thing that additionally knows it is still running. See
+                // `ActivityDetailViewModel.liveFast` for why the projection cannot carry that itself.
+                makeActivityDetailViewModel: { session, liveFast in
                     ActivityDetailViewModel(
                         session: session,
                         workoutRepository: container.workoutRepository,
                         userProfileRepository: container.userProfileRepository,
-                        biometricRepository: container.biometricRepository)
+                        biometricRepository: container.biometricRepository,
+                        recoveryRepository: container.recoveryRepository,
+                        // The route card's map. `UnavailableOfflineMaps` unless the app target linked
+                        // Mapbox — see `DIContainer.offlineMaps`, which carries the whole argument.
+                        offlineMaps: container.offlineMaps,
+                        liveFast: liveFast)
                 }
             )
             .tabItem { Label("Home", systemImage: "house.fill") }
@@ -146,6 +166,7 @@ private struct MoreView: View {
                             repository: container.preferencesRepository,
                             healthKit: container.healthKitSync,
                             whoopExport: container.whoopExportImport,
+                            fasting: container.fastingImport,
                             exportUseCase: container.exportLocalDataUseCase))
                 }
             }.navigationTitle("More")

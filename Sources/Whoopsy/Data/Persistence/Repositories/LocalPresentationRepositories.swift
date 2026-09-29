@@ -57,3 +57,44 @@ public final class UserDefaultsStrapModelRepository: StrapModelRepository, @unch
 
 // `HealthKitBridge` declares its own `HealthKitSyncing` conformance — it moved to `Data/Health/`
 // and now carries real query code, so it no longer needs a conforming extension declared here.
+
+/// The running fast, remembered in `UserDefaults` — one instant under one key.
+///
+/// **One `timeIntervalSince1970` and nothing else, because that is the whole of a fast.** It measures
+/// nothing, so there is no accumulator, no partial sum and no sample count that a relaunch would have
+/// to reconstruct; restoring the start instant restores the fast exactly as it was. This is the one
+/// live session that can be persisted *honestly*, and `ActiveFastRepository` carries the argument for
+/// why a run cannot be.
+///
+/// **`UserDefaults` rather than a GRDB table**, on `UserDefaultsStrapModelRepository`'s reasoning
+/// above: a shipped migration is frozen and a failing one `fatalError`s the app at launch, so a schema
+/// version is a permanent cost — and this is a piece of session state, not a measurement, so a table
+/// with a date key, indices and a repository protocol would buy nothing a key does not.
+///
+/// **In the same file as its siblings rather than a file of its own**, because the reason it is here
+/// is that this is where the repo already keeps its non-measured settings.
+///
+/// A missing key is `nil`, which is the honest "no fast": `double(forKey:)` answers `0` for a key that
+/// was never written, and a fast that started at the unix epoch would draw a bar counting since 1970.
+/// So the presence test is `object(forKey:)`, and it is the only subtlety here.
+public final class UserDefaultsActiveFastRepository: ActiveFastRepository, @unchecked Sendable {
+    private let defaults: UserDefaults
+    private let key = "org.whoopsy.activeFastStartedAt"
+
+    public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
+    public func load() -> ActiveFast? {
+        // `object(forKey:)` rather than `double(forKey:)`: the latter cannot tell an absent key from a
+        // stored `0`, and only one of those two is a fast.
+        guard defaults.object(forKey: key) != nil else { return nil }
+        return ActiveFast(startedAt: Date(timeIntervalSince1970: defaults.double(forKey: key)))
+    }
+
+    public func save(_ fast: ActiveFast) {
+        defaults.set(fast.startedAt.timeIntervalSince1970, forKey: key)
+    }
+
+    public func clear() {
+        defaults.removeObject(forKey: key)
+    }
+}

@@ -193,6 +193,25 @@ public struct ActivityHeartRateSeries: Equatable, Sendable {
         self.axis = ActivityHeartRateAxis.fit(points.map(\.bpm))
     }
 
+    /// The reading in force at an instant: the most recent measurement at or before it, or `nil` when the
+    /// instant precedes every sample.
+    ///
+    /// **Never interpolated**, and that is the whole rule. The edit sheet labels each trim handle with the
+    /// heart rate at that boundary, and a figure averaged between the two samples either side of the handle
+    /// would be a rate the strap never reported — the absence rule applied to a readout rather than to a
+    /// chart. A boundary landing between two notifications is answered with the earlier one, which is what
+    /// *"in force"* means: the value the session was running at until the next arrived.
+    ///
+    /// **`nil` before the first sample is the honest answer and not a gap.** A handle dragged to a point
+    /// earlier than anything measured sits in a window with no reading in it; carrying the first sample
+    /// backwards would extrapolate a measurement into time it does not cover, which is the same claim a
+    /// point plotted at the axis foot would make. It draws the dash an unmeasured session draws.
+    ///
+    /// `points` is sorted on the way in, so the last match is the latest one at or before the instant.
+    public func bpm(at instant: Date) -> Double? {
+        points.last { $0.time <= instant }?.bpm
+    }
+
     /// `points` split into consecutive runs.
     ///
     /// Internal rather than private so the suite can drive the split directly, which is the one rule
