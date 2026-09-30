@@ -50,11 +50,15 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 workoutRepository: container.workoutRepository,
                 stepRepository: container.stepRepository
             ),
-            deviceDetailViewModel: DeviceDetailViewModel(
+            deviceViewModel: DeviceViewModel(
                 manage: container.manageBLEConnectionUseCase,
+                sync: container.syncHistoricalDataUseCase,
+                preferencesRepository: container.preferencesRepository,
                 strapModels: container.strapModelRepository,
-                protocols: container.protocolCatalog
+                protocols: container.protocolCatalog,
+                biometrics: container.biometricRepository
             ),
+            profileViewModel: ProfileViewModel(repository: container.userProfileRepository),
             liveSessionUseCase: container.liveSessionUseCase,
             makeActivityDetailViewModel: { session, liveFast in
                 ActivityDetailViewModel(

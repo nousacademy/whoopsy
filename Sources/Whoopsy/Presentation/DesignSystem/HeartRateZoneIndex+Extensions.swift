@@ -8,12 +8,15 @@ import SwiftUI
 /// tab tiered it, and the coach message held its own green boundary. `HeartRateZoneIndex` cannot carry
 /// the property itself, because `Domain/` imports only `Foundation`, so the mapping lives here.
 ///
-/// **It has one reader, and that count has already moved once.** `HeartRateZoneBar` held this as a
+/// **It has one reader, and that count has now moved twice.** `HeartRateZoneBar` held this as a
 /// `private func colorForZone(_:)` while it was the only one and now reads it through here; the live
 /// session screen's zone card was briefly a second reader and is gone — its bar is a *position* scale
 /// over band edges rather than a share of the session, so it has no segment to fill and no legend dot
-/// to colour. A sixth zone, or a screen that wants "a slightly different zone 4", goes through this
-/// file or not at all.
+/// to colour. **That one remaining reader is now unrendered itself**, since the Strain tab was deleted
+/// and nothing else draws `HeartRateZoneBar`, so this mapping currently reaches no screen — a state
+/// this file's own rule does not mind, because the rule is about *one* definition rather than about
+/// having a caller. A sixth zone, or a screen that wants "a slightly different zone 4", goes through
+/// this file or not at all.
 ///
 /// The five colours are the recovery tokens in zone order, which is the ramp the tab's zone bar has
 /// always drawn: zone 1 is a neutral grey rather than a fourth semantic colour, because it is the

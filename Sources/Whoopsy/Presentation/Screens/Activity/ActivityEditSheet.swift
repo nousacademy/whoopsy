@@ -119,8 +119,9 @@ public struct ActivityEditSheet: View {
             // this its frame would be the content's width and the colour would paint a centred column.
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.backgroundDark)
-            // `.inlineNavigationTitle()` and not the modifier, on `DeviceDetailView`'s rule: the
-            // modifier is unavailable on macOS and this file is compiled into the host build too.
+            // `.inlineNavigationTitle()` and not the modifier, on the rule that helper's own file
+            // states: the modifier is unavailable on macOS and this file is compiled into the host
+            // build too.
             .inlineNavigationTitle()
             // **`.cancellationAction` and not `.topBarLeading`.** They draw in the same place on iOS,
             // and only the first exists on macOS — so this toolbar needs no `#if os(iOS)` guard at all,

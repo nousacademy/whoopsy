@@ -839,6 +839,8 @@ source was unreachable, the row says so rather than being reconstructed from mem
 * **US 19/561,023 and US 19/554,044** were surfaced as titles and dates only — neither register carries
   an abstract.
 
-A re-run of any of the blocked sources needs a different network path. The working data from the sweep
-is on disk at `/tmp/whoop_us_inventory.json` (90 records with abstracts, IPC and normalised inventors)
-and `/tmp/gp_p0.json` (the Google Patents page including non-US family members).
+A re-run of any of the blocked sources needs a different network path. The sweep's working data — 90
+records with abstracts, IPC and normalised inventors, plus the Google Patents page carrying non-US
+family members — was written to scratch files outside this repo and **is not retained**, so the
+findings above stand on this file's prose alone. Nothing in the tree reproduces them, and regenerating
+them means re-running the sweep.

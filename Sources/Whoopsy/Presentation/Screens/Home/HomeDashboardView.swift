@@ -112,13 +112,29 @@ public struct HomeDashboardView: View {
         let fast: ActiveFast
     }
 
-    /// Home's own device page, reached from the badge in the top bar.
+    /// The device page, reached from the badge in the top bar.
     ///
-    /// Built here rather than inside the badge's destination for the same reason every other screen's
-    /// view model is built in `MainContainerView`: a `NavigationLink` destination is re-evaluated on
-    /// each push, and a view model constructed in its closure would be a fresh one every time —
-    /// losing the device subscription each push and starting another.
-    private let deviceDetailViewModel: DeviceDetailViewModel
+    /// **It is the same instance More → Device pushes**, built once in `MainContainerView.init` and
+    /// handed to both. That is a change rather than a detail: the badge used to push a page of its own
+    /// (`DeviceDetailView`) with its own view model, while More pushed a second page
+    /// (`DeviceSettingsView`) with a second one — and the two came to disagree about the same strap's
+    /// battery, one gating the reading and the other printing `device?.batteryPercentage ?? 0`. One
+    /// page with one subject is the fix, and it is why this is a stored `let` built up front rather
+    /// than a destination-side construction: a `NavigationLink` destination is re-evaluated on each
+    /// push, and a view model constructed in its closure would lose the device subscription each push
+    /// and start another.
+    private let deviceViewModel: DeviceViewModel
+
+    /// The profile page, reached from the control at the leading end of `topBar`.
+    ///
+    /// **This control is the page's only door.** `MoreView`'s list carried a `Profile` row until the
+    /// user removed it. That does not make the view model a destination-side construction: it is built
+    /// once in `MainContainerView.init` and handed down, which is what `deviceViewModel` above does and
+    /// what the wiring rule requires — `MainContainerView` is the only place a screen's view model is
+    /// built. A `NavigationLink` destination is re-evaluated on each push, so one constructed in its
+    /// closure would be a fresh subject per push: a form that had loaded the stored profile would be
+    /// re-read underneath the reader, and an unsaved edit would go with it.
+    private let profileViewModel: ProfileViewModel
 
     /// The live session, owned by the app rather than by this screen.
     ///
@@ -163,7 +179,7 @@ public struct HomeDashboardView: View {
     /// closure exists to keep: it is constructed there out of `DIContainer` and handed down, exactly as
     /// the three `@State` view models above are. What this screen supplies is the session.
     ///
-    /// **A fresh instance per push is correct here, and `deviceDetailViewModel`'s warning does not
+    /// **A fresh instance per push is correct here, and `deviceViewModel`'s warning does not
     /// apply.** That comment is about a view model holding a stream subscription, which a second
     /// construction would silently re-open; `ActivityDetailViewModel` holds only repositories and does
     /// its one read in the destination's `.task`, so a per-push instance re-reads the history — which
@@ -181,7 +197,8 @@ public struct HomeDashboardView: View {
         recoveryViewModel: RecoveryViewModel,
         sleepViewModel: SleepViewModel,
         strainViewModel: StrainViewModel,
-        deviceDetailViewModel: DeviceDetailViewModel,
+        deviceViewModel: DeviceViewModel,
+        profileViewModel: ProfileViewModel,
         liveSessionUseCase: LiveSessionUseCase,
         makeActivityDetailViewModel: @escaping (WorkoutSession, ActiveFast?) -> ActivityDetailViewModel
     ) {
@@ -189,7 +206,8 @@ public struct HomeDashboardView: View {
         _recoveryViewModel = State(initialValue: recoveryViewModel)
         _sleepViewModel = State(initialValue: sleepViewModel)
         _strainViewModel = State(initialValue: strainViewModel)
-        self.deviceDetailViewModel = deviceDetailViewModel
+        self.deviceViewModel = deviceViewModel
+        self.profileViewModel = profileViewModel
         self.liveSessionUseCase = liveSessionUseCase
         self.makeActivityDetailViewModel = makeActivityDetailViewModel
     }
@@ -705,6 +723,19 @@ public struct HomeDashboardView: View {
 
     private var topBar: some View {
         HStack(spacing: 10) {
+            // The row's three elements answer three different questions, and the order is the shape of
+            // that: the reader on the left, the day in the middle, the hardware on the right.
+            //
+            // **It is the profile page's only route**, since the user removed More's `Profile` row —
+            // so this is the one control to check when the page seems unreachable. It reads off the
+            // view model built in `MainContainerView`, which is the same arrangement the badge at the
+            // other end of this row has; the two are mirrors rather than copies of each other.
+            NavigationLink {
+                ProfileDashboardView(viewModel: profileViewModel)
+            } label: {
+                profileButton
+            }
+            .buttonStyle(.plain)
             // The only `DayNavigationBar` call site that passes `onTitleTap`. Strain and Sleep keep
             // the plain label, because this is the only screen with a calendar to open — and
             // Recovery no longer draws the bar at all.
@@ -715,8 +746,11 @@ public struct HomeDashboardView: View {
             // about the strap rather than about the day, and the page behind it is where the model is
             // chosen. Home already owns the `NavigationStack` at the root of this body, so this is a
             // link rather than another navigation container.
+            //
+            // **It opens the same page More → Device opens**, off the one view model built in
+            // `MainContainerView`. It used to push a second screen of its own; the two are one now.
             NavigationLink {
-                DeviceDetailView(viewModel: deviceDetailViewModel)
+                DeviceSettingsView(viewModel: deviceViewModel)
             } label: {
                 statusBadge
             }
@@ -724,25 +758,80 @@ public struct HomeDashboardView: View {
         }
     }
 
-    /// The strap's connection state and battery percentage.
+    /// The way into the profile: one glyph on a `Theme.homeCard` disc, drawn as the strap badge at the
+    /// other end of the row is drawn.
     ///
-    /// The percentage is a dash unless the strap is *connected*. `WhoopBLEManager` writes a literal
-    /// `100` at discovery and `WhoopDevice` defaults to `100`, so a disconnected strap would
-    /// otherwise show a confident fabricated "100%" — the exact failure the dash convention exists to
-    /// prevent. The glyph carries the state honestly in that case instead, in the same colour the dot
-    /// used to: the colour is the state, the shape is the affordance.
+    /// **A circle where the badge is a capsule, and the difference is what each holds rather than a
+    /// style choice.** The badge carries a glyph *and* a battery figure, so it has to grow sideways;
+    /// this carries a glyph alone, and a circle is the shape that does not leave a slot looking empty.
+    /// The `36` is the badge's own height — its 12 pt line and its 11 pt of vertical padding — so the
+    /// row's two ends sit level rather than nearly level, which is the kind of difference that reads as
+    /// a mistake without being one you can point at.
+    ///
+    /// **`person.crop.circle` and not `person.fill`.** This app has no avatar and no photograph of
+    /// anybody: `user_profiles` holds three numbers and a name nothing draws, and the page behind this
+    /// control is a form for two heart rates and a weight. A filled glyph would be a silhouette of a
+    /// person the app has never seen, where the cropped circle is the shape every platform already uses
+    /// for "your account". **Checked against the SDK's own `name_availability.plist` rather than
+    /// assumed**: it resolves to `2019` → iOS 13.0, well under this app's 17.0 target, which is the
+    /// check `ActivityGlyph`'s doc demands of every new symbol because a wrong name here draws an empty
+    /// circle rather than raising anything.
+    ///
+    /// **No chevron**, for the reason the badge's own comment gives: a control that looks tappable and
+    /// is not reads as broken, and one that *is* tappable does not need an arrow to say so — the hint
+    /// below is what makes the destination reachable without sight of it.
+    private var profileButton: some View {
+        Image(systemName: "person.crop.circle")
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(Theme.textPrimary)
+            .frame(width: 36, height: 36)
+            .background(Theme.homeCard)
+            .clipShape(Circle())
+            // The symbol's own name is what VoiceOver would otherwise read — `person.crop.circle`,
+            // which is a description of the drawing and not of where it goes.
+            .accessibilityLabel(Text("Profile"))
+            .accessibilityHint(Text("Opens your weight and heart-rate settings"))
+    }
+
+    /// The strap's link state, as a dot, and its battery reading.
+    ///
+    /// **Nothing is drawn where a reading would go when there is none, and that is a correction the
+    /// user made rather than a preference.** The slot held `ActivityFigure.dash` in that state, and
+    /// the user read the dash as a battery *bar* — measured, it draws 9.7 × 1.3 pt of white at this
+    /// type size, which is a bar's proportions and nothing like a dash's. `WhoopBLEManager` writes a
+    /// literal `100` at discovery and `WhoopDevice` defaults to `100`, so that slot is also the only
+    /// thing standing between a disconnected strap and a confident fabricated `100%`; with it left
+    /// empty there is nothing to misread and nothing to fill.
+    ///
+    /// The gate is `WhoopDevice.batteryReading`, which is the same `.connected` test
+    /// `DeviceSettingsView.batteryText(for:)` applies. The two screens draw the absent case
+    /// differently — a labelled row in a `Form` needs the dash, a glyph-and-figure badge needs an
+    /// empty slot — and neither may disagree about *when* there is no reading.
+    ///
+    /// **The dot answers a different question from the figure, and is deliberately not keyed on the
+    /// same state.** It reads `WhoopConnectionState.linkColor`, so it is green for `.connected` *and*
+    /// `.syncing` — a strap draining its history is a strap this app is talking to — while the figure
+    /// needs `.connected` alone. The two part company on a strap the app can address whose battery it
+    /// has not been told, and that state draws a green dot beside no figure, which is the honest
+    /// picture of it rather than a blank. `.syncing` is unreachable in this build either way.
     private var statusBadge: some View {
         HStack(spacing: 6) {
-            Image(systemName: "sensor.tag.radiowaves.forward.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(connectionColor)
-            Text(batteryText)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
-                .monospacedDigit()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Theme.textMuted)
+            // The mark and the dot's placement are `StrapGlyph`'s, which is also what the device page's
+            // header draws — so one glyph and one corner rule serve both screens. What stays here is
+            // what this badge alone decides: **which colour** the dot is (`linkState.linkColor`, the
+            // `isLinked` rule) and **how big** it is, because the badge is read at 12 pt against a
+            // 7 pt dot and the device page badges a 13 pt plus on a 22 pt mark.
+            StrapGlyph(size: 12, surface: Theme.homeCard) {
+                Circle()
+                    .fill(linkState.linkColor)
+                    .frame(width: 7, height: 7)
+            }
+            if let reading = viewModel.device?.batteryReading {
+                Text(reading)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .monospacedDigit()
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
@@ -751,23 +840,24 @@ public struct HomeDashboardView: View {
         // The label describes the strap and the hint says what opening it is for, rather than the
         // link inheriting the label of the `HStack` inside it — which would announce a battery
         // percentage as a button with no indication of where it leads.
+        //
+        // **The hint is now the only signal that this is a control**, and that is the user's own
+        // instruction: the `chevron.right` that used to trail the badge is gone, so nothing on the
+        // badge looks tappable. The hint is what makes the destination reachable without sight of it,
+        // which is the same rule that keeps a chevron off a row that leads nowhere — see
+        // `ActivityDetailView`, where the inert `•••` was the incident.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(connectionLabel)
         .accessibilityHint(Text("Opens strap details and model selection"))
     }
 
-    private var batteryText: String {
-        guard let device = viewModel.device, device.connectionState == .connected else { return "—" }
-        return "\(device.batteryPercentage)%"
-    }
-
-    private var connectionColor: Color {
-        switch viewModel.device?.connectionState {
-        case .connected: return Theme.recoveryGreen
-        case .scanning, .connecting, .syncing: return Theme.recoveryYellow
-        case .disconnected, .error: return Theme.textMuted
-        case nil: return Theme.textMuted
-        }
+    /// The strap's state, with no strap object at all read as `.disconnected` — which is what it is,
+    /// and the substitution `DeviceSettingsView.hero` makes at its own call site.
+    ///
+    /// The finer six-way state is not lost by collapsing it to two colours here: `connectionLabel`
+    /// below still names it, so VoiceOver hears `Syncing strap history` where the dot is only green.
+    private var linkState: WhoopConnectionState {
+        viewModel.device?.connectionState ?? .disconnected
     }
 
     private var connectionLabel: String {
@@ -799,6 +889,19 @@ public struct HomeDashboardView: View {
                 })
     }
 
+    /// The night's page, and **one definition of it for the two places on this screen that open it**:
+    /// the sleep ring and the `SLEEP` row on the `ACTIVITIES` card. The user's rule is that the two are
+    /// the same page — *"the sleep ring will link to same page that sleep shows on activity sleep
+    /// tile"* — so they are one expression rather than two literals that happen to agree today, and a
+    /// change to what that page is cannot reach one call site and miss the other.
+    ///
+    /// It takes the day this screen is showing, exactly as the two rings beside it do, so tapping an
+    /// 87% ring — or that night's row — opens the night whose figure was on screen and not today's.
+    /// `RecoveryDetailView`'s own comment is where that reasoning lives; this is the same shape.
+    private var sleepDetail: some View {
+        SleepDetailView(viewModel: sleepViewModel, date: selectedDate)
+    }
+
     /// The three rings. The collapsed header draws the same row small, which is why every dimension
     /// is a parameter rather than a literal — two copies of the three `progress` expressions is how
     /// the header's arcs would come to disagree with the rings they replaced.
@@ -809,11 +912,12 @@ public struct HomeDashboardView: View {
     private func ringRow(size: CGFloat, lineWidth: CGFloat, compact: Bool = false) -> some View {
         HStack(spacing: compact ? 18 : 6) {
             // The sleep ring pushes `SleepDetailView` on the day Home is showing, exactly as the
-            // recovery ring below pushes its own. `buttonStyle(.plain)` is load-bearing here for the
-            // same reason: the default styles tint the label and add a hit shape, which would
+            // recovery ring below pushes its own — and off `sleepDetail`, which is the same page the
+            // `SLEEP` row on the `ACTIVITIES` card opens. `buttonStyle(.plain)` is load-bearing here
+            // for the same reason: the default styles tint the label and add a hit shape, which would
             // recolour the arc itself.
             NavigationLink {
-                SleepDetailView(viewModel: sleepViewModel, date: selectedDate)
+                sleepDetail
             } label: {
                 ring(
                     value: sleepValue, label: "Sleep", progress: sleepProgress,
@@ -1017,20 +1121,42 @@ public struct HomeDashboardView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 8)
             } else {
+                // **The `SLEEP` row is a `NavigationLink` to the night's page, and it was inert.**
+                // The user's instruction is that it and the sleep ring open the same page, so both
+                // read `sleepDetail` — see it for why that is one expression. A `NavigationLink`
+                // rather than the `Button` the rows below use, because those set `presentedActivity`
+                // only so that the page's bottom-anchored `•••` menu can have the tab bar out of the
+                // way; `SleepDetailView` has no such control, so it is an ordinary pushed page like
+                // the three rings' detail pages — and it is the rings' own shape, two hundred lines up.
+                //
+                // A sleep row has no workout behind it, which is why the helper itself is still not
+                // wrapped: `activityRow` is shared, and a sleep row's subject is a `SleepSession`.
+                // The link therefore goes around this one call, where the night is in hand.
+                //
+                // `.buttonStyle(.plain)` for the rings' reason: the default styles tint the label and
+                // add a hit shape, which would recolour the moon chip and the duration beside it.
                 if let sleep = viewModel.sleep {
-                    activityRow(
-                        glyph: .single("moon.fill"),
-                        tint: Theme.sleepPerformance,
-                        value: sleep.totalTimeAsleepSeconds.formattedCompactHoursMinutes(),
-                        label: "SLEEP",
-                        startedAt: sleep.startTime,
-                        endedAt: sleep.endTime)
+                    NavigationLink {
+                        sleepDetail
+                    } label: {
+                        activityRow(
+                            glyph: .single("moon.fill"),
+                            tint: Theme.sleepPerformance,
+                            value: sleep.totalTimeAsleepSeconds.formattedCompactHoursMinutes(),
+                            label: "SLEEP",
+                            startedAt: sleep.startTime,
+                            endedAt: sleep.endTime)
+                    }
+                    .buttonStyle(.plain)
+                    // A hint only, on the rings' rule: an explicit `accessibilityLabel` here would
+                    // *replace* the composed one and drop the night's duration out of the
+                    // announcement.
+                    .accessibilityHint("Opens this night's sleep statistics")
                 }
 
-                // **The `ForEach` is wrapped and the helper is not.** `activityRow` above draws the
-                // `SLEEP` row as well, and a sleep row has no workout behind it — wrapping the helper
-                // would give it a destination that does not exist. So the button goes here, around the
-                // rows that do have one, and the `SLEEP` row above stays inert.
+                // **The `ForEach` is wrapped and the helper is not.** The rows that have a workout
+                // behind them are buttons; the `SLEEP` row above is a link, for the reason its own
+                // comment gives. Neither wraps `activityRow`, which is shared between them.
                 //
                 // A `Button` setting `presentedActivity` rather than a `NavigationLink`, because the
                 // destination is declared from that flag so the tab bar can be hidden on it — see the

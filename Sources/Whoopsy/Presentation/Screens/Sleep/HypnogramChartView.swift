@@ -1,5 +1,16 @@
 import SwiftUI
 
+/// **Unrendered since the Sleep tab was deleted, and it is the third of three in that state.**
+///
+/// Its last caller was `SleepDashboardView`, one of the two dashboard files the user asked to go. It
+/// is kept for `MetricCardView`'s reason and not on the `ActivityDurationBar` precedent — the runner
+/// asserts nothing about it, so deleting it would drop no guarantee, and what keeps it here is that
+/// the sweep went out on two *pages* while this is a chart component. It is worth knowing that **the
+/// app still has no other hypnogram**: `v12` stores a timeline for a strap night, but the export
+/// reports stage totals and no timeline, so no night this app can show has segments for this view to
+/// draw. If a screen wants one, this is the only implementation and it needs no change. Several other
+/// shapes' doc comments name it as the house exemplar of the hand-rolled-`Shape` style, and those
+/// sentences stay true, but do not read them as evidence that something draws it.
 public struct HypnogramChartView: View {
     public let stages: [SleepStageSegment]
     public init(stages: [SleepStageSegment]) { self.stages = stages }

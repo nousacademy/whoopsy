@@ -30,10 +30,12 @@ ios:
 	DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 	  xcodebuild -project Whoopsy.xcodeproj -scheme WhoopsyApp \
 	  -destination 'generic/platform=iOS' \
-	  -derivedDataPath /tmp/whoopsy-dd \
+	  -derivedDataPath $(CURDIR)/tmp/build/whoopsy-dd \
 	  CODE_SIGNING_ALLOWED=NO build
 
 verify: build test ios
 
+# Build output lives under the repo's own `tmp/build/` so nothing is written outside the tree;
+# it is gitignored, and `tmp/README.md` says what the folder is for.
 clean:
-	rm -rf /tmp/whoopsy-verify /tmp/whoopsy-dd
+	rm -rf $(CURDIR)/tmp/build

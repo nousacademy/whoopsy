@@ -528,7 +528,8 @@ key needs are arithmetic on the range and deliberately not new constants — `>6
 labels as "the same number" would ship.
 
 `RecoveryMetric.state` forwards to the initialiser, and a caller holding a bare score —
-`GenerateCoachInsightsUseCase`'s green/not-green message — goes through it too rather than comparing
+`GenerateCoachInsightsUseCase`'s green/not-green message, which has had no screen since its page was
+deleted and is kept as documented dead code — goes through it too rather than comparing
 against `67` itself. `RecoveryState.color` (in `Presentation/DesignSystem/`) is the only place a
 tier becomes a colour: the Recovery tab's gauge, HRV card and trend chart, Home's recovery ring, and
 each day of the month calendar's grid all read through it.

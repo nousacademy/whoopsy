@@ -25,7 +25,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     //
     // That was not hypothetical. `liveTelemetryStream` is read by `StreamBiometricsUseCase`, driven
     // from `HomeViewModel.load(for:)`; `deviceStream` is read by `HomeViewModel.observeDevice()`,
-    // `DeviceViewModel.load()` and `DeviceDetailViewModel`; and `motionStream` by
+    // `DeviceViewModel.load()`; and `motionStream` by
     // `TrackStepsUseCase`. In each case the later subscriber was the only one still receiving.
     //
     // **The counts are per-stream and they move.** They fell by one when the workout HUD was deleted,

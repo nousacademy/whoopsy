@@ -35,7 +35,7 @@ public final class GRDBStrainRepository: StrainRepository, Sendable {
 
     /// `rawAccumulatedLoad` and `zones` have no columns and never did, so they come back at their
     /// defaults. That is honest for the load figure, but it means a `StrainScore` read from disk
-    /// knows nothing about heart-rate zones — see `StrainDashboardView`, which must say so rather
+    /// knows nothing about heart-rate zones — see `StrainDetailView`, which must say so rather
     /// than render a stand-in.
     private static func makeScore(from record: StrainRecord) -> StrainScore {
         StrainScore(

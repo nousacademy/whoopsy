@@ -79,8 +79,8 @@ public struct LiveSessionView: View {
         // type. Home's line is the one that works, and this will silently do nothing without it.
         .hidingTabBar(true)
         .navigationTitle("Activity")
-        // `DeviceDetailView`'s helper, not a second `#if` — `navigationBarTitleDisplayMode` is
-        // unavailable on macOS and this page is compiled for both.
+        // The shared helper, not a second `#if` — `navigationBarTitleDisplayMode` is unavailable on
+        // macOS and this page is compiled for both.
         .inlineNavigationTitle()
         // Idempotent: `start()` returns immediately while a session is running, which is what makes
         // this safe to run on every appearance — the reader backing out and returning must not begin

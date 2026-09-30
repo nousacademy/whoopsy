@@ -71,7 +71,7 @@ the standard `180D`, so all three straps are at least discoverable.
 **This is the largest single difference between the generations, and this codebase implements both
 envelopes — and only one of them on the write side.** Which one it uses for a given strap is a stored
 choice rather than a guess: the device screen
-(`Presentation/Screens/Device/DeviceDetailView.swift`) records the model per peripheral identifier,
+(`Presentation/Screens/Device/DeviceSettingsView.swift`) records the model per peripheral identifier,
 and `WhoopProtocolProfile.profile(for:)` turns that into an envelope — or into `nil` for the standard
 strap and the simulator, which every command writer refuses. The 5.0 and MG profiles *are* built, and
 a frame arriving under either validates in `WhoopPacketDecoder` exactly as a 4.0 one does; what they
@@ -454,7 +454,7 @@ rather than the same one twice. The 4.0's is unvalidatedness alone. The 5.0's ha
 specific blocker: its command characteristic needs an authenticated SMP bond, which noop reports
 **macOS CoreBluetooth cannot complete** — and **nothing establishes that iOS can**, since no project
 demonstrates a third-party iOS app bonding a WHOOP and the one reported iOS success reuses the bond
-the official WHOOP app already made. `DeviceDetailViewModel.protocolCaveat` carries both sentences;
+the official WHOOP app already made. `DeviceViewModel.protocolCaveat` carries both sentences;
 §7 Q6 carries the whole of the open question, and **it stays open rather than softened into a
 permission**. Reading a 5.0 and writing to one became the same shape of capability in this build; what
 has never happened is either of them against a strap.

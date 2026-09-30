@@ -20,7 +20,9 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-scratch="${WHOOPSY_SCRATCH:-/tmp/whoopsy-verify}"
+# Under the repo's own `tmp/` rather than the machine's `/tmp`, and gitignored — see
+# `tmp/README.md`. `WHOOPSY_SCRATCH` still overrides it.
+scratch="${WHOOPSY_SCRATCH:-$repo_root/tmp/build/verify}"
 runner="$scratch/WhoopsyTestRunner"
 
 # **Absolute, and that is load-bearing.** `#filePath` in the runner is whatever path is handed to

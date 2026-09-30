@@ -30,3 +30,18 @@ Sources/Whoopsy/Data/Resources/ZeroFasting
 # The SECRET token (`sk.…`, `Downloads:Read`) must never be written here either —
 # it is a build-time credential for SwiftPM and lives in `~/.netrc` only.
 App/Config/Mapbox.local.xcconfig
+
+# Testing scratch — never commit. `tmp/` is where everything produced *while testing* goes,
+# so that nothing is written outside the repo and nothing local reaches a commit:
+#
+#   tmp/screenshots/  simulator captures taken while verifying a change
+#   tmp/scratch/      one-off probe sources and build logs
+#   tmp/backups/      simulator-container SQLite copies
+#   tmp/build/        build output — SwiftPM's scratch path (`scripts/test.sh`) and Xcode's
+#                     derived data (`make ios`). Pure output; `make clean` removes it.
+#
+# The pattern is `/tmp/*` and not `/tmp/`, deliberately. Excluding the directory itself
+# stops git descending into it, and the tracked README below it could then never be
+# re-included — the rule is "you cannot un-ignore a file whose parent directory is ignored".
+/tmp/*
+!/tmp/README.md

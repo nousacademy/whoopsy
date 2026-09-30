@@ -1,5 +1,14 @@
 import SwiftUI
 
+/// **Unrendered since the Strain and Sleep tabs were deleted, and kept rather than removed.**
+///
+/// Its only two callers were `StrainDashboardView` and `SleepDashboardView`, the files the user asked
+/// to go. It is deliberately *not* on the `ActivityDurationBar` precedent, which exists because
+/// deleting such a type would drop passing assertions — **this type has no assertion in the runner and
+/// none anywhere else**, so the suite does not protect it and its presence here is a choice rather
+/// than a consequence. The choice is that the sweep went out on two *pages* and this is a shared
+/// design-system component, not one: a screen that wants it can draw it unchanged, and nothing about
+/// it depends on the two dashboards having existed.
 public struct MetricCardView: View {
     public let title: String
     public let value: String

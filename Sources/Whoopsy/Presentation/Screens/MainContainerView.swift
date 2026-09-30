@@ -2,8 +2,48 @@ import SwiftUI
 
 public struct MainContainerView: View {
     private let container: DIContainer
+
+    /// The device page's view model, built here and handed to Home's status badge.
+    ///
+    /// **It is a stored `let` and not a computed property, and that is a correctness requirement
+    /// rather than a preference.** `MainContainerView.body` is a `ViewBuilder` and re-evaluates, so a
+    /// computed one would build a fresh instance on every pass while `HomeDashboardView` holds it as a
+    /// plain `let` — whose `.task` fires once and would never re-fire, leaving the badge blank and the
+    /// device subscription attached to an object nothing draws. Building it in `init` is legal because
+    /// `View` is `@MainActor`-isolated and this `init` already is — the `restoreFast()` call below is
+    /// the proof, being a main-actor method that compiles here.
+    ///
+    /// **It had two routes and now has one**, since the user removed More's `Device` row. That is why
+    /// it is stored rather than built at the destination: the two routes were two pages with two view
+    /// models once, and they came to disagree about the same strap's battery. One page with one subject
+    /// is the fix, and a `NavigationLink` closure is re-evaluated on every push, so a destination-side
+    /// construction would still be a per-push instance.
+    private let deviceViewModel: DeviceViewModel
+
+    /// The profile page's view model, built here because Home's top bar is the page's only door.
+    ///
+    /// **It had a second door and that door is gone**, on the user's instruction: `MoreView`'s `List`
+    /// no longer carries a `Profile` row. The view model is still built here rather than at the
+    /// destination for the two reasons that survive that removal. `MainContainerView` is the only place
+    /// a screen's view model is built, so constructing a `ProfileViewModel` inside the `NavigationLink`
+    /// closure would put one construction outside the wiring point; and a destination closure is
+    /// re-evaluated on every push, so the page would get a fresh instance per push and lose whatever it
+    /// had loaded — the shape `deviceViewModel` is stored to avoid.
+    ///
+    /// It is a stored `let` rather than a computed property for `deviceViewModel`'s reason: `body` is a
+    /// `ViewBuilder` and re-evaluates, so a computed one would be rebuilt on every pass.
+    private let profileViewModel: ProfileViewModel
+
     public init(container: DIContainer = .preview) {
         self.container = container
+        self.profileViewModel = ProfileViewModel(repository: container.userProfileRepository)
+        self.deviceViewModel = DeviceViewModel(
+            manage: container.manageBLEConnectionUseCase,
+            sync: container.syncHistoricalDataUseCase,
+            preferencesRepository: container.preferencesRepository,
+            strapModels: container.strapModelRepository,
+            protocols: container.protocolCatalog,
+            biometrics: container.biometricRepository)
         // **The one live session that outlives the process is restored here**, in the initialiser
         // rather than in the `.task` below, because that task runs a frame late — and a frame with no
         // bar over a running fast is a lie about the state of the session. This is the earliest
@@ -47,14 +87,14 @@ public struct MainContainerView: View {
                     repository: container.strainRepository,
                     workoutRepository: container.workoutRepository,
                     stepRepository: container.stepRepository),
-                // Built here rather than inside the badge's `NavigationLink` destination: that
-                // closure is re-evaluated on each push, so a view model constructed in it would be a
-                // fresh one every time — losing the device subscription each push and starting
-                // another.
-                deviceDetailViewModel: DeviceDetailViewModel(
-                    manage: container.manageBLEConnectionUseCase,
-                    strapModels: container.strapModelRepository,
-                    protocols: container.protocolCatalog),
+                // The one device view model, built in `init` above and shared with More → Device, so
+                // pushing the page from either route reaches the same instance. See its declaration
+                // for why it is stored rather than computed.
+                deviceViewModel: deviceViewModel,
+                // The one profile view model, built in `init` above and shared with More → Profile, so
+                // the top bar's control and that row open one page with one subject. See its
+                // declaration for why it is stored rather than constructed at either destination.
+                profileViewModel: profileViewModel,
                 // The app's one live session, handed down rather than built here: it has to outlive
                 // every screen that draws it, so it is the container's and this passes the reference
                 // through. See `LiveSessionUseCase`.
@@ -88,28 +128,22 @@ public struct MainContainerView: View {
                 }
             )
             .tabItem { Label("Home", systemImage: "house.fill") }
-            StrainDashboardView(
-                viewModel: StrainViewModel(
-                    calculate: container.calculateStrainUseCase,
-                    repository: container.strainRepository,
-                    workoutRepository: container.workoutRepository,
-                    stepRepository: container.stepRepository)
-            ).tabItem { Label("Strain", systemImage: "flame.fill") }
-            SleepDashboardView(
-                viewModel: SleepViewModel(
-                    analyze: container.analyzeSleepUseCase,
-                    repository: container.sleepRepository,
-                    napRepository: container.napRepository,
-                    biometricRepository: container.biometricRepository,
-                    analyzeSleepStress: container.analyzeSleepStressUseCase)
-            ).tabItem { Label("Sleep", systemImage: "moon.fill") }
+            // The Strain and Sleep tabs are gone, on the user's instruction. **Their pages went with
+            // them and their view models did not**: `StrainViewModel` and `SleepViewModel` are still
+            // built for the detail pages Home's own rings push, and the two `StrainDashboardView` /
+            // `SleepDashboardView` files are deleted. Nothing either dashboard held was assertable —
+            // both were a single `struct` whose rules lived in `private var`s — so the suite's
+            // assertion count is unmoved by their removal, which is the one thing no renderer could
+            // have told us.
             RecoveryDashboardView(
                 viewModel: RecoveryViewModel(
                     calculate: container.calculateRecoveryUseCase,
                     repository: container.recoveryRepository,
                     sleepRepository: container.sleepRepository)
             ).tabItem { Label("Recovery", systemImage: "waveform.path.ecg") }
-            MoreView(container: container).tabItem { Label("More", systemImage: "ellipsis.circle") }
+            MoreView(container: container)
+
+            .tabItem { Label("More", systemImage: "ellipsis.circle") }
         }.tint(Theme.livePulseCyan).preferredColorScheme(.dark)
         // The strap's step counter, started once for the life of the app.
         //
@@ -138,28 +172,22 @@ public struct MainContainerView: View {
 
 private struct MoreView: View {
     let container: DIContainer
+
     var body: some View {
         NavigationStack {
             List {
-                NavigationLink("Coach") {
-                    CoachDashboardView(
-                        viewModel: CoachViewModel(
-                            generate: container.generateCoachInsightsUseCase,
-                            recovery: container.calculateRecoveryUseCase,
-                            strain: container.calculateStrainUseCase,
-                            sleep: container.analyzeSleepUseCase))
-                }
-                NavigationLink("Device") {
-                    DeviceSettingsView(
-                        viewModel: DeviceViewModel(
-                            manage: container.manageBLEConnectionUseCase,
-                            sync: container.syncHistoricalDataUseCase,
-                            preferencesRepository: container.preferencesRepository))
-                }
-                NavigationLink("Profile") {
-                    ProfileDashboardView(
-                        viewModel: ProfileViewModel(repository: container.userProfileRepository))
-                }
+                // **This list held four rows and now holds one, on the user's instruction given a row
+                // at a time: Profile, then Device, then Coach.** Do not restore any of the three as a
+                // convenience, and do not read their absence as an oversight:
+                //
+                // - **Profile** is reached from Home's day-bar row, and only from there now.
+                // - **Device** is reached from Home's status badge, and only from there now — it was
+                //   the row whose inline construction taught this file why a view model is passed to a
+                //   destination rather than built inside its closure, and that lesson outlived the row.
+                // - **Coach** went with its page, which is deleted.
+                //
+                // The one rule this list still has to keep: `Settings` is here and nowhere else, so a
+                // new row added above it needs its own door or it is a page nothing can reach.
                 NavigationLink("Settings") {
                     SettingsDashboardView(
                         viewModel: SettingsViewModel(

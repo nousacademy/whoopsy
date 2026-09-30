@@ -1,6 +1,14 @@
 import SwiftUI
 
 /// Visual representation of time distribution across the 5 Heart Rate Zones.
+///
+/// **Unrendered since the Strain and Sleep tabs were deleted.** Its last caller was
+/// `StrainDashboardView`, which the user asked to go, so nothing in the app draws it now. It is kept
+/// for `MetricCardView`'s reason rather than on the `ActivityDurationBar` precedent — the runner holds
+/// no assertion about it, so deleting it would drop nothing, and the only argument for leaving it is
+/// that the sweep went out on two pages and this is a shared component. Note `SleepBandBar`'s doc
+/// comment above still names this type as one half of the *distribution* pair it contrasts itself
+/// against, and that sentence is still true of the drawing even though no screen draws it.
 public struct HeartRateZoneBar: View {
     public let zones: [HeartRateZone]
 

@@ -5,8 +5,14 @@ import SwiftUI
 /// It is `RecoveryDetailView`'s counterpart and follows it deliberately: the day is handed in as a
 /// plain `let`, there is no stepper and no calendar, `viewModel.load(for:)` runs in a `.task`, and the
 /// page is a ring over a breakdown over a key. Like that screen it owns no `NavigationStack` of its
-/// own, because it is pushed rather than presented: Home's sleep ring is its only entry point, and
-/// that push happens inside Home's own stack.
+/// own, because it is pushed rather than presented: Home is its only entry point, and that push
+/// happens inside Home's own stack.
+///
+/// **Two things on Home open this page, and they are one expression rather than two that agree
+/// today.** The sleep ring and the `SLEEP` row on the `ACTIVITIES` card both read
+/// `HomeDashboardView.sleepDetail` — the user's rule is that the two are the same page
+/// (*"the sleep ring will link to same page that sleep shows on activity sleep tile"*) — so what
+/// that page is cannot be changed for one call site and missed at the other.
 ///
 /// **It is the sleep *performance* page, and the reference calls it that.** The ring prints
 /// `sleepPerformancePercentage` — asleep over need — which is exactly the figure Home's sleep ring

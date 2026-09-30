@@ -6,6 +6,22 @@ public final class SaveWorkoutUseCase: Sendable {
     public func execute(_ workout: WorkoutSession) async throws { try await repository.save(workout) }
 }
 
+/// **Unrendered: its only reader was `CoachDashboardView`, which the user deleted.**
+///
+/// Kept rather than deleted for the reason this repo keeps unrendered things — but note the reason
+/// does *not* fully apply here, and the difference is worth stating. `ActivityDurationBar` and
+/// `batteryText(for:)` are kept because the runner holds assertions about them and this suite has no
+/// test discovery, so deleting one drops passing assertions with a falling `assertions=` count as the
+/// only trace. **The runner asserts nothing about this type or about `CoachInsight`** — verified by
+/// `grep -c Coach Tests/WhoopsyTestRunner/main.swift` returning `0` — so it could be deleted with no
+/// loss. It survives because removing Domain machinery is a wider change than the one the user asked
+/// for (*"remove 'coach' link from 'more' and associated page"* names a link and a page), and because
+/// `RecoveryMetric`'s own doc comment still cites this type by name as the incident that produced the
+/// one-definition rule for the recovery tiers.
+///
+/// **Nothing constructs it but `DIContainer`, so this is dead code and should be read as such.** If a
+/// later change wants the Coach feature back, this and `CoachInsight` are the whole of its logic; if it
+/// does not, deleting both plus the container's `let` is a clean removal.
 public final class GenerateCoachInsightsUseCase: Sendable {
     public init() {}
     public func execute(recovery: RecoveryMetric?, strain: StrainScore?, sleep: SleepSession?) -> [CoachInsight] {

@@ -2,13 +2,13 @@ import SwiftUI
 
 /// One day's strain, drawn as the ring alone, with no navigation container of its own.
 ///
-/// **It is not the Strain tab.** The tab is `StrainDashboardView` — a separate screen with its own
-/// `NavigationStack`, a day stepper, an average/peak heart-rate pair, the zone breakdown and a
-/// target-strain slider. This page is reached from Home's strain ring and is pushed onto the stack
-/// Home already owns. The two share no definition, which is the arrangement
-/// `SleepDetailView`/`SleepDashboardView` already established, and it is the one that lets the tab
-/// keep its four other elements: folding them in here would have meant deleting them, and the
-/// Recovery tab is the only screen in this app where the tab and the push *are* one view.
+/// **It used to be one of two strain screens, and it is now the only one.** The Strain tab —
+/// `StrainDashboardView`, a separate screen with its own `NavigationStack`, a day stepper, an
+/// average/peak heart-rate pair, the zone breakdown and a target-strain slider — was deleted on the
+/// user's instruction, along with the Sleep tab beside it. This page is reached from Home's strain
+/// ring and is pushed onto the stack Home already owns, and **that is now the only route to a day's
+/// strain.** The four elements the tab carried are gone with it rather than folded in here;
+/// `StrainViewModel` survives because this page is built on it.
 ///
 /// **The shape is `RecoveryDetailView`'s**, because the push route is the same. No `NavigationStack`
 /// — the pushing screen supplies the chrome. The day is a plain `let` rather than `@State`: nothing
@@ -88,9 +88,10 @@ public struct StrainDetailView: View {
 
     // MARK: - The day's figures
     //
-    // These four are `StrainDashboardView`'s rules restated, not a second opinion about them: the two
-    // screens are deliberately separate definitions (see above), and the difference between them is
-    // the ring's colour and nothing else. A change to one is a change to both.
+    // These four were `StrainDashboardView`'s rules too, and **they are now the only copy**: the tab
+    // that held the second one is deleted, so what was "a change to one is a change to both" is just
+    // this. The rules themselves are unmoved — a day with no row is a dash, and an unmeasured row is
+    // not a zoneless one.
 
     /// A day the strap recorded nothing for stores no row at all, so `nil` is the ordinary case — but
     /// `hasMeasurement` is the gate regardless, because rows written by an older build hold `0.0` with
