@@ -1,6 +1,15 @@
 .DS_Store
 /ios/.build
 /Packages
+
+# Build output — never commit. The root `build/` is stale Xcode `Debug-iphoneos` output:
+# precompiled modules, a target graph, an 873 KB build-task store. Nothing reads it —
+# `make ios` writes to `tmp/build/whoopsy-dd`, `scripts/test.sh` builds into
+# `tmp/build/verify`, and the host loop uses `/ios/.build` above — so it is output that
+# was being tracked by accident. Root-anchored, like the two lines above, so a future
+# `ios/build` or a `backend/build` is not silently swallowed along with it.
+/build
+
 xcuserdata/
 DerivedData/
 .swiftpm/configuration/registries.json
@@ -12,17 +21,32 @@ Design/
 # Health data — never commit. These are a real person's physiological record:
 # recovery, HRV, skin temperature, blood oxygen, sleep staging, and 550 free-text
 # journal notes. Paired with timestamps and a timezone they are de-anonymising.
-# `physiological_cycles.csv` is also the app's bundled import resource, so a fresh
-# clone will not build until you supply one — your own export, or a header-only
-# placeholder. Recipe in README.md §Building.
+#
+# `ios/Package.swift` bundles **four** files out of `Resources/` — the three CSVs this
+# pattern matches, and `ZeroFasting/fasts.json` below — and `Resources/` holds no
+# tracked file at all, so a fresh clone has no such directory and **will not build**
+# until the four exist. `scripts/create-data-files.sh` writes placeholder versions of
+# exactly those four and cannot overwrite a file that holds data; README.md §Building
+# is the narrative version. Recipe lives there and in that script, not here — a second
+# copy drifts, and the drift would be a header column quietly missing.
+#
 # The directory is named for the producer, because the CSVs in it came from WHOOP —
 # `ZeroFasting/` beside it is the same arrangement for a different app's export. The
 # pattern names the subdirectory and not `**`, deliberately: a bare `*.csv` under
 # `Resources/` would also swallow a future resource that is not health data.
-ios/Sources/Whoopsy/Data/Resources/Whoop/*.csv
+# It matches `journal_entries.csv` as well, and that is intentional rather than
+# incidental: that file is the one CSV here that is *not* bundled and is read by
+# nothing — no `WhoopExportFile` case, no import button — so it is health data to keep
+# out of git, not a file the build wants. Do not narrow the pattern around it.
+ios/Sources/Whoopsy/Data/Resources/Whoop/*
 
-# Zero Fasting Data
-ios/Sources/Whoopsy/Data/Resources/ZeroFasting
+# Zero Fasting — never commit, and the whole directory rather than `*.json`: what is in
+# here is one fasting app's export, seven files deep, and every one of them is the same
+# person's record. `biodata.json` (599 KB across 19 top-level keys) is the source; this
+# app reads `fast_data` alone, projected down to `fasts.json` (46 KB) — the fourth
+# resource `Package.swift` bundles, and the one `scripts/create-data-files.sh` writes
+# here as `{"fast_data": []}`.
+ios/Sources/Whoopsy/Data/Resources/ZeroFasting/*
 
 # Mapbox credentials — never commit.
 # `Mapbox.local.xcconfig` holds the PUBLIC (`pk.…`) access token, which is the only

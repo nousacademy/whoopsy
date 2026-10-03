@@ -168,43 +168,49 @@ and both are **gitignored.** What lived in `Whoop/` was one real person's physio
 recovery score, HRV, resting heart rate, skin temperature, blood oxygen, sleep staging, and free-text
 journal notes — and it is not published. `ZeroFasting/` is ignored for the same reason and holds a
 fasting tracker's history rather than a WHOOP export. **A fresh clone will not compile until you put
-three files back.**
+four files back** — every `.process(…)` entry in `Package.swift` is a build input, and a missing one
+fails the build with `couldn't build … because of missing inputs`, not merely a warning.
 
 | File | Needed? |
 | :--- | :--- |
-| `Whoop/physiological_cycles.csv` | **Required to build.** `Package.swift` bundles it and `WhoopExportImporter` reads it through `Bundle.module`. Without it: `Invalid Resource … File not found` |
+| `Whoop/physiological_cycles.csv` | **Required to build.** `Package.swift` bundles it and `WhoopExportImporter` reads it through `Bundle.module` |
 | `Whoop/sleeps.csv` | **Required to build**, for the same reason — it is the second `.process(…)` entry. Read only for the **eight nap rows** it carries and nothing else |
-| `ZeroFasting/fasts.json` | **Required to build.** The third `.process(…)` entry, read by `ZeroFastingParser` through `Bundle.module` for the 170 fasts it carries. A placeholder of `{"fast_data": []}` is enough to compile and imports nothing |
-| `Whoop/workouts.csv` | Not required to build. `Package.swift` does bundle it, and §17/§19 of the suite read it for its `HR Zone 1 %`…`5 %` block and its `Activity name` column, so the two zone rows and the activity-name path can only be exercised against a real one |
+| `Whoop/workouts.csv` | **Required to build**, for the same reason — the third `.process(…)` entry, and it is a build input like any other. §17/§19 of the suite also read it for its `HR Zone 1 %`…`5 %` block and its `Activity name` column, so the two zone rows and the activity-name path can only be exercised against a real one |
+| `ZeroFasting/fasts.json` | **Required to build.** The fourth `.process(…)` entry, read by `ZeroFastingParser` through `Bundle.module` for the 170 fasts it carries. A placeholder of `{"fast_data": []}` is enough to compile and imports nothing |
 | `Whoop/journal_entries.csv` | Not needed. Nothing bundles it and nothing reads it |
 
-Both required files are validated as they are read, so a wrong-shaped one fails loudly instead of
+The three CSVs are validated as they are read, so a wrong-shaped one fails loudly instead of
 importing a table of nils. The cycle file must carry `Cycle start time`, `Cycle timezone` and
 `Wake onset`; the sleep file must carry those three **plus `Nap`**, and that column is the load-bearing
 one — it is what tells the two files apart, so pointing the nap parser at the cycle file throws
 `missingColumns(["Nap"])` rather than reading it, finding no naps, and reporting a clean import of
-nothing.
+nothing. The workout file must carry `Cycle start time`, `Cycle timezone`, `Workout start time` and
+`Workout end time`.
 
-**If you have a WHOOP export**, drop its `physiological_cycles.csv` and `sleeps.csv` into
-`ios/Sources/Whoopsy/Data/Resources/Whoop/` and the app will import your own history.
+**If you have a WHOOP export**, drop **all three** of its CSVs — `physiological_cycles.csv`,
+`sleeps.csv` and `workouts.csv` — into `ios/Sources/Whoopsy/Data/Resources/Whoop/`. Each has its own
+import button under **Profile › LOGS › Whoop**, and the build needs all three whether or not you press
+them.
 
-**If you don't**, header-only placeholders are enough to compile — this is verified, not assumed —
-and the importer will honestly report zero days rather than inventing any:
+**If you don't**, run the script. It writes a placeholder for each of the four files
+`Package.swift` declares as resources — and nothing else — from that producer's own header row:
 
 ```bash
-mkdir -p ios/Sources/Whoopsy/Data/Resources/Whoop
-
-cat > ios/Sources/Whoopsy/Data/Resources/Whoop/physiological_cycles.csv <<'CSV'
-Cycle start time,Cycle end time,Cycle timezone,Recovery score %,Resting heart rate (bpm),Heart rate variability (ms),Skin temp (celsius),Blood oxygen %,Day Strain,Energy burned (cal),Max HR (bpm),Average HR (bpm),Sleep onset,Wake onset,Sleep performance %,Respiratory rate (rpm),Asleep duration (min),In bed duration (min),Light sleep duration (min),Deep (SWS) duration (min),REM duration (min),Awake duration (min),Sleep need (min),Sleep debt (min),Sleep efficiency %,Sleep consistency %
-CSV
-
-cat > ios/Sources/Whoopsy/Data/Resources/Whoop/sleeps.csv <<'CSV'
-Cycle start time,Cycle timezone,Wake onset,Nap
-CSV
-
-mkdir -p ios/Sources/Whoopsy/Data/Resources/ZeroFasting
-echo '{"fast_data": []}' > ios/Sources/Whoopsy/Data/Resources/ZeroFasting/fasts.json
+scripts/create-data-files.sh          # create what is missing, leave the rest alone
+scripts/create-data-files.sh --check  # report all four, write nothing
 ```
+
+The placeholders are enough to compile — **verified, not assumed**: a tree holding only the four
+placeholders builds with `swift build` and no `Invalid Resource` warning, and the importer then
+honestly reports zero days rather than inventing any. They do **not** make the test suite pass, and
+should not: `make test` drives the real export, so §11, §13, §14, §15, §17 and §20 assert that file's
+own figures (673 workouts, 910 nights, 170 fasts). Run the suite against a real export.
+
+**It will not overwrite an export.** A file holding rows is reported and left byte-for-byte alone,
+whatever flags it is given — the record is the only copy and the script is built so it cannot be the
+thing that loses it. To replace one deliberately, move it aside yourself first. `journal_entries.csv`
+is deliberately not created: it is the fourth CSV on disk and the only one nothing bundles or reads.
+`.claude/skills/create-data-files/` carries the whole argument.
 
 **If you use the [Zero](https://zerolongevity.com) fasting tracker**, its own export is a
 `biodata.json` of 19 top-level keys, of which this app reads exactly one. Project it down rather
@@ -218,7 +224,7 @@ python3 -c "import json;d=json.load(open('ios/Sources/Whoopsy/Data/Resources/Zer
 
 The projection is faithful rather than a re-encoding: every value in `fast_data` is a string, a bool
 or an int, and the key keeps its own name, so the file the app reads is a subset of the producer's
-bytes. Drop it in and **Profile › DATA › Zero Fasting › IMPORT FASTING HISTORY** turns the 170
+bytes. Drop it in and **Profile › LOGS › Zero Fasting › IMPORT FASTING HISTORY** turns the 170
 fasts into activities on Home.
 
 ### Optional: the offline map
