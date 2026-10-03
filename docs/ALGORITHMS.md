@@ -9,8 +9,7 @@ app cannot verify. The **WHOOP strap** supplies high-frequency telemetry over BL
 intervals, accelerometer, skin temperature, SpO2) **and the step count** (§7), which is accumulated
 from that accelerometer rather than read from HealthKit. **Apple HealthKit** supplies daily
 aggregates: SDNN, resting heart rate and staged sleep — and neither a VO₂ max nor a step total,
-because this app does not ask to read either. A **WHOOP data export**, imported once through
-Settings, supplies three years of the same daily aggregates WHOOP itself computed (HRV, resting
+because this app does not ask to read either. A **WHOOP data export**, imported once through the profile page's `LOGS` pane, supplies three years of the same daily aggregates WHOOP itself computed (HRV, resting
 heart rate, SpO2, skin temperature, respiratory rate, sleep stage totals) — plus WHOOP's own
 finished Recovery and Strain scores. Which source can feed which model is a real constraint, not a
 preference — §2, §4, §5 and §7 state where it binds, and §1 and §3 state what the export does and
@@ -106,7 +105,7 @@ instead and every z-score either side would be computed between two different di
 
 **What would falsify it**, and how to check: a strap night's own RMSSD should be the same order of
 magnitude as the imported values for the same period. If strap RMSSD comes out at roughly twice the
-imported figure, the export is not RMSSD and the constant above is wrong. `Tests/WhoopsyTestRunner`
+imported figure, the export is not RMSSD and the constant above is wrong. `ios/Tests/WhoopsyTestRunner`
 §11 pins the imported distribution; the strap side of the comparison needs a device.
 
 ### One HealthKit path not taken
@@ -1620,7 +1619,7 @@ Monitor's tile is a dash: `biometric_samples` holds no rows in any database here
 carries no R-R series at all, so all 910 imported nights have none permanently. It is also unreachable
 for a *new* user with a strap, because a score is a z-score and a z-score needs the three-night floor —
 unlike §4's typical-range card, which still draws shares on a thin window, there is nothing here to
-draw below it. `Tests/WhoopsyTestRunner` §15 drives the use case against synthetic tachograms for
+draw below it. `ios/Tests/WhoopsyTestRunner` §15 drives the use case against synthetic tachograms for
 exactly this reason, which is §4's RSA-block shape and carries its caveat: the assertions are the
 model's plumbing and its rules, and **nothing in them is evidence that a real strap's beats produce a
 meaningful figure.**

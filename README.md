@@ -12,6 +12,12 @@ stores everything in a local SQLite file, and works out Recovery, Strain and Sle
 no `URLSession`, no HTTP client, no server. `Package.swift` declares exactly one dependency,
 GRDB.swift, and it is a SQLite library.
 
+**The repository does now contain a `backend/`, and it changes none of that.** It is the folder a
+future sync will be built in: a Cloudflare Worker skeleton with declared bindings, no routes, and an
+entry point whose every response is `501 Not Implemented`. Nothing under `ios/` reaches it, it has
+never been deployed, and it is not a service this app talks to — read it as a stated intention rather
+than as infrastructure. The sentence above is about the app that ships.
+
 **One exception, and it is opt-in and off until you configure it.** The route card's offline map hands
 its tile requests to Mapbox's SDK — a third-party binary the *Xcode target* links, because it is
 iOS-only and this package also builds for macOS, so `Package.swift` could not carry it. It is off at
@@ -63,7 +69,7 @@ strap.** Being specific about that is more useful than a feature list:
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-a 1706-assertion test runner that pins the behaviour of all of them.
+a 1803-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -123,25 +129,54 @@ file and `CLAUDE.md` are the only two left at the repo root.
 
 ---
 
+## Repository layout
+
+Whoopsy is a monorepo with three parts, and only one of them is an app.
+
+```
+whoopsy/
+├── ios/              the app — one SwiftPM package plus Whoopsy.xcodeproj
+│   ├── Sources/      Whoopsy/ (the four layers) and WhoopsyLiveActivityKit/
+│   ├── App/          Xcode-only sources: iOS/, Map/, LiveActivity/, Config/
+│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 1803-assertion suite
+├── backend/          a Cloudflare Worker (Hono · D1 · R2) — scaffolded, not implemented
+├── shared/           openapi.json, the contract the two will agree on
+├── docs/             the specs
+└── Makefile  scripts/  tmp/  CLAUDE.md  README.md
+```
+
+**Everything the app is lives under `ios/`, and every command in this file is run from the repo
+root.** `ios/` is a single SwiftPM package: `Package.swift` and `Whoopsy.xcodeproj` sit side by side
+there, the project consuming the package product, and every path *inside* either of them is package-
+or project-relative. That is why the app could move under `ios/` without a single source file
+changing — and why the paths below carry the prefix while the ones inside the package do not.
+
+**`backend/` holds no behaviour on purpose** — the note at the top of this file says why. It exists so
+that the sync's shape is settled before its first route is written.
+
+---
+
 ## Building
 
 Requires Xcode 16+ and Swift 6.
 
+
 ### First: create the data files, or nothing will build
 
-`Sources/Whoopsy/Data/Resources/*.csv` is **gitignored.** What lived there was one real person's
-physiological record — recovery score, HRV, resting heart rate, skin temperature, blood oxygen, sleep
-staging, and free-text journal notes — and it is not published. **A fresh clone will not compile
-until you put two files back.** `Sources/Whoopsy/Data/Resources/ZeroFasting/` is gitignored for the
-same reason and holds a third, which is a fasting tracker's history rather than a WHOOP export.
+`ios/Sources/Whoopsy/Data/Resources/` holds **two producer directories**, one per app a file came out of,
+and both are **gitignored.** What lived in `Whoop/` was one real person's physiological record —
+recovery score, HRV, resting heart rate, skin temperature, blood oxygen, sleep staging, and free-text
+journal notes — and it is not published. `ZeroFasting/` is ignored for the same reason and holds a
+fasting tracker's history rather than a WHOOP export. **A fresh clone will not compile until you put
+three files back.**
 
 | File | Needed? |
 | :--- | :--- |
-| `physiological_cycles.csv` | **Required to build.** `Package.swift` bundles it and `WhoopExportImporter` reads it through `Bundle.module`. Without it: `Invalid Resource … File not found` |
-| `sleeps.csv` | **Required to build**, for the same reason — it is the second `.process(…)` entry. Read only for the **eight nap rows** it carries and nothing else |
+| `Whoop/physiological_cycles.csv` | **Required to build.** `Package.swift` bundles it and `WhoopExportImporter` reads it through `Bundle.module`. Without it: `Invalid Resource … File not found` |
+| `Whoop/sleeps.csv` | **Required to build**, for the same reason — it is the second `.process(…)` entry. Read only for the **eight nap rows** it carries and nothing else |
 | `ZeroFasting/fasts.json` | **Required to build.** The third `.process(…)` entry, read by `ZeroFastingParser` through `Bundle.module` for the 170 fasts it carries. A placeholder of `{"fast_data": []}` is enough to compile and imports nothing |
-| `workouts.csv` | Not required to build. `Package.swift` does bundle it, and §17/§19 of the suite read it for its `HR Zone 1 %`…`5 %` block and its `Activity name` column, so the two zone rows and the activity-name path can only be exercised against a real one |
-| `journal_entries.csv` | Not needed. Nothing bundles it and nothing reads it |
+| `Whoop/workouts.csv` | Not required to build. `Package.swift` does bundle it, and §17/§19 of the suite read it for its `HR Zone 1 %`…`5 %` block and its `Activity name` column, so the two zone rows and the activity-name path can only be exercised against a real one |
+| `Whoop/journal_entries.csv` | Not needed. Nothing bundles it and nothing reads it |
 
 Both required files are validated as they are read, so a wrong-shaped one fails loudly instead of
 importing a table of nils. The cycle file must carry `Cycle start time`, `Cycle timezone` and
@@ -151,22 +186,24 @@ one — it is what tells the two files apart, so pointing the nap parser at the 
 nothing.
 
 **If you have a WHOOP export**, drop its `physiological_cycles.csv` and `sleeps.csv` into
-`Sources/Whoopsy/Data/Resources/` and the app will import your own history.
+`ios/Sources/Whoopsy/Data/Resources/Whoop/` and the app will import your own history.
 
 **If you don't**, header-only placeholders are enough to compile — this is verified, not assumed —
 and the importer will honestly report zero days rather than inventing any:
 
 ```bash
-cat > Sources/Whoopsy/Data/Resources/physiological_cycles.csv <<'CSV'
+mkdir -p ios/Sources/Whoopsy/Data/Resources/Whoop
+
+cat > ios/Sources/Whoopsy/Data/Resources/Whoop/physiological_cycles.csv <<'CSV'
 Cycle start time,Cycle end time,Cycle timezone,Recovery score %,Resting heart rate (bpm),Heart rate variability (ms),Skin temp (celsius),Blood oxygen %,Day Strain,Energy burned (cal),Max HR (bpm),Average HR (bpm),Sleep onset,Wake onset,Sleep performance %,Respiratory rate (rpm),Asleep duration (min),In bed duration (min),Light sleep duration (min),Deep (SWS) duration (min),REM duration (min),Awake duration (min),Sleep need (min),Sleep debt (min),Sleep efficiency %,Sleep consistency %
 CSV
 
-cat > Sources/Whoopsy/Data/Resources/sleeps.csv <<'CSV'
+cat > ios/Sources/Whoopsy/Data/Resources/Whoop/sleeps.csv <<'CSV'
 Cycle start time,Cycle timezone,Wake onset,Nap
 CSV
 
-mkdir -p Sources/Whoopsy/Data/Resources/ZeroFasting
-echo '{"fast_data": []}' > Sources/Whoopsy/Data/Resources/ZeroFasting/fasts.json
+mkdir -p ios/Sources/Whoopsy/Data/Resources/ZeroFasting
+echo '{"fast_data": []}' > ios/Sources/Whoopsy/Data/Resources/ZeroFasting/fasts.json
 ```
 
 **If you use the [Zero](https://zerolongevity.com) fasting tracker**, its own export is a
@@ -176,13 +213,13 @@ the source is 599 KB and 92% of it is data nothing here consumes (`rhr_data` alo
 reserved-zero resting rate):
 
 ```bash
-python3 -c "import json;d=json.load(open('Sources/Whoopsy/Data/Resources/ZeroFasting/biodata.json'));open('Sources/Whoopsy/Data/Resources/ZeroFasting/fasts.json','w').write(json.dumps({'fast_data':d['fast_data']},indent=4))"
+python3 -c "import json;d=json.load(open('ios/Sources/Whoopsy/Data/Resources/ZeroFasting/biodata.json'));open('ios/Sources/Whoopsy/Data/Resources/ZeroFasting/fasts.json','w').write(json.dumps({'fast_data':d['fast_data']},indent=4))"
 ```
 
 The projection is faithful rather than a re-encoding: every value in `fast_data` is a string, a bool
 or an int, and the key keeps its own name, so the file the app reads is a subset of the producer's
-bytes. Drop it in and **Settings › Local backup › Import Zero fasting history** turns the 170 fasts
-into activities on Home.
+bytes. Drop it in and **Profile › DATA › Zero Fasting › IMPORT FASTING HISTORY** turns the 170
+fasts into activities on Home.
 
 ### Optional: the offline map
 
@@ -196,11 +233,11 @@ records exactly as before and the card draws `MapKit`'s live tiles.
 
 | Token | Scope | Where it goes | Why |
 | :--- | :--- | :--- | :--- |
-| **Public** `pk.…` | none | `App/Config/Mapbox.local.xcconfig` — **gitignored** | Expands into `MBXAccessToken` in `Info.plist` at build time. Kept out of the repository; a clone copies the example and pastes its own |
+| **Public** `pk.…` | none | `ios/App/Config/Mapbox.local.xcconfig` — **gitignored** | Expands into `MBXAccessToken` in `Info.plist` at build time. Kept out of the repository; a clone copies the example and pastes its own |
 | **Secret** `sk.…` | `Downloads:Read` | `~/.netrc` | Needed for SwiftPM to *resolve* the binary package at all — a build credential, not a runtime one |
 
 Neither is in this repository, and the public one is deliberately untracked even though Mapbox's model
-treats it as embeddable. The *key* it feeds — `MBXAccessToken` — stays in `App/iOS/Info.plist`, because
+treats it as embeddable. The *key* it feeds — `MBXAccessToken` — stays in `ios/App/iOS/Info.plist`, because
 that is Mapbox's own documented mechanism and the one read path `MapboxSetup` has; only its value
 changes.
 
@@ -222,17 +259,17 @@ rather than an authorisation one** — that is the first thing to check if `make
 Then the public one:
 
 ```bash
-cp App/Config/Mapbox.local.xcconfig.example App/Config/Mapbox.local.xcconfig
+cp ios/App/Config/Mapbox.local.xcconfig.example ios/App/Config/Mapbox.local.xcconfig
 # edit it and set: MBX_ACCESS_TOKEN = pk.YOUR_PUBLIC_TOKEN
 ```
 
-`App/Config/Mapbox.local.xcconfig` is where the token goes and it is gitignored, so it is never
+`ios/App/Config/Mapbox.local.xcconfig` is where the token goes and it is gitignored, so it is never
 committed; `.example` is tracked purely so a clone knows what to create. With both credentials in
 place the switch appears; with either missing the app is exactly what it was before the feature, with
 no crash and no half-configured SDK.
 
 **The token is in the second of two xcconfig files, and which one is committed is the whole trick.**
-`App/Config/Mapbox.xcconfig` is **tracked** and carries no token — it sets `MBX_ACCESS_TOKEN` empty and
+`ios/App/Config/Mapbox.xcconfig` is **tracked** and carries no token — it sets `MBX_ACCESS_TOKEN` empty and
 then ends with `#include? "Mapbox.local.xcconfig"`, the *optional* include, which pulls in your file
 when it exists and is silently skipped when it does not. Because an xcconfig assignment is
 last-one-wins, the include coming last is what lets your token override the empty default.
@@ -242,7 +279,7 @@ is the app target's `baseConfigurationReference` on both Debug and Release, and 
 hard build failure, not a warning:
 
 ```
-Whoopsy.xcodeproj: error: Unable to open base configuration reference file '…/App/Config/Mapbox.xcconfig'
+ios/Whoopsy.xcodeproj: error: Unable to open base configuration reference file '…/ios/App/Config/Mapbox.xcconfig'
 ```
 
 If the file holding the token were the base configuration, every fresh clone would be unbuildable.
@@ -256,7 +293,7 @@ default cannot: a secret `sk.…` token pasted into the wrong file, or a placeho
 instead of their own token. Either way the SDK is skipped rather than half-configured, so no secret
 can be shipped inside a built app by accident.
 
-Note that `App/Map/` — the three files behind this feature — is compiled **only** by the Xcode target.
+Note that `ios/App/Map/` — the three files behind this feature — is compiled **only** by the Xcode target.
 It cannot be a dependency of `Package.swift`, which also declares `.macOS(.v14)` for the host binary
 and the test runner, so `swift build` and `make test` never see it. That is why the card's design keeps
 the drawing in `Presentation` and hands the unverifiable module a single `AnyView` to draw inside a
@@ -270,16 +307,46 @@ swift build
 
 # The iOS app
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  xcodebuild -project Whoopsy.xcodeproj -scheme WhoopsyApp \
+  xcodebuild -project ios/Whoopsy.xcodeproj -scheme WhoopsyApp \
   -destination 'generic/platform=iOS' build
 ```
 
 `xcode-select` points at CommandLineTools on some machines, which is what the `DEVELOPER_DIR` prefix
 works around. Add `CODE_SIGNING_ALLOWED=NO` to check compilation without a signing team.
 
+### Running it on a simulator
+
+The iOS command above compiles for a **device**, so it does not refresh the bundle a simulator
+installs — `Debug-iphonesimulator` keeps whichever simulator build ran last, and installing that
+after a device build silently installs a stale app. Building for a simulator is its own invocation:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  xcodebuild -project ios/Whoopsy.xcodeproj -scheme WhoopsyApp \
+  -destination 'platform=iOS Simulator,id=<device-id>' \
+  -derivedDataPath "$PWD/tmp/build/whoopsy-dd" build
+```
+
+`xcrun simctl list devices booted` prints the ids. Then, with `DEVELOPER_DIR` still exported —
+`simctl` needs it for the same reason `xcodebuild` does:
+
+```bash
+xcrun simctl terminate <device-id> org.whoopsy.app   # expected to fail if it is not running
+xcrun simctl install   <device-id> "$PWD/tmp/build/whoopsy-dd/Build/Products/Debug-iphonesimulator/WhoopsyApp.app"
+xcrun simctl launch    <device-id> org.whoopsy.app
+```
+
+**Terminate first, and never `uninstall`.** `simctl launch` on an app that is already running only
+foregrounds it, so installing over one leaves the old process executing the old code and the screen
+looks unchanged no matter what you edited. `uninstall` would force a cold start but takes the app's
+data container with it — including an imported history — while `install` over the top preserves it.
+If a change still seems not to have applied, check the installed binary rather than the screen:
+`ls -la "$(xcrun simctl get_app_container <device-id> org.whoopsy.app app)/WhoopsyApp.debug.dylib"`
+and compare its size and timestamp against the built one.
+
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 20 sections, 1706 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 20 sections, 1803 assertions, and no
 test discovery:
 
 ```bash
@@ -292,7 +359,7 @@ deleted sources and the link fails) and hands the runner an absolute `#filePath`
 longer cares which directory you run it from. It ends with one machine-readable line:
 
 ```
-SUITE sections=1,2,...,20 assertions=1706 failed=0 exit=0
+SUITE sections=1,2,...,20 assertions=1803 failed=0 exit=0
 ```
 
 Read that line rather than the scrollback — the suite has no test discovery, so a section that

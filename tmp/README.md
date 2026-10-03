@@ -39,5 +39,5 @@ make clean               # rm -rf tmp/build
 
 `backups/*.sqlite` are copies of the simulator app's container, and the container holds the
 WHOOP export that was imported into it. Per the repo's standing rule, that is a real person's
-physiological record — it is gitignored for the same reason `Sources/Whoopsy/Data/Resources/*.csv`
+physiological record — it is gitignored for the same reason `ios/Sources/Whoopsy/Data/Resources/*.csv`
 is, and it is the one thing in this folder that is not regenerable.

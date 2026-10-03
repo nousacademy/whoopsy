@@ -1,6 +1,6 @@
-# The three commands this repo actually needs, so nobody re-derives them from CLAUDE.md.
+# The commands this repo actually needs, so nobody re-derives them from CLAUDE.md.
 #
-#   make test                 # build + run all 15 sections
+#   make test                 # build + run all 20 sections
 #   make test SECTIONS=13,15  # just those two
 #   make ios                  # the real iOS build path
 #   make verify               # build + test + ios — the pair CLAUDE.md insists on
@@ -14,7 +14,7 @@
 SECTIONS ?=
 
 build:
-	swift build
+	swift build --package-path ios
 
 test:
 	@./scripts/test.sh $(SECTIONS)
@@ -28,7 +28,7 @@ test:
 # everything up to signing, which is how to check iOS compilation without one.
 ios:
 	DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-	  xcodebuild -project Whoopsy.xcodeproj -scheme WhoopsyApp \
+	  xcodebuild -project ios/Whoopsy.xcodeproj -scheme WhoopsyApp \
 	  -destination 'generic/platform=iOS' \
 	  -derivedDataPath $(CURDIR)/tmp/build/whoopsy-dd \
 	  CODE_SIGNING_ALLOWED=NO build

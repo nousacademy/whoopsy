@@ -1,6 +1,6 @@
 ---
 name: ui-data-provenance
-description: Use before building or changing any view that shows a number, chart, ring or tile under Sources/Whoopsy/Presentation/ — and whenever a mockup, a reference screenshot or a user request implies a figure this app should display. Establishes from the real data whether that figure has a producer at all, and names the fabrication classes this repo has already shipped.
+description: Use before building or changing any view that shows a number, chart, ring or tile under ios/Sources/Whoopsy/Presentation/ — and whenever a mockup, a reference screenshot or a user request implies a figure this app should display. Establishes from the real data whether that figure has a producer at all, and names the fabrication classes this repo has already shipped.
 ---
 
 # UI Data Provenance
@@ -29,7 +29,7 @@ from this file without re-running it — the export is a fixed file, but the *re
 ```bash
 python3 - <<'PY'
 import csv
-p = "Sources/Whoopsy/Data/Resources/physiological_cycles.csv"
+p = "ios/Sources/Whoopsy/Data/Resources/Whoop/physiological_cycles.csv"
 rows = list(csv.DictReader(open(p, newline='')))
 print("rows:", len(rows))
 for name in rows[0]:

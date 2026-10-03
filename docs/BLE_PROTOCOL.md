@@ -866,7 +866,7 @@ then concludes strength training is unmeasurable.
 
 ### The selection rule already exists, and this section is written against it
 
-The user assigns a model in Settings — `WhoopHardwareGeneration.selectableModels`, which is
+The user assigns a model on the device page's `ADVANCED` tab (`DeviceSettingsView`) — `WhoopHardwareGeneration.selectableModels`, which is
 `[.whoop4, .whoop5, .whoop5MG]` — persisted **per peripheral identifier** by `StrapModelRepository`,
 because a strap that advertises no name arrives as `"WHOOP Strap"` and the name cannot tell a 5.0 from
 a 5.0 MG. `WhoopBLEManager.resolvedGeneration(stored:advertisedName:)` resolves the stored choice

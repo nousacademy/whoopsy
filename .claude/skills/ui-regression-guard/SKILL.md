@@ -1,6 +1,6 @@
 ---
 name: ui-regression-guard
-description: Use when adding a screen, a UI component, a tile/ring/card, or a new value to an existing view under Sources/Whoopsy/Presentation/, and when changing a shared component (GaugeRingView, MetricRingView, DayNavigationBar, Theme) or wiring a screen through DIContainer/MainContainerView. Checks the change against this app's known regression classes — fabricated values, overwritten day-keyed history, unsnapped writes, frozen migrations, moved shared components — and gives a verification sequence that cannot return a false green.
+description: Use when adding a screen, a UI component, a tile/ring/card, or a new value to an existing view under ios/Sources/Whoopsy/Presentation/, and when changing a shared component (GaugeRingView, MetricRingView, DayNavigationBar, Theme) or wiring a screen through DIContainer/MainContainerView. Checks the change against this app's known regression classes — fabricated values, overwritten day-keyed history, unsnapped writes, frozen migrations, moved shared components — and gives a verification sequence that cannot return a false green.
 ---
 
 # UI Regression Guard
@@ -80,7 +80,7 @@ write **no row** when they produced no measurement, which is why an imported pas
 imported day has no samples by construction, so both come back empty. The damage needs a day holding
 **both** stored samples and a stored row, which in practice means a strap day the user paged back to.
 
-- `grep -rn "Calculate.*UseCase" Sources/Whoopsy/Presentation/Screens/<New>/` — any hit must be
+- `grep -rn "Calculate.*UseCase" ios/Sources/Whoopsy/Presentation/Screens/<New>/` — any hit must be
   reachable **only** for a day that is today *and* holds no measurement.
 - Day selection reads: `getRecovery(for:)`, `getSleepSession(for:)`, `getStrain(for:)`,
   `getWorkouts(for:)`. `HomeViewModel.load(for:)` is the reference implementation.
@@ -109,7 +109,7 @@ centrally**. A row written at a raw timestamp is inserted, never updated, and no
 `Theme` tokens are global. `MainContainerView` builds one view model per screen and never shares one
 between two screens.
 
-- `grep -rn "<ComponentName>" Sources/` and list every caller **before** changing its API — and
+- `grep -rn "<ComponentName>" ios/Sources/` and list every caller **before** changing its API — and
   re-grep rather than trusting the list here, because **a caller count is a fact that moves**: the
   `GaugeRingView` line above named four screens until the workout HUD was deleted, and no compiler,
   test or screenshot said a word when it dropped to three.
@@ -127,7 +127,7 @@ between two screens.
   `Domain` imports only `Foundation`, so it cannot name a `Color` — `RecoveryState+Extensions.swift`
   is the shape to copy.
 - **One rule, one definition.** Before writing a threshold, tier or target into a new view, find the
-  existing one and read through it: `grep -rn "<the literal>" Sources/`. Two copies that agree today
+  existing one and read through it: `grep -rn "<the literal>" ios/Sources/`. Two copies that agree today
   are a bug that fires later — `GenerateCoachInsightsUseCase` held its own `>= 67` next to
   `RecoveryMetric.state`, and `RecoveryDashboardView` held a second copy of the tier switch next to
   Home's. If the rule you need doesn't exist as a named thing, name it.
@@ -147,7 +147,9 @@ a UI change does is behind a tap. So the verification is:
 ```bash
 make build                                       # host — a green iOS build is not a green host build
 make test                                        # read the summary line, not the scrollback
-make ios                                         # the real iOS path, separately
+make ios                                         # the real iOS path, separately — and note it builds
+                                                 # for a *device*, so it does not refresh the bundle a
+                                                 # simulator installs; see CLAUDE.md §Running on a simulator
 sqlite3 ~/Library/Application\ Support/whoopsy.sqlite \
   "select (select count(*) from recoveries), (select count(*) from sleeps), (select count(*) from strains);"
 ```
@@ -162,8 +164,8 @@ Each of these has produced a false green here:
 | :--- | :--- | :--- |
 | **The runner's exit code** | An uncaught throw inside its `Task` prints no failure; the process idles out the `RunLoop` and exits **0** | Check the `[n/N]` headers **and** the `✅ ALL WHOOPSY TESTS PASSED SUCCESSFULLY!` banner, never `$?` |
 | **The assertion count** | A section that stops running is indistinguishable from one that passed | Compare against the §0 baseline; a drop is a regression |
-| **`swift build` "Build complete!"** | An incremental no-op also says that | If you doubt it, confirm the artifact: `strings .build/debug/WhoopsyApp \| grep "<a new literal>"`. That binary is the whole program — a `WhoopsyApp.debug.dylib` beside it is an Xcode/iOS artefact, not what `swift build` writes |
-| **A read that returns 0 rows and no error** | `sleeps`/`recoveries`/`strains` empty ⇒ every screen renders `—`, which looks like the feature is broken rather than unmeasured | Count the rows before you interpret a screenshot. On the simulator the number is real only after an import (More → Settings) — the export ends **2026-08-22**, so today is always a dash |
+| **`swift build` "Build complete!"** | An incremental no-op also says that | If you doubt it, confirm the artifact: `strings ios/.build/debug/WhoopsyApp \| grep "<a new literal>"`. That binary is the whole program — a `WhoopsyApp.debug.dylib` beside it is an Xcode/iOS artefact, not what `swift build` writes |
+| **A read that returns 0 rows and no error** | `sleeps`/`recoveries`/`strains` empty ⇒ every screen renders `—`, which looks like the feature is broken rather than unmeasured | Count the rows before you interpret a screenshot. On the simulator the number is real only after an import (Profile › DATA › Whoop) — the export ends **2026-08-22**, so today is always a dash |
 
 If you *are* taking screenshots, two more traps apply, and they are about the image rather than the
 code. A stale bundle already on the device shows the **old** app — a screenshot that "proves" a screen

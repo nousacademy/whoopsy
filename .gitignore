@@ -1,5 +1,5 @@
 .DS_Store
-/.build
+/ios/.build
 /Packages
 xcuserdata/
 DerivedData/
@@ -15,21 +15,29 @@ Design/
 # `physiological_cycles.csv` is also the app's bundled import resource, so a fresh
 # clone will not build until you supply one — your own export, or a header-only
 # placeholder. Recipe in README.md §Building.
-Sources/Whoopsy/Data/Resources/*.csv
+# The directory is named for the producer, because the CSVs in it came from WHOOP —
+# `ZeroFasting/` beside it is the same arrangement for a different app's export. The
+# pattern names the subdirectory and not `**`, deliberately: a bare `*.csv` under
+# `Resources/` would also swallow a future resource that is not health data.
+ios/Sources/Whoopsy/Data/Resources/Whoop/*.csv
 
 # Zero Fasting Data
-Sources/Whoopsy/Data/Resources/ZeroFasting
+ios/Sources/Whoopsy/Data/Resources/ZeroFasting
 
 # Mapbox credentials — never commit.
 # `Mapbox.local.xcconfig` holds the PUBLIC (`pk.…`) access token, which is the only
-# copy of it: at the owner's request it lives outside the tree. `App/Config/Mapbox.xcconfig`
+# copy of it: at the owner's request it lives outside the tree. `ios/App/Config/Mapbox.xcconfig`
 # is the committed base and carries no token — it ends with `#include? "Mapbox.local.xcconfig"`,
 # the *optional* include, so a clone without this file still builds and simply gets the
 # pre-feature behaviour (an empty `MBXAccessToken`, `MapboxSetup.configure()` returning
 # `false`, and the route card drawing `MapKit`). Recipe in README.md §Building.
 # The SECRET token (`sk.…`, `Downloads:Read`) must never be written here either —
 # it is a build-time credential for SwiftPM and lives in `~/.netrc` only.
-App/Config/Mapbox.local.xcconfig
+ios/App/Config/Mapbox.local.xcconfig
+
+# Cloud sync backend — never commit.
+backend/node_modules
+backend/.wrangler
 
 # Testing scratch — never commit. `tmp/` is where everything produced *while testing* goes,
 # so that nothing is written outside the repo and nothing local reaches a commit:
@@ -43,5 +51,5 @@ App/Config/Mapbox.local.xcconfig
 # The pattern is `/tmp/*` and not `/tmp/`, deliberately. Excluding the directory itself
 # stops git descending into it, and the tracked README below it could then never be
 # re-included — the rule is "you cannot un-ignore a file whose parent directory is ignored".
-/tmp/*
-!/tmp/README.md
+tmp/*
+!tmp/README.md

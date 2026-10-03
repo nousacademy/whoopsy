@@ -1,0 +1,31 @@
+# The Cloudflare Worker that fronts the cloud sync.
+#
+# **Nothing here is wired to a real database yet.** Both bindings below point at names that do not
+# exist in any Cloudflare account: create them with `wrangler d1 create` / `wrangler r2 bucket
+# create`, then paste the returned `database_id` in. Until that happens `wrangler dev` runs and
+# every request reaches the 501 in `src/index.ts`.
+#
+# `compatibility_date` is pinned rather than omitted so the Worker's runtime behaviour cannot move
+# under the app between deploys — a floating date silently changes which flags are on.
+
+name = "whoopsy-sync"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# D1 — the relational store. Every row the app already keeps locally (recoveries, sleeps, strains,
+# workouts, biometric_samples) has a table here, plus the account and device rows the local schema
+# has no equivalent for.
+[[d1_databases]]
+binding = "DB"
+database_name = "whoopsy-sync"
+database_id = "REPLACE_ME_wrangler_d1_create"
+
+# R2 — the object store. Bulk payloads (a drained history batch, an exported record) belong here
+# rather than in D1, which is a relational store with row-size limits and no sensible place to put
+# a megabyte of samples.
+[[r2_buckets]]
+binding = "EXPORTS"
+bucket_name = "whoopsy-exports"
+
+[observability]
+enabled = true

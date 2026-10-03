@@ -1,6 +1,6 @@
 ---
 name: architecture-doc-sync
-description: Keep docs/ARCHITECTURE.md, docs/ALGORITHMS.md, docs/BLE_PROTOCOL.md and CLAUDE.md in sync with the code whenever any Clean Architecture layer, component, protocol, or data-flow path under Sources/Whoopsy/ is added, moved, renamed, or deleted — and docs/PATENTS.md whenever a change moves a value WHOOP's filings speak to (a metric tier, a strain constant or band edge, an HRV averaging window, a sleep-need form, a stress threshold, the VO₂ max coefficient). Use after editing anything in Sources/Whoopsy/{App,Domain,Data,Core,Presentation}/, and when adding a directory, use case, repository implementation, GRDB migration, BLE decoder/encoder, or math formula.
+description: Keep docs/ARCHITECTURE.md, docs/ALGORITHMS.md, docs/BLE_PROTOCOL.md and CLAUDE.md in sync with the code whenever any Clean Architecture layer, component, protocol, or data-flow path under ios/Sources/Whoopsy/ is added, moved, renamed, or deleted — and docs/PATENTS.md whenever a change moves a value WHOOP's filings speak to (a metric tier, a strain constant or band edge, an HRV averaging window, a sleep-need form, a stress threshold, the VO₂ max coefficient). Use after editing anything in ios/Sources/Whoopsy/{App,Domain,Data,Core,Presentation}/, and when adding a directory, use case, repository implementation, GRDB migration, BLE decoder/encoder, or math formula.
 ---
 
 # Architecture Documentation Sync
@@ -52,16 +52,16 @@ Apply this skill **in the same turn** as the code change, not as a follow-up.
 | `Presentation/Screens/**` | `CLAUDE.md` `## Pages` **first** — a screen added, moved or renamed is a row in that table, and it is the map of what is tabbed, what is pushed from where, and which screen owns the `NavigationStack`. Then `docs/ARCHITECTURE.md` §2.C for the design reasoning. Screens that render `RecoveryMetric` also read the no-measurement marker — a row can exist and hold no reading. Screens that render `SleepSession` test the optional instead, because an unclassifiable night has no row at all |
 | **A rule that spans layers** (e.g. the no-measurement rule, which the entity defines, the use cases honour and the views render) | The doc for the domain it belongs to — `docs/ALGORITHMS.md` §3 here — plus a `CLAUDE.md` gotcha. One rule, one section; don't scatter it across the routing rows it happens to cross. Note the four metrics **now share one mechanism** — an unmeasured day gets **no row**, and the optional *is* the answer — while their **readers still differ**, because rows an older build wrote are still on disk holding zeros: Recovery and Strain need `hasMeasurement` for those, Sleep and Stress need only the optional. So a view that handles one has not handled the other, and describing the old reserved-zero placeholder as a mechanism any *current* writer uses is the mistake to avoid |
 | **A change that moves a value WHOOP's filings speak to** — a recovery tier, a strain constant or band edge, the HRV averaging window, the sleep-need form, a stress threshold, the VO₂ max coefficient | `docs/PATENTS.md`, and **only if a recorded value actually moved** — rule 10 has the condition and the value → section map. A refactor that leaves those values alone routes to `docs/ALGORITHMS.md` (and `docs/ARCHITECTURE.md`) only. `docs/PATENTS.md` is a record of what is disclosed, not a changelog |
-| `App/DependencyInjection/DIContainer.swift` | `docs/ARCHITECTURE.md` §2.D + §3 flow; `CLAUDE.md` wiring bullet (`shared` vs `preview`) |
-| `App/AppEnvironment.swift` | `docs/ARCHITECTURE.md` §2.A/§2.D |
-| **A new directory or layer under `Sources/Whoopsy/`** | `docs/ARCHITECTURE.md` §1 ASCII diagram **and** §2 tree **and** the §2.A–D prose; `CLAUDE.md` Architecture section |
+| `ios/Sources/Whoopsy/App/DependencyInjection/DIContainer.swift` | `docs/ARCHITECTURE.md` §2.D + §3 flow; `CLAUDE.md` wiring bullet (`shared` vs `preview`) |
+| `ios/Sources/Whoopsy/App/AppEnvironment.swift` | `docs/ARCHITECTURE.md` §2.A/§2.D |
+| **A new directory or layer under `ios/Sources/Whoopsy/`** | `docs/ARCHITECTURE.md` §1 ASCII diagram **and** §2 tree **and** the §2.A–D prose; `CLAUDE.md` Architecture section |
 | `Package.swift` (targets, deps, resources) | `CLAUDE.md` Commands + Gotchas; `docs/ARCHITECTURE.md` §2.B if it changes persistence |
 | Build/test commands (`scripts/**`) | `CLAUDE.md` Commands + Tests only |
-| `Tests/**` | `CLAUDE.md` Tests section if the test entry point or its reliability changes |
+| `ios/Tests/**` | `CLAUDE.md` Tests section if the test entry point or its reliability changes |
 
 ## Rules
 
-1. **Never name a type in a doc without confirming it exists.** `grep -rn "<TypeName>" Sources/`
+1. **Never name a type in a doc without confirming it exists.** `grep -rn "<TypeName>" ios/Sources/`
    before you write it. A doc that references a deleted type is worse than no doc.
 2. **Use the identifier exactly as it appears in code** — and respect the known file↔type mismatch
    (`SwiftDataRecoveryRepository.swift` declares `GRDBRecoveryRepository`). Document the type name.
@@ -114,7 +114,7 @@ Apply this skill **in the same turn** as the code change, not as a follow-up.
    accumulates. Write three things: the rule, what breaks if it is violated, and what to do instead.
    Leave out the debugging walk, what the code used to look like, and any sentence whose whole
    content is that an earlier version of the doc was wrong. Measured when the section was last
-   pruned: seven type names that existed nowhere in `Sources/`, and three correction narratives —
+   pruned: seven type names that existed nowhere in `ios/Sources/`, and three correction narratives —
    about 2.3 KB out of 36 KB, with almost nothing else to cut, because the remainder was
    load-bearing. So the failure is rarely padding. It is resolved notes kept past their resolution
    (rule 7), plus constraints written as stories. **A gotcha that names a type which no longer exists
@@ -172,7 +172,7 @@ Apply this skill **in the same turn** as the code change, not as a follow-up.
 5. Verify:
    - `grep -rn "<new name>" *.md docs/*.md` returns the intended hits, and the same grep for
      `<old name>` returns none.
-   - Every type you named exists: `grep -rn "class <Type>\|struct <Type>\|protocol <Type>" Sources/`
+   - Every type you named exists: `grep -rn "class <Type>\|struct <Type>\|protocol <Type>" ios/Sources/`
    - If a rule-10 value moved, `grep -n "<the old value>" docs/PATENTS.md` returns nothing it should not,
      and every `[app]` row you touched still describes what the code does. §8's list shrinks when an
      item is applied — it should never grow to record that it was.

@@ -20,6 +20,9 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The SwiftPM package lives under `ios/` — this is a monorepo, and the backend's Worker sits beside
+# it in `backend/`. Named once here so a future move is one line rather than three.
+package_root="$repo_root/ios"
 # Under the repo's own `tmp/` rather than the machine's `/tmp`, and gitignored — see
 # `tmp/README.md`. `WHOOPSY_SCRATCH` still overrides it.
 scratch="${WHOOPSY_SCRATCH:-$repo_root/tmp/build/verify}"
@@ -27,15 +30,15 @@ runner="$scratch/WhoopsyTestRunner"
 
 # **Absolute, and that is load-bearing.** `#filePath` in the runner is whatever path is handed to
 # swiftc, and the suite's `whoopExportURL()` climbs three levels from it to find the bundled export.
-# A relative path makes the "repo root" it computes depend on the caller's working directory, so
+# A relative path makes the "package root" it computes depend on the caller's working directory, so
 # §11, §13 and §15 each fail with a message that reads like a broken import. An absolute path removes
 # that failure class outright, which is why the suite no longer has to be run from the repo root.
-main_swift="$repo_root/Tests/WhoopsyTestRunner/main.swift"
+main_swift="$package_root/Tests/WhoopsyTestRunner/main.swift"
 
-module_map="$repo_root/.build/checkouts/GRDB.swift/Sources/CSQLite/module.modulemap"
+module_map="$package_root/.build/checkouts/GRDB.swift/Sources/CSQLite/module.modulemap"
 if [ ! -f "$module_map" ]; then
     echo "Missing $module_map" >&2
-    echo "Run 'swift build' once so SwiftPM checks GRDB out into .build/." >&2
+    echo "Run 'swift build' once so SwiftPM checks GRDB out into ios/.build/." >&2
     exit 1
 fi
 
@@ -49,7 +52,7 @@ echo "▸ Building WhoopsyCore into $scratch ..."
 # A scratch path, not `.build`: the default build directory accumulates object files from
 # since-deleted sources (`MainTabView`, `SettingsView`, `TodayDashboardView`, `SwiftData*Repository`,
 # …) and the link then fails with `symbol(s) not found` for symbols nothing declares any more.
-swift build --package-path "$repo_root" --scratch-path "$scratch"
+swift build --package-path "$package_root" --scratch-path "$scratch"
 
 # The platform triple is arm64-apple-macosx on Apple silicon and x86_64-apple-macosx on Intel. Read
 # it rather than assuming, so this does not quietly become an Apple-silicon-only script.

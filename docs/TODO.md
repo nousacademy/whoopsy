@@ -11,7 +11,7 @@ project's outstanding work is recorded in, and both are marked as sitting outsid
 so that the invariant below still holds for everything above them.
 
 **Re-measure, never trust.** Every count here is a measurement over
-`Sources/Whoopsy/Data/Resources/`, not a recollection. The `csv-field-coverage` skill owns this file
+`ios/Sources/Whoopsy/Data/Resources/Whoop/`, not a recollection. The `csv-field-coverage` skill owns this file
 and carries the command that reproduces the numbers; run it before you flip anything.
 
 ## How to read a line
@@ -53,7 +53,7 @@ values: 909 measured wake days plus 22 fragment days.
 
 ### Cycle identity
 
-- [x] **`Cycle start time`** — 935/935 — parsed to `WhoopExportRow.cycleStart` ([WhoopExportParser.swift:18](../Sources/Whoopsy/Data/Import/WhoopExportParser.swift#L18)); the **day-key fallback** for a row with no wake onset ([WhoopExportImporter.swift:139](../Sources/Whoopsy/Data/Import/WhoopExportImporter.swift#L139))
+- [x] **`Cycle start time`** — 935/935 — parsed to `WhoopExportRow.cycleStart` ([WhoopExportParser.swift:18](../ios/Sources/Whoopsy/Data/Import/WhoopExportParser.swift#L18)); the **day-key fallback** for a row with no wake onset ([WhoopExportImporter.swift:139](../ios/Sources/Whoopsy/Data/Import/WhoopExportImporter.swift#L139))
 - [ ] **`Cycle end time`** — 934/935 — not parsed. **Redundancy**: a day's extent is its wake onset, and the session's end is that same value, so nothing needs it
 - [x] **`Cycle timezone`** — 935/935 — parsed and applied as the UTC offset when every date in the row is built; a row whose offset cannot be read throws rather than shifting silently
 
@@ -76,8 +76,8 @@ values: 909 measured wake days plus 22 fragment days.
 
 - [x] **`Sleep onset`** — 910 — → `SleepSession.startTime`
 - [x] **`Wake onset`** — 910 — **the day key**, and → `SleepSession.endTime`
-- [ ] **`Sleep performance %`** — 910 (5–100) — parsed, consumed by nothing. **Decision — do not cover.** `SleepSession.sleepPerformancePercentage` derives asleep-over-need ([SleepSession.swift:193](../Sources/Whoopsy/Domain/Entities/SleepSession.swift#L193)); the two disagree on **454 of 910 nights** — but that total hides a regime change and must not be quoted alone: across the export's **137-day gap (2024-12-31 → 2025-05-17)** WHOOP's column becomes a different function, matching the app's expression on **423 of 451** pre-gap nights (MAE 0.062) and only **33 of 459** after it (MAE 7.05). So on the older half the app's derivation *is* WHOOP's, and the disagreement is entirely a post-2025 phenomenon. Re-measure era by era and by driving `sleepPerformancePercentage`, not by re-deriving the ratio — the clamp is part of the answer (dropping `min(100, …)` reports 457), and one rule is the point. **The column stays uncovered, but the derivation is now drawn**: it is the SLEEP PERFORMANCE breakdown row on the Recovery screen and, below it, the sleep-performance week chart (`MetricDay.sleepPerformance` → `WeekBarSeries(sleepPerformanceWeek:)`), and it is the ring plus the HOURS VS. NEEDED row on the sleep-performance screen Home's sleep ring pushes. So this line reads as "the export's number is not used", not "the quantity is absent from the app" — the figure on all of those is this app's own, and it will not match WHOOP's for the same night
-- [x] **`Respiratory rate (rpm)`** — 910 (13.5–20.2) — → `sleeps.respiratory_rate`, `recoveries.respiratory_rate` and `MetricDay.respiratoryRate` → the Recovery screen's RESPIRATORY RATE breakdown row and the Respiratory Rate week chart under it. Read to **one decimal** there, because a week spans about two units — the reference week is 14.8…16.5, which whole numbers flatten to six `15`s. **Now a two-producer column**, the same shape as `Sleep consistency %` below: stored verbatim for an imported night, computed by `RespiratoryRateMath` ([RespiratoryRateMath.swift](../Sources/Whoopsy/Core/Math/RespiratoryRateMath.swift)) for a strap night, and the two are told apart only by `source`. The model is respiratory sinus arrhythmia off the R-R series — `docs/ALGORITHMS.md` §4 — and it is **unvalidatable against this app's data**, because the export carries no R-R series at all
+- [ ] **`Sleep performance %`** — 910 (5–100) — parsed, consumed by nothing. **Decision — do not cover.** `SleepSession.sleepPerformancePercentage` derives asleep-over-need ([SleepSession.swift:193](../ios/Sources/Whoopsy/Domain/Entities/SleepSession.swift#L193)); the two disagree on **454 of 910 nights** — but that total hides a regime change and must not be quoted alone: across the export's **137-day gap (2024-12-31 → 2025-05-17)** WHOOP's column becomes a different function, matching the app's expression on **423 of 451** pre-gap nights (MAE 0.062) and only **33 of 459** after it (MAE 7.05). So on the older half the app's derivation *is* WHOOP's, and the disagreement is entirely a post-2025 phenomenon. Re-measure era by era and by driving `sleepPerformancePercentage`, not by re-deriving the ratio — the clamp is part of the answer (dropping `min(100, …)` reports 457), and one rule is the point. **The column stays uncovered, but the derivation is now drawn**: it is the SLEEP PERFORMANCE breakdown row on the Recovery screen and, below it, the sleep-performance week chart (`MetricDay.sleepPerformance` → `WeekBarSeries(sleepPerformanceWeek:)`), and it is the ring plus the HOURS VS. NEEDED row on the sleep-performance screen Home's sleep ring pushes. So this line reads as "the export's number is not used", not "the quantity is absent from the app" — the figure on all of those is this app's own, and it will not match WHOOP's for the same night
+- [x] **`Respiratory rate (rpm)`** — 910 (13.5–20.2) — → `sleeps.respiratory_rate`, `recoveries.respiratory_rate` and `MetricDay.respiratoryRate` → the Recovery screen's RESPIRATORY RATE breakdown row and the Respiratory Rate week chart under it. Read to **one decimal** there, because a week spans about two units — the reference week is 14.8…16.5, which whole numbers flatten to six `15`s. **Now a two-producer column**, the same shape as `Sleep consistency %` below: stored verbatim for an imported night, computed by `RespiratoryRateMath` ([RespiratoryRateMath.swift](../ios/Sources/Whoopsy/Core/Math/RespiratoryRateMath.swift)) for a strap night, and the two are told apart only by `source`. The model is respiratory sinus arrhythmia off the R-R series — `docs/ALGORITHMS.md` §4 — and it is **unvalidatable against this app's data**, because the export carries no R-R series at all
 - [ ] **`Asleep duration (min)`** — 910 (68–940) — parsed into `WhoopExportRow.asleepMinutes` and read by **nothing**. **Redundancy**: `totalTimeAsleepSeconds` sums the three stages, and on this export the two agree **exactly on all 910 rows**
 - [ ] **`In bed duration (min)`** — 910 (87–954) — parsed into `WhoopExportRow.inBedMinutes` and read by nothing. **Redundancy, and the measurement is the interesting part**: `sleepPeriodSeconds` (asleep + awake) reproduces this column **exactly on 904 of 910 rows**, so the app already holds this number and the column has nothing to add — see the in-bed section below for the 6 that differ and why storing them would not help
 - [x] **`Light sleep duration (min)`** — 910 (31–940) — → `sleeps`
@@ -95,9 +95,9 @@ of a covered column, not a newly covered one, and the rule that a *parsed* colum
 does not make a covered column count twice. `docs/ALGORITHMS.md` §4 carries the band's definition and the
 explicit note that WHOOP publishes no stage boundaries, so every threshold in it is this app's own.
 - [x] **`Sleep need (min)`** — 910 (321–650) — → `sleeps.total_sleep_needed` → Home's SLEEP NEEDED panel, **and the SLEEP NEEDED figure of the `HOURS VS. NEEDED` card on the Sleep detail screen**. Stored verbatim; imported and strap nights must not be crossed
-- [x] **`Sleep debt (min)`** — 910 (0–127) — → `sleeps.sleep_debt` (× 60, seconds like every duration on that table) → the **`Sleep Debt` row of the `HOURS VS. NEEDED` card's breakdown box**, which is also the column's second consumer of `Sleep need (min)` above: the card's other row is that need minus this debt. Stored verbatim for an imported night, computed by `SleepDebtMath` ([SleepDebtMath.swift](../Sources/Whoopsy/Core/Math/SleepDebtMath.swift)) for a strap night — **a two-producer column**, distinguished by `source`, like `Sleep consistency %` below. **The two producers' values are not the same quantity and the card may only use one of them**: WHOOP's need is a total containing its debt term, so `need − debt` is WHOOP's own base-plus-strain, while `SleepNeedMath`'s need deliberately omits any debt term — so the box is gated on `SleepSession.hasWhoopSleepNeed` and is not drawn at all on a strap night, where both of its rows would sum to the printed total and both be mislabelled. The card is gated on the *pair*, so a night with no stored debt and a night whose debt exceeds its need draw no box either. The row carries no band, because a running deficit is not monotone the way the three banded rows are. The model is lagged (WHOOP's column correlates 0.891 with the *prior* night's shortfall against 0.506 with its own) and fitted, MAE 8.31 against a column of sd 33.9 — `docs/ALGORITHMS.md` §4. **It stays out of `SleepNeedMath`**, and that is a separate decision from covering the column: the 7-night deficit term buys 0.35 of a point for a second fitted constant, and the nap term that the newly-stored `naps` table makes measurable is significant in sample (t = −5.74) and harmful out of it (3.634 against 3.588). Both measurements are in `docs/ALGORITHMS.md` §4
+- [x] **`Sleep debt (min)`** — 910 (0–127) — → `sleeps.sleep_debt` (× 60, seconds like every duration on that table) → the **`Sleep Debt` row of the `HOURS VS. NEEDED` card's breakdown box**, which is also the column's second consumer of `Sleep need (min)` above: the card's other row is that need minus this debt. Stored verbatim for an imported night, computed by `SleepDebtMath` ([SleepDebtMath.swift](../ios/Sources/Whoopsy/Core/Math/SleepDebtMath.swift)) for a strap night — **a two-producer column**, distinguished by `source`, like `Sleep consistency %` below. **The two producers' values are not the same quantity and the card may only use one of them**: WHOOP's need is a total containing its debt term, so `need − debt` is WHOOP's own base-plus-strain, while `SleepNeedMath`'s need deliberately omits any debt term — so the box is gated on `SleepSession.hasWhoopSleepNeed` and is not drawn at all on a strap night, where both of its rows would sum to the printed total and both be mislabelled. The card is gated on the *pair*, so a night with no stored debt and a night whose debt exceeds its need draw no box either. The row carries no band, because a running deficit is not monotone the way the three banded rows are. The model is lagged (WHOOP's column correlates 0.891 with the *prior* night's shortfall against 0.506 with its own) and fitted, MAE 8.31 against a column of sd 33.9 — `docs/ALGORITHMS.md` §4. **It stays out of `SleepNeedMath`**, and that is a separate decision from covering the column: the 7-night deficit term buys 0.35 of a point for a second fitted constant, and the nap term that the newly-stored `naps` table makes measurable is significant in sample (t = −5.74) and harmful out of it (3.634 against 3.588). Both measurements are in `docs/ALGORITHMS.md` §4
 - [ ] **`Sleep efficiency %`** — 910 (59–99) — not parsed. **Decision — do not cover, and the reason is measured.** `sleepEfficiencyPercentage` is the standard TST-over-TIB and matches this column on 826 of 910 rows. On 83 of the other 84 the mismatch is **not** a denominator problem: the export's own `In bed duration` equals asleep + awake on those rows, and the column still reads 2–5 points higher, so **WHOOP's efficiency is not a function of the two durations WHOOP publishes beside it**. There is no input to store that would reproduce it — see the efficiency section below
-- [x] **`Sleep consistency %`** — 892 (7–94) — → `sleeps.sleep_consistency` → the **SLEEP CONSISTENCY** row of the Sleep detail screen **and the card of the same name that closes the page**. `SleepConsistencyScoring.summary(for:history:score:typicalScore:)` reads the stored value for the anchor night (stored-first, `session.sleepConsistency`), scores the four priors through `SleepConsistencyMath` when they carry none, and hands the pair to `SleepViewModel.consistencySummary` for `SleepConsistencyCard`; the card's headline is the figure the row prints two elements up, and the window mean it carries is a mean over this column. That mean is **computed and spoken but not drawn**: `SleepConsistencyCard.headline` passes `change: nil`, so a sighted reader sees the figure alone and the mean reaches only the card's `spoken(for:)` description. **The mean skips nights the model cannot score rather than counting them as zero**: `typicalScore` maps each window night stored-first and `compactMap`s the ones that still produce nothing, so two stored values beside two unscoreable nights average the two, and the mean is withheld below `RecoveryScoring.minimumBaselineDays`. The chart's five columns are all imported nights on a real device, so the stored value is what every one of them is drawn from. Stored verbatim for an imported night; a strap night is computed by `SleepConsistencyMath` ([SleepConsistencyMath.swift](../Sources/Whoopsy/Core/Math/SleepConsistencyMath.swift)), a four-prior boundary-shift fit — `docs/ALGORITHMS.md` §4. The column is nullable because the two producers must stay distinguishable: NULL is "not scored", `0` is "scored as badly as the scale allows"
+- [x] **`Sleep consistency %`** — 892 (7–94) — → `sleeps.sleep_consistency` → the **SLEEP CONSISTENCY** row of the Sleep detail screen **and the card of the same name that closes the page**. `SleepConsistencyScoring.summary(for:history:score:typicalScore:)` reads the stored value for the anchor night (stored-first, `session.sleepConsistency`), scores the four priors through `SleepConsistencyMath` when they carry none, and hands the pair to `SleepViewModel.consistencySummary` for `SleepConsistencyCard`; the card's headline is the figure the row prints two elements up, and the window mean it carries is a mean over this column. That mean is **computed and spoken but not drawn**: `SleepConsistencyCard.headline` passes `change: nil`, so a sighted reader sees the figure alone and the mean reaches only the card's `spoken(for:)` description. **The mean skips nights the model cannot score rather than counting them as zero**: `typicalScore` maps each window night stored-first and `compactMap`s the ones that still produce nothing, so two stored values beside two unscoreable nights average the two, and the mean is withheld below `RecoveryScoring.minimumBaselineDays`. The chart's five columns are all imported nights on a real device, so the stored value is what every one of them is drawn from. Stored verbatim for an imported night; a strap night is computed by `SleepConsistencyMath` ([SleepConsistencyMath.swift](../ios/Sources/Whoopsy/Core/Math/SleepConsistencyMath.swift)), a four-prior boundary-shift fit — `docs/ALGORITHMS.md` §4. The column is nullable because the two producers must stay distinguishable: NULL is "not scored", `0` is "scored as badly as the scale allows"
 
 ---
 
@@ -173,8 +173,9 @@ six rows: there is no `journal` table and no UI that would write or read one.
 
 **673 workouts across 445 distinct days, 2023-07-23 → 2026-08-21** — 1.5 per day, which is exactly
 why `workouts` is keyed on `id` and not on `date` (`CLAUDE.md`). It is bundled and read, and its path
-is `WhoopExportParser.parseWorkouts` → `WhoopExportImporter.importWorkouts`, called from
-`importBundledExport()` beside the naps. What it buys is the strain page's two `HEART RATE ZONES` rows
+is `WhoopExportParser.parseWorkouts` → `WhoopExportImporter.importWorkouts`, reached from
+`importBundled(.workouts)` — the `IMPORT WORKOUTS` button on the profile page's `LOGS` pane. What it
+buys is the strain page's two `HEART RATE ZONES` rows
 — the only zone breakdown in the whole export — the `ACTIVITIES` card's worth of sessions on Home, and
 the name each of those rows is labelled with.
 
@@ -190,13 +191,13 @@ seconds happens once, on read, in `WorkoutZoneTime`.
 - [ ] **`Cycle start time`** — 673/673 — parsed into `WhoopExportRow.cycleStart`, and **not covered**: `parseWorkouts` requires the column, so its absence throws, but no reader consumes the value — these sessions are keyed on their own two instants rather than on a cycle
 - [ ] **`Cycle end time`** — 673/673 — not parsed. **Redundancy**: the session's extent is its own `Workout end time`
 - [x] **`Cycle timezone`** — 673/673 — applied as the UTC offset when every date in the row is built, workout start and end included; a row whose offset cannot be read throws rather than shifting silently
-- [x] **`Workout start time`** — 673 (all distinct) — → `WorkoutSession.startedAt`, and half of the **derived id** ([WhoopExportImporter.workoutID](../Sources/Whoopsy/Data/Import/WhoopExportImporter.swift)): the two unix seconds are packed as big-endian 64-bit halves into a `UUID`. Distinct on all 673 rows' starts and on all 673 start+end pairs, which is what makes the id collision-free — and a **derived** id rather than a `UUID()` is what makes a second press of the import button update the same 673 rows instead of writing 673 more, since GRDB's `save` is INSERT-or-UPDATE *by primary key*
+- [x] **`Workout start time`** — 673 (all distinct) — → `WorkoutSession.startedAt`, and half of the **derived id** ([WhoopExportImporter.workoutID](../ios/Sources/Whoopsy/Data/Import/WhoopExportImporter.swift)): the two unix seconds are packed as big-endian 64-bit halves into a `UUID`. Distinct on all 673 rows' starts and on all 673 start+end pairs, which is what makes the id collision-free — and a **derived** id rather than a `UUID()` is what makes a second press of the import button update the same 673 rows instead of writing 673 more, since GRDB's `save` is INSERT-or-UPDATE *by primary key*
 - [x] **`Workout end time`** — 673 — → `WorkoutSession.endedAt`. A row whose end is not after its start is refused rather than stored
 - [ ] **`Duration (min)`** — 673 (1–458) — not parsed. **Redundancy, and measured**: it equals `floor((end − start) / 60)` on **670 of 673** rows and exceeds the span on **0**, so it is the stored pair with a minute's truncation and nothing more. Zone seconds are therefore `percent/100 × (end − start)`, which is strictly finer than going through this column
 
 ### Activity and intensity
 
-- [x] **`Activity name`** — 673/673 non-empty (**21 distinct**; `Walking` 222, `Activity` 197, `Yoga` 89, `Dance` 34, `Basketball` 28, `Manual Labor` 18, …) — → `WhoopExportRow.activityName` → `WorkoutSession.activityName` → `workouts.activity_name` (`v15`) → the row's label in Home's `ACTIVITIES` card, uppercased at the drawing by `HomeDashboardView.activityRow`, and its glyph by [ActivityGlyph](../Sources/Whoopsy/Presentation/DesignSystem/ActivityGlyph.swift). Read **without being required** — the one field on the workout row that is, because a name has a natural absence while a measurement does not — so a file without the column imports and every row falls back, rather than throwing. `Activity` (197 rows) and `Other` (11) are deliberately unmapped: they are WHOOP's own words for an activity it did not categorise, so they draw the `figure.run` fallback and print `ACTIVITY` like every other unmapped name
+- [x] **`Activity name`** — 673/673 non-empty (**21 distinct**; `Walking` 222, `Activity` 197, `Yoga` 89, `Dance` 34, `Basketball` 28, `Manual Labor` 18, …) — → `WhoopExportRow.activityName` → `WorkoutSession.activityName` → `workouts.activity_name` (`v15`) → the row's label in Home's `ACTIVITIES` card, uppercased at the drawing by `HomeDashboardView.activityRow`, and its glyph by [ActivityGlyph](../ios/Sources/Whoopsy/Presentation/DesignSystem/ActivityGlyph.swift). Read **without being required** — the one field on the workout row that is, because a name has a natural absence while a measurement does not — so a file without the column imports and every row falls back, rather than throwing. `Activity` (197 rows) and `Other` (11) are deliberately unmapped: they are WHOOP's own words for an activity it did not categorise, so they draw the `figure.run` fallback and print `ACTIVITY` like every other unmapped name
 - [x] **`Activity Strain`** — 673 (0–19.1) — → `workouts.strain` **verbatim**, the same bargain §1's `Day Strain` makes: the export carries no heart-rate series, so there is nothing to integrate. `WorkoutSession.strain` is what the `ACTIVITIES` card and the workout summary read
 - [ ] **`Energy burned (cal)`** — 673 (2–3011) — parsed into `WhoopExportRow.energyKcal` and read by **nothing on this path**. §1's `Energy burned (cal)` covers the column for a cycle and lands in `strains.kilojoules`; nothing prints either
 - [x] **`Max HR (bpm)`** — 673 (76–206) — → `WorkoutSession.maxHeartRate`
@@ -302,7 +303,7 @@ in the source, not in the app.
 measurement of time in bed is the same class of claim as a defaulted field rendered as a reading — it
 named a measurement the app never took. The arithmetic was right; the name was not. It is now
 `sleepPeriodSeconds`, the polysomnography term for total sleep plus intra-period wake
-([SleepSession.swift:189](../Sources/Whoopsy/Domain/Entities/SleepSession.swift#L189)), and its doc comment carries the three
+([SleepSession.swift:189](../ios/Sources/Whoopsy/Domain/Entities/SleepSession.swift#L189)), and its doc comment carries the three
 measurements above so the next reader does not try `endTime − startTime` again.
 
 ---
@@ -339,14 +340,14 @@ a screenshot of that chart knows the absence is this section's, not a chart bug.
 
 ### The chain that exists
 
-More → Device → `DeviceViewModel.syncNow()` ([DeviceViewModel.swift:22](../Sources/Whoopsy/Presentation/Screens/Device/DeviceViewModel.swift#L22)) →
-`SyncHistoricalDataUseCase.execute()` ([SyncHistoricalDataUseCase.swift:23](../Sources/Whoopsy/Domain/UseCases/SyncHistoricalDataUseCase.swift#L23)), which returns a `HistoricalSyncOutcome` →
-`WhoopBLEDeviceRepositoryImpl.requestHistoricalSync` ([line 107](../Sources/Whoopsy/Data/BLE/Repositories/WhoopBLEDeviceRepositoryImpl.swift#L107)) →
-`WhoopCommandFrames.historicalSyncRequest` ([line 43](../Sources/Whoopsy/Data/BLE/Parser/WhoopCommandFrames.swift#L43)) →
+More → Device → `DeviceViewModel.syncNow()` ([DeviceViewModel.swift:22](../ios/Sources/Whoopsy/Presentation/Screens/Device/DeviceViewModel.swift#L22)) →
+`SyncHistoricalDataUseCase.execute()` ([SyncHistoricalDataUseCase.swift:23](../ios/Sources/Whoopsy/Domain/UseCases/SyncHistoricalDataUseCase.swift#L23)), which returns a `HistoricalSyncOutcome` →
+`WhoopBLEDeviceRepositoryImpl.requestHistoricalSync` ([line 107](../ios/Sources/Whoopsy/Data/BLE/Repositories/WhoopBLEDeviceRepositoryImpl.swift#L107)) →
+`WhoopCommandFrames.historicalSyncRequest` ([line 43](../ios/Sources/Whoopsy/Data/BLE/Parser/WhoopCommandFrames.swift#L43)) →
 the profile's own builder (`WhoopPacketEncoder` or `WhoopPacketEncoder5`) → `WhoopBLEManager.drainHistoricalData` → `HistoricalDrainSession`.
 
 **Inbound frames do not continue that line.** A frame reaches `WhoopPacketDecoder.decodeProprietaryFrame`
-([WhoopPacketDecoder.swift:147](../Sources/Whoopsy/Data/BLE/Parser/WhoopPacketDecoder.swift#L147)) and
+([WhoopPacketDecoder.swift:147](../ios/Sources/Whoopsy/Data/BLE/Parser/WhoopPacketDecoder.swift#L147)) and
 comes back a `WhoopRawFrame`, which is where the decoder stops; the manager then routes by what the
 frame *is* — metadata to the drain session, a motion record to `MotionPayloadDecoder` and on to
 `StepAccumulator` → `stepCounts`. `yieldTelemetry` → `StreamBiometricsUseCase` →
@@ -411,7 +412,7 @@ packet-type numberings.
   `docs/BLE_PROTOCOL.md` §3 specifies a strict eight-step sequence a freshly bonded strap must be walked
   through before it will serve a historical sync, and it is 4.0-only and unverified. The one part of
   it that exists is the 5.0's static `CLIENT_HELLO`, constructed by `WhoopPacketEncoder5.hello`
-  ([WhoopPacketEncoder5.swift:130](../Sources/Whoopsy/Data/BLE/Parser/WhoopPacketEncoder5.swift#L130))
+  ([WhoopPacketEncoder5.swift:130](../ios/Sources/Whoopsy/Data/BLE/Parser/WhoopPacketEncoder5.swift#L130))
   — whose only callers anywhere are §16's byte-for-byte assertions against the published frame. The
   one seam the manager actually sends through, `WhoopCommandFrames`, carries six builders (motion
   enable, history request, data ACK, abort, set clock, clock read-back) and **no hello**. So the
@@ -470,20 +471,20 @@ packet-type numberings.
   straps before trusting it, and do not treat a clock set having been written as evidence about it
 - [ ] **The window asked for is one day, not fourteen.** `SyncHistoricalDataUseCase` starts from
   `getLatestSample()`, which is `nil` on an empty `biometric_samples`, so it falls back to
-  `now − 1 day` ([SyncHistoricalDataUseCase.swift:25](../Sources/Whoopsy/Domain/UseCases/SyncHistoricalDataUseCase.swift#L25)).
+  `now − 1 day` ([SyncHistoricalDataUseCase.swift:25](../ios/Sources/Whoopsy/Domain/UseCases/SyncHistoricalDataUseCase.swift#L25)).
   The stated goal — the band's full retained cache — is not what the code requests. `GET_DATA_RANGE`
   is the command that would answer "what does the strap actually hold", and it is unimplemented
 - [ ] **Nothing owns the persistence.** `StreamBiometricsUseCase` is the **only** writer to
-  `biometric_samples` ([line 35](../Sources/Whoopsy/Domain/UseCases/StreamBiometricsUseCase.swift#L35))
+  `biometric_samples` ([line 35](../ios/Sources/Whoopsy/Domain/UseCases/StreamBiometricsUseCase.swift#L35))
   and its writer *is* its stream consumer. `syncNow()` sends the command and returns; if no screen
   holds `liveTelemetryStream` open, a decoded batch is yielded to zero continuations and dropped with
   no error. The sync must persist on its own rather than depend on a screen being on
 - [ ] **`syncNow()` reports the send, not the result.** It sets `"History sync complete."` whenever
-  `execute()` does not throw ([DeviceViewModel.swift:22](../Sources/Whoopsy/Presentation/Screens/Device/DeviceViewModel.swift#L22)) —
+  `execute()` does not throw ([DeviceViewModel.swift:22](../ios/Sources/Whoopsy/Presentation/Screens/Device/DeviceViewModel.swift#L22)) —
   and in mock mode `requestHistoricalSync` is a `guard !isMockMode`
-  ([WhoopBLEDeviceRepositoryImpl.swift:108](../Sources/Whoopsy/Data/BLE/Repositories/WhoopBLEDeviceRepositoryImpl.swift#L108)),
+  ([WhoopBLEDeviceRepositoryImpl.swift:108](../ios/Sources/Whoopsy/Data/BLE/Repositories/WhoopBLEDeviceRepositoryImpl.swift#L108)),
   a silent no-op under the same banner. "Complete" should mean rows written
-- [ ] **`biometric_samples` has no retention.** No pruning exists anywhere in `Sources/` —
+- [ ] **`biometric_samples` has no retention.** No pruning exists anywhere in `ios/Sources/` —
   `grep -rn "deleteOlderThan\|prune\|retention\|purge"` returns nothing. Fourteen days of beat-to-beat
   R-R is a large number of rows, so the retention policy is a decision to take *before* the first
   successful sync rather than after
@@ -510,22 +511,22 @@ this is instrumentation for the walk rather than a substitute for it.
 
 - [ ] **The one diagnostic on this path is one-shot per connection.**
   `hasLoggedProprietaryFrame` is declared at
-  [WhoopBLEManager.swift:94](../Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L94), reset on
-  connect and disconnect ([602](../Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L602),
-  [620](../Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L620)), and it gates the only log
-  there is at [line 825](../Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L825) — which prints
+  [WhoopBLEManager.swift:94](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L94), reset on
+  connect and disconnect ([602](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L602),
+  [620](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L620)), and it gates the only log
+  there is at [line 825](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L825) — which prints
   the frame's type, seq, cmd and payload length. So a drain that streams thousands of frames writes
   **one line**: enough to establish that the strap speaks at all, and not enough to say what it sent
 - [ ] **`MotionPayloadDecoder` refuses in silence, nine ways.** The file contains **no logging call
   at all** and nine `return nil` paths — the generation lookup at
-  [line 64](../Sources/Whoopsy/Data/BLE/Parser/MotionPayloadDecoder.swift#L64), the type test at
-  [line 76](../Sources/Whoopsy/Data/BLE/Parser/MotionPayloadDecoder.swift#L76), and the exact-length
-  guards at [line 113](../Sources/Whoopsy/Data/BLE/Parser/MotionPayloadDecoder.swift#L113) and
-  [line 164](../Sources/Whoopsy/Data/BLE/Parser/MotionPayloadDecoder.swift#L164) among them. So *"the
+  [line 64](../ios/Sources/Whoopsy/Data/BLE/Parser/MotionPayloadDecoder.swift#L64), the type test at
+  [line 76](../ios/Sources/Whoopsy/Data/BLE/Parser/MotionPayloadDecoder.swift#L76), and the exact-length
+  guards at [line 113](../ios/Sources/Whoopsy/Data/BLE/Parser/MotionPayloadDecoder.swift#L113) and
+  [line 164](../ios/Sources/Whoopsy/Data/BLE/Parser/MotionPayloadDecoder.swift#L164) among them. So *"the
   strap sent motion records of a length this build does not expect"* and *"the strap never sent
   motion"* produce **identical evidence**, which is nothing. The manager is silent on its own side
   too — a refused decode is a plain `if let` with no `else`
-  ([WhoopBLEManager.swift:835](../Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L835)) — so a
+  ([WhoopBLEManager.swift:835](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L835)) — so a
   refusal cannot be attributed to either half
 
 **The consequence is specific to this project's situation.** There are three straps in scope and the
@@ -551,7 +552,7 @@ or to a file rather than to `.info`.
 - [ ] **The two `Info.plist` keys, which are what remove the cable.** `UIFileSharingEnabled` and
   `LSSupportsOpeningDocumentsInPlace` expose the app's Documents directory in the Files app under
   *On My iPhone → Whoopsy*, so the recording is read on the phone and shared from there rather than
-  pulled off it. **Neither key is in `App/iOS/Info.plist` today**, and no such mechanism exists
+  pulled off it. **Neither key is in `ios/App/iOS/Info.plist` today**, and no such mechanism exists
   without them. There is **no API for a third-party app to write into Apple's Notes app** — the share
   sheet with Notes as its destination is the only route to that, and it is a user action rather than
   something this code can perform
@@ -594,9 +595,9 @@ only place the BLE layer can be settled at all**, which is the whole reason this
 
 **The code is complete; the strap is the only thing missing from it.** `didDiscoverCharacteristicsFor`
 sets `setNotifyValue(true, for:)` on every `.notify` characteristic
-([WhoopBLEManager.swift:757](../Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L757)), which
+([WhoopBLEManager.swift:757](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L757)), which
 covers `0x2A37`; `didUpdateValueFor` decodes it and yields a sample
-([:763](../Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L763), [:787](../Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L787));
+([:763](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L763), [:787](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L787));
 `StreamBiometricsUseCase` persists it and `LiveSessionUseCase` feeds it to the session screen. Nothing
 in that chain is a stub. What has never happened is a strap on the other end of it: `biometric_samples`
 holds **0 rows** in every database on this machine.
@@ -612,9 +613,9 @@ So the walk answers exactly two questions, and neither is about the reader:
 **Both answers are already instrumented, and both lines are one-shot per connection.** The GATT
 inventory — every characteristic on the service with its properties, and `0x2A37 Heart Rate
 Measurement present: true|false` — is gated on `hasLoggedCharacteristicInventory`
-([:709](../Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L709)); the first decoded frame
+([:709](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L709)); the first decoded frame
 (`flags`, `bytes`, `hr`, `rrIntervals`) is gated on `hasLoggedHeartRateFrames`
-([:774](../Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L774)). **Read them live rather than
+([:774](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L774)). **Read them live rather than
 after the fact** — both are `AppLogger.ble.info`, and §5's retention note applies here verbatim:
 `.info` goes to a memory buffer and not to disk, so by the time the phone is back on the desk the two
 lines that answer this can already be gone. That is also the argument for §5's `CaptureLog` being
@@ -622,7 +623,7 @@ lines that answer this can already be gone. That is also the argument for §5's 
 
 **A preview build shows the same screen with numbers on it, and it is not evidence about a strap.**
 `WhoopMockBLEManager.liveTelemetryStream` starts a 1 Hz generator on subscription
-([WhoopMockBLEManager.swift:59](../Sources/Whoopsy/Data/BLE/Manager/WhoopMockBLEManager.swift#L59)), and
+([WhoopMockBLEManager.swift:59](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopMockBLEManager.swift#L59)), and
 it is reachable by launching with `SIMCTL_CHILD_XCODE_RUNNING_FOR_PREVIEWS=1`, which selects
 `DIContainer.preview`. That demonstrates the reading path and says nothing whatever about whether a
 strap answers — the distinction §5 opens with, that a chain read off the code is not a measurement of
@@ -650,6 +651,6 @@ updates at all.
 **The waveform's `LIVE TELEMETRY` badge is absent until the first reading**, for the same reason:
 `Snapshot.isOnBody` is `nil` before any sample rather than defaulted `true`, so the badge has nothing
 to stand on
-([LiveSessionAccumulator.swift:85](../Sources/Whoopsy/Core/Math/LiveSessionAccumulator.swift#L85)). A
+([LiveSessionAccumulator.swift:85](../ios/Sources/Whoopsy/Core/Math/LiveSessionAccumulator.swift#L85)). A
 defaulted `true` is the fabrication class `WhoopDevice.batteryPercentage` already documents.
 

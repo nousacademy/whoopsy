@@ -1,6 +1,6 @@
 ---
 name: csv-field-coverage
-description: Use when a WHOOP export column gains or loses a consumer — a new parser field, a new column on a record, a new model, a new screen reading an imported value — and whenever a CSV under Sources/Whoopsy/Data/Resources/ is bundled, unbundled, or newly read. Owns docs/TODO.md, the per-column coverage inventory.
+description: Use when a WHOOP export column gains or loses a consumer — a new parser field, a new column on a record, a new model, a new screen reading an imported value — and whenever a CSV under ios/Sources/Whoopsy/Data/Resources/Whoop/ is bundled, unbundled, or newly read. Owns docs/TODO.md, the per-column coverage inventory.
 ---
 
 # CSV Field Coverage
@@ -56,7 +56,7 @@ recorded wrong.
 ```bash
 python3 - <<'PY'
 import csv, os, collections
-d = "Sources/Whoopsy/Data/Resources"
+d = "ios/Sources/Whoopsy/Data/Resources/Whoop"
 for f in sorted(os.listdir(d)):
     if not f.endswith(".csv"): continue
     rows = list(csv.DictReader(open(os.path.join(d, f), newline='')))
@@ -89,7 +89,7 @@ A mismatch is the finding. Fix the list, not the heading.
 **2. Trace the consumer before you write it down.** For a column you are about to mark `[x]`:
 
 ```bash
-grep -rn "<the parsed field name>" Sources/Whoopsy/
+grep -rn "<the parsed field name>" ios/Sources/Whoopsy/
 ```
 
 Follow it all the way out — record field → entity → mapper → view. A field that reaches
@@ -146,7 +146,7 @@ table here.
    consumes it. What stays a decision is the *model* — whether `SleepNeedMath` should carry a debt
    term — which is a separate question from whether the column has a reader.
 4. **Fill counts are measurements with a date on them.** Re-run the command; do not carry a count
-   forward because the CSV "is a fixed file". It is fixed — but `Data/Resources/` is a directory a
+   forward because the CSV "is a fixed file". It is fixed — but `Data/Resources/Whoop/` is a directory a
    human can replace, and a column that is 909-filled today can be 910 tomorrow.
 5. **Never mark a column `[x]` for a consumer that cannot produce a value.** A parsed-but-unused
    field, a `?? 0` default and a fallback are all things this repo has shipped as readings

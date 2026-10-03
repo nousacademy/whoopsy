@@ -1,0 +1,15 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Whoopsy Sync API",
+    "version": "0.0.0",
+    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. `paths` is empty because no route exists yet; the generator arrives with the backend pass."
+  },
+  "servers": [
+    {
+      "url": "https://whoopsy-sync.<account>.workers.dev",
+      "description": "Placeholder — replace with the deployed route once `wrangler deploy` has run."
+    }
+  ],
+  "paths": {}
+}
