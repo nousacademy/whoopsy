@@ -1,24 +1,24 @@
 ---
 name: create-data-files
-description: Use on a fresh clone that will not build, after moving or renaming anything under ios/Sources/Whoopsy/Data/Resources/, or when a bundled resource reports "File not found" or the import throws .notBundled. Creates the four data files `Package.swift` declares as resources — and only those four.
+description: Use on a fresh clone that will not build, after moving or renaming anything under ios/Sources/Whoopsy/Data/Resources/, or when a bundled resource reports "File not found" or the import throws .notBundled. Creates the five data files `Package.swift` declares as resources — and only those five.
 ---
 
 # Create Data Files
 
 `ios/Sources/Whoopsy/Data/Resources/` is **gitignored in full**. What lives there is one real
 person's physiological record — recovery, HRV, resting heart rate, skin temperature, blood oxygen,
-sleep staging, 550 free-text journal notes — and a fasting tracker's history. Neither is published,
-so a clone arrives with no such directory while `ios/Package.swift` asks SwiftPM to `.process` four
-files inside it.
+sleep staging, 550 free-text journal notes — and a fasting tracker's history. `Custom/` beside them
+holds the same person's own dream journal. None of it is published, so a clone arrives with no such
+directory while `ios/Package.swift` asks SwiftPM to `.process` five files inside it.
 
-This skill puts exactly those four back.
+This skill puts exactly those five back.
 
 ```bash
 scripts/create-data-files.sh            # create what is missing; touch nothing else
-scripts/create-data-files.sh --check    # report all four, write nothing
+scripts/create-data-files.sh --check    # report all five, write nothing
 ```
 
-## The four, and why only the four
+## The five, and why only the five
 
 `ios/Package.swift` is the whole of the list — not the directory listing:
 
@@ -28,6 +28,7 @@ resources: [
     .process("Data/Resources/Whoop/sleeps.csv"),
     .process("Data/Resources/Whoop/workouts.csv"),
     .process("Data/Resources/ZeroFasting/fasts.json"),
+    .process("Data/Resources/Custom/dreams.json"),
 ]
 ```
 
@@ -35,7 +36,9 @@ resources: [
 the fourth CSV on disk and the only one that is unbundled and read by nothing anywhere in
 `ios/Sources/` — no `WhoopExportFile` case, no `WhoopImportAction` row, no `docs/TODO.md` consumer.
 A placeholder for it would be a file nothing opens. Neither are the other eighteen top-level keys of
-a Zero `biodata.json`: this app reads `fast_data` alone.
+a Zero `biodata.json`: this app reads `fast_data` alone. And neither is `Custom/dreams.csv` — the
+notes file the bundled `dreams.json` is generated *from*, untracked and unbundled, because what the
+import reads is the JSON its generator writes.
 
 The three CSV placeholders carry their producer's **own header row**, transcribed verbatim — column
 names, no data. That is what makes them more than a build formality: a real export's rows can be
@@ -44,6 +47,11 @@ actually require are `Cycle start time`, `Cycle timezone`, `Wake onset` (cycles)
 `Nap` (sleeps), and `Cycle start time`, `Cycle timezone`, `Workout start time`, `Workout end time`
 (workouts) — a header missing one of those throws `missingColumns` rather than importing a table of
 nils, which is the failure shape the validation exists to refuse.
+
+The two JSON placeholders are a single empty array under their one key — `{"fast_data": []}` and
+`{"receptive_inactivities": []}` — because that key is also what classifies the file: a JSON whose
+key is missing is reported and refused rather than read, which is what keeps a placeholder from being
+mistaken for data and a real file from being mistaken for a placeholder.
 
 ## It cannot destroy the record
 
@@ -67,9 +75,10 @@ and every import button reports zero days rather than inventing any.
 
 **It does not make the suite green.** `make test` drives the real export through the real importers,
 so the sections that read a bundled file assert *that file's* figures — 673 workouts and 21 distinct
-activity names in §17, 910 nights in §13 and §15, 170 fasts in §20, the export-backed blocks of §11
-and §14. On a placeholder those fail, correctly. **Run `make test` against a real export, never
-against placeholders**, and do not read a failing run there as a regression.
+activity names in §17, 910 nights in §13 and §15, 170 fasts in §20, 60 dreams over 55 days in §21,
+the export-backed blocks of §11 and §14. On a placeholder those fail, correctly. **Run `make test`
+against a real export, never against placeholders**, and do not read a failing run there as a
+regression.
 
 **There is no synthetic-data mode, and there should not be.** Making the suite pass would mean
 reproducing the real export's counts, its 2024-12-10 zero-restorative night, its 86-hour fasts — that
@@ -84,6 +93,7 @@ Drop your own files in and the placeholders are irrelevant:
 | :--- | :--- |
 | WHOOP's `physiological_cycles.csv`, `sleeps.csv`, `workouts.csv` | `ios/Sources/Whoopsy/Data/Resources/Whoop/` |
 | Zero's `biodata.json` | projected to `ios/Sources/Whoopsy/Data/Resources/ZeroFasting/fasts.json` (below) |
+| your own dream notes, as CSV | generated into `ios/Sources/Whoopsy/Data/Resources/Custom/dreams.json` by the owner's own generator, which is **not part of this repository** |
 
 Zero's export is 19 top-level keys of which this app reads one, so project it down rather than
 bundling the whole thing — the trimmed file is 46,584 bytes and every byte of it is read; the source
@@ -98,15 +108,17 @@ The projection is faithful rather than a re-encoding: every value in `fast_data`
 or an int, and the key keeps its own name, so the file the app reads is a subset of the producer's
 bytes.
 
-Then **Profile › LOGS**, four import buttons — one per WHOOP CSV under `Whoop`, one for the fasts
-under `Zero Fasting`. Each is idempotent and each skips days that already hold data.
+Then **Profile › LOGS**, five import buttons — one per WHOOP CSV under `Whoop`, one for the fasts
+under `Zero Fasting`, and one under `Receptive inactivities` for `dreams.json`. Each is idempotent.
+The four that write into `workouts` each skip days that already hold data; the receptive-inactivity
+import is the one that does not, so re-importing it writes the file's own text back over any edit.
 
 ## After running it
 
-1. `scripts/create-data-files.sh --check` — all four must read `DATA` or `PLACEHOLDER`, none `MISSING`.
+1. `scripts/create-data-files.sh --check` — all five must read `DATA` or `PLACEHOLDER`, none `MISSING`.
 2. `make build` — the host loop. A missing `.process` target is a SwiftPM *warning*, not an error, so
    the build going green is not by itself proof the files are there; `--check` is.
-3. `make ios` — the Xcode path, where the four land in the app bundle instead.
+3. `make ios` — the Xcode path, where the five land in the app bundle instead.
 4. If an import reports `This build does not include the WHOOP export file` — `.notBundled` — the file
    reached disk but not the bundle. Rebuild rather than re-running the script.
 

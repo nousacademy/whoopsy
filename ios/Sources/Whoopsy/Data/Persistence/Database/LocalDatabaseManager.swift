@@ -620,6 +620,78 @@ public actor LocalDatabaseManager {
                 in: db)
         }
 
+        // `v21` adds the receptive inactivities — the states recorded on Home's second card.
+        //
+        // **A new table rather than rows in `workouts`, and the reason is that table's two instants.**
+        // `started_at` and `ended_at` have been `NOT NULL` since `v6`, and the whole of what
+        // `WorkoutSession` offers hangs off them: `covers(_:)` asks which days a session was underway
+        // on, `durationSeconds` is their difference, `elapsedSeconds(byEndOf:)` is the cumulative form
+        // of it, and `zoneSeconds(_:)` scales WHOOP's zone share by it. A receptive inactivity has **no
+        // end time** — the user's rule is *"just start time is needed no need for end time"* — so
+        // storing one in `workouts` would mean relaxing that pair, which is what the half-open overlap
+        // read behind Home's ACTIVITIES card is built on. An untimed row would have no instants for
+        // `getWorkouts(covering:)` to compare, and the 86-hour fast that draws on all five of its days
+        // would stop drawing on any.
+        //
+        // **`naps` (`v11`) is the shape this follows, not `sleeps`.** A day can hold several receptive
+        // activities, so the table is keyed on `id` with `date` an ordinary indexed lookup column —
+        // a `date` primary key would make the second meditation of a day overwrite the first. The day
+        // key is still snapped centrally by `saveReceptiveInactivity`, on `saveNap`'s precedent, so a row
+        // written at a raw 17:33 is found on its day and not on a neighbouring one.
+        //
+        // **`started_at` is nullable and the two `NOT NULL` instants above are why this table exists
+        // instead of a relaxed `workouts`.** NULL means no time was given, which the user's rule makes
+        // an ordinary answer rather than a gap. It is a *time of day on `date`'s day* and never a
+        // second day key: `ReceptiveInactivityDraft.applying(to:)` rebuilds the picked hour and minute
+        // onto the day the form is for, so `date == startOfDay(startedAt)` holds whenever a time is
+        // given. That is also why `saveReceptiveInactivity` does **not** derive `date` from `startedAt`
+        // the way `saveNap` does — an untimed entry has no derivation to make.
+        //
+        // Nothing is stored that measures anything: no strain, no heart rate, no zone block, no step
+        // count and no route. A receptive inactivity is the state where conscious exertion drops to
+        // zero, so a figure describing exertion is not merely unmeasured on one, it is the wrong
+        // question — and a defaulted number on a stored row is the fabrication every absence rule in
+        // this app forbids.
+        migrator.registerMigration("v21_receptive_inactivities") { db in
+            try db.create(table: "receptive_inactivities", ifNotExists: true) { t in
+                t.primaryKey("id", .text)
+                t.column("date", .datetime).notNull().indexed()
+                t.column("name", .text).notNull()
+                // NULL = no time given.
+                t.column("started_at", .datetime)
+            }
+        }
+
+        // The text a receptive inactivity was recorded with — a dream's own prose, an imported
+        // entry's note, or a meditation's own words.
+        //
+        // **NULL is the honest value for an entry with no text**, which is why the column is
+        // nullable and undefaulted rather than `NOT NULL DEFAULT ''`. A meditation is complete
+        // without one, and an empty string would be a value nobody supplied — the fabrication
+        // every absence rule in this app forbids. `ReceptiveInactivityDraft.setNote(_:)` is what
+        // keeps the two from blurring on the write side: it trims and stores `nil` for a blank
+        // value, so `""` never reaches this column.
+        //
+        // **It is the second kind of column this table holds, and that is why it is worth a note
+        // of its own.** `name` and `started_at` are what the *user* supplied; this one arrives
+        // from an import as well, which makes it the identity input for an imported row —
+        // `InactivityParser.identifier(date:type:note:)` hashes the prose along with the day and
+        // the type, because a record with no producer id has to derive its identity from its own
+        // content. Two roles for one value, deliberately: an entry's identity *is* its text on
+        // its day.
+        //
+        // `addMissingColumns` and not a bare `add(column:)`: this table already exists on every
+        // database that ran `v21`, and that helper's skip-if-present guard is what makes a
+        // half-applied migration a no-op rather than an abort. It adds **nullable, undefaulted**
+        // columns only, which is exactly this one — unlike `v18`, which needed the staging dance
+        // to relax a `NOT NULL` in place.
+        migrator.registerMigration("v22_receptive_inactivity_note") { db in
+            try Self.addMissingColumns(
+                to: ReceptiveInactivityRecord.databaseTableName,
+                columns: [("note", .text)],
+                in: db)
+        }
+
         try migrator.migrate(queue)
     }
 
@@ -812,6 +884,58 @@ public actor LocalDatabaseManager {
                 .filter(Column("date") == date.startOfDay)
                 .order(Column("started_at").asc)
                 .fetchAll(db)
+        }
+    }
+
+    /// See `saveRecovery` for why the date is snapped — and note that this one snaps onto the day the
+    /// **caller** supplied rather than onto anything derived from `startedAt`.
+    ///
+    /// `saveNap` above derives a nap's day from its onset, and that derivation must not be copied
+    /// here: a receptive inactivity's `date` is mandatory while its `started_at` is nullable, so an
+    /// untimed entry would have nothing to derive from. The day comes from the screen the user was
+    /// looking at, which is the whole point — filing yesterday's meditation onto yesterday is what
+    /// `ReceptiveInactivityDraft.applying(to:)` exists to make true, and the picker's hour and minute
+    /// are rebuilt onto that day rather than carrying a day of their own.
+    public func saveReceptiveInactivity(_ record: ReceptiveInactivityRecord) throws {
+        var snapped = record
+        snapped.date = record.date.startOfDay
+        try dbQueue.write { db in
+            try snapped.save(db)
+        }
+    }
+
+    /// The receptive inactivities filed on `date`'s day, earliest first with the untimed ones last.
+    ///
+    /// **The order is `started_at` ascending, nulls last, ties broken by `name`** — and each clause is
+    /// doing something. `ascNullsLast` rather than a plain `asc` because SQLite sorts NULL *first* in
+    /// an ascending order, which would put every untimed entry above the day's timed ones and leave
+    /// the timed half of the list reading as an afterthought. The name tie-break is what makes the
+    /// untimed group a stable list rather than an arbitrary one: two entries with no time have no
+    /// other field that orders them, and a row order that changes between two reads of an unchanged
+    /// day is a list that appears to shuffle.
+    ///
+    /// This is the only read this table has. A receptive inactivity has no end, so there is no
+    /// `covering:` sibling — see `ReceptiveInactivityRepository` for why adding one would be a
+    /// double-counting hazard rather than a harmless duplicate.
+    public func getReceptiveInactivities(on date: Date) throws -> [ReceptiveInactivityRecord] {
+        try dbQueue.read { db in
+            try ReceptiveInactivityRecord
+                .filter(Column("date") == date.startOfDay)
+                .order(Column("started_at").ascNullsLast, Column("name").asc)
+                .fetchAll(db)
+        }
+    }
+
+    /// Removes one entry, reporting the store's affected-row count so a caller can tell a real delete
+    /// from a silent no-op — the contract `deleteWorkout(id:)` carries and for the same reason.
+    ///
+    /// Unlike that method there is no child table to clear: nothing is filed under a receptive
+    /// activity, because there is nothing on one to file.
+    @discardableResult
+    public func deleteReceptiveInactivity(id: String) throws -> Int {
+        try dbQueue.write { db in
+            try ReceptiveInactivityRecord
+                .filter(Column("id") == id).deleteAll(db)
         }
     }
 

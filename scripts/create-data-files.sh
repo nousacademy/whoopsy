@@ -1,22 +1,25 @@
 #!/usr/bin/env bash
 #
-# create-data-files.sh — put the four bundled data files back on a fresh clone.
+# create-data-files.sh — put the five bundled data files back on a fresh clone.
 #
 # `ios/Sources/Whoopsy/Data/Resources/` is gitignored in full, because what lives there is one real
-# person's physiological record and a fasting tracker's history. That means a clone has no such
-# directory, and `Package.swift` asks SwiftPM to `.process` four files inside it.
+# person's physiological record, a fasting tracker's history, and the owner's own notes. That means a
+# clone has no such directory, and `Package.swift` asks SwiftPM to `.process` five files inside it.
 #
-# This script writes **placeholder** versions of exactly those four — the ones `Package.swift`
+# This script writes **placeholder** versions of exactly those five — the ones `Package.swift`
 # declares as resources, and nothing else:
 #
 #   Whoop/physiological_cycles.csv   26-column producer header, no rows
 #   Whoop/sleeps.csv                 18-column producer header, no rows
 #   Whoop/workouts.csv               17-column producer header, no rows
 #   ZeroFasting/fasts.json           {"fast_data": []}
+#   Custom/dreams.json               {"receptive_inactivities": []}
 #
-# `journal_entries.csv` is deliberately **not** created: it is the fourth CSV on disk and the only one
-# that is unbundled and read by nothing. Neither are the other eighteen top-level keys of a Zero
-# `biodata.json` — this app reads `fast_data` alone.
+# `journal_entries.csv` is deliberately **not** created: it is unbundled and read by nothing anywhere
+# in `ios/Sources/`. Neither is `Custom/dreams.csv`, which is the notes file `dreams.json` is generated
+# *from* — the app reads the generated JSON and never the source, and generating it needs the owner's
+# own file. Neither are the other eighteen top-level keys of a Zero `biodata.json` — this app reads
+# `fast_data` alone.
 #
 # ---------------------------------------------------------------------------------------------
 # This script cannot destroy the record.
@@ -30,7 +33,7 @@
 #
 # Usage:
 #   scripts/create-data-files.sh            create what is missing, leave everything else alone
-#   scripts/create-data-files.sh --check    report the state of all four, write nothing
+#   scripts/create-data-files.sh --check    report the state of all five, write nothing
 #   scripts/create-data-files.sh --help
 
 set -euo pipefail
@@ -38,6 +41,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 whoop_dir="$repo_root/ios/Sources/Whoopsy/Data/Resources/Whoop"
 fasting_dir="$repo_root/ios/Sources/Whoopsy/Data/Resources/ZeroFasting"
+custom_dir="$repo_root/ios/Sources/Whoopsy/Data/Resources/Custom"
 
 # ---------------------------------------------------------------------------------------------
 # The placeholder contents.
@@ -71,8 +75,14 @@ fasts_json() {
     printf '{"fast_data": []}\n'
 }
 
+# The top-level key is the **table** the entry lands in, exactly as `fast_data` is — one key holding an
+# array, so an empty placeholder is an empty import rather than a file the parser must refuse.
+dreams_json() {
+    printf '{"receptive_inactivities": []}\n'
+}
+
 # ---------------------------------------------------------------------------------------------
-# The four, in the order `Package.swift` declares them.
+# The five, in the order `Package.swift` declares them.
 # ---------------------------------------------------------------------------------------------
 
 paths=(
@@ -80,6 +90,7 @@ paths=(
     "$whoop_dir/sleeps.csv"
     "$whoop_dir/workouts.csv"
     "$fasting_dir/fasts.json"
+    "$custom_dir/dreams.json"
 )
 
 writer_for() {
@@ -88,6 +99,7 @@ writer_for() {
         sleeps.csv)               sleep_csv ;;
         workouts.csv)             workout_csv ;;
         fasts.json)               fasts_json ;;
+        dreams.json)              dreams_json ;;
         *) echo "create-data-files: no placeholder defined for $1" >&2; exit 2 ;;
     esac
 }
@@ -102,7 +114,37 @@ required_for() {
     esac
 }
 
-is_json() { [[ "$(basename "$1")" == "fasts.json" ]]; }
+# Every bundled JSON is one top-level key holding an array, and the placeholders differ only in that
+# key's name — so this generalises rather than naming files, and `json_key_for` carries the name.
+#
+# **It has to be a per-file lookup and not a second hardcoded string, and the failure is
+# one-directional — measured, not reasoned.** `classify` compares a file against the placeholder this
+# script would write, so a `fast_data` literal beside a `dreams.json` has exactly one wrong answer
+# available to it: it calls that file's *placeholder* `data`. Measured on a mutant, both directions:
+#
+#   a `dreams.json` placeholder under the `fast_data` key
+#     → check mode:  DATA … Custom/dreams.json  (no "fast_data" key)
+#     → create mode: kept … (holds data — not touched)
+#   a real `fasts.json` under the `receptive_inactivities` key → DATA, likewise
+#
+# So **the script cannot bootstrap its own placeholder**: `--check` exits 1 over a tree that is
+# correct, and create mode's closing message tells the reader their placeholder holds data and that
+# the script is protecting an export that does not exist. The **overwrite** direction is not
+# reachable by any key, which is why the never-overwrite rule below does not depend on this lookup:
+# `classify` answers `placeholder` only when the stripped content equals the empty-array placeholder
+# *exactly*, and a file holding records never does.
+#
+# An unknown `.json` answers the empty key rather than a guess, which fails closed into that same
+# `data` — left alone, and reported.
+is_json() { [[ "$(basename "$1")" == *.json ]]; }
+
+json_key_for() {
+    case "$(basename "$1")" in
+        fasts.json)  printf 'fast_data' ;;
+        dreams.json) printf 'receptive_inactivities' ;;
+        *)           printf '' ;;
+    esac
+}
 
 relative() { printf '%s' "${1#"$repo_root"/}"; }
 
@@ -115,7 +157,9 @@ classify() {
     if is_json "$path"; then
         # Whitespace-insensitive, so a `json.dumps(…, indent=4)` file holding an empty array is
         # still recognised as empty rather than mistaken for an export.
-        if [[ "$(tr -d '[:space:]' < "$path")" == '{"fast_data":[]}' ]]; then
+        local key
+        key="$(json_key_for "$path")"
+        if [[ -n "$key" ]] && [[ "$(tr -d '[:space:]' < "$path")" == "{\"$key\":[]}" ]]; then
             printf 'placeholder'
         else
             printf 'data'
@@ -144,7 +188,9 @@ check_one() {
     if [[ "$(classify "$path")" == "data" ]]; then label="DATA"; else label="PLACEHOLDER"; fi
 
     if is_json "$path"; then
-        grep -qF '"fast_data"' "$path" || problem='no "fast_data" key'
+        local json_key
+        json_key="$(json_key_for "$path")"
+        grep -qF "\"$json_key\"" "$path" || problem="no \"$json_key\" key"
     else
         local column
         while IFS= read -r column; do
@@ -178,7 +224,7 @@ case "${1:-}" in
 esac
 
 if [[ "$mode" == "check" ]]; then
-    echo "Data files under $(relative "$whoop_dir")/ and $(relative "$fasting_dir")/:"
+    echo "Data files under $(relative "$whoop_dir")/, $(relative "$fasting_dir")/ and $(relative "$custom_dir")/:"
     failures=0
     for path in "${paths[@]}"; do
         check_one "$path" || failures=$((failures + 1))
@@ -193,7 +239,7 @@ if [[ "$mode" == "check" ]]; then
     exit 0
 fi
 
-mkdir -p "$whoop_dir" "$fasting_dir"
+mkdir -p "$whoop_dir" "$fasting_dir" "$custom_dir"
 
 created=0; kept=0; refused=0
 for path in "${paths[@]}"; do
@@ -223,5 +269,5 @@ if (( refused )); then
 fi
 
 echo
-echo "Next: make build   (the four are what Package.swift processes; journal_entries.csv is not one"
+echo "Next: make build   (the five are what Package.swift processes; journal_entries.csv is not one"
 echo "                    of them and is deliberately not created)"

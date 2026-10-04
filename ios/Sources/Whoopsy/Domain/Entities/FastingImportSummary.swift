@@ -61,12 +61,13 @@ public struct FastingImportSummary: Sendable, Equatable {
         self.lastDay = lastDay
     }
 
-    /// The date grammar `WhoopImportSummary.firstDay` uses, so the two import reports read alike.
+    /// The date grammar `WhoopImportSummary.firstDay` uses, so the import reports read alike.
+    ///
+    /// Kept as a method on this type rather than retired in favour of `Date.formattedImportDay()`,
+    /// which is what it now forwards to: the call site above reads `firstDay.map(displayDate)`, and
+    /// the name is the only place the report's own grammar is stated from the summary's side.
     public static func displayDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "d MMM yyyy"
-        return formatter.string(from: date)
+        date.formattedImportDay()
     }
 
     /// Written for the person reading it, and it names **fasts** first because that is what was

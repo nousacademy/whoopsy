@@ -283,8 +283,8 @@ enum ActivityEditDraftTests {
         let catalogued = WhoopActivityCatalog.allNames
         let drawn = catalogued.filter { ActivityGlyph.mark(for: $0) != .single(ActivityGlyph.fallback) }
         assertTest(
-            drawn.count == 96,
-            "**96 of the catalogue's \(catalogued.count) names draw a figure that is not the running "
+            drawn.count == 97,
+            "**97 of the catalogue's \(catalogued.count) names draw a figure that is not the running "
                 + "one, and \(catalogued.count - drawn.count) draw the fallback**, which is a *wrong* "
                 + "drawing rather than a missing one — the same mark this card drew for every workout "
                 + "before the table existed. The split is pinned rather than asserted as a floor because it "
@@ -293,15 +293,23 @@ enum ActivityEditDraftTests {
                 + "make")
         // The four that make "is in the table" and "draws something other than the fallback" two different
         // counts. The running family's own entry *is* the fallback string, so `mark(for:)` cannot tell
-        // those four from a name the table has never heard of — which is why the figure above is 96 and not
-        // the table's 100 catalogue keys, and why this block is pinned beside it rather than left implicit.
+        // those four from a name the table has never heard of — which is why the figure above is 97 and not
+        // the table's 101 catalogue keys, and why this block is pinned beside it rather than left implicit.
+        //
+        // **The figure was 96 before the receptive catalogue, and that it moved is the intended coupling
+        // rather than a leak.** `Non-sleep, deep rest` is a name `WhoopActivityCatalog`'s own recovery list
+        // already carries, and the receptive catalogue spells it identically — so giving it an entry adds
+        // one to *this* count as well. `ActivityGlyph.marks` is one table for both pickers, which is the
+        // whole point: a name that gained a mark through one of them gained it through the other, and that
+        // is why the shared-name assertions in `ReceptiveInactivityCatalogTests` compare spellings rather than
+        // entries.
         assertTest(
             ["Running", "Trail Running", "Sprint Training", "Obstacle Course Racing"]
                 .allSatisfy { ActivityGlyph.mark(for: $0) == .single(ActivityGlyph.fallback) },
             "…and the four names where *the table has an entry* and *the drawing differs* come apart: the "
                 + "running family's own entry is written as `figure.run`, which is `ActivityGlyph.fallback` "
                 + "itself. They draw correctly and they draw exactly as an unmapped name does, so the count "
-                + "above is 96 rather than the 100 catalogue names the table holds a key for")
+                + "above is 97 rather than the 101 catalogue names the table holds a key for")
         // **The arity sweep, and it is the one thing `drawn.count` cannot see.** A count of names that draw
         // something other than the fallback is unchanged whether `Fast` draws a pair or a single symbol,
         // so a typo that dropped the second half of its mark would leave every other assertion in this

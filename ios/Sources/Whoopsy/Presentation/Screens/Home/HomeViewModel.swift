@@ -91,6 +91,74 @@ import SwiftUI
     /// and it is the same test the writer gates on.
     public var steps: Int?
 
+    /// The receptive inactivities filed on the selected day, in the order the store returns them.
+    ///
+    /// **A second list beside `workouts` rather than a filtered view of one**, because the two are
+    /// different tables: a receptive inactivity is not a session with the instants missing, it is a row
+    /// in `receptive_inactivities` that has no instants to miss. Every rule this screen applies to a
+    /// workout — the covering read, the fast pill, the strain figure — would have to be guarded away
+    /// here, which is the shape this type exists to avoid.
+    ///
+    /// Empty on a day with none, which is the ordinary case rather than an absence to draw: the card
+    /// says so in words.
+    public var receptiveInactivities: [ReceptiveInactivity] = []
+
+    /// Drops one entry from the list Home is drawing, after it has been deleted from storage.
+    ///
+    /// `removeWorkout(_:)`'s method, for its reasons: the removal is local because the page that
+    /// reported it is on its way out and whether a `.task` re-fires on a pop is undocumented, and it is
+    /// exact because no other figure on Home is built from a receptive inactivity. Removing an id that is
+    /// not in the list is a no-op rather than a fault.
+    public func removeReceptiveInactivity(_ id: UUID) {
+        receptiveInactivities.removeAll { $0.id == id }
+    }
+
+    /// Writes one entry for `day` and folds the result into the list Home is drawing, reporting whether
+    /// the write succeeded so the page can dismiss its sheet only when there is something to dismiss.
+    ///
+    /// **The re-sort is the whole of the merge, and it is `updateWorkout(_:on:)`'s reason.** A saved
+    /// entry can move the value the list is ordered by — an edit adding or clearing a time — so an
+    /// insertion kept at the end of the array would leave the card in an order no read of the day would
+    /// produce. It sorts by `ReceptiveInactivity.isOrderedBefore`, which is the Domain statement of the
+    /// read's own `ORDER BY`, so the local list and a fresh read of the same day are one list.
+    ///
+    /// A failed write leaves the list untouched and puts the failure on `errorMessage`, which is the
+    /// screen's banner — the sheet stays up with the user's edit still in it.
+    @discardableResult
+    public func saveReceptiveInactivity(_ activity: ReceptiveInactivity) async -> Bool {
+        do {
+            try await receptiveInactivityRepository.save(activity)
+            if let index = receptiveInactivities.firstIndex(where: { $0.id == activity.id }) {
+                receptiveInactivities[index] = activity
+            } else {
+                receptiveInactivities.append(activity)
+            }
+            receptiveInactivities.sort(by: ReceptiveInactivity.isOrderedBefore)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Removes one entry from storage and, on a real removal, from the list Home is drawing.
+    ///
+    /// **The local drop happens only when the store reports it removed a row.** `delete(_:)` answers
+    /// from the affected-row count rather than from "did it throw", so an id that matched nothing comes
+    /// back `false` — and a page that dropped the row anyway would stop drawing an entry that is still
+    /// on disk, which is the one failure a delete path must not have.
+    @discardableResult
+    public func deleteReceptiveInactivity(_ id: UUID) async -> Bool {
+        do {
+            guard try await receptiveInactivityRepository.delete(id) else { return false }
+            removeReceptiveInactivity(id)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     /// The selected day's daytime activation — the aggregate and the windows behind it — or `nil`
     /// when its samples yielded no score.
     ///
@@ -129,6 +197,7 @@ import SwiftUI
     private let sleepRepository: any SleepRepository
     private let strainRepository: any StrainRepository
     private let workoutRepository: any WorkoutRepository
+    private let receptiveInactivityRepository: any ReceptiveInactivityRepository
     private let userProfileRepository: any UserProfileRepository
     private let stepRepository: any StepRepository
     private let analyzeStress: AnalyzeStressUseCase
@@ -142,6 +211,7 @@ import SwiftUI
         sleepRepository: any SleepRepository,
         strainRepository: any StrainRepository,
         workoutRepository: any WorkoutRepository,
+        receptiveInactivityRepository: any ReceptiveInactivityRepository,
         userProfileRepository: any UserProfileRepository,
         stepRepository: any StepRepository,
         analyzeStress: AnalyzeStressUseCase,
@@ -152,6 +222,7 @@ import SwiftUI
         self.sleepRepository = sleepRepository
         self.strainRepository = strainRepository
         self.workoutRepository = workoutRepository
+        self.receptiveInactivityRepository = receptiveInactivityRepository
         self.userProfileRepository = userProfileRepository
         self.stepRepository = stepRepository
         self.analyzeStress = analyzeStress
@@ -214,6 +285,11 @@ import SwiftUI
             // zone rows, the zone aggregates, the export's day skip — keeps asking `getWorkouts(for:)`,
             // and `WorkoutRepository` documents why the two must not be merged.
             async let w = workoutRepository.getWorkouts(covering: date)
+            // The **day-keyed** read, and the contrast with the line above is the two tables' shapes
+            // rather than an inconsistency: a receptive inactivity has no end, so there is no overlap for
+            // a covering read to express and no `covering:` sibling on its repository to call. One entry
+            // is on one day.
+            async let ra = receptiveInactivityRepository.getReceptiveInactivities(for: date)
             async let st = analyzeStress.executeDay(for: date)
             // One day each, read rather than computed. These sit with the other repository reads
             // rather than in the HealthKit pair's old position outside the `do`: a step row is stored
@@ -239,6 +315,7 @@ import SwiftUI
             sleep = try await sl
             previousDaySleep = try await slPrevious
             workouts = try await w
+            receptiveInactivities = try await ra
             stressDay = try await st
             // The absence gate, applied as the row becomes the tile's number. `hasMeasurement` is
             // `measuredSeconds > 0` — the same comparison `TrackStepsUseCase` makes before it writes,

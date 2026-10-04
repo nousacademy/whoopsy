@@ -111,4 +111,31 @@ extension Date {
         formatter.dateFormat = "d"
         return formatter.string(from: self)
     }
+
+    /// `"23 Jul 2023"` — a day named inside a sentence rather than beside a figure.
+    ///
+    /// It exists for the two import summaries, whose `message` states the span a file covered. Both
+    /// sentences are prose read once after a button press, so the two ends want a form a reader can
+    /// hold in their head — not `formattedShortDate`'s `"Sun, Jul 23"`, which drops the year and is
+    /// built for a row already stamped with the day it belongs to, and not `formattedTime`'s
+    /// locale-dependent style, which reorders the month and the day from region to region.
+    ///
+    /// **It is `en_US_POSIX` and pinned rather than `.current`, and here that is a choice rather than
+    /// a bug being avoided.** These two strings go into a sentence together — *"23 Jul 2023 → 9 Sep
+    /// 2026"* — and an arrow between two dates means the pair must be read as one span. A locale that
+    /// writes `"23/07/2023"` makes that span a column of digits, and one that writes `"Jul 23, 2023"`
+    /// moves the separator into the middle of each end. `WhoopImportSummary` writes its own report the
+    /// same way, and the fixed grammar is what keeps the three files' reports reading alike.
+    ///
+    /// It is defined here rather than on the summaries because three files now write this grammar —
+    /// `WhoopExportImporter`, `FastingImportSummary` and `InactivityImportSummary` — and it had
+    /// already been copied twice before the third arrived. Both of the first two now forward to it,
+    /// so their public surfaces and their callers are untouched, and the three reports cannot come to
+    /// spell a day three ways.
+    public func formattedImportDay() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "d MMM yyyy"
+        return formatter.string(from: self)
+    }
 }

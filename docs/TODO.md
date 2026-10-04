@@ -35,10 +35,12 @@ checkable: a checklist shorter than the column count is a column nobody has look
 | `journal_entries.csv` | 3403 | 6 | **0** | no | nothing |
 | `workouts.csv` | 673 | 17 | **12** | yes | `WhoopExportParser.parseWorkouts` → `WhoopExportImporter.importWorkouts` |
 
-Three files are in `Package.swift`'s `resources:` — `physiological_cycles.csv`, `sleeps.csv` for its
-eight nap rows alone, and `workouts.csv` for its zone block and its `Activity name` column, neither of
-which is in any other file. `journal_entries.csv` is on disk in the repo, in no bundle, and read by
-nothing. See `CLAUDE.md`.
+Three of these four WHOOP files are in `Package.swift`'s `resources:` — `physiological_cycles.csv`,
+`sleeps.csv` for its eight nap rows alone, and `workouts.csv` for its zone block and its `Activity
+name` column, neither of which is in any other file. `journal_entries.csv` is on disk in the repo, in
+no bundle, and read by nothing. **The manifest declares more than these four** — two JSON resources
+sit beside them, `ZeroFasting/fasts.json` and `Custom/dreams.json` — so this paragraph is the WHOOP
+export's inventory and not the resource list; `CLAUDE.md` carries the whole set.
 
 ---
 

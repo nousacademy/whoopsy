@@ -14,6 +14,7 @@ public final class DIContainer: @unchecked Sendable {
     public let napRepository: any NapRepository
     public let userProfileRepository: any UserProfileRepository
     public let workoutRepository: any WorkoutRepository
+    public let receptiveInactivityRepository: any ReceptiveInactivityRepository
     public let stepRepository: any StepRepository
 
     // Use Cases
@@ -39,6 +40,11 @@ public final class DIContainer: @unchecked Sendable {
     /// on `whoopExportImport` — different file, different format, different idempotence rule, and its
     /// rows are the first ones in this app with no measurement behind them. See `FastingImporting`.
     public let fastingImport: any FastingImporting
+    /// The owner's own notes, as a fifth input. Its own slot again, and this one is separated by the
+    /// *table* rather than by the file: it is the only import in the app that writes
+    /// `receptive_inactivities`, whose rows have no span, no strain and no measurement of any kind.
+    /// See `InactivityImporting`.
+    public let inactivityImport: any InactivityImporting
     /// Which model the user has said each strap is. Read by the BLE layer to resolve a generation and
     /// written by the device screen.
     public let strapModelRepository: any StrapModelRepository
@@ -132,6 +138,7 @@ public final class DIContainer: @unchecked Sendable {
         self.napRepository = GRDBNapRepository(db: db)
         self.userProfileRepository = GRDBUserProfileRepository(db: db)
         self.workoutRepository = GRDBWorkoutRepository(db: db)
+        self.receptiveInactivityRepository = GRDBReceptiveInactivityRepository(db: db)
         self.stepRepository = GRDBStepRepository(db: db)
 
         self.streamBiometricsUseCase = StreamBiometricsUseCase(
@@ -253,5 +260,6 @@ public final class DIContainer: @unchecked Sendable {
             workoutRepository: workoutRepository,
             userProfileRepository: userProfileRepository)
         self.fastingImport = ZeroFastingImporter(workoutRepository: workoutRepository)
+        self.inactivityImport = InactivityImporter(receptiveRepository: receptiveInactivityRepository)
     }
 }

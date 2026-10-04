@@ -629,6 +629,7 @@ enum LiveSessionRecordingTests {
                     sleepRepository: GRDBSleepRepository(db: db),
                     strainRepository: GRDBStrainRepository(db: db),
                     workoutRepository: workoutRepository,
+                    receptiveInactivityRepository: GRDBReceptiveInactivityRepository(db: db),
                     userProfileRepository: profileRepository,
                     stepRepository: GRDBStepRepository(db: db),
                     analyzeStress: AnalyzeStressUseCase(biometricRepository: EmptyBiometricStore()),

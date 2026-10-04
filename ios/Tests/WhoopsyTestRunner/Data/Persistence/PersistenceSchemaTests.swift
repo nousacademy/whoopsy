@@ -13,8 +13,19 @@ enum PersistenceSchemaTests {
         // Every table the repositories query must exist. `strains`, `user_profiles` and
         // `biometric_samples` previously had no migration at all, so this is the regression guard.
         let tables = (try? await db.existingTableNames()) ?? []
-        // `naps` is `v11`'s table and is the only id-keyed one of the six — see §14 for why.
-        for expected in ["recoveries", "sleeps", "strains", "user_profiles", "biometric_samples", "naps"] {
+        // **Two of the seven are id-keyed and five are `date`-keyed**, and the split is the day-key rule
+        // rather than a preference: a day holds one recovery, one sleep and one strain, so those three
+        // are primary-keyed on the snapped `date`; a day can hold several naps and several receptive
+        // activities, so those two are keyed on an `id` with `date` an ordinary indexed column. `naps`
+        // is `v11`'s table and `receptive_inactivities` is `v21`'s — see §14 and §20 for why.
+        //
+        // The sweep is a list rather than a count on purpose: it fails on a table that was *renamed*,
+        // which is the shape a new migration takes here (`receptive_inactivities`, not
+        // `receptive_activities` — the card's word, not the row type's).
+        for expected in [
+            "recoveries", "sleeps", "strains", "user_profiles", "biometric_samples", "naps",
+            "receptive_inactivities",
+        ] {
             assertTest(tables.contains(expected), "Migration created table '\(expected)'")
         }
 

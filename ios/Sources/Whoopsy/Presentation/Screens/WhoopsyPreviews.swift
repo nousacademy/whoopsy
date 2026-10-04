@@ -26,6 +26,7 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 sleepRepository: container.sleepRepository,
                 strainRepository: container.strainRepository,
                 workoutRepository: container.workoutRepository,
+                receptiveInactivityRepository: container.receptiveInactivityRepository,
                 userProfileRepository: container.userProfileRepository,
                 stepRepository: container.stepRepository,
                 analyzeStress: container.analyzeStressUseCase,
@@ -66,6 +67,7 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 healthKit: container.healthKitSync,
                 whoopExport: container.whoopExportImport,
                 fasting: container.fastingImport,
+                inactivities: container.inactivityImport,
                 exportUseCase: container.exportLocalDataUseCase),
             liveSessionUseCase: container.liveSessionUseCase,
             makeActivityDetailViewModel: { session, liveFast in

@@ -585,6 +585,7 @@ enum ActivityOverflowAndDeleteTests {
                     sleepRepository: GRDBSleepRepository(db: db),
                     strainRepository: GRDBStrainRepository(db: db),
                     workoutRepository: GRDBWorkoutRepository(db: db),
+                    receptiveInactivityRepository: GRDBReceptiveInactivityRepository(db: db),
                     userProfileRepository: GRDBUserProfileRepository(db: db),
                     stepRepository: GRDBStepRepository(db: db),
                     analyzeStress: AnalyzeStressUseCase(biometricRepository: EmptyBiometricStore()),

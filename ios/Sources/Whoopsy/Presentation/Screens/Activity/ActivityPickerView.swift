@@ -92,32 +92,13 @@ public struct ActivityPickerView: View {
         return WhoopActivityCatalog.contains(selection) ? nil : selection
     }
 
-    /// One name. The whole row is the target, so there is no chevron and no disclosure control to misread
-    /// as the thing that selects.
+    /// One name. The row itself is `ActivityPickerRow`, shared with the receptive picker so the two
+    /// lists cannot draw one name two ways; what stays here is the two things that are *this* picker's —
+    /// the case- and whitespace-tolerant selection test, and writing the draft's field on a pick.
     private func row(_ name: String) -> some View {
-        Button {
+        ActivityPickerRow(name: name, isSelected: ActivityName.matches(name, selection)) {
             selection = name
             dismiss()
-        } label: {
-            HStack(spacing: 12) {
-                ActivityGlyphLabel(ActivityGlyph.mark(for: name), size: 16, weight: .medium)
-                    .foregroundStyle(Theme.textSecondary)
-                    .frame(width: ActivityGlyph.listGutter)
-
-                Text(name)
-                    .font(.system(size: 15))
-                    .foregroundStyle(Theme.textPrimary)
-
-                Spacer(minLength: 8)
-
-                if ActivityName.matches(name, selection) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.actionTint)
-                }
-            }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
     }
 }

@@ -76,6 +76,63 @@ public protocol WorkoutRepository: Sendable {
     func delete(_ id: UUID) async throws -> Bool
 }
 
+/// Receptive inactivities — the states recorded on Home's second card.
+///
+/// ## It has one read where `WorkoutRepository` has two, and the missing one is the point
+///
+/// `WorkoutRepository` asks two questions of one `date` column: `getWorkouts(for:)` is *"which day is
+/// this filed on"* and `getWorkouts(covering:)` is *"was this underway during this day"*. The second
+/// exists because a session has a span, so an 86-hour fast was genuinely happening on all five of its
+/// days, and the two answers differ by a whole day for a row crossing midnight.
+///
+/// **A receptive inactivity has no end**, so there is no second question to ask: it happened on the day
+/// it is filed on, and on no other. There is deliberately no `covering:` sibling here, and the reason
+/// is stronger than "it would return the same rows" — a covering read is a *double-counting* hazard,
+/// since `WorkoutSession.zoneSeconds(_:)` and the zone aggregates behind Home's strain page each
+/// assume a day's rows are its own. Adding one would give a future reader a plausible-looking method
+/// whose only honest implementation is this one.
+///
+/// ## The day comes from the caller
+///
+/// A `ReceptiveInactivity` carries its own snapped `date`, so the screens read a day and the sheet
+/// writes one, and neither has to derive the day from an optional start — which is what
+/// `saveNap`-style derivation would have required and what an untimed entry could not supply.
+public protocol ReceptiveInactivityRepository: Sendable {
+
+    /// The receptive inactivities filed on `date`'s day — **timed ones earliest first, untimed ones
+    /// last, and ties broken by name**.
+    ///
+    /// An empty array when nothing was recorded, never a stand-in: a day with no dream has no dream,
+    /// and the card draws that as its empty state rather than as a row.
+    ///
+    /// **A row with no start time is an ordinary member of this list and not a discarded one**, which
+    /// is the user's own rule (*"time is optional"*) showing up in the order. The untimed group sits
+    /// *after* the timed one rather than before it, because SQLite's plain ascending sort puts NULL
+    /// first and a day's timed entries would then read as an afterthought below rows that carry less
+    /// information than they do. `LocalDatabaseManager.getReceptiveInactivities(on:)` carries the three
+    /// clauses and what each is for.
+    func getReceptiveInactivities(for date: Date) async throws -> [ReceptiveInactivity]
+
+    /// Stores an entry, **inserting it or updating the row it already has**.
+    ///
+    /// `receptive_inactivities` is primary-keyed on `id`, so GRDB's INSERT-or-UPDATE makes this the one
+    /// method that both creates and edits a row. An edited entry keeps its `id` and therefore its day;
+    /// a caller wanting to move one to another day writes a value carrying a different `date`, which is
+    /// an ordinary update because the day is a column and not the key.
+    func save(_ activity: ReceptiveInactivity) async throws
+
+    /// Removes an entry, **reporting whether a row was actually removed**.
+    ///
+    /// The same contract `WorkoutRepository.delete(_:)` carries and for the same reason: a delete that
+    /// matched no row is a silent no-op, and a sheet that dismissed itself on "it did not throw" would
+    /// close over a row still on disk. Deleting an id that is not stored is not an error — it returns
+    /// `false` and throws nothing, because an absent row is an ordinary answer here.
+    ///
+    /// **It takes no children with it**, unlike `WorkoutRepository.delete(_:)`: there is no route and
+    /// no split list filed under a receptive inactivity, because there is nothing on one to file.
+    func delete(_ id: UUID) async throws -> Bool
+}
+
 public protocol AppPreferencesRepository: Sendable { func load() async -> AppPreferences; func save(_ preferences: AppPreferences) async }
 
 /// The app's whole relationship with HealthKit: today, the read-side import.
@@ -185,4 +242,30 @@ public protocol FastingImporting: Sendable {
     /// Idempotent by primary key: a second call updates the same rows rather than appending. Throws
     /// when this build carries no such file, because the file *is* the import.
     func importBundledFasts() async throws -> FastingImportSummary
+}
+
+/// The receptive inactivity import: a file of received states, written onto the second Home card.
+///
+/// **It is a third sibling rather than a case on either import above it, and the reason is the row
+/// type.** `WhoopExportImporter` writes `workouts`, `ZeroFastingImporter` also writes `workouts`, and
+/// this one writes `receptive_inactivities` — a table whose rows have no span, no strain and no
+/// measurement of any kind. Folding it into either would mean an importer that writes two tables and
+/// answers a summary about one of them.
+///
+/// **It has no day skip, on `FastingImporting`'s own argument.** The identity is derived from each
+/// record's own content, so it is disjoint from every other producer's, and a write here can only ever
+/// touch a row this import put there. A skip would be a second, weaker idempotence rule layered on the
+/// primary key that already provides one.
+///
+/// **The cost of that is stated on the button rather than hidden here**: re-importing recomputes the
+/// same ids from the unchanged file and writes the file's own text back over any edit the user has
+/// made to an entry. See `InactivityImportAction`'s caption, and `ReceptiveInactivity`'s doc comment
+/// for why editing an entry's prose moves its identity rather than keeping it.
+public protocol InactivityImporting: Sendable {
+    /// Imports the receptive inactivities bundled with the app.
+    ///
+    /// Idempotent by derived primary key: a second call over an unchanged file updates the same rows
+    /// rather than appending. Throws when this build carries no such file, because the file *is* the
+    /// import.
+    func importBundledInactivities() async throws -> InactivityImportSummary
 }

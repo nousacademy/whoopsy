@@ -459,12 +459,37 @@ public struct ProfileDashboardView: View {
             }
         }
 
-        // **The one section here that takes data out rather than bringing it in**, which is what its
-        // header says: `Apple Health`, `Whoop` and `Zero Fasting` above it all name the app a file came
-        // *from*, and this one names the app that wrote the file. It held the JSON + CSV export under
-        // the name `Local backup` until the user replaced that section with this one.
+        // **The fourth import and the first whose header names no producer app.** `Apple Health`,
+        // `Whoop` and `Zero Fasting` above it each name the app a file came *from*, because each of
+        // those files is another service's export of a record that service measured. This file is the
+        // owner's own notes log and no app produced it, so the header names the row the import writes —
+        // the same words as the Home card it fills, `RECEPTIVE INACTIVITIES` once the `Form` uppercases
+        // it. That deviation is recorded rather than smoothed over; see `InactivityImportAction`.
         //
-        // **Nothing here writes**, so there is no `Importing…` row: the three sections above it bracket
+        // Its own section on the same argument that gave `Zero Fasting` one: the row it produces is a
+        // `receptive_inactivities` entry rather than a `workouts` row, carrying no measurement of any
+        // kind, so it could not sit under a header naming a producer of measured sessions. It draws
+        // through `actionRow` like the three above it, so the card treatment keeps one definition.
+        Section(InactivityImportAction.sectionTitle) {
+            actionRow(
+                title: InactivityImportAction.inactivities.title,
+                caption: InactivityImportAction.inactivities.caption
+            ) {
+                await localDataViewModel.importInactivityHistory()
+            }
+
+            if localDataViewModel.isImporting {
+                HStack(spacing: 8) { ProgressView(); Text("Importing…").font(.caption) }
+            }
+        }
+
+        // **The one section here that takes data out rather than bringing it in**, which is what its
+        // header says: the four sections above it name what they hold — three an app a file came *from*
+        // and the fourth the row it produces — and this one names the app that wrote the file. It held
+        // the JSON + CSV export under the name `Local backup` until the user replaced that section with
+        // this one.
+        //
+        // **Nothing here writes**, so there is no `Importing…` row: the four sections above it bracket
         // their work in `isImporting` because they change a database under the reader, where this one
         // only reads it and the JSON it produces is the whole of its result.
         //

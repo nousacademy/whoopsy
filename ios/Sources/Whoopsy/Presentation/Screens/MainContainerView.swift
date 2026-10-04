@@ -76,6 +76,7 @@ public struct MainContainerView: View {
             healthKit: container.healthKitSync,
             whoopExport: container.whoopExportImport,
             fasting: container.fastingImport,
+            inactivities: container.inactivityImport,
             exportUseCase: container.exportLocalDataUseCase)
         self.settingsViewModel = SettingsViewModel(repository: container.preferencesRepository)
         self.deviceViewModel = DeviceViewModel(
@@ -101,6 +102,7 @@ public struct MainContainerView: View {
                     sleepRepository: container.sleepRepository,
                     strainRepository: container.strainRepository,
                     workoutRepository: container.workoutRepository,
+                    receptiveInactivityRepository: container.receptiveInactivityRepository,
                     userProfileRepository: container.userProfileRepository,
                     stepRepository: container.stepRepository,
                     analyzeStress: container.analyzeStressUseCase,

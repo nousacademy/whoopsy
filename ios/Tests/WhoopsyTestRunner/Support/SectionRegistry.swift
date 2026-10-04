@@ -72,14 +72,20 @@ struct TestSection {
 /// Every section, in run order.
 ///
 /// **Adding a section means appending one entry here and nothing else.** §1–§5 carry
-/// `synchronousBody:` and are driven from top level before the `Task` exists; §6–§20 carry `body:` and
+/// `synchronousBody:` and are driven from top level before the `Task` exists; §6–§21 carry `body:` and
 /// are awaited inside it. That split is not cosmetic — see `runSynchronousSections(_:)`.
 ///
 /// A `func` rather than a top-level `let`, because a global `let` holding non-`Sendable` closures is
 /// a Swift 6 error under strict concurrency.
 ///
-/// Nonisolated, so top level can build the list before the `Task` exists; the §6–§20 closures it hands
+/// Nonisolated, so top level can build the list before the `Task` exists; the §6–§21 closures it hands
 /// back are nonisolated too, for the reason `TestSection.body` records at length.
+///
+/// **"Nothing else" is true of this file and not of the suite.** `main.swift` drives §6 onward through
+/// `runSections(6...N)`, and `N` is a literal there rather than this list's count — so a section appended
+/// here runs only once that range is widened too. The summary line's `sections=` field is read off this
+/// registry, not off what executed, so a section left outside the range is reported in the very field
+/// that exists to catch a dropped section. Widening the range is part of adding a section.
 func testSections() -> [TestSection] {
     [
         TestSection(
@@ -136,8 +142,9 @@ func testSections() -> [TestSection] {
             body: SleepNeedTests.run),
         TestSection(
             id: 14,
-            title: "Testing the `+` menu's two rows, recorded workouts, HealthKit steps, the Stress "
-                + "Monitor, the recovery ring tiers and the seven-day MetricWeek join...",
+            title: "Testing the `+` menu's three rows, recorded workouts, the receptive inactivities "
+                + "card, HealthKit steps, the Stress Monitor, the recovery ring tiers and the "
+                + "seven-day MetricWeek join...",
             body: HomeSourceTests.run),
         TestSection(
             id: 15,
@@ -157,7 +164,7 @@ func testSections() -> [TestSection] {
             body: WorkoutZoneTests.run),
         TestSection(
             id: 18,
-            title: "Testing the `+` menu's one actionable row, the session accumulator, the band "
+            title: "Testing the `+` menu's one recording row, the session accumulator, the band "
                 + "labels, the profile form's parsing and the session's write...",
             body: LiveSessionTests.run),
         TestSection(
@@ -170,6 +177,11 @@ func testSections() -> [TestSection] {
             title: "Testing the Zero fasting parser, the import it writes and the two figures a "
                 + "session with no measurement behind it prints...",
             body: ZeroFastingImportTests.run),
+        TestSection(
+            id: 21,
+            title: "Testing the receptive inactivity parser, its derived id, the import it writes, "
+                + "the note column round trip and the two readers of one day's card...",
+            body: InactivityImportTests.run),
     ]
 }
 

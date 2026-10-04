@@ -22,13 +22,14 @@ Design/
 # recovery, HRV, skin temperature, blood oxygen, sleep staging, and 550 free-text
 # journal notes. Paired with timestamps and a timezone they are de-anonymising.
 #
-# `ios/Package.swift` bundles **four** files out of `Resources/` — the three CSVs this
-# pattern matches, and `ZeroFasting/fasts.json` below — and `Resources/` holds no
-# tracked file at all, so a fresh clone has no such directory and **will not build**
-# until the four exist. `scripts/create-data-files.sh` writes placeholder versions of
-# exactly those four and cannot overwrite a file that holds data; README.md §Building
-# is the narrative version. Recipe lives there and in that script, not here — a second
-# copy drifts, and the drift would be a header column quietly missing.
+# `ios/Package.swift` bundles **five** files out of `Resources/` — the three CSVs this
+# pattern matches, and the two JSONs under `ZeroFasting/` and `Custom/` below — and
+# `Resources/` holds no tracked file at all, so a fresh clone has no such directory and
+# **will not build** until the five exist. `scripts/create-data-files.sh` writes
+# placeholder versions of exactly those five and cannot overwrite a file that holds
+# data; README.md §Building is the narrative version. Recipe lives there and in that
+# script, not here — a second copy drifts, and the drift would be a header column
+# quietly missing.
 #
 # The directory is named for the producer, because the CSVs in it came from WHOOP —
 # `ZeroFasting/` beside it is the same arrangement for a different app's export. The
@@ -47,6 +48,17 @@ ios/Sources/Whoopsy/Data/Resources/Whoop/*
 # resource `Package.swift` bundles, and the one `scripts/create-data-files.sh` writes
 # here as `{"fast_data": []}`.
 ios/Sources/Whoopsy/Data/Resources/ZeroFasting/*
+
+# Custom — never commit, and the whole directory rather than `*.csv`: every file in here is
+# a dream journal, which makes it the most identifying thing in this repository precisely
+# because nothing about it looks like data — no timestamp, no device, no measurement, just
+# one person's own account of their nights. It is the one directory under `Resources/` that
+# is not an app's export, which is why it is not named for a producer the way `Whoop/` and
+# `ZeroFasting/` above are. `dreams.csv` is the notes file and the source of truth;
+# `dreams.json` is generated from it by a generator the owner keeps outside this repository
+# — not repo tooling — and is the same prose with its dates resolved, so it is ignored on
+# the same rule rather than matched separately.
+ios/Sources/Whoopsy/Data/Resources/Custom/*
 
 # Mapbox credentials — never commit.
 # `Mapbox.local.xcconfig` holds the PUBLIC (`pk.…`) access token, which is the only

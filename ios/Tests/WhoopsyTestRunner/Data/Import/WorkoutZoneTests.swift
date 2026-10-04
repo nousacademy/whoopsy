@@ -21,6 +21,13 @@ import Whoopsy
 /// The section's body. Awaited inside the `Task` by `runSections(_:)`.
 enum WorkoutZoneTests {
     static func run() async throws {
+        // The receptive inactivity vocabulary runs **first and above the CSV read**, so it still asserts
+        // if the file below it throws — §14's `+`-menu block placed the same way inside its own section,
+        // and for the same reason. It is the activity-name path's second catalogue and it shares
+        // `ActivityGlyph` and `ActivityName.normalised` with the first, which is why it lives in this
+        // section rather than beside the card it draws on.
+        try await ReceptiveInactivityCatalogTests.run()
+
         let workoutsURL = whoopExportURL().deletingLastPathComponent()
             .appendingPathComponent("workouts.csv")
 
@@ -426,6 +433,7 @@ enum WorkoutZoneTests {
                     sleepRepository: GRDBSleepRepository(db: homeDB),
                     strainRepository: GRDBStrainRepository(db: homeDB),
                     workoutRepository: GRDBWorkoutRepository(db: homeDB),
+                    receptiveInactivityRepository: GRDBReceptiveInactivityRepository(db: homeDB),
                     userProfileRepository: GRDBUserProfileRepository(db: homeDB),
                     stepRepository: GRDBStepRepository(db: homeDB),
                     analyzeStress: AnalyzeStressUseCase(biometricRepository: EmptyBiometricStore()),

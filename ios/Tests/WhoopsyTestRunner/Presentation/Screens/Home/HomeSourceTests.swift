@@ -26,5 +26,6 @@ enum HomeSourceTests {
         try await HomeStressMonitorTests.run()
         try await HomeRingsAndCalendarTests.run()
         try await HomeMetricWeekTests.run()
+        try await HomeReceptiveInactivitiesTests.run()
     }
 }

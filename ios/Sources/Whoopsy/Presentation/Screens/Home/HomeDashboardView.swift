@@ -112,6 +112,26 @@ public struct HomeDashboardView: View {
         let fast: ActiveFast
     }
 
+    /// The receptive entry whose sheet is up, if any — a **third** binding of its own rather than a
+    /// reuse of either above, and it is the same argument `presentedFast` records.
+    ///
+    /// `presentedActivity` is typed `WorkoutSession` and wired to `removeWorkout`/`updateWorkout`,
+    /// both of which mutate the workouts list this screen draws. A receptive entry is a row in a
+    /// *different table* with a different id, so reporting a delete or a save against it through those
+    /// two would mutate nothing — and the sheet that opens it has to be handed the draft it edits,
+    /// which neither of those destination closures can carry.
+    ///
+    /// **A `.sheet` and not a third `navigationDestination(item:)`.** An editing surface is a place the
+    /// reader goes and comes back from, while the calendar and the `+` menu are read *against* the page
+    /// behind them and are overlays — the rule `ActivityEditSheet` was put on a sheet by. It also means
+    /// no new `hidingTabBar` case: a presented sheet covers the tab bar itself.
+    @State private var presentedReceptive: ReceptiveInactivityDraft?
+
+    /// Whether a receptive write is in flight, so `SAVE` and `DELETE` cannot be pressed twice over one
+    /// edit. It lives here rather than on the sheet because the sheet does not own the write — the view
+    /// model does — and the sheet is handed the answer as a plain `Bool`.
+    @State private var isSavingReceptive = false
+
     /// The device page, reached from the badge in the top bar.
     ///
     /// **It is the same instance More → Device pushes**, built once in `MainContainerView.init` and
@@ -248,6 +268,7 @@ public struct HomeDashboardView: View {
                         rings
                         myDayHeader
                         activitiesCard
+                        receptiveInactivitiesCard
                         myDashboardHeader
                         dashboardTiles
                     }
@@ -367,6 +388,64 @@ public struct HomeDashboardView: View {
         // a different modifier, so neither replaces the other.
         .overlayPreferenceValue(ActivityMenuAnchorKey.self, alignment: .top) { anchor in
             if isPresentingActivityMenu { activityMenuOverlay(anchoredBelow: anchor) }
+        }
+        // The receptive sheet, for both of its modes — the `+` menu's `ADD RECEPTIVE INACTIVITY` opens
+        // it on an empty draft and a card row opens it on the row it came from. **Presented from the
+        // `item:` binding and not from a flag**, so the day and the name it was opened with are the
+        // ones the sheet draws: a flag plus a separate draft value would be two states that a
+        // dismissal could leave disagreeing.
+        //
+        // **The binding reads back through the `@State`.** A `.sheet(item:)` closure is handed the
+        // value as it was when the sheet was presented, so a binding built from `presented` alone
+        // would write every keystroke into a copy SwiftUI has already discarded — the sheet would
+        // look live and would save the draft it opened with. `presented` is the fallback for the one
+        // frame in which the item is being handed over.
+        .sheet(item: $presentedReceptive) { presented in
+            ReceptiveInactivitySheet(
+                draft: Binding(
+                    get: { presentedReceptive ?? presented },
+                    set: { presentedReceptive = $0 }),
+                day: selectedDate,
+                isSaving: isSavingReceptive,
+                onSave: { Task { await saveReceptiveInactivity() } },
+                onDelete: { Task { await deleteReceptiveInactivity() } })
+        }
+    }
+
+    // MARK: - The receptive sheet's two writes
+
+    /// Saves the draft the sheet is editing onto the day on screen, and dismisses **only when the
+    /// write reported back**. See `HomeViewModel.saveReceptiveInactivity(_:)` for the merge and for why a
+    /// failure leaves the list alone; the sheet stays up with the user's edit still in it either way.
+    ///
+    /// The day is `selectedDate` rather than anything the draft carries, because the invariant is that
+    /// a receptive entry's `date` is the day being viewed and its optional time is a time *on* it —
+    /// `ReceptiveInactivityDraft.applying(to:)` is the one place that pair is built.
+    private func saveReceptiveInactivity() async {
+        guard let draft = presentedReceptive,
+              let activity = draft.applying(to: selectedDate)
+        else { return }
+        isSavingReceptive = true
+        // `defer` and not a clear on the success path alone: a throw out of the repository would leave
+        // the flag set for the life of the screen, greying a `SAVE` that has nothing in flight.
+        defer { isSavingReceptive = false }
+        if await viewModel.saveReceptiveInactivity(activity) {
+            presentedReceptive = nil
+        }
+    }
+
+    /// Deletes the row the sheet was opened on, and dismisses only on a real removal.
+    ///
+    /// **The dismissal follows the store's answer and not the absence of a throw**, which is
+    /// `HomeViewModel.deleteReceptiveInactivity(_:)`'s contract: it returns `false` for an id that
+    /// matched no row, and a page that dismissed on that would have closed a sheet over an entry still
+    /// on disk — which is the row coming back on the next load.
+    private func deleteReceptiveInactivity() async {
+        guard let draft = presentedReceptive else { return }
+        isSavingReceptive = true
+        defer { isSavingReceptive = false }
+        if await viewModel.deleteReceptiveInactivity(draft.id) {
+            presentedReceptive = nil
         }
     }
 
@@ -512,6 +591,12 @@ public struct HomeDashboardView: View {
                 break
             case .startSession:
                 presentActivityPicker()
+            case .addReceptiveInactivity:
+                // An empty draft, so the sheet opens in add mode with nothing to save until a name is
+                // chosen. **The day is not passed here** — the sheet is handed `selectedDate` at
+                // presentation, so the entry is filed on the day the user was looking at rather than
+                // on today, which is what makes the row correct on a past day.
+                presentedReceptive = ReceptiveInactivityDraft()
             }
         } label: {
             HStack(spacing: 10) {
@@ -1216,6 +1301,118 @@ public struct HomeDashboardView: View {
         .padding(14)
         .background(Theme.homeCard)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// `RECEPTIVE INACTIVITIES` — the states where conscious exertion drops to zero, as a second card
+    /// below `ACTIVITIES`.
+    ///
+    /// ## A sibling card and not a group inside `ACTIVITIES`
+    ///
+    /// The two record opposite things: a workout is something the body **did**, with a strain and a
+    /// span; a receptive entry is a dream or a meditation, which measures nothing at all. Drawing them
+    /// as one list would put rows with a bold figure and a range beside rows with neither, and the
+    /// `ACTIVITIES` card's own row helper takes a `startedAt`/`endedAt` pair a receptive entry does not
+    /// have. So this is its own card, its own row, and its own empty sentence.
+    ///
+    /// ## It draws on every day, including empty ones
+    ///
+    /// Unlike the `ACTIVITIES` card, whose empty sentence is a real state because a day with no
+    /// workout is ordinary — this card's subject is newer than the habit of it, and the `+` menu is
+    /// otherwise the only sign the feature exists. An empty day therefore draws the card with the
+    /// sentence rather than nothing.
+    ///
+    /// ## Nothing here is a figure
+    ///
+    /// A receptive inactivity has no strain, no heart rate, no zone block and no steps — not as an
+    /// absence to be drawn as a dash, but as a field that does not exist, because a figure describing
+    /// exertion is the wrong question about a state defined by the absence of exertion. The only
+    /// reading a row can carry is the optional clock, and **a row with no time draws no clock at all**
+    /// rather than the app's `—`: a dash in that slot would state that a time was expected and is
+    /// missing, where the user's own rule is that *"time is optional"* and an untimed entry is
+    /// complete.
+    private var receptiveInactivitiesCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("RECEPTIVE INACTIVITIES")
+                .font(.system(size: 11, weight: .bold))
+                .tracking(1.1)
+                .foregroundStyle(Theme.textSecondary)
+
+            if viewModel.receptiveInactivities.isEmpty {
+                // **Its own sentence and not `ACTIVITIES`'.** Two identical "Nothing recorded for this
+                // day." lines stacked one above the other is worse than one, and the words are not
+                // interchangeable anyway: this card's subject is *received*, which is the distinction
+                // the card is named for.
+                Text("Nothing received on this day.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+            } else {
+                // A `Button` setting `presentedReceptive`, so the tap opens the same sheet the `+`
+                // menu opens, populated with the row it came from. The order is the read's own — see
+                // `ReceptiveInactivity.isOrderedBefore` — so the card cannot draw a day in an order a
+                // fresh read would not produce.
+                ForEach(viewModel.receptiveInactivities) { activity in
+                    Button {
+                        presentedReceptive = ReceptiveInactivityDraft(activity)
+                    } label: {
+                        receptiveInactivityRow(activity)
+                    }
+                    .buttonStyle(.plain)
+                    // A hint only, on the rings' rule: an explicit `accessibilityLabel` here would
+                    // *replace* the composed one and drop the name out of the announcement.
+                    .accessibilityHint("Opens this receptive inactivity")
+                }
+            }
+        }
+        .padding(14)
+        .background(Theme.homeCard)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// One row of `RECEPTIVE INACTIVITIES`.
+    ///
+    /// **A sibling of `activityRow` and not a parameterisation of it**, which is the same decision
+    /// `presentedReceptive` records one level up: that helper's `value`, `startedAt` and `endedAt` are
+    /// all required, and a receptive entry has none of the three. Defaulting them so this row could
+    /// borrow it would put a `value` of `""` and a fabricated instant into a signature whose whole
+    /// point is that a row prints what was measured. Visual identity comes from the shared
+    /// `ActivityGlyphLabel`, the same `Theme` tokens and the same `ActivityGlyph.chipDiameter` — not
+    /// from a shared function.
+    ///
+    /// **The name is drawn as the catalogue spells it, not uppercased.** The `ACTIVITIES` card
+    /// uppercases because its labels are `workouts.csv`'s own casing, a producer's string the card
+    /// prints in caps anyway; this list is this app's own and its names are mixed case
+    /// (`Non-sleep, deep rest`), so uppercasing here would draw one name two ways on two screens a
+    /// tap apart.
+    ///
+    /// **The clock is a single figure with no separator and no weekday badge.** There is no end to
+    /// print, so there is no range and no cross-midnight case for `timeRange` to handle — an entry's
+    /// time is always a time on its own day. Absent entirely when there is no time; see the card's
+    /// comment for why that is not the dash.
+    private func receptiveInactivityRow(_ activity: ReceptiveInactivity) -> some View {
+        HStack(spacing: 12) {
+            ActivityGlyphLabel(ActivityGlyph.mark(for: activity.name), size: 15, weight: .semibold)
+                .foregroundStyle(Theme.sleepPerformance)
+                .frame(width: ActivityGlyph.chipDiameter, height: ActivityGlyph.chipDiameter)
+                .background(Theme.sleepPerformance.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            Text(activity.name)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            if let startedAt = activity.startedAt {
+                Text(startedAt.formattedHourMinute())
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .monospacedDigit()
+            }
+        }
+        .contentShape(Rectangle())
     }
 
     /// One row of the `ACTIVITIES` card.

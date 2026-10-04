@@ -28,6 +28,26 @@ public enum ActivityGlyph {
     /// did, so an unrecognised activity is a missing nicety rather than a regression.
     public static let fallback = "figure.run"
 
+    /// The mark the receptive-inactivity feature draws where there is **no name yet**, and the symbol the
+    /// `+` menu's `ADD RECEPTIVE INACTIVITY` row leads with.
+    ///
+    /// **It exists because the fallback would be a false drawing rather than a missing one, which is a
+    /// distinction this table's own comment makes about unrecognised activities.** `mark(for: nil)`
+    /// answers `figure.run` — the right answer for a session whose name this app has no glyph for, and an
+    /// absurd one on a sheet whose subject is a dream: a receptive sheet opened fresh would draw a
+    /// running figure beside the app's word for *no value*, which reads as a chosen mark rather than as an
+    /// absence. So the receptive sheet's NAME row asks for this instead of `mark(for:)` while the draft
+    /// has no name, and stops doing so the moment one is picked.
+    ///
+    /// **It is one value rather than two literals** — the same string is the menu row's `symbol` — so the
+    /// glyph beside `ADD RECEPTIVE INACTIVITY` and the glyph on the sheet it opens cannot come apart. iOS
+    /// 15, well inside the 17.0 target; a wrong name draws an empty chip, which is why `ActivityMenu`'s
+    /// non-empty sweep and this comment are the only things that can see a typo here.
+    ///
+    /// It is deliberately **not** an entry in the `marks` table: that table is keyed by a name and this is
+    /// the answer where there is none. A `"receptive inactivity"` key would also be a row no producer writes.
+    public static let receptiveMark = "brain.head.profile"
+
     /// What an activity's name draws: one SF Symbol, or **two, in order**.
     ///
     /// ## Why a name needs more than one symbol
@@ -289,6 +309,43 @@ public enum ActivityGlyph {
         "fast": .pair("fork.knife", "timer"),
         "stretching": .single("figure.flexibility"),
         "tai chi": .single("figure.mind.and.body"),
+
+        // MARK: The receptive catalogue
+        //
+        // `ReceptiveInactivityCatalog`'s own names, keyed normalised like every entry above. **Three of its
+        // thirteen names are absent here on purpose** — `Meditation`, `QiGong` and `Breathwork` are the
+        // catalogue's spelling of the three recovery activities already in the block above, so they
+        // resolve to those entries and a second copy would be a second place for one phenomenon's mark to
+        // be changed. `ReceptiveInactivityCatalogTests` sweeps the whole list through `mark(for:)`, which is
+        // what notices a name added to that list without an entry here.
+        //
+        // **Every symbol is a deliberate choice rather than a nearest available figure, which is the
+        // opposite of the sports block's rule above** — a receptive inactivity is a state rather than a
+        // movement, so there is no `figure.*` to borrow for most of these and the symbol is picked for what
+        // it depicts: sleep for the sleep-adjacent states, sound for the ones that are a thing heard, and a
+        // place or an element for the ones that are a place the body is put.
+        "dream": .single("moon.stars.fill"),
+        "lucid dream": .single("sparkles"),
+        // Deliberately **not** `zzz`. This is the one name in the catalogue that states what it is not —
+        // the practice is deep rest taken *awake*, which is the whole of what the abbreviation spells —
+        // and a sleep mark beside the word `Non-sleep` would draw the opposite of the row it labels,
+        // which is the failure `ReceptiveInactivityCatalogTests`' fallback sweep exists to catch. It joins
+        // the mental-rest family above instead, so it draws what `Meditation` and `QiGong` draw.
+        "non-sleep, deep rest": .single("figure.mind.and.body"),
+        // `figure.yoga` and not `figure.mind.and.body`: the practice is the one WHOOP files under
+        // `Recovery Activities` as a yoga, and the two marks must not differ from `Yoga`'s above.
+        "yoga nidra": .single("figure.yoga"),
+        // A scan is done standing still — `figure.stand` is a body upright and still, which is the state
+        // rather than the practice.
+        "body scan": .single("figure.stand"),
+        "stillness": .single("circle.dotted"),
+        "sound bath": .single("waveform"),
+        "float": .single("water.waves"),
+        // `heat.waves` is iOS 17.0 — the deployment target exactly. A `sauna` symbol does not exist, and
+        // the nearest alternatives (`flame.fill`, `thermometer.sun`) depict a fire or a reading rather
+        // than the room.
+        "sauna": .single("heat.waves"),
+        "prayer": .single("hands.sparkles"),
     ]
 
     /// What `name` draws, or the fallback mark when the table has no entry for it.

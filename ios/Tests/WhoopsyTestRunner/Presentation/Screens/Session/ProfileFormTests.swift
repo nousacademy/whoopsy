@@ -314,6 +314,80 @@ enum ProfileFormTests {
                 + "backticks around a filename or asterisks around a phrase would render literally, "
                 + "characters and all — a failure no compiler and no screenshot of another row can see")
 
+        // ---- The `LOGS` pane's `Receptive inactivities` section ----
+        //
+        // The pane's fourth import section and the first whose header does not name a producer app. The
+        // user's instruction is exact — *"Screen names the inactivity too"* — so the section, the button
+        // and the row type all take the row's name rather than the file's, and this is the one section
+        // here that is titled for what it *makes* rather than for where the file came from.
+        //
+        // **That deviation is why the header is a constant on the value and not a literal in the `body`.**
+        // `Apple Health`, `Whoop` and `Zero Fasting` are typed where they are drawn, so nothing can read
+        // them — and the same was true of this header until it was hoisted, which is what makes it the
+        // only one of the four that is assertable at all. `WhoopsyExportAction.sectionTitle` is the
+        // precedent, held for the same reason: the runner has no renderer, so a string typed into a
+        // `body` is a string nothing can check, and the deviation would be a claim in a comment rather
+        // than something a failing run could contradict.
+        //
+        // **The two words are the Home card's, and that correspondence cannot be asserted from here.**
+        // `HomeDashboardView` draws `Text("RECEPTIVE INACTIVITIES")` — a bare literal in a `body`, with
+        // no constant behind it — so there is nothing to compare this header against. What *is* pinned
+        // is the header's own letters, and the second assertion states that half honestly rather than
+        // pretending to a coupling that does not exist.
+
+        assertTest(
+            InactivityImportAction.sectionTitle == "Receptive inactivities",
+            "The section is titled **`Receptive inactivities`** — the row the import produces, in title "
+                + "case, which the `Form` draws in capitals. It is the one header on this pane that names "
+                + "neither a producer app nor this app, and the deviation is the user's own instruction "
+                + "(`Screen names the inactivity too`) rather than an oversight: the file is the owner's "
+                + "own notes log, so there is no app to name. Held as a constant so the deviation is "
+                + "assertable at all — its three neighbours are literals in the `body`, where nothing here "
+                + "can reach them")
+        assertTest(
+            InactivityImportAction.sectionTitle.uppercased() == "RECEPTIVE INACTIVITIES",
+            "…and once the `Form` uppercases it, it reads as the same two words as the Home card it fills. "
+                + "That is stated as a property of the letters rather than as a comparison against the "
+                + "card, and the difference matters: the card's title is a literal with no constant "
+                + "behind it, so renaming *it* would not fail this — but renaming the header to anything "
+                + "whose capitals are not the card's name does, which is the half that is reachable")
+
+        assertTest(
+            InactivityImportAction.fileName == "dreams.json",
+            "The row names the file the reader has — `dreams.json`, the generator's own output beside the "
+                + "`dreams.csv` it was drawn from, which is what a person following the caption would go "
+                + "and look for. It is a separate constant from `InactivityImporter.bundledResourceName`, "
+                + "on the split `FastingImportAction` already carries and for its reason: the name on "
+                + "screen and the name of the resource answer to different readers, and §21 pins the "
+                + "other one, so neither can drift into the other's place")
+        assertTest(
+            InactivityImportAction.inactivities.caption.contains(InactivityImportAction.fileName),
+            "…and the caption actually names it, so the constant above is a fact about the screen rather "
+                + "than a string nobody reads. The caption is *built* from it with `+` rather than "
+                + "repeating the word, so the sentence cannot come to name a file the button does not read "
+                + "while both assertions pass on their own")
+        assertTest(
+            InactivityImportAction.inactivities.title == "IMPORT RECEPTIVE INACTIVITIES",
+            "The section's one row is titled in the case it is drawn in, on the same rule as the four "
+                + "rows above it — the treatment is bold tracked capitals, and a `.textCase` in the `body` "
+                + "would put half of what the reader sees where nothing here can read it. It names the row "
+                + "that lands rather than the file it came from: `IMPORT DREAMS` would be a second name "
+                + "for a thing the card, the picker and this header already call one")
+        assertTest(
+            !InactivityImportAction.inactivities.caption.isEmpty,
+            "…and it carries a caption, which is the whole of what tells a reader that no entry has a "
+                + "clock and that re-importing writes the file's text back over their own edits. Neither "
+                + "is visible from the button, and the second is the consequence §21 confirms on a real "
+                + "database rather than assumes — this import skips no day, because each entry's key is "
+                + "derived from its own content and is disjoint from every other producer's")
+        assertTest(
+            ![InactivityImportAction.inactivities.caption, InactivityImportAction.inactivities.title]
+                .contains { $0.contains("**") || $0.contains("`") },
+            "…and neither the title nor the caption carries Markdown. Both reach `Text` as `String`s "
+                + "rather than as literals, which takes the `StringProtocol` overload and parses nothing, "
+                + "so backticks around `dreams.json` would render literally, characters and all — a "
+                + "failure no compiler and no screenshot of another row can see")
+
         // ---- The `LOGS` pane's `Whoopsy` section ----
         //
         // The one section on that pane that takes data **out**, added on the user's instruction —
@@ -343,11 +417,14 @@ enum ProfileFormTests {
                 + "nothing in `Sources/` reads an exported file back. Reverting the header is what this "
                 + "assertion catches")
         assertTest(
-            ![WhoopImportAction.all.map(\.title), [FastingImportAction.fasting.title]]
+            ![WhoopImportAction.all.map(\.title),
+              [FastingImportAction.fasting.title],
+              [InactivityImportAction.inactivities.title]]
                 .flatMap { $0 }.contains(WhoopsyExportAction.sectionTitle),
-            "…and it collides with none of the four rows above it, which is the failure a shared header "
+            "…and it collides with none of the five rows above it, which is the failure a shared header "
                 + "would draw: two sections of one name on one pane, with nothing on either saying which "
-                + "is which")
+                + "is which. The fifth is the receptive-inactivity row, added here rather than left out — "
+                + "an array that stopped covering the pane would go on passing while covering less")
 
         assertTest(
             WhoopsyExportAction.export.title == "EXPORT WHOOPSY DATA",

@@ -93,11 +93,23 @@ let package = Package(
             // precedent, being the same nesting depth. Moving these files again means checking that,
             // because `Bundle.module` would return `nil` and the import would report `.notBundled`
             // rather than failing at build time.
+            //
+            // **`Custom/dreams.json` is the fifth and the first whose directory names no producer
+            // app**, which is the same deviation `.gitignore` records on the directory and
+            // `InactivityImportAction` records on the button: there is no app behind it, it is the
+            // owner's own notes log with its dates resolved. It is a `.json` at the same nesting
+            // depth as `ZeroFasting/fasts.json`, so it flattens the same way and
+            // `InactivityImporter.bundledInactivitiesURL()` passes no `subdirectory:` either. **And
+            // bundling it ships 26 KB of that prose inside the app binary**, which follows from
+            // importing the notes at all — the file has to be in the bundle for any import to read
+            // it — and is stated here rather than left implicit, since the directory is gitignored
+            // precisely because of what it holds.
             resources: [
                 .process("Data/Resources/Whoop/physiological_cycles.csv"),
                 .process("Data/Resources/Whoop/sleeps.csv"),
                 .process("Data/Resources/Whoop/workouts.csv"),
                 .process("Data/Resources/ZeroFasting/fasts.json"),
+                .process("Data/Resources/Custom/dreams.json"),
             ]
         ),
         .executableTarget(

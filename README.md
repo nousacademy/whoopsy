@@ -69,7 +69,7 @@ strap.** Being specific about that is more useful than a feature list:
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-a 1803-assertion test runner that pins the behaviour of all of them.
+a 1928-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -138,7 +138,7 @@ whoopsy/
 ├── ios/              the app — one SwiftPM package plus Whoopsy.xcodeproj
 │   ├── Sources/      Whoopsy/ (the four layers) and WhoopsyLiveActivityKit/
 │   ├── App/          Xcode-only sources: iOS/, Map/, LiveActivity/, Config/
-│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 1803-assertion suite,
+│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 1928-assertion suite,
 │                     mirroring Sources/Whoopsy/ file for file
 ├── backend/          a Cloudflare Worker (Hono · D1 · R2) — scaffolded, not implemented
 ├── shared/           openapi.json, the contract the two will agree on
@@ -164,13 +164,15 @@ Requires Xcode 16+ and Swift 6.
 
 ### First: create the data files, or nothing will build
 
-`ios/Sources/Whoopsy/Data/Resources/` holds **two producer directories**, one per app a file came out of,
-and both are **gitignored.** What lived in `Whoop/` was one real person's physiological record —
-recovery score, HRV, resting heart rate, skin temperature, blood oxygen, sleep staging, and free-text
-journal notes — and it is not published. `ZeroFasting/` is ignored for the same reason and holds a
-fasting tracker's history rather than a WHOOP export. **A fresh clone will not compile until you put
-four files back** — every `.process(…)` entry in `Package.swift` is a build input, and a missing one
-fails the build with `couldn't build … because of missing inputs`, not merely a warning.
+`ios/Sources/Whoopsy/Data/Resources/` holds **three directories, and all three are gitignored.** What
+lived in `Whoop/` was one real person's physiological record — recovery score, HRV, resting heart
+rate, skin temperature, blood oxygen, sleep staging, and free-text journal notes — and it is not
+published. `ZeroFasting/` is ignored for the same reason and holds a fasting tracker's history rather
+than a WHOOP export. `Custom/` is the one that names no producer app at all: it holds the owner's own
+dream notes, which is the most identifying thing in the repository precisely because nothing about it
+looks like data. **A fresh clone will not compile until you put five files back** — every
+`.process(…)` entry in `Package.swift` is a build input, and a missing one fails the build with
+`couldn't build … because of missing inputs`, not merely a warning.
 
 | File | Needed? |
 | :--- | :--- |
@@ -178,6 +180,7 @@ fails the build with `couldn't build … because of missing inputs`, not merely 
 | `Whoop/sleeps.csv` | **Required to build**, for the same reason — it is the second `.process(…)` entry. Read only for the **eight nap rows** it carries and nothing else |
 | `Whoop/workouts.csv` | **Required to build**, for the same reason — the third `.process(…)` entry, and it is a build input like any other. §17/§19 of the suite also read it for its `HR Zone 1 %`…`5 %` block and its `Activity name` column, so the two zone rows and the activity-name path can only be exercised against a real one |
 | `ZeroFasting/fasts.json` | **Required to build.** The fourth `.process(…)` entry, read by `ZeroFastingParser` through `Bundle.module` for the 170 fasts it carries. A placeholder of `{"fast_data": []}` is enough to compile and imports nothing |
+| `Custom/dreams.json` | **Required to build.** The fifth `.process(…)` entry, read by `InactivityImporter` through `Bundle.module` for the 60 dreams it carries. A placeholder of `{"receptive_inactivities": []}` is enough to compile and imports nothing. It is generated from `Custom/dreams.csv`, the owner's own notes file, by a generator that is **not part of this repository** — the owner's own tooling, kept untracked like the `Custom/` directory it writes into — and unlike the two files above, its directory names no producer app, which is why the button that reads it is named for the row it produces (`IMPORT RECEPTIVE INACTIVITIES`) rather than for where the file came from |
 | `Whoop/journal_entries.csv` | Not needed. Nothing bundles it and nothing reads it |
 
 The three CSVs are validated as they are read, so a wrong-shaped one fails loudly instead of
@@ -193,19 +196,21 @@ nothing. The workout file must carry `Cycle start time`, `Cycle timezone`, `Work
 import button under **Profile › LOGS › Whoop**, and the build needs all three whether or not you press
 them.
 
-**If you don't**, run the script. It writes a placeholder for each of the four files
-`Package.swift` declares as resources — and nothing else — from that producer's own header row:
+**If you don't**, run the script. It writes a placeholder for each of the five files
+`Package.swift` declares as resources — and nothing else — from that producer's own header row, or from
+an empty array under each JSON file's own top-level key:
 
 ```bash
 scripts/create-data-files.sh          # create what is missing, leave the rest alone
-scripts/create-data-files.sh --check  # report all four, write nothing
+scripts/create-data-files.sh --check  # report all five, write nothing
 ```
 
-The placeholders are enough to compile — **verified, not assumed**: a tree holding only the four
+The placeholders are enough to compile — **verified, not assumed**: a tree holding only the five
 placeholders builds with `swift build` and no `Invalid Resource` warning, and the importer then
 honestly reports zero days rather than inventing any. They do **not** make the test suite pass, and
-should not: `make test` drives the real export, so §11, §13, §14, §15, §17 and §20 assert that file's
-own figures (673 workouts, 910 nights, 170 fasts). Run the suite against a real export.
+should not: `make test` drives the real export, so §11, §13, §14, §15, §17, §20 and §21 assert those
+files' own figures (673 workouts, 910 nights, 170 fasts, 60 dreams over 55 days). Run the suite against
+a real export.
 
 **It will not overwrite an export.** A file holding rows is reported and left byte-for-byte alone,
 whatever flags it is given — the record is the only copy and the script is built so it cannot be the
@@ -353,11 +358,11 @@ and compare its size and timestamp against the built one.
 
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 20 sections, 1803 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 21 sections, 1928 assertions, and no
 test discovery:
 
 ```bash
-make test                 # build + run all 20 sections
+make test                 # build + run all 21 sections
 make test SECTIONS=13,15  # just those two
 ```
 
@@ -366,7 +371,7 @@ deleted sources and the link fails) and hands the runner an absolute `#filePath`
 longer cares which directory you run it from. It ends with one machine-readable line:
 
 ```
-SUITE sections=1,2,...,20 assertions=1803 failed=0 exit=0
+SUITE sections=1,2,...,21 assertions=1928 failed=0 exit=0
 ```
 
 Read that line rather than the scrollback — the suite has no test discovery, so a section that

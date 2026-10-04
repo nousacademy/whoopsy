@@ -35,6 +35,7 @@ import SwiftUI
     private let healthKit: any HealthKitSyncing
     private let whoopExport: any WhoopExportImporting
     private let fasting: any FastingImporting
+    private let inactivities: any InactivityImporting
     private let exportUseCase: ExportLocalDataUseCase
 
     public init(
@@ -42,12 +43,14 @@ import SwiftUI
         healthKit: any HealthKitSyncing,
         whoopExport: any WhoopExportImporting,
         fasting: any FastingImporting,
+        inactivities: any InactivityImporting,
         exportUseCase: ExportLocalDataUseCase
     ) {
         self.repository = repository
         self.healthKit = healthKit
         self.whoopExport = whoopExport
         self.fasting = fasting
+        self.inactivities = inactivities
         self.exportUseCase = exportUseCase
     }
 
@@ -139,6 +142,33 @@ import SwiftUI
         defer { isImporting = false }
         do {
             status = try await fasting.importBundledFasts().message
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    /// Imports the owner's own notes — the receptive inactivities bundled with the app — on the user's
+    /// explicit request.
+    ///
+    /// **Its own button rather than a case on either import above it**, on the same argument that gave
+    /// the fasting import one: the file is not another service's record of a measured session, and the
+    /// row it writes is a `receptive_inactivities` entry rather than a `workouts` row. Folding it in
+    /// would put rows on Home's second card under a control promising a workout.
+    ///
+    /// **No `AppPreferences` key**, on the same reasoning the imports above lost theirs: nothing on the
+    /// screen changes with it.
+    ///
+    /// Idempotent, so a re-import is safe and rewrites the same rows — but **not durable against an
+    /// edit**, and that is the opposite of the export's behaviour rather than an oversight. This
+    /// import skips no day, because each entry's id is derived from its own content and so is disjoint
+    /// from every other producer's; a re-import therefore recomputes the same ids from the unchanged
+    /// file and writes the file's own text back over anything the user has typed. The caption beside
+    /// the button says so, and `InactivityImporter` carries the argument for skipping no day.
+    public func importInactivityHistory() async {
+        isImporting = true
+        defer { isImporting = false }
+        do {
+            status = try await inactivities.importBundledInactivities().message
         } catch {
             status = error.localizedDescription
         }

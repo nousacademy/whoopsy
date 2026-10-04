@@ -717,10 +717,11 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
         String(Int(start.timeIntervalSince1970))
     }
 
+    /// Forwarded rather than reimplemented, because this grammar now has three writers — this file,
+    /// `FastingImportSummary` and `InactivityImportSummary` — and three copies of `"d MMM yyyy"` are
+    /// three places a report's two ends can drift apart. See `Date.formattedImportDay()` for why the
+    /// locale is pinned rather than `.current`.
     private static func displayDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "d MMM yyyy"
-        return formatter.string(from: date)
+        date.formattedImportDay()
     }
 }

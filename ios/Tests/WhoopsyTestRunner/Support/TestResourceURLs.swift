@@ -62,3 +62,19 @@ func whoopNapsURL() -> URL {
 func zeroFastingURL() -> URL {
     packageRoot().appendingPathComponent("Sources/Whoopsy/Data/Resources/ZeroFasting/fasts.json")
 }
+
+/// `dreams.json`, generated from the owner's own notes log by a generator that is **not part of this
+/// repository** — the owner's own tooling, untracked as the file it writes is.
+///
+/// Read here as a **repo file** for `zeroFastingURL()`'s reason: `scripts/test.sh` links object files
+/// and no resource bundle, so `Bundle.module` **traps** rather than returning `nil`. §21 therefore
+/// asserts `parseInactivities(at:)` and `importInactivities(at:)` and never calls
+/// `bundledInactivitiesURL()`.
+///
+/// **The directory names no producer app, and the path is under `Custom/` because of it** — there is no
+/// app behind these records, they are one person's own notes with their dates resolved. The file is
+/// gitignored, so a fresh clone has the `{"receptive_inactivities": []}` placeholder here instead and
+/// §21's assertions over the real file fail rather than silently covering nothing.
+func inactivitiesURL() -> URL {
+    packageRoot().appendingPathComponent("Sources/Whoopsy/Data/Resources/Custom/dreams.json")
+}
