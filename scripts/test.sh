@@ -4,14 +4,14 @@
 # out of `.build` and omitted the `-fmodule-map-file` flag, so it died with `missing required module
 # 'CSQLite'` before it ever reached a test.
 #
-#   ./scripts/test.sh              # all 15 sections
+#   ./scripts/test.sh              # all 20 sections
 #   ./scripts/test.sh 13 15        # §13 and §15 only
 #   ./scripts/test.sh 13,15        # same thing
 #   make test SECTIONS=13,15       # same thing, via the Makefile
 #
 # The runner prints one machine-readable line at the end:
 #
-#   SUITE sections=1,...,15 assertions=941 failed=0 exit=0
+#   SUITE sections=1,...,20 assertions=1803 failed=0 exit=0
 #
 # Read that line rather than the `✓` scrollback. This suite has no test discovery, so a section that
 # stopped running looks exactly like one that passed — `sections=` is the field that catches it, and
@@ -29,11 +29,16 @@ scratch="${WHOOPSY_SCRATCH:-$repo_root/tmp/build/verify}"
 runner="$scratch/WhoopsyTestRunner"
 
 # **Absolute, and that is load-bearing.** `#filePath` in the runner is whatever path is handed to
-# swiftc, and the suite's `whoopExportURL()` climbs three levels from it to find the bundled export.
-# A relative path makes the "package root" it computes depend on the caller's working directory, so
-# §11, §13 and §15 each fail with a message that reads like a broken import. An absolute path removes
-# that failure class outright, which is why the suite no longer has to be run from the repo root.
+# swiftc, and the suite's `packageRoot()` walks up from it to find the bundled export. A relative path
+# makes the root it computes depend on the caller's working directory, so §11–§20 each fail with a
+# message that reads like a broken import. An absolute path removes that failure class outright, which
+# is why the suite no longer has to be run from the repo root.
+#
+# `WHOOPSY_PACKAGE_ROOT` is exported beside it because `packageRoot()` prefers the override when it is
+# set: the marker walk is there so the helper is depth-independent, and the export is what keeps the
+# build's own absolute-path guarantee explicit rather than inferred.
 main_swift="$package_root/Tests/WhoopsyTestRunner/main.swift"
+export WHOOPSY_PACKAGE_ROOT="$package_root"
 
 module_map="$package_root/.build/checkouts/GRDB.swift/Sources/CSQLite/module.modulemap"
 if [ ! -f "$module_map" ]; then
@@ -63,12 +68,25 @@ if [ -z "$triple_dir" ]; then
 fi
 
 echo "▸ Linking the test runner ..."
+# The test tree mirrors `Sources/Whoopsy/`, so the runner is no longer one file. `main.swift` must keep
+# its name — Swift allows top-level statements only in a file called exactly that — and every other
+# `.swift` under the test root is a declaration file, compiled alongside it in a deterministic order so
+# that `#file`/`#line` reporting in a failure message stays stable run to run.
+# Built with a read loop rather than `mapfile`, which is a bash 4 builtin: macOS ships bash 3.2 as
+# `/bin/bash` and this script's shebang is `#!/bin/bash`, so `mapfile` is a "command not found".
+runner_sources=()
+while IFS= read -r source; do
+    runner_sources+=("$source")
+done < <(
+    printf '%s\n' "$main_swift"
+    find "$package_root/Tests/WhoopsyTestRunner" -name '*.swift' ! -name 'main.swift' | sort
+)
 swiftc \
     -I "$scratch/$triple_dir/debug/Modules" \
     -Xcc -fmodule-map-file="$module_map" \
     "$scratch/$triple_dir/debug/Whoopsy.build/"*.o \
     "$scratch/$triple_dir/debug/GRDB.build/"*.o \
-    "$main_swift" \
+    "${runner_sources[@]}" \
     -o "$runner"
 
 echo "▸ Running${WHOOPSY_SECTIONS:+ sections $WHOOPSY_SECTIONS} ..."

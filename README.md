@@ -138,7 +138,8 @@ whoopsy/
 ├── ios/              the app — one SwiftPM package plus Whoopsy.xcodeproj
 │   ├── Sources/      Whoopsy/ (the four layers) and WhoopsyLiveActivityKit/
 │   ├── App/          Xcode-only sources: iOS/, Map/, LiveActivity/, Config/
-│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 1803-assertion suite
+│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 1803-assertion suite,
+│                     mirroring Sources/Whoopsy/ file for file
 ├── backend/          a Cloudflare Worker (Hono · D1 · R2) — scaffolded, not implemented
 ├── shared/           openapi.json, the contract the two will agree on
 ├── docs/             the specs

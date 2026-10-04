@@ -13,7 +13,7 @@ public final class SaveWorkoutUseCase: Sendable {
 /// `batteryText(for:)` are kept because the runner holds assertions about them and this suite has no
 /// test discovery, so deleting one drops passing assertions with a falling `assertions=` count as the
 /// only trace. **The runner asserts nothing about this type or about `CoachInsight`** — verified by
-/// `grep -c Coach Tests/WhoopsyTestRunner/main.swift` returning `0` — so it could be deleted with no
+/// `grep -rc Coach Tests/WhoopsyTestRunner/` returning `0` — so it could be deleted with no
 /// loss. It survives because removing Domain machinery is a wider change than the one the user asked
 /// for (*"remove 'coach' link from 'more' and associated page"* names a link and a page), and because
 /// `RecoveryMetric`'s own doc comment still cites this type by name as the incident that produced the
