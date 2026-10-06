@@ -2,15 +2,44 @@
 #
 # **Nothing here is wired to a real database yet.** Both bindings below point at names that do not
 # exist in any Cloudflare account: create them with `wrangler d1 create` / `wrangler r2 bucket
-# create`, then paste the returned `database_id` in. Until that happens `wrangler dev` runs and
-# every request reaches the 501 in `src/index.ts`.
+# create`, then paste the returned `database_id` in. Until that happens `wrangler dev` runs against
+# a fully local D1 — which is enough for `npm test`, for `wrangler d1 migrations apply --local`, and
+# for the end-to-end curl checks in `README.md`. **Do not invent a UUID here.**
 #
 # `compatibility_date` is pinned rather than omitted so the Worker's runtime behaviour cannot move
 # under the app between deploys — a floating date silently changes which flags are on.
+#
+# **It is ahead of the runtime this wrangler ships, and the cost is measured rather than predicted.**
+# `wrangler@3.95.0` carries workerd 1.20241205.0, so every `wrangler dev` and every `npm test` prints:
+#
+#   The latest compatibility date supported by the installed Cloudflare Workers Runtime is
+#   "2024-12-05", but you've requested "2026-10-01". Falling back to "2024-12-05"...
+#
+# Three times per suite run, once per isolated pool runtime. That is the whole of the consequence
+# *for this slice* — nothing in `src/` uses a flag or a runtime behaviour from after 2024-12-05, so
+# the clamp is inert. It is written down because it is not inert in general: a later feature that did
+# depend on one would be green here and wrong deployed, which is the failure mode a pinned date is
+# supposed to prevent and this pairing quietly reintroduces. The fix is the coordinated wrangler-4
+# bump (`wrangler@4` plus `vitest-pool-workers` 0.13+, which swaps `defineWorkersConfig` for a
+# `cloudflareTest()` plugin and requires Vitest 4), not a later date on this line.
 
 name = "whoopsy-sync"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
+
+# `nodejs_compat` is required by `@cloudflare/vitest-pool-workers`, and it is declared **here**
+# rather than in `vitest.config.ts`'s `miniflare` block on purpose. The pool asserts the flag's
+# presence against the *merged* runtime options — `mergeWorkerOptions(wrangler.toml, miniflare)`
+# unions the two `compatibilityFlags` arrays, wrangler's first — so either placement satisfies it.
+# This one keeps a single source: the test runtime and the deployed Worker are then compiled against
+# the same flags, and a spec that passed locally cannot be a spec that would fail deployed.
+#
+# It is not that this Worker uses a Node API — it imports nothing from `node:` and the flag is inert
+# for the code in `src/`. It is that the pool runs Vitest's own module runner inside `workerd`, and
+# that needs the `node:` builtins this flag enables. Nothing in `src/` should start depending on it
+# without that being a deliberate choice, since it is the one compat flag here that a deployment
+# inherits for a test's sake.
+compatibility_flags = ["nodejs_compat"]
 
 # D1 — the relational store. Every row the app already keeps locally (recoveries, sleeps, strains,
 # workouts, biometric_samples) has a table here, plus the account and device rows the local schema
@@ -19,6 +48,9 @@ compatibility_date = "2026-10-01"
 binding = "DB"
 database_name = "whoopsy-sync"
 database_id = "REPLACE_ME_wrangler_d1_create"
+# What `wrangler d1 migrations apply` reads, and what the test pool's `readD1Migrations` points at.
+# The two must name the same directory or a spec runs against a schema no deployment has.
+migrations_dir = "migrations"
 
 # R2 — the object store. Bulk payloads (a drained history batch, an exported record) belong here
 # rather than in D1, which is a relational store with row-size limits and no sensible place to put

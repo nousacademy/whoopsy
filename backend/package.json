@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --port 8787",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tests/tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "openapi": "tsx scripts/export-openapi.ts"
   },
   "dependencies": {
     "@hono/zod-openapi": "^0.18.0",
@@ -14,8 +16,12 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.5.36",
     "@cloudflare/workers-types": "^4.20241205.0",
+    "@types/node": "26.6.4",
+    "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "wrangler": "^3.95.0"
+    "vitest": "2.1.9",
+    "wrangler": "3.95.0"
   }
 }

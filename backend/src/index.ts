@@ -1,28 +1,34 @@
+import { createApp } from "./app";
 import type { Env } from "./env";
 
 /**
- * The Worker's entry point.
+ * The Worker's entry point, and nothing more.
  *
- * **No sync is implemented.** Every request reaches the 501 below. This file exists so that
- * `wrangler.toml`'s `main` points at something real — a config naming a missing entry point fails
- * `wrangler dev` with an error about the path rather than about the missing feature, which is the
- * wrong thing to be told when the missing feature is the whole story.
+ * Cloudflare's runtime asks a module for a `fetch` handler, so this file's whole job is to build the
+ * app once and hand requests to it. **The app itself is `src/app.ts`**, and that split is not tidiness:
+ * the OpenAPI document is generated *from* the app object, so the generator needs one that can be
+ * imported without also importing the Worker's default export. Building it here instead would put a
+ * `export default` between the generator and its input.
  *
- * The three directories beside this one are the split the sync will be built on:
+ * **Built at module scope, so it is built once per isolate** rather than once per request. Nothing in
+ * the app holds request state — `env` arrives as an argument to `fetch` and is threaded to the
+ * repository per call — so one instance serves every request the isolate handles, and the document
+ * cache in `createApp` survives between them.
  *
- *   routes/        Hono controllers. Parse a request, call a service, shape a response. No SQL.
- *   services/      Orchestration and policy — what a sync is allowed to overwrite, what a device
- *                  may see. No SQL either.
- *   repositories/  The D1 and R2 adapters — the only files that know a table or a bucket exists.
+ * The `satisfies ExportedHandler<Env>` guard is kept: it is what makes a mistyped export name or a
+ * `fetch` with the wrong arity a compile error rather than a Worker the platform silently declines to
+ * route anything to.
  *
- * They are empty on purpose. The structure is the part that is settled; the behaviour is the next
- * pass, and a stub that returns a real answer would be a claim about a system that does not exist.
+ * The layer split the router mounts into is `routes/` → `services/` → `domain/`, with `repositories/`
+ * hanging off the last as the adapter behind the port: a controller parses a request, calls a service
+ * and shapes a response; a service holds policy and depends on a shape and a port rather than on a
+ * table; `domain/` is what a resource *is* beside the port that reads it, and imports nothing at all;
+ * and `repositories/` is the only place that knows a table or a bucket exists. The wire contract sits
+ * outside that chain in `dto/`, which depends on `domain/` and on nothing else — so "where does Zod
+ * live" has exactly one answer, as "where does SQL live" has one.
  */
+const app = createApp();
+
 export default {
-  fetch(): Response {
-    return new Response("Whoopsy sync is not implemented yet.\n", {
-      status: 501,
-      headers: { "content-type": "text/plain; charset=utf-8" },
-    });
-  },
+  fetch: (request, env, ctx) => app.fetch(request, env, ctx),
 } satisfies ExportedHandler<Env>;
