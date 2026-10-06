@@ -69,6 +69,14 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 fasting: container.fastingImport,
                 inactivities: container.inactivityImport,
                 exportUseCase: container.exportLocalDataUseCase),
+            // `container` here is `.preview`, whose `isCloudConfigured` is `false` — so the pane draws
+            // its sentence rather than a credential, and nothing in this file reaches a socket. The
+            // argument is threaded rather than defaulted on `HomeDashboardView.init` because a default
+            // would let a real screen ship with a preview's view model and say so nowhere.
+            syncViewModel: SyncStorageViewModel(
+                engine: container.syncEngine,
+                keyStore: container.syncKeyStore,
+                isCloudConfigured: container.isCloudConfigured),
             liveSessionUseCase: container.liveSessionUseCase,
             makeActivityDetailViewModel: { session, liveFast in
                 ActivityDetailViewModel(

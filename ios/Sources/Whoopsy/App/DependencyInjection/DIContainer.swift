@@ -28,7 +28,6 @@ public final class DIContainer: @unchecked Sendable {
     public let syncHistoricalDataUseCase: SyncHistoricalDataUseCase
     public let exportLocalDataUseCase: ExportLocalDataUseCase
     public let saveWorkoutUseCase: SaveWorkoutUseCase
-    public let generateCoachInsightsUseCase: GenerateCoachInsightsUseCase
     /// The strap's step counter. **Long-running rather than call-and-return** — see
     /// `TrackStepsUseCase` — so it is started once from `MainContainerView`'s app-level task and not
     /// from any screen's load.
@@ -51,6 +50,60 @@ public final class DIContainer: @unchecked Sendable {
     /// Which generations this build can actually frame for. Presentation depends on this rather than
     /// on `Data/BLE` so the device screen can say plainly that a 5.0 has no implementation behind it.
     public let protocolCatalog: any WhoopProtocolProviding
+
+    /// The three objects the `STORAGE` pane is built from, held here rather than constructed by the
+    /// pane's view model.
+    ///
+    /// **They are stored rather than local to `init` because the pane is not the only reader.** The
+    /// settings store is what the routing decorator asks on every read and what the engine both reads
+    /// and writes, the key store is what every request reads its header from, and the status log is the
+    /// record behind the one line a screen draws when a read degraded — so a second instance anywhere
+    /// would be a second answer to a question the app has already answered. `syncStatus` is an actor and
+    /// `syncKeyStore` is one, which is the other half of the reason: an actor built per read would hold
+    /// a set that is always empty and a Keychain read that is always the first, and the key's
+    /// single-flight guard lives *inside* the actor precisely so two first-reads cannot mint two keys.
+    public let syncSettings: any SyncSettingsRepository
+    public let syncKeyStore: any SyncKeyStore
+    public let syncStatus: any SyncStatus
+
+    /// What the `STORAGE` pane does when the user presses the button.
+    ///
+    /// **One object for all seven resources, where this container used to hold three use cases.** The
+    /// three were near-copies of one walk — read a range, filter, chunk, post, sum — differing only in
+    /// which table they walked and which wire mapper they used, and the settings that justified keeping
+    /// them apart are gone: there is one destination and one span for the install, so three copies of
+    /// them would be three things to keep in step for no reader. `SyncResources.all(...)` names the
+    /// differences instead, one descriptor per resource, and `SyncEngine` walks whichever list it is
+    /// handed. `SyncEngine`'s own doc comment carries the whole of that argument.
+    ///
+    /// **Built unconditionally, unlike the routing decorator below, and the asymmetry is the point.**
+    /// The decorator is a hop in the read path, so a build with no database behind it should not pay an
+    /// `await` for a settings store that can never route a read anywhere. This is not a hop — nothing
+    /// calls it unless a user opens `STORAGE` and presses a button — and the pane needs an object to
+    /// ask even when there is no database, because *there is no database behind this build* is a
+    /// sentence it draws from `isCloudConfigured`. A `nil` here would be a second spelling of that same
+    /// fact, free to disagree with the first.
+    ///
+    /// The cloud half is `UnconfiguredCloudSync` when there is no base URL: every method throws
+    /// `.unreachable` with the reason, which is the one error a caller may degrade over, so the failure
+    /// surfaces as the pane's own sentence rather than as a crash or a silent no-op.
+    ///
+    /// **Every store is the same `db` object.** `LocalDatabaseManager` conforms to all seven
+    /// `*SyncStore` protocols as bare extensions, and handing the one instance to each is what keeps a
+    /// read of `sleeps` and a read of `recoveries` behind one SQLite connection. It is also why the
+    /// stores are `LocalDatabaseManager` rather than the repositories: a sync moves *records*, the shape
+    /// that carries every stored column and round-trips — `RecoveryMetric` has read-time derivations
+    /// with no column, so a push built on the entity would invent them.
+    public let syncEngine: SyncEngine
+
+    /// Whether this build has a database behind it at all.
+    ///
+    /// `false` for a clone that has never set `WHOOPSYAPIBaseURL`, for the host test runner, and for
+    /// every SwiftUI preview — `preview` is `shared`'s own initialiser with `useMockBLE: true`, so it
+    /// reads the same `Info.plist` and finds the same absent key. The `STORAGE` pane uses this to say
+    /// so in words rather than to offer a control that could only fail.
+    public let isCloudConfigured: Bool
+
     @MainActor public let locationTracking: any LocationTracking
 
     /// The lock-screen card's transport, and **a stored `let` rather than a computed property like
@@ -128,11 +181,81 @@ public final class DIContainer: @unchecked Sendable {
         // to exist before the use case is constructed. Same shape as `strapModels` above.
         let preferences = UserDefaultsAppPreferencesRepository()
         self.preferencesRepository = preferences
+        // The sync's one set of settings, read and written by the engine the pane presses and read on
+        // every call by the routing decorator below. Stored on the container as well, because the pane
+        // and the decorator are two readers of the same two answers — same shape as `strapModels` and
+        // `preferences` above.
+        let syncSettings = UserDefaultsSyncSettingsRepository()
+        self.syncSettings = syncSettings
+        // Built here and not by the pane, for `liveActivityController`'s reason one screen over: this
+        // actor's whole job is to make read-or-mint single-flight, and a second instance would be a
+        // second read of a Keychain entry that may not exist yet.
+        let syncKeyStore = KeychainSyncKeyStore()
+        self.syncKeyStore = syncKeyStore
+        self.syncStatus = SyncStatusLog()
+        // Read once and stored: the pane that reports this and the wiring immediately below that acts
+        // on it must not be able to disagree about whether this build has a database behind it.
+        let apiBaseURL = WhoopsyAPIClient.configuredBaseURL()
+        self.isCloudConfigured = apiBaseURL != nil
         self.protocolCatalog = WhoopProtocolCatalog()
         self.bleRepository = WhoopBLEDeviceRepositoryImpl(
             useMock: useMockBLE, strapModelRepository: strapModels)
         self.biometricRepository = GRDBBiometricRepository(db: db)
-        self.recoveryRepository = GRDBRecoveryRepository(db: db)
+        // **The routing decorator, or the plain repository — and the branch is the feature rather than
+        // a convenience.** `CloudRecoveryRepository` answers a day from SQLite first and, only when the
+        // phone has none *and* the destination is the API, asks the database once — which is the whole
+        // of "local to DB is seamless": no screen learns a second read path, because the port's four
+        // methods are the same four either way.
+        //
+        // The `else` is not a degraded mode. A build with no `WHOOPSYAPIBaseURL` has no database to
+        // route to, so a decorator there would be a hop that can only add a failure — every call would
+        // consult a destination that can never send it anywhere, and take an `await` to do it. That is
+        // the host runner, every SwiftUI preview (`preview` is this initialiser with `useMockBLE:
+        // true`), and every fresh clone, so the unconfigured branch is the one most builds take and it
+        // is byte-identical to the app before this feature existed.
+        //
+        // Built **before** `whoopExportImport` below, and that ordering is load-bearing: the importer
+        // holds whatever it is handed for the life of the process, so a plain repository here would
+        // leave the one writer that can reach a historical day writing around the decorator — a day
+        // imported under `.cloud` would sit on the phone and never be pushed, with nothing saying so.
+        // It is the same class of bug as the fasts/export day skip, one table over.
+        //
+        // **The cloud is a local rather than an inline expression, because it has two readers.** It was
+        // written into the decorator's argument when the decorator was the only thing that needed one;
+        // `syncEngine` below is the second, and `HTTPCloudSync` is a value type over a value-type
+        // client, so handing the same value to both costs nothing and — the point — leaves one instance
+        // of the key store and one base URL behind every request the app makes. Two constructions would
+        // be two `WhoopsyAPIClient`s reading the same Keychain.
+        let cloud: any CloudSync
+        if let apiBaseURL {
+            let http = HTTPCloudSync(
+                client: WhoopsyAPIClient(baseURL: apiBaseURL, keyStore: syncKeyStore))
+            cloud = http
+            self.recoveryRepository = CloudRecoveryRepository(
+                local: GRDBRecoveryRepository(db: db),
+                cloud: http,
+                settingsStore: syncSettings,
+                status: syncStatus)
+        } else {
+            cloud = UnconfiguredCloudSync()
+            self.recoveryRepository = GRDBRecoveryRepository(db: db)
+        }
+        // One engine, seven descriptors, and every store the same database object. The `db` is handed
+        // over rather than a repository because the sync moves *records*: `RecoveryRecord` is the only
+        // shape carrying all nine stored fields, while `RecoveryMetric` has three read-time derivations
+        // with no column, so a push built on the entity would invent them. `LocalDatabaseManager`
+        // conforms to all seven `*SyncStore` protocols as bare extensions — see `SyncResources.all`.
+        self.syncEngine = SyncEngine(
+            resources: SyncResources.all(
+                cloud: cloud,
+                profileStore: db,
+                inactivityStore: db,
+                recoveryStore: db,
+                sleepStore: db,
+                stepCountStore: db,
+                strainStore: db,
+                workoutStore: db),
+            settingsStore: syncSettings)
         self.strainRepository = GRDBStrainRepository(db: db)
         self.sleepRepository = GRDBSleepRepository(db: db)
         self.napRepository = GRDBNapRepository(db: db)
@@ -205,7 +328,6 @@ public final class DIContainer: @unchecked Sendable {
         // launch that recorded it. Same store as everything else now, so the ACTIVITIES card can list
         // a day's sessions back.
         self.saveWorkoutUseCase = SaveWorkoutUseCase(repository: workoutRepository)
-        self.generateCoachInsightsUseCase = GenerateCoachInsightsUseCase()
         self.trackStepsUseCase = TrackStepsUseCase(
             bleRepository: bleRepository,
             stepRepository: stepRepository

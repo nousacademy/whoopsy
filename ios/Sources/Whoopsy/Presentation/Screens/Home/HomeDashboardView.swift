@@ -169,6 +169,16 @@ public struct HomeDashboardView: View {
     /// screen's view model is built, and a `NavigationLink` destination is re-evaluated on every push.
     private let localDataViewModel: LocalDataViewModel
 
+    /// The profile page's `STORAGE` tab, passed through untouched on the way to that page.
+    ///
+    /// **Home has no opinion about it and this is not the third-instance rule.** The three rings each
+    /// push a page about the day on screen and so each needs its own view model; this one is handed to a
+    /// page that only this screen can open, so there is exactly one and it arrives already built. It is
+    /// passed through rather than constructed at the destination for `profileViewModel`'s reason: a
+    /// `NavigationLink` destination closure is re-evaluated on every push, and a view model built inside
+    /// it would re-read the Keychain on each one.
+    private let syncViewModel: SyncStorageViewModel
+
     /// The live session, owned by the app rather than by this screen.
     ///
     /// It is **not** built here and not a `@State`: a session has to outlive the screen that starts it,
@@ -233,6 +243,7 @@ public struct HomeDashboardView: View {
         deviceViewModel: DeviceViewModel,
         profileViewModel: ProfileViewModel,
         localDataViewModel: LocalDataViewModel,
+        syncViewModel: SyncStorageViewModel,
         liveSessionUseCase: LiveSessionUseCase,
         makeActivityDetailViewModel: @escaping (WorkoutSession, ActiveFast?) -> ActivityDetailViewModel
     ) {
@@ -243,6 +254,7 @@ public struct HomeDashboardView: View {
         self.deviceViewModel = deviceViewModel
         self.profileViewModel = profileViewModel
         self.localDataViewModel = localDataViewModel
+        self.syncViewModel = syncViewModel
         self.liveSessionUseCase = liveSessionUseCase
         self.makeActivityDetailViewModel = makeActivityDetailViewModel
     }
@@ -833,7 +845,8 @@ public struct HomeDashboardView: View {
             NavigationLink {
                 ProfileDashboardView(
                     viewModel: profileViewModel,
-                    localDataViewModel: localDataViewModel)
+                    localDataViewModel: localDataViewModel,
+                    syncViewModel: syncViewModel)
             } label: {
                 profileButton
             }

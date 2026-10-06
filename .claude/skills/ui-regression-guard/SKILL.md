@@ -128,8 +128,8 @@ between two screens.
   is the shape to copy.
 - **One rule, one definition.** Before writing a threshold, tier or target into a new view, find the
   existing one and read through it: `grep -rn "<the literal>" ios/Sources/`. Two copies that agree today
-  are a bug that fires later — `GenerateCoachInsightsUseCase` held its own `>= 67` next to
-  `RecoveryMetric.state`, and `RecoveryDashboardView` held a second copy of the tier switch next to
+  are a bug that fires later — the calendar's key prints `>66%` as `greenRange.lowerBound - 1` rather
+  than typing the number, and `RecoveryDashboardView` held a second copy of the tier switch next to
   Home's. If the rule you need doesn't exist as a named thing, name it.
 
 ## 6. Affordances

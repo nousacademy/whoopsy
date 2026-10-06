@@ -5,7 +5,8 @@ import SwiftUI
 /// It exists for the reason `RecoveryState+Extensions.swift` and `SleepStageType+Extensions.swift`
 /// exist: a value-to-drawing rule written at each call site is a rule the copies can disagree about,
 /// and this app has already paid for that twice — Home drew every recovery green while the Recovery
-/// tab tiered it, and the coach message held its own green boundary. `HeartRateZoneIndex` cannot carry
+/// tab tiered it, and a third copy of the green boundary sat in a sentence that is since deleted.
+/// `HeartRateZoneIndex` cannot carry
 /// the property itself, because `Domain/` imports only `Foundation`, so the mapping lives here.
 ///
 /// **It has one reader, and that count has now moved twice.** `HeartRateZoneBar` held this as a

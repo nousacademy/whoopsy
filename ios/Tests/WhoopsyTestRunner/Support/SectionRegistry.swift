@@ -72,13 +72,13 @@ struct TestSection {
 /// Every section, in run order.
 ///
 /// **Adding a section means appending one entry here and nothing else.** §1–§5 carry
-/// `synchronousBody:` and are driven from top level before the `Task` exists; §6–§21 carry `body:` and
+/// `synchronousBody:` and are driven from top level before the `Task` exists; §6–§22 carry `body:` and
 /// are awaited inside it. That split is not cosmetic — see `runSynchronousSections(_:)`.
 ///
 /// A `func` rather than a top-level `let`, because a global `let` holding non-`Sendable` closures is
 /// a Swift 6 error under strict concurrency.
 ///
-/// Nonisolated, so top level can build the list before the `Task` exists; the §6–§21 closures it hands
+/// Nonisolated, so top level can build the list before the `Task` exists; the §6–§22 closures it hands
 /// back are nonisolated too, for the reason `TestSection.body` records at length.
 ///
 /// **"Nothing else" is true of this file and not of the suite.** `main.swift` drives §6 onward through
@@ -182,6 +182,11 @@ func testSections() -> [TestSection] {
             title: "Testing the receptive inactivity parser, its derived id, the import it writes, "
                 + "the note column round trip and the two readers of one day's card...",
             body: InactivityImportTests.run),
+        TestSection(
+            id: 22,
+            title: "Testing the storage switch, all seven resources' wire names, the decorator's "
+                + "degrade, the run's own arithmetic, and the absence of a delete...",
+            body: SyncSectionTests.run),
     ]
 }
 
@@ -220,7 +225,7 @@ func runSynchronousSections(_ ids: [Int]) {
     }
 }
 
-/// Runs §6–§20, awaited inside the `Task`, and closes the run.
+/// Runs §6–§22, awaited inside the `Task`, and closes the run.
 ///
 /// `throws` even though no section body currently throws: the `Task` in `main.swift` wraps this in a
 /// `do`/`catch`, and an unobserved throw would otherwise idle out the `RunLoop` and exit **0** over a

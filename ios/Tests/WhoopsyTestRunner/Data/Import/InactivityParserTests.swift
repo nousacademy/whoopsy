@@ -18,8 +18,8 @@ enum InactivityParserTests {
 
         let rows = (try? InactivityParser.parseInactivities(at: inactivitiesURL())) ?? []
         assertTest(
-            rows.count == 60,
-            "The bundled `dreams.json` parses to its 60 records — one person's own dream journal, so a "
+            rows.count == 62,
+            "The bundled `dreams.json` parses to its 62 records — one person's own dream journal, so a "
                 + "re-generation that dropped a line or trimmed either end of the history would fail "
                 + "here rather than importing a shorter journal and reporting success (got \(rows.count))")
 
@@ -38,13 +38,13 @@ enum InactivityParserTests {
 
         // The id is the row's storage key, and it is **derived** rather than minted: these records
         // carry no producer id, and GRDB's `save` is INSERT-or-UPDATE by primary key, so a fresh
-        // `UUID()` per record would append 60 more rows on every press of the button. The properties
+        // `UUID()` per record would append 62 more rows on every press of the button. The properties
         // are asserted over every row rather than on one, because an id that is right on the first
         // record and wrong on the fifty-first reports identically.
         let ids = rows.map(\.id)
         assertTest(
             Set(ids).count == rows.count,
-            "All 60 records carry distinct ids, which is what makes a re-import an update rather than "
+            "All 62 records carry distinct ids, which is what makes a re-import an update rather than "
                 + "an append — two records deriving one id would collapse a day (\(Set(ids).count) "
                 + "distinct over \(ids.count) rows)")
 
@@ -69,7 +69,7 @@ enum InactivityParserTests {
                 + "namespace, the separator and the digest's input length are all covered by one value "
                 + "(\(first?.id.uuidString ?? "nil"))")
         assertTest(
-            last?.id == UUID(uuidString: "1346f436-bbba-5b5b-a40c-193086f688de"),
+            last?.id == UUID(uuidString: "9d68c019-e137-53da-badf-43a727803d26"),
             "…and the last record's is pinned the same way, so the file's other end cannot move either "
                 + "(\(last?.id.uuidString ?? "nil"))")
 
@@ -110,14 +110,14 @@ enum InactivityParserTests {
                 + "\(dates.count) unsnapped)")
 
         let firstDay = calendar.date(from: DateComponents(year: 2023, month: 7, day: 23))?.startOfDay
-        let lastDay = calendar.date(from: DateComponents(year: 2026, month: 9, day: 9))?.startOfDay
+        let lastDay = calendar.date(from: DateComponents(year: 2026, month: 10, day: 5))?.startOfDay
         assertTest(
             dates.first == firstDay,
             "The journal opens on **23 Jul 2023**, pinned as a calendar day rather than as an instant "
                 + "so the assertion holds in whatever zone the suite runs in (\(dates.first.map(String.init(describing:)) ?? "nil"))")
         assertTest(
             dates.last == lastDay,
-            "…and closes on **9 Sep 2026**, the file's own last day — so a re-generation that trimmed "
+            "…and closes on **5 Oct 2026**, the file's own last day — so a re-generation that trimmed "
                 + "either end of the history fails here (\(dates.last.map(String.init(describing:)) ?? "nil"))")
 
         // The day count and the two-dream nights are facts about this file that the *storage* block
@@ -126,8 +126,8 @@ enum InactivityParserTests {
         // that relies on it is not resting on a fact nobody checked.
         let dayCount = Set(dates).count
         assertTest(
-            dayCount == 55,
-            "The 60 records fall on **55 distinct days** — five days carry two dreams each, which is "
+            dayCount == 57,
+            "The 62 records fall on **57 distinct days** — five days carry two dreams each, which is "
                 + "the property that makes a day's card a list rather than a single row (\(dayCount) days)")
 
         let onFirstDay = rows.filter { $0.date == firstDay }.count
@@ -184,7 +184,7 @@ enum InactivityParserTests {
         }
         assertTest(
             recomputed.isEmpty,
-            "…and every one of the 60 rows carries the id its own day, type and text derive, so the "
+            "…and every one of the 62 rows carries the id its own day, type and text derive, so the "
                 + "pinned literals are the function's own output and not a second implementation's "
                 + "(\(recomputed.count) rows disagree)")
 

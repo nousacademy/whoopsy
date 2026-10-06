@@ -12,13 +12,13 @@ import Whoopsy
 //
 // Swift permits executable code at file scope in a file literally named `main.swift` and in no other,
 // which is the constraint the whole layout is built around: everything that is a declaration —
-// `SuiteTally`, `assertTest`, the twenty-one section bodies, the fixtures — lives in a sibling file
+// `SuiteTally`, `assertTest`, the twenty-two section bodies, the fixtures — lives in a sibling file
 // under its own mirrored directory, and what is left here is the four statements that have to run in
 // order.
 //
 // **The order is load-bearing.** §1–§5 run *before* the `Task` is created, which is where they ran as
 // inline top-level blocks; they are synchronous, so a `Task` buys them nothing and moving them inside
-// one would change when they run relative to §6. The `Task` then drives §6–§21, and the `RunLoop` keeps
+// one would change when they run relative to §6. The `Task` then drives §6–§22, and the `RunLoop` keeps
 // the process alive for it. `runSections` ends by calling `finishSuite`, so every completing path
 // leaves through that one exit — success, a failed assertion, or a throw.
 //
@@ -33,13 +33,13 @@ print("==================================================")
 
 runSynchronousSections([1, 2, 3, 4, 5])
 
-// Sections 6–21 live inside the `Task` rather than in its own body, and the reason is the exit code.
+// Sections 6–22 live inside the `Task` rather than in its own body, and the reason is the exit code.
 // A `Task { }`'s error is observed by nobody: an uncaught throw leaves the process to idle out the
 // `RunLoop` and exit 0, which reads exactly like a suite that ran and passed. Catching one level out
 // is what puts a throw on the exit code.
 Task {
     do {
-        try await runSections(6...21)
+        try await runSections(6...22)
     } catch {
         print("❌ FAILED: the suite threw before completing: \(error)")
         tally.record(false)

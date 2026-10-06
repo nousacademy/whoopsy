@@ -185,14 +185,24 @@ enum ProfileFormTests {
         // ---- The three panes, and the form's dirty gate ----
         //
         // The rules that *surround* `BIOMETRICS`'s fields, as pure values. The runner has no renderer, so
-        // the order of the tabs, the words on the placeholder pane, and "has this form moved" are only
+        // the order of the tabs, the words `STORAGE` is built from, and "has this form moved" are only
         // visible at all if they are written down away from a `body` — which is why the tab list is an
-        // enum, the placeholder's copy is a `nonisolated static`, and the dirty rule is a value type.
+        // enum, the pane's copy is a set of `nonisolated static`s, and the dirty rule is a value type.
         //
         // **All three titles were renamed on the user's instruction** — *"rename "Body" tab to
-        // "Biometrics", rename "Data" tab to "Logs", rename "AI Coach" tab to "Storage""* — so these two
-        // lists are the assertion that the rename reached the row, and the placeholder block below is the
-        // record that it reached the *title* and not the copy. No renderer can see either.
+        // "Biometrics", rename "Data" tab to "Logs", rename [the third] tab to "Storage""* — so these two
+        // lists are the assertion that the rename reached the row. **The `STORAGE` block below used to
+        // assert the opposite of what it asserts now**, and the history is worth keeping: the rename named
+        // three labels and no content, so the pane went on saying nothing was built yet about a feature
+        // the app no longer has while being titled `STORAGE`, and that disagreement was pinned here
+        // verbatim rather than smoothed over. It is now ended twice over — the pane is the sync boundary,
+        // and the placeholder's own feature is deleted outright — so what is pinned is the copy the
+        // feature is made of. The pane's own *behaviour* — what `canRun` answers, whether the run row is
+        // drawn at all, which sentence the span's state produces — is asserted nowhere, here or in §22,
+        // because asserting it would mean driving `SyncStorageViewModel` rather than reading a constant
+        // off it. What stands in its place is the engine's own refusal: a run with no span drawn, or with
+        // a span whose ends are the same day, throws `.nothingToDo` **before it touches anything** — which
+        // §22.5 asserts against an empty call list.
 
         assertTest(
             ProfileDashboardView.Tab.allCases.map(\.title) == ["BIOMETRICS", "LOGS", "STORAGE"],
@@ -206,18 +216,149 @@ enum ProfileFormTests {
                 + "in: `UnderlinedTabRow` applies no `.textCase`, so a sentence-case literal would draw "
                 + "sentence case beside two capitals")
 
+        // **The two destination titles, and this is what stands where the resource selector stood.**
+        // The `STORAGE` pane used to open on a `RECOVERIES | WORKOUTS | STRAINS` segment that chose which
+        // resource's cutoff the rows below belonged to; one destination for the install replaced it, and
+        // the segment that remains is the one that says *where* rather than *what*. The row draws
+        // `Destination.allCases.map(\.rawValue)` rather than a literal pair, so this list **is** the
+        // segmented control, and it is asserted here rather than only in §22.1 because the two claims are
+        // different: that section pins the value type's two arms, and this one pins what the pane puts on
+        // the glass. `device` is first because it is the default and the state a fresh install is in —
+        // which is also why the order is the half no screenshot can see, since the default selection is
+        // the first segment, so a reorder leaves the pane a reader first opens looking byte-identical.
         assertTest(
-            ProfileDashboardView.aiCoachNotice == "No coach is built into this app yet.\n\n"
-                + "When it arrives it will read the recovery, strain and sleep history already stored on "
-                + "this device, and it will run here rather than in the cloud — this app has no networking "
-                + "code at all.",
-            "The `STORAGE` pane is a sentence and nothing else, pinned whole because the copy *is* that "
-                + "tab and no renderer can read it off the screen. It is a placeholder rather than a "
-                + "wired-up feature: `GenerateCoachInsightsUseCase` survives with no reader but "
-                + "`DIContainer`, and this pane deliberately does not reach for it. **The copy was left "
-                + "verbatim by the rename and no longer matches the tab above it** — the pane is titled "
-                + "`STORAGE` and says nothing is built yet about a *coach*; that is asserted here rather "
-                + "than smoothed over, because the instruction named three labels and no content")
+            SyncSettings.Destination.allCases.map(\.rawValue) == ["DEVICE STORAGE", "WHOOPSY SYNC API"]
+                && SyncSettings.Destination.allCases.first == .device
+                && SyncSettings().destination == .device,
+            "The destination row's two segments are `DEVICE STORAGE` and `WHOOPSY SYNC API` in that "
+                + "order, and the pane opens on the first — the arm that says nothing leaves the phone. "
+                + "The words are read off `rawValue` rather than typed at the call site, on the tab row's "
+                + "rule directly above: a third destination has to be a segment that appears")
+
+        assertTest(
+            ProfileDashboardView.storageKeyEyebrow == "SYNC KEY"
+                && ProfileDashboardView.storageCopyTitle == "COPY"
+                && ProfileDashboardView.storageDestinationEyebrow == "STORE NEW DATA IN"
+                && ProfileDashboardView.storageRangeFromEyebrow == "SYNC FROM"
+                && ProfileDashboardView.storageRangeToEyebrow == "SYNC TO"
+                && ProfileDashboardView.storageResourcesEyebrow == "SYNCED RESOURCES",
+            "The `STORAGE` pane's five fixed headings, pinned as literals because the copy *is* that tab "
+                + "and no renderer can read it off the screen. They are the pane's identity: a key is shown "
+                + "under `SYNC KEY`, the control that shares it reads `COPY`, the switch says where the next "
+                + "write goes rather than what it will do to the last one, the two span rows are named the "
+                + "way a range is named everywhere, and the list is a list of what a run carries")
+        assertTest(
+            ProfileDashboardView.storageDestinationNote(for: .device).lowercased().contains("nothing")
+                && ProfileDashboardView.storageDestinationNote(for: .cloud).lowercased().contains("nothing")
+                && ProfileDashboardView.storageDestinationNote(for: .device)
+                    != ProfileDashboardView.storageDestinationNote(for: .cloud),
+            "…and **both** destination notes say that nothing is moved or removed. The shared word is the "
+                + "load-bearing half and it is deliberately asserted on both arms rather than on the one "
+                + "that needs it: the fear this control has to answer is *if I pick the database, do I "
+                + "lose what is on my phone*, and a reader who only ever selects `DEVICE STORAGE` would "
+                + "never see the answer if it were written once. The inequality is the other half — a "
+                + "`switch` collapsed onto one arm draws the cloud's sentence under the device segment and "
+                + "looks entirely plausible")
+        assertTest(
+            ProfileDashboardView.storageRangeNote(isEnabled: true).lowercased().contains("nothing")
+                && ProfileDashboardView.storageRangeNote(isEnabled: false).lowercased().contains("nothing")
+                && ProfileDashboardView.storageRangeNote(isEnabled: true)
+                    != ProfileDashboardView.storageRangeNote(isEnabled: false),
+            "The span's note has two states and both promise the same thing about this phone's rows. The "
+                + "inequality is the load-bearing half, on the headings' reasoning above: a function "
+                + "answering one string for both states would describe a span to a reader who has not "
+                + "drawn one, which is the state the pane opens in")
+        assertTest(
+            !ProfileDashboardView.storageKeyNote.isEmpty
+                && !ProfileDashboardView.storageResourcesNote.isEmpty
+                && ProfileDashboardView.storageNoDatabaseNotice.contains(WhoopsyAPIClient.baseURLInfoKey),
+            "…the explanatory paragraphs are present, and the unconfigured build's sentence names the "
+                + "`Info.plist` key that is missing rather than reporting a network fault that never "
+                + "happened")
+        assertTest(
+            ![ProfileDashboardView.storageKeyNote,
+              ProfileDashboardView.storageDestinationNote(for: .device),
+              ProfileDashboardView.storageDestinationNote(for: .cloud),
+              ProfileDashboardView.storageRangeNote(isEnabled: true),
+              ProfileDashboardView.storageRangeNote(isEnabled: false),
+              ProfileDashboardView.storageResourcesNote,
+              ProfileDashboardView.storageNoDatabaseNotice]
+                .contains { $0.contains("**") },
+            "…and none of the pane's seven paragraphs carries Markdown. This is the `Text` trap this repo "
+                + "already carries: a `String` built with `+` takes the `StringProtocol` overload, which "
+                + "does not parse Markdown, so an `**emphasis**` would be drawn as literal asterisks on a "
+                + "screen no test and no compiler can see")
+
+        // ---- The `STORAGE` pane's `SYNCED RESOURCES` list ----
+        //
+        // The list is a `ForEach` over `SyncedResource.allCases`, so what is assertable here is the
+        // *enum* rather than the drawing — and §22 is where the one assertion that needs the contract
+        // lives, because it reads `shared/openapi.json`. These are the two facts about the list that are
+        // a property of this app: how many resources move, and the one that deliberately does not.
+        //
+        // **The count is pinned rather than derived**, because the number is the thing a reader is being
+        // told: "seven resources travel, the eighth stays" is the pane's whole answer, and a resource
+        // added to the enum without anyone deciding whether it should move would change the answer
+        // silently. `biometricSamples` is the exclusion the count encodes, and the note's second half is
+        // asserted alongside it so the list and the prose cannot come apart.
+        assertTest(
+            SyncedResource.allCases.count == 7,
+            "Seven resources are drawn on the `SYNCED RESOURCES` list — the Worker carries eight, and the "
+                + "count is pinned because *how many of my things travel* is the question the pane exists "
+                + "to answer. A resource added to the enum changes that answer, and this is the line that "
+                + "makes it a decision rather than an accident")
+        assertTest(
+            !SyncedResource.allCases.contains { $0.resourceName == "biometricSamples" }
+                && ProfileDashboardView.storageResourcesNote.contains("Biometric samples"),
+            "…and the eighth resource is named in the note rather than listed. Its absence is the list's "
+                + "most misleading property — the Worker carries it, so a reader who has seen the "
+                + "database's own documentation would expect it here — so a list that simply omitted it "
+                + "would read as this app forgetting one. The pair is asserted together: the enum's "
+                + "exclusion is the behaviour and the sentence is how a reader is told about it")
+        assertTest(
+            SyncedResource.allCases.allSatisfy { $0.rawValue == $0.rawValue.uppercased() },
+            "…and every title is stored uppercase, because that is the case it is drawn in: this list "
+                + "applies no `.textCase`, so a sentence-case literal would draw sentence case in a column "
+                + "of capitals — `ProfileDashboardView.Tab`'s rule, two panes deeper")
+        assertTest(
+            Set(SyncedResource.allCases.map(\.rawValue)).count == SyncedResource.allCases.count
+                && Set(SyncedResource.allCases.map(\.path)).count == SyncedResource.allCases.count
+                && Set(SyncedResource.allCases.map(\.resourceName)).count == SyncedResource.allCases.count,
+            "…and the three spellings of every resource are all distinct — the drawn title, the mounted "
+                + "path and the Worker's own name. This is the three-way split `CLAUDE.md` records for "
+                + "this resource, and it is a trap in both directions: two cases sharing a path would send "
+                + "one resource's rows to another's route, and a title colliding with another title would "
+                + "draw two identical lines on the screen with no way to tell them apart")
+
+        // ---- The list survives the pane's branch ----
+        //
+        // **`SYNCED RESOURCES` is the one row both arms of the pane draw, and that is a fact about a
+        // `body` rather than about a value.** `storageTab` is a two-armed `if`: a configured build gets
+        // the key, the destination, the span and the run, and an unconfigured one gets a single sentence
+        // instead, because every control on the pane would fail for a reason the screen cannot fix. The
+        // list is drawn in **both**, and the reason is on its own eyebrow: *what would move* is a fact
+        // about this app rather than about this build's configuration. On the build that has no database
+        // behind it — which is every build in this repository — it is the only content the pane has, so
+        // a list that fell inside the branch would leave the whole pane reading as a single apology.
+        //
+        // **The runner has no renderer, so this is a scan of the view's own source**, which is §22.7's
+        // method for the same class of claim. What makes it an assertion rather than a search is the
+        // counts: two occurrences of the row, one of the sentence, and one of the configured arm's own
+        // `destinationRow` — so moving the list inside the branch, or leaving the `else` arm with the
+        // sentence alone, fails here, and a scan that had read only one arm cannot pass the others.
+        let pane = try storagePaneSource()
+        assertTest(
+            pane.components(separatedBy: "syncedResourcesRow").count == 3,
+            "`storageTab` draws the `SYNCED RESOURCES` list twice — once in each arm — so neither a "
+                + "configured nor an unconfigured build can open the pane to a list that is missing")
+        assertTest(
+            pane.components(separatedBy: "storageNoDatabaseNotice").count == 2,
+            "…and the `else` arm is in the same text, drawing the sentence that names the `Info.plist` "
+                + "key that is missing rather than reporting a fault that never happened")
+        assertTest(
+            pane.components(separatedBy: "destinationRow").count == 2,
+            "…beside the configured arm's own destination row, once — so the two counts above are two "
+                + "arms of one `if` and not one arm counted twice")
 
         // ---- The `LOGS` pane's `Whoop` section ----
         //
@@ -673,4 +814,41 @@ enum ProfileFormTests {
             assertTest(false, "The profile row's round trip threw: \(error)")
         }
     }
+}
+
+// MARK: - Reading the pane's source
+
+/// `storageTab`'s own text: from its declaration to the next member of the view.
+///
+/// **A slice rather than the whole file, because the counts are the assertion.** The pane's two arms are
+/// one `if`, and the only thing separating "the list is drawn in both" from "the list is drawn once and
+/// the sentence twice" is counting occurrences *inside that one property*. The slice runs from the
+/// declaration to the next `private` at the type's own indent — every line inside the body is indented
+/// at least eight spaces, so a `private` at four is the member that ends it — and a slice that came back
+/// empty, or ran to the end of the file, would fail all three counts rather than pass them quietly.
+///
+/// The path is climbed from `#filePath` through `Support/TestResourceURLs.swift`'s `packageRoot()`,
+/// which is `ios/` — the reason this reads a file rather than a bundle: the view's source is not a
+/// resource and `Bundle.module` would not carry it. It is read as text, and the assertions above are
+/// about text, which is exactly what makes them weaker than the runner's other blocks: what is proven
+/// here is that the row is *written* twice, not that SwiftUI draws it twice.
+private func storagePaneSource() throws -> String {
+    let url = packageRoot().appendingPathComponent(
+        "Sources/Whoopsy/Presentation/Screens/Profile/ProfileDashboardView.swift")
+
+    let source: String
+    do {
+        source = try String(contentsOf: url, encoding: .utf8)
+    } catch {
+        assertTest(false, "The profile view's source is readable at \(url.path): \(error)")
+        throw error
+    }
+
+    guard let declaration = source.range(of: "private var storageTab: some View {") else {
+        assertTest(false, "`ProfileDashboardView` declares `storageTab`")
+        return ""
+    }
+    let body = source[declaration.upperBound...]
+    let end = body.range(of: "\n    private ")?.lowerBound ?? body.endIndex
+    return String(body[..<end])
 }

@@ -23,8 +23,8 @@ import SwiftUI
 ///
 /// For this repo's standing reason: the runner has no renderer, so a decision written into a `body` is
 /// a decision nothing can assert. `Tab.allCases.map(\.title)` is the row's order and the row's words,
-/// and `aiCoachNotice` **is** the whole of a tab that has no feature behind it. Both are asserted in
-/// §18.
+/// and the `storage*` constants beside it are the whole of the third pane. Both are asserted in §18,
+/// and the sync pane's own behaviour in §22.
 ///
 /// ## `LOGS` is `LocalDataViewModel`'s and `BIOMETRICS` is `ProfileViewModel`'s, and they are two
 ///
@@ -32,18 +32,40 @@ import SwiftUI
 /// page was a rename-with-shrink rather than one instance drawn twice: a shared one would give the two
 /// panes one `status` string and one `isImporting` flag, so an import on `LOGS` could rewrite the
 /// sentence a save on `BIOMETRICS` had just written.
+///
+/// **`STORAGE` is a third, `SyncStorageViewModel`, and it is now the pane the rename was pointing at.**
+/// It was a placeholder holding one sentence the title no longer named — see the history on the
+/// `storage*` constants below for why that disagreement was left standing rather than repaired, and
+/// what replaced it.
 public struct ProfileDashboardView: View {
     @State private var viewModel: ProfileViewModel
     @State private var localDataViewModel: LocalDataViewModel
+    @State private var syncViewModel: SyncStorageViewModel
     @State private var tab: Tab = .biometrics
 
     /// The `BIRTHDAY` control's in-progress value, and the reason the row has three states rather than
     /// two. See `birthdayRow`.
     @State private var draftBirthday: Date?
 
-    public init(viewModel: ProfileViewModel, localDataViewModel: LocalDataViewModel) {
+    /// The `SYNC FROM` control's in-progress value, and it is `draftBirthday`'s state for
+    /// `draftBirthday`'s reason — see `spanRow`, and `birthdayRow` for the argument in full. The
+    /// picker's opening position is a *control's* position; it does not become the user's span until
+    /// both ends are set, and until then nothing is sent anywhere.
+    @State private var draftRangeFrom: Date?
+
+    /// The `SYNC TO` control's, for `draftRangeFrom`'s reason. **Two drafts rather than one**, because
+    /// the engine stores both ends or neither: tapping one picker leaves that end on screen and written
+    /// nowhere, so a single draft would have to hold half a span and lose which half it was.
+    @State private var draftRangeTo: Date?
+
+    public init(
+        viewModel: ProfileViewModel,
+        localDataViewModel: LocalDataViewModel,
+        syncViewModel: SyncStorageViewModel
+    ) {
         _viewModel = State(initialValue: viewModel)
         _localDataViewModel = State(initialValue: localDataViewModel)
+        _syncViewModel = State(initialValue: syncViewModel)
     }
 
     // MARK: - Values the runner can assert
@@ -55,7 +77,7 @@ public struct ProfileDashboardView: View {
     /// first tab — which is the one a screenshot would be taken of.
     ///
     /// **All three labels were renamed on the user's instruction** — *"rename "Body" tab to
-    /// "Biometrics", rename "Data" tab to "Logs", rename "AI Coach" tab to "Storage""* — and the case
+    /// "Biometrics", rename "Data" tab to "Logs", rename [the third] tab to "Storage""* — and the case
     /// names moved with them. That is deliberate rather than tidy: the `rawValue` **is** the title, so
     /// a case still called `data` drawing `LOGS` would be a second spelling of one pane, which is the
     /// drift this enum exists to prevent.
@@ -73,30 +95,151 @@ public struct ProfileDashboardView: View {
         public var title: String { rawValue }
     }
 
-    /// What the third pane says, which is the whole of that pane.
-    ///
-    /// **The pane is now titled `STORAGE` and this copy is still about a coach, and the two are left
-    /// disagreeing on purpose.** The instruction was a rename of three labels and said nothing about
-    /// content, so rewording this would be inventing copy under the guise of a rename; the mismatch is
-    /// recorded here instead of being quietly repaired. **It is an open question for the user** — the
-    /// three new titles (`BIOMETRICS`, `LOGS`, `STORAGE`) read as a reshuffle of what each pane is
-    /// *for*, where `STORAGE` describes the import/export surface the `LOGS` pane actually holds. The
-    /// constant keeps its name because it names the *copy*, which is unchanged; §18 pins the string
-    /// verbatim, so the disagreement is visible to the suite and not only to a reader.
-    ///
-    /// **A placeholder rather than a feature, and that is the user's own decision.** The app does hold
-    /// `GenerateCoachInsightsUseCase`, and it is deliberately **not** wired to this tab: it survives
-    /// with no reader but `DIContainer` and is documented as dead code on its own type. A tab that
-    /// generated something would be a second, undocumented surface for a model nobody has argued for,
-    /// where this says plainly that there is nothing here yet.
-    ///
-    /// It is a `nonisolated static` rather than a literal in the `body` so §18 can pin it — the same
-    /// reason `SleepConsistencyCard.legendLabel` and `DeviceSettingsView.subject` are.
-    public nonisolated static let aiCoachNotice = """
-        No coach is built into this app yet.
+    // MARK: - What the third pane says
 
-        When it arrives it will read the recovery, strain and sleep history already stored on this \
-        device, and it will run here rather than in the cloud — this app has no networking code at all.
+    /// ## `STORAGE` was a placeholder, and these constants are what replaced it
+    ///
+    /// The pane was one placeholder sentence, left under a title that no longer named it when the three
+    /// labels were renamed. That disagreement was recorded rather than repaired, because the instruction
+    /// named three labels and no content and rewording it would have been inventing copy under the guise
+    /// of a rename. **It was ended by the feature rather than by a rewording**: the pane is where this
+    /// phone's own SQLite file meets the database behind it, which is what the word `STORAGE` was always
+    /// pointing at, and the placeholder went with the code it described — that code is now deleted, so
+    /// nothing on this page could reach it even by accident.
+    ///
+    /// **Six members of this family went with the cutoff and the copy policy**, and the count is worth
+    /// recording because each was a sentence about a control that no longer exists: the boundary's
+    /// eyebrow and note, the policy's eyebrow and note, and the resource selector's eyebrow and note.
+    /// What replaced them is one destination under `storageDestinationEyebrow` and one span under the
+    /// two `storageRange*` eyebrows — the pane's two controls where it used to have three.
+    ///
+    /// Every string below is a `nonisolated static` rather than a literal in the `body`, for this page's
+    /// standing reason — the runner has no renderer, so copy written into a `body` is copy nothing can
+    /// assert. §18 pins them; the state machine that chooses between the two span sentences and the two
+    /// destination notes is §22's.
+
+    /// The key row's name, above the credential itself.
+    public nonisolated static let storageKeyEyebrow = "SYNC KEY"
+
+    /// The `COPY` control beside the key. It is a `ShareLink` and not a pasteboard write — see
+    /// `keyRow` — and the word is the mockup's.
+    public nonisolated static let storageCopyTitle = "COPY"
+
+    /// What the key is, and the one thing about it a reader has to know before trusting it.
+    ///
+    /// **It says what the key is *for* and what its loss costs**, and it does not say the key is secret,
+    /// because it is not the kind of secret a user can be told to guard: it is a bearer credential the
+    /// server hashes and never stores, so the only thing a reader can act on is that this string *is*
+    /// the whole of their access to those days. See `SyncKeyStore` for the mechanism, and
+    /// `WhoopsyAPIClient.userIDHeader` for why the endpoint verifies nothing.
+    public nonisolated static let storageKeyNote = """
+        Your days in the database are filed under this key and nothing else. It is the only way to \
+        reach them if this phone is lost — there is no account to recover, and nothing on the other \
+        end can look them up for you.
+        """
+
+    /// Where new data goes, and the word `STORE` is chosen over `SYNC` on purpose.
+    ///
+    /// **The control is a switch and not a mode, and the eyebrow is where that is said first.** A row
+    /// reading `WHOOPSY SYNC API` under a heading about storage reads like *move my history there*,
+    /// which is the one thing pressing it does not do: the user's own instruction is *"if a DB is
+    /// selected, it doesnt purge anything, it just switches where data will be stored to"*, so the
+    /// question the row asks is about the future and its note says so in as many words.
+    public nonisolated static let storageDestinationEyebrow = "STORE NEW DATA IN"
+
+    /// What each destination does, in terms of where a day ends up rather than what the code does.
+    ///
+    /// **Both arms promise the same thing about deletion, and stating it twice is the point.** The one
+    /// fear this control has to answer is *if I pick the database, do I lose what is on my phone*, and a
+    /// reader who only ever selects `.device` would never see the answer. So the reassurance is in both
+    /// sentences rather than in the one that needs it — and the `.cloud` arm says plainly that switching
+    /// back moves nothing, because *moving back* is the action a reader would assume exists and no such
+    /// button is on this pane or anywhere else.
+    public nonisolated static func storageDestinationNote(
+        for destination: SyncSettings.Destination
+    ) -> String {
+        switch destination {
+        case .device:
+            return "New days, sleeps, sessions and entries are written to this phone and stay on it. "
+                + "Nothing is sent anywhere, and nothing already in the database is removed."
+        case .cloud:
+            return "New data is written to this phone and sent to the database as well. Nothing is "
+                + "deleted from either side — choosing this does not move your history off the phone, "
+                + "and choosing DEVICE STORAGE again does not move anything back."
+        }
+    }
+
+    /// The span's two ends, which are two rows because they are two controls.
+    ///
+    /// **`FROM` is the name the control would have in any date-range UI and `TO` is its pair**, so the
+    /// pair needs no explanatory sentence of its own the way the old single-boundary control did: the
+    /// reader who has set a range before knows what these two do, and the note below says what happens
+    /// to the days between them.
+    public nonisolated static let storageRangeFromEyebrow = "SYNC FROM"
+    public nonisolated static let storageRangeToEyebrow = "SYNC TO"
+
+    /// The two sentences under the span, and the state that has no days to speak about.
+    ///
+    /// **Two states rather than one, because the printed sentence has to be true both times.** With a
+    /// span set, *the days between these two go to the database* is a statement about something the
+    /// reader has asked for; with none set it would be a statement about a range that does not exist,
+    /// over two controls whose whole purpose is to create one. The empty state therefore describes the
+    /// *action* rather than the standing fact — and it is not the app's usual absence, because the span
+    /// rows are present in both states on purpose: they **are** the on-switch, and withholding them
+    /// would be withholding the feature.
+    ///
+    /// **Neither arm claims the span is the only thing that ever goes**, which the old boundary's note
+    /// could not avoid getting wrong: under `.cloud` a newly written day is sent as it is written, so a
+    /// sentence reading *only these days are sent* would be false on the second day of use. The `.from`
+    /// arm is about the run the button under it would start, and the destination's own note above is
+    /// where the standing fact lives.
+    public nonisolated static func storageRangeNote(isEnabled: Bool) -> String {
+        isEnabled
+            ? "SYNC sends the days between these two to the database. Nothing on this phone is "
+                + "deleted, and days outside the span are not sent."
+            : "Nothing is being sent anywhere. Set both ends and SYNC sends the days between them to "
+                + "the database — nothing on this phone is deleted either way."
+    }
+
+    /// The list of what a run would carry, and it is drawn in both arms of the pane.
+    ///
+    /// **It is drawn even on a build with no database**, which is the one row that survives the pane's
+    /// own `isCloudConfigured` branch: *what would move* is a fact about this app rather than about this
+    /// build's configuration, and it is the answer a reader came to the pane for. The sentence above it
+    /// is what changes, not the list.
+    ///
+    /// **The names come off `SyncedResource.allCases` rather than being typed here**, which is that
+    /// enum's own rule and the reason its `allCases` order is `shared/openapi.json`'s: the list is a
+    /// `ForEach` over the enum, so a resource added to it appears on the screen with no view edit, and
+    /// the order is read off the contract rather than decided here.
+    public nonisolated static let storageResourcesEyebrow = "SYNCED RESOURCES"
+
+    /// What the list is, and the one thing about it a reader has to know.
+    ///
+    /// **`biometric samples` is named even though it is not in the list**, because its absence is the
+    /// list's most misleading property: it is a resource the Worker carries, so a reader who has seen
+    /// the database's own documentation would expect it here, and a list that simply omitted it would
+    /// read as this app forgetting one. It is absent because a single day of it is up to 86,400 rows, so
+    /// it stays on the phone by default and carries its own control — see `SyncedResource`.
+    public nonisolated static let storageResourcesNote = """
+        These are the records SYNC would carry. Biometric samples — the individual heart-rate and \
+        R-R readings — are not among them: a single day of those is tens of thousands of rows, so they \
+        stay on this phone.
+        """
+
+    /// What the pane says on a build with no database behind it.
+    ///
+    /// **A sentence naming the missing key, and no controls at all.** The pane could have drawn the
+    /// cutoff control and a greyed button, and that would be worse than useless: every press would fail
+    /// for a reason the screen had already been told, and the reader would be left to work out that the
+    /// app was never configured. The key names the `Info.plist` entry rather than the URL, because the
+    /// URL is build configuration and the entry is the thing a reader would set — see
+    /// `WhoopsyAPIClient.baseURLInfoKey` and `UnconfiguredCloudSync`, which is the object that fails
+    /// this build's requests and says the same sentence.
+    public nonisolated static let storageNoDatabaseNotice = """
+        This build has no database behind it, so there is nowhere for your days to go. \
+        \(WhoopsyAPIClient.baseURLInfoKey) is not set in Info.plist. Until it is, every day stays on \
+        this phone and nothing leaves it.
         """
 
     public var body: some View {
@@ -113,13 +256,20 @@ public struct ProfileDashboardView: View {
         .background(Theme.backgroundDark)
         .navigationTitle("Profile")
         .inlineNavigationTitle()
-        // `load()` is the page's, because `BIOMETRICS` is the pane it opens on. `LOGS` is loaded by the
-        // `task(id:)` below instead — see `LocalDataViewModel.load()` for why the HealthKit query is
-        // narrowed to the tab rather than paid for by a reader who came to type their weight.
+        // `load()` is the page's, because `BIOMETRICS` is the pane it opens on. The other two panes are
+        // loaded by the `task(id:)` below — see `LocalDataViewModel.load()` for why the HealthKit query
+        // is narrowed to the tab rather than paid for by a reader who came to type their weight. `STORAGE`
+        // is narrowed for a smaller reason on top of that one: its `load()` is cheap, but on a configured
+        // build it **reads the Keychain, which mints and stores a key the first time** — so opening the
+        // page would mint a credential for a reader who never looked at the pane. See
+        // `SyncStorageViewModel.load()`.
         .task { await viewModel.load() }
         .task(id: tab) {
-            guard tab == .logs else { return }
-            await localDataViewModel.load()
+            switch tab {
+            case .biometrics: return
+            case .logs: await localDataViewModel.load()
+            case .storage: await syncViewModel.load()
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -593,7 +743,18 @@ public struct ProfileDashboardView: View {
     /// modifier applied at the `actionRow` call site, so leaving them there is precisely how the two
     /// kinds of row come apart. `.font` and `.tracking` stay on the `Text` rather than on the stack, so
     /// the optional `systemImage` is sized and coloured by the card and not by the words' tracking.
-    private func cardLabel(_ title: String, systemImage: String? = nil) -> some View {
+    ///
+    /// **`tint` is a parameter because the colour has to be settable from inside.** An outer
+    /// `.foregroundStyle` cannot grey this label — the inner one wins — so `storageTab`'s run button
+    /// would silently draw live while its `.disabled` gate said otherwise. It defaults to
+    /// `Theme.textPrimary`, so the eight call sites that are always live are unchanged. The card surface
+    /// is deliberately *not* a parameter beside it: `Theme.homeCard` is already the resting surface
+    /// `saveButton` greys to, so a control that is not live needs no second colour to say so.
+    private func cardLabel(
+        _ title: String,
+        systemImage: String? = nil,
+        tint: Color = Theme.textPrimary
+    ) -> some View {
         HStack(spacing: 8) {
             if let systemImage {
                 Image(systemName: systemImage)
@@ -602,7 +763,7 @@ public struct ProfileDashboardView: View {
                 .font(.footnote.weight(.bold))
                 .tracking(1.2)
         }
-        .foregroundStyle(Theme.textPrimary)
+        .foregroundStyle(tint)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
         .background(
@@ -612,14 +773,382 @@ public struct ProfileDashboardView: View {
 
     // MARK: - STORAGE
 
-    /// The tab that is a sentence, because there is no feature behind it — see `aiCoachNotice`, whose
-    /// copy and whose tab title deliberately no longer agree.
+    /// Where new data is stored, and how much of it a run would send.
+    ///
+    /// **This is what *"if a person wants to switch from using local to DB should be seamless"* asked
+    /// for**, and the whole of the feature is a switch and a span. The switch says where the *next* write
+    /// goes and moves nothing — *"if a DB is selected, it doesnt purge anything, it just switches where
+    /// data will be stored to"* is the user's own ruling, and both destination notes say so on the
+    /// screen. The span is what `SYNC` sends. Nothing is sent by opening this pane and nothing is sent by
+    /// a user who never opens it: the app as it ships is `DEVICE STORAGE` with no span, which is
+    /// byte-identical to the app before this feature existed.
+    ///
+    /// **A build with no database behind it gets one sentence, the resource list, and no controls.** See
+    /// `storageNoDatabaseNotice`: every control on this pane would fail for a reason the screen already
+    /// knows, and drawing a greyed button over that is how a reader comes to believe they configured
+    /// something wrong. The list stays because *what would move* is a fact about this app rather than
+    /// about this build — see `storageResourcesEyebrow`.
+    ///
+    /// **The controls are the page's own vocabulary rather than new ones.** The destination row is
+    /// `unitsRow`'s `SegmentedPillControl`, whose titles come off `SyncSettings.Destination.allCases` —
+    /// so the two options, their order and their words are read off the type rather than typed here,
+    /// which is what keeps a third destination from being a segment that silently never appears. The span
+    /// rows are `birthdayRow`'s three-state shape, and for its reason exactly — a compact `DatePicker`
+    /// has no "no value" state, so each end has to be a control's position before it is a stored value,
+    /// or the database is owed nine hundred days the moment the rows are first drawn.
+    ///
+    /// **The run button is drawn only when it could do something, and it no longer carries a verb.** It
+    /// used to read `UPLOAD` or `DOWNLOAD`, off which way two boundaries disagreed. There is one
+    /// destination and one span now, so the direction follows from the span rather than being a choice,
+    /// and a button naming one of the two would name a choice the user never made — see
+    /// `SyncStorageViewModel.runTitle`.
+    @ViewBuilder
     private var storageTab: some View {
-        Section {
-            Text(Self.aiCoachNotice)
-                .font(.callout)
-                .foregroundStyle(Theme.textSecondary)
+        if syncViewModel.isCloudConfigured {
+            Section {
+                keyRow
+            }
+
+            Section {
+                destinationRow
+            }
+
+            Section {
+                spanRow(
+                    title: Self.storageRangeFromEyebrow,
+                    stored: syncViewModel.range?.from,
+                    draft: $draftRangeFrom,
+                    otherDraft: $draftRangeTo
+                ) { newFrom in
+                    Task {
+                        await syncViewModel.setRange(
+                            from: newFrom, to: syncViewModel.range?.to ?? draftRangeTo)
+                    }
+                }
+
+                spanRow(
+                    title: Self.storageRangeToEyebrow,
+                    stored: syncViewModel.range?.to,
+                    draft: $draftRangeTo,
+                    otherDraft: $draftRangeFrom
+                ) { newTo in
+                    Task {
+                        await syncViewModel.setRange(
+                            from: syncViewModel.range?.from ?? draftRangeFrom, to: newTo)
+                    }
+                }
+
+                Text(Self.storageRangeNote(isEnabled: syncViewModel.hasSpan))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                syncedResourcesRow
+            }
+
+            // **The gate is the span and not `canRun`**, and the difference is the run in flight: a row
+            // drawn only while `canRun` would vanish under the reader's finger the instant they pressed
+            // it, taking the `Working…` line below it with it. So the row appears with the span and
+            // stays while a run is going, greyed and honest.
+            if syncViewModel.hasSpan {
+                Section {
+                    runRow(title: SyncStorageViewModel.runTitle)
+                }
+            }
+
+            if let keyError = syncViewModel.keyError {
+                Section {
+                    Text(keyError)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.recoveryRed)
+                }
+            }
+
+            // The status sentence is `logsTab`'s bracket exactly: a section that exists only once there
+            // is something to say, so an untouched pane draws no empty row.
+            if !syncViewModel.status.isEmpty {
+                Section {
+                    Text(syncViewModel.status)
+                        .font(.footnote)
+                }
+            }
+        } else {
+            Section {
+                Text(Self.storageNoDatabaseNotice)
+                    .font(.callout)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            // **The list is drawn in this arm too, and it is the one row that survives the branch.** See
+            // `storageResourcesEyebrow`: *what would move* is a fact about this app rather than about
+            // this build's configuration, and it is the answer a reader came to the pane for. What
+            // changes between the arms is the sentence above it, not the list.
+            Section {
+                syncedResourcesRow
+            }
         }
+    }
+
+    /// Where new data is stored — the pane's whole subject, in the slot the resource selector vacated.
+    ///
+    /// **It replaced a segment that chose which resource's settings were being edited, and that segment
+    /// is gone because its second answer is gone.** Each resource used to carry its own cutoff and its
+    /// own copy policy, so the pane had to know which one the two rows below belonged to; there is one
+    /// destination and one span for the install, so a selector here would be asking a question with one
+    /// answer.
+    ///
+    /// **It is drawn above the span because the span is what the destination makes of a day**, and the
+    /// key row above stays put: the key is this install's and not the destination's, so a selector over
+    /// it would be claiming the credential changed with the segment — which is the one thing about it a
+    /// reader must not believe, since the same key is what files a row under either destination.
+    ///
+    /// **The titles come off `Destination.allCases` rather than being typed here**, on `unitsRow`'s rule:
+    /// the order *is* the drawing, and `device` is first because it is the default and the state a fresh
+    /// install is in — so a case added to the enum is a segment that appears rather than one that
+    /// silently never does. The selection reads the view model's own `destination` and not a local
+    /// `@State`, because there is no draft here — every control on this pane writes through the moment
+    /// it is touched, which is `unitsRow`'s arrangement and the reason `BIOMETRICS`'s snapshot type has
+    /// no counterpart on this pane.
+    ///
+    /// **The note is the pane's most important sentence**, and it is why this row has one at all: a
+    /// reader who sees `WHOOPSY SYNC API` expects their history to leave the phone, and they are owed
+    /// the answer before they press it rather than after. See `storageDestinationNote(for:)` for why
+    /// both arms carry the reassurance rather than only the cloud arm.
+    private var destinationRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            eyebrow(Self.storageDestinationEyebrow)
+
+            SegmentedPillControl(
+                titles: SyncSettings.Destination.allCases.map(\.rawValue),
+                selectedIndex: SyncSettings.Destination.allCases
+                    .firstIndex(of: syncViewModel.destination) ?? 0
+            ) { index in
+                let destination = SyncSettings.Destination.allCases[index]
+                Task { await syncViewModel.setDestination(destination) }
+            }
+
+            Text(Self.storageDestinationNote(for: syncViewModel.destination))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// The key, and the one control that gets it off this phone.
+    ///
+    /// **`COPY` is a `ShareLink` and not a `UIPasteboard` write**, and that is the app's own precedent
+    /// rather than a preference: the `LOGS` pane's two share controls are `ShareLink`s, so this is the
+    /// third on the page and the first whose payload is short enough for a share sheet to look
+    /// disproportionate. The alternative — a pasteboard write with a `UIPasteboard` call — does not
+    /// exist anywhere in this app, and the reason is that it would put a UIKit import into a file the
+    /// host build compiles. A share sheet hands the key to the same clipboard in one more tap, and it
+    /// also gets it to a note or a message, which is what a reader recovering a phone actually needs.
+    ///
+    /// **The key is drawn as the store spells it.** Sixty-four unbroken uppercase hex characters, not the
+    /// mockup's dash-grouped `4F2A-9C1B-…`, because `KeychainSyncKeyStore` holds exactly one spelling of a
+    /// key and a rendering invented on this row would be a second one — and the one that gets copied by
+    /// hand would be the one that does not match. It is set in a monospaced font at the smallest size the
+    /// page uses and allowed to shrink rather than wrap, so a full key stays on one line.
+    ///
+    /// **The `textSelection` is what makes the row usable without the button**, and it is not redundant
+    /// with it: a `ShareLink` cannot be driven from the runner and a reader may want to select the key by
+    /// hand on a device whose share sheet is full of things they would rather not send it to.
+    @ViewBuilder
+    private var keyRow: some View {
+        if let key = syncViewModel.key {
+            VStack(alignment: .leading, spacing: 8) {
+                eyebrow(Self.storageKeyEyebrow)
+
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(key)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .textSelection(.enabled)
+
+                    Spacer(minLength: 0)
+
+                    ShareLink(item: key, preview: SharePreview("Whoopsy sync key")) {
+                        Text(Self.storageCopyTitle)
+                            .font(.caption2.weight(.bold))
+                            .tracking(0.9)
+                            .foregroundStyle(Theme.actionTint)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text(Self.storageKeyNote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
+        } else {
+            // The unconfigured case never reaches here — `storageTab` draws one sentence instead — so
+            // this is the gap between the pane appearing and `load()` answering. A spinner and no
+            // sentence: the eyebrow above it already says what is being read.
+            ProgressView()
+        }
+    }
+
+    /// One end of the span, and `birthdayRow`'s three states applied to a date that has a partner.
+    ///
+    /// **The `—` is a button that writes nothing**, exactly as the birthday's is: tapping it opens the
+    /// picker on a draft, and the draft does not become the user's span until they move it. The middle
+    /// state is what makes a *pair* of controls safe to draw, and it is stronger here than it was on the
+    /// single boundary this row replaced: without it, `SYNC FROM` would default to `Date()` and a span
+    /// running from today to today would be the state a reader found the pane in, having asked for
+    /// nothing.
+    ///
+    /// **`otherDraft` is the other end of the span being drawn, and it is the row's only way to read
+    /// it.** `SyncSettings.range` is one optional pair, so while the pair is incomplete the store holds
+    /// nothing at all and the drafts are the only record of what the user has picked — which is why the
+    /// picker in the middle state opens on `otherDraft` rather than on `Date()`: two ends of one span
+    /// must not open on two different days, and a reader setting `SYNC TO` after `SYNC FROM` is naming
+    /// the far end of a range they have already started.
+    ///
+    /// **The clear control removes the whole span rather than one end**, and that is the type's contract
+    /// rather than a simplification made here: there is no state in which one end is stored and the other
+    /// is not, so there is nothing for a per-end clear to leave behind. It therefore clears **both**
+    /// drafts as well as the store, and its accessibility label says *clear the span* rather than naming
+    /// the end — an `xmark` that took one date away and left the other row still showing one would be
+    /// drawing a state the store cannot hold. It is deliberately *not* the same as moving the end to a
+    /// very old date — that sends everything, where this sends nothing.
+    ///
+    /// **`write` is the caller's because only the call site knows which end this row is.** The row knows
+    /// its own new value and its partner's draft; the caller knows which of the two slots it fills, and
+    /// nothing here can infer that from a `Date?`. It is called with `nil` by the clear control, which is
+    /// how one closure serves all three states.
+    ///
+    /// The write goes through `setRange(from:to:)` rather than being assigned, so the snap lives on
+    /// `SyncSettings.SyncRange` and the stored span cannot depend on what time of day the picker was
+    /// tapped — the rule the single boundary followed, kept verbatim. The snap below is belt-and-braces
+    /// at the call site and not the mechanism: it keeps the *draft* a day too, so a picker reopened on it
+    /// draws the day the user chose rather than the minute they chose it.
+    @ViewBuilder
+    private func spanRow(
+        title: String,
+        stored: Date?,
+        draft: Binding<Date?>,
+        otherDraft: Binding<Date?>,
+        write: @escaping (Date?) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            eyebrow(title)
+
+            if let stored {
+                HStack(spacing: 8) {
+                    DatePicker(
+                        title,
+                        selection: Binding(
+                            get: { stored },
+                            set: { newValue in write(newValue.startOfDay) }),
+                        displayedComponents: .date)
+                        .labelsHidden()
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        draft.wrappedValue = nil
+                        otherDraft.wrappedValue = nil
+                        write(nil)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear the span")
+                }
+            } else if draft.wrappedValue != nil {
+                DatePicker(
+                    title,
+                    selection: Binding(
+                        get: { draft.wrappedValue ?? otherDraft.wrappedValue ?? Date() },
+                        set: { newValue in
+                            draft.wrappedValue = newValue.startOfDay
+                            write(newValue.startOfDay)
+                        }),
+                    displayedComponents: .date)
+                    .labelsHidden()
+            } else {
+                Button {
+                    draft.wrappedValue = otherDraft.wrappedValue ?? Date().startOfDay
+                } label: {
+                    HStack {
+                        Text(ActivityFigure.dash).foregroundStyle(Theme.textMuted)
+                        Spacer(minLength: 0)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Set \(title)")
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// What a run would carry, and the pane's only row that is a list rather than a control.
+    ///
+    /// **The names come off `SyncedResource.allCases` rather than being typed here**, which is that
+    /// enum's own rule and the reason its order is `shared/openapi.json`'s: the list is a `ForEach` over
+    /// the enum, so a resource added to it appears on the screen with no view edit, and the order is read
+    /// off the contract rather than decided in this file. §22 asserts the two against each other.
+    ///
+    /// **Nothing here is tappable**, deliberately: the list answers *what would move*, and a row a reader
+    /// could press would imply it could be excluded. The one resource that genuinely can be is the eighth
+    /// and it is not drawn — `SyncSettings.uploadsBiometricSamples` is stored and deliberately read by
+    /// nothing in this pass, which is why `storageResourcesNote` names it in prose instead.
+    private var syncedResourcesRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            eyebrow(Self.storageResourcesEyebrow)
+
+            ForEach(SyncedResource.allCases, id: \.self) { resource in
+                Text(resource.rawValue)
+                    .font(.caption)
+                    .foregroundStyle(Theme.textPrimary)
+            }
+
+            Text(Self.storageResourcesNote)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// The one control that moves days, and it no longer carries a verb.
+    ///
+    /// **It reads `SYNC` because there is no verb left to read.** It used to say `UPLOAD` or `DOWNLOAD`,
+    /// off which way two cutoffs disagreed, and with one destination and one drawn span the direction
+    /// follows from the span rather than being a choice — so a button naming one of the two would name a
+    /// choice the user never made. See `SyncStorageViewModel.runTitle`, which carries the whole argument,
+    /// including why the mockup's `UPLOAD 912 DAYS` cannot be drawn honestly either.
+    ///
+    /// **Greyed rather than absent when it cannot run**, which is the opposite of the span rows above it
+    /// and is deliberate. `storageTab` draws this row only once a span exists, so the one state where it
+    /// is drawn and un-pressable is a run already in flight — and that state has to stay visible rather
+    /// than disappearing under the reader's finger, which is also why the gate there is the span and not
+    /// `canRun`. `saveButton`'s treatment one pane over: the tint and the `disabled` gate both read off
+    /// one value, because `.buttonStyle(.plain)` with a custom background does not grey itself.
+    private func runRow(title: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                Task { await syncViewModel.run() }
+            } label: {
+                cardLabel(
+                    title,
+                    tint: syncViewModel.canRun ? Theme.textPrimary : Theme.textMuted)
+            }
+            .buttonStyle(.plain)
+            .disabled(!syncViewModel.canRun)
+
+            // `logsTab`'s `isImporting` bracket, and it is honest here for the same reason it is there:
+            // this row changes a database under the reader, and on a first upload that is five requests
+            // carrying nine hundred days.
+            if syncViewModel.isSyncing {
+                HStack(spacing: 8) { ProgressView(); Text("Working…").font(.caption) }
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     // MARK: - Field vocabulary

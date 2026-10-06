@@ -260,15 +260,6 @@ public struct WorkoutSession: Identifiable, Equatable, Hashable, Sendable {
     }
 }
 
-public struct CoachInsight: Identifiable, Equatable, Sendable {
-    public enum Tone: String, Sendable { case recovery, activity, sleep }
-    public let id: UUID
-    public let title: String
-    public let message: String
-    public let tone: Tone
-    public init(id: UUID = UUID(), title: String, message: String, tone: Tone) { self.id = id; self.title = title; self.message = message; self.tone = tone }
-}
-
 public struct AppPreferences: Equatable, Sendable {
     public var analyticsEnabled: Bool
     public var healthKitSyncEnabled: Bool

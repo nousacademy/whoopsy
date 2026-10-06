@@ -8,15 +8,30 @@ uploaded to someone else's servers and handed back to you one screen at a time, 
 keep paying. Whoopsy talks to the same strap directly over Bluetooth, decodes the packets on-device,
 stores everything in a local SQLite file, and works out Recovery, Strain and Sleep itself.
 
-**There is no network code of this app's own, and no backend behind it.** Not "we don't send much" —
-no `URLSession`, no HTTP client, no server. `Package.swift` declares exactly one dependency,
-GRDB.swift, and it is a SQLite library.
+**No data leaves the phone, and the app depends on no server.** Not "we don't send much" — no
+account, no analytics, nothing you cannot switch off. `Package.swift` declares exactly one
+dependency, GRDB.swift, and it is a SQLite library.
 
-**The repository does now contain a `backend/`, and it changes none of that.** It is the folder a
-future sync will be built in: a Cloudflare Worker skeleton with declared bindings, no routes, and an
-entry point whose every response is `501 Not Implemented`. Nothing under `ios/` reaches it, it has
-never been deployed, and it is not a service this app talks to — read it as a stated intention rather
-than as infrastructure. The sentence above is about the app that ships.
+**The repository does now contain a `backend/`, and it changes none of that.** It is a Cloudflare
+Worker (Hono in front of D1 + R2) with eight resources carried end to end — `recoveries` at
+`/v1/recoveries/{date}`, `workouts` at `/v1/workouts/{id}`, `strains` at `/v1/strains/{date}`,
+`sleeps` at `/v1/sleeps/{date}`, `stepCounts` at `/v1/step-counts/{date}`,
+`receptiveInactivities` at `/v1/receptive-inactivities/{id}`, `biometricSamples` at
+`/v1/biometric-samples/{id}` and `userProfiles` at `/v1/profile`, each from the route through the
+service and the repository into its own D1 migration — plus the contract generated from those route
+definitions rather than written by hand. **Eight of them are the Worker's; the app's sync still speaks
+to three of them** — there is no sleep mapper, sleep sync store, step-count mapper, step-count sync
+store, receptive-inactivity mapper, receptive-inactivity sync store, biometric-sample mapper,
+biometric-sample sync store, user-profile mapper or user-profile sync store on the iOS side yet — so
+the two counts in this file differ on purpose. `userProfiles` is the one of those four whose missing
+client half is not a missing copy of a sibling: its mapper will have to supply the `"primary"` id this
+app's local row carries and convert a `.datetime` birthday column to the day key the wire publishes. **The
+app does reach it, and only when it is told where to look.** `ios/Sources/Whoopsy/Data/Networking/` is
+the HTTP client and `Data/Sync/` is the sync behind
+the profile page's `Storage` pane — the app's only network code — and both are inert on every build in
+this repository, because `Info.plist` carries no `WHOOPSYAPIBaseURL`. An unconfigured build draws a
+sentence naming that key, and nothing else happens. Nothing has been deployed, so that is the state
+every build here is in. Read it as the pattern settled rather than as infrastructure.
 
 **One exception, and it is opt-in and off until you configure it.** The route card's offline map hands
 its tile requests to Mapbox's SDK — a third-party binary the *Xcode target* links, because it is
@@ -69,7 +84,7 @@ strap.** Being specific about that is more useful than a feature list:
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-a 1928-assertion test runner that pins the behaviour of all of them.
+a 2339-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -105,11 +120,18 @@ covers the whole history instead of two models disagreeing on one chart.
 
 - **Home** — the day's three rings (Recovery, Strain, Sleep), a month calendar, and metric panels. Its
   activity rows push a detail page for that session: strain, steps, heart rate, and the five
-  heart-rate zone rows, each compared against that activity's own recent history
-- **Strain** — the day's cardiovascular load with heart-rate zone breakdown
-- **Sleep** — last night's stages, efficiency, and the night's sleep need
+  heart-rate zone rows, each compared against that activity's own recent history. Its rings push the
+  recovery, strain and sleep detail pages, and the two ends of its day bar are the only doors to the
+  profile page and to the strap's status page
 - **Recovery** — the score, and the four figures it was computed from against their baselines
-- **More** — coach insights, device management, settings and import
+- **Profile** — pushed from Home's day bar, in three panes: **Biometrics** (name, birthday, gender,
+  units, height, weight), **Logs** (the Apple Health sync, the four bundled imports and the JSON +
+  CSV export), and **Storage** (the cloud sync's key, a `DEVICE STORAGE │ WHOOPSY SYNC API`
+  destination that only says where the next write goes, the span of days a run would carry, and the
+  seven resources that list names)
+- **Device** — pushed from Home's status badge: connection and battery, the strap model picker, the
+  pairing controls and the live heart-rate broadcast
+- **More** — Settings alone, which is the Anonymous diagnostics toggle
 
 ---
 
@@ -138,10 +160,10 @@ whoopsy/
 ├── ios/              the app — one SwiftPM package plus Whoopsy.xcodeproj
 │   ├── Sources/      Whoopsy/ (the four layers) and WhoopsyLiveActivityKit/
 │   ├── App/          Xcode-only sources: iOS/, Map/, LiveActivity/, Config/
-│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 1928-assertion suite,
+│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 2339-assertion suite,
 │                     mirroring Sources/Whoopsy/ file for file
-├── backend/          a Cloudflare Worker (Hono · D1 · R2) — scaffolded, not implemented
-├── shared/           openapi.json, the contract the two will agree on
+├── backend/          a Cloudflare Worker (Hono · D1 · R2) — eight resources end to end
+├── shared/           openapi.json, generated from the Worker's routes
 ├── docs/             the specs
 └── Makefile  scripts/  tmp/  CLAUDE.md  README.md
 ```
@@ -152,8 +174,52 @@ there, the project consuming the package product, and every path *inside* either
 or project-relative. That is why the app could move under `ios/` without a single source file
 changing — and why the paths below carry the prefix while the ones inside the package do not.
 
-**`backend/` holds no behaviour on purpose** — the note at the top of this file says why. It exists so
-that the sync's shape is settled before its first route is written.
+**`backend/` holds eight resources and a generated contract, and only the first cost design.** The note
+at the top of this file says why. Its shape — route → service → repository → migration, with
+`shared/openapi.json` produced from the route definitions — was settled by `recoveries`, and the other
+seven are that shape written again: `workouts` needed its own migration and nothing else, because a
+workout is an aggregate of three tables rather than one row per day, and `strains`, `sleeps` and
+`stepCounts` needed no new shape at all — they are the day-keyed upsert the first one established, and
+the work they took was in what they *refuse* to invent rather than in how they are wired.
+`stepCounts` is the narrowest of the eight. `receptiveInactivities` is the second resource keyed on an
+`id` rather than on a day — a day holds several entries — and it is `workouts`' key with none of
+`workouts`' aggregate: one table, no children, and two nullable columns (`note`, `startedAt`) whose
+absences are the majority case rather than the exception.
+**`biometricSamples` is the third keyed on an `id`, and it is the one resource here whose read window
+is a span of instants rather than a count of days** — a day of `biometric_samples` is up to 86,400
+rows, so a day-counted window would make "give me last month" a read no Worker should be asked for.
+It is also the only adapter in this Worker that handles JSON: `rr_intervals_ms` holds a `[Double]` as
+text and is published as an array of numbers rather than as the string that is secretly JSON, because
+a series of intervals has no interior a decoder would have to agree about — which is exactly why
+`sleep_stages`, whose segments carry interior `Date`s, stays an opaque blob. And it is the one
+resource whose identity is the **client's** derivation rather than a key this app's storage already
+had: the phone's local row key is an autoincrement in that device's own SQLite that never reaches its
+entity, so two devices in one partition would both mint from 1 and silently overwrite each other; the
+wire id is therefore a client-derived string, and the Worker validates the shape and publishes that
+the derivation must be **deterministic** — so that a replay is an upsert rather than a second row —
+without reproducing a recipe, because a server that derived an id would be a second implementation of
+the client's identity.
+**`userProfiles` is the fourth resource with no date key, and it is the one whose shape deviates
+furthest — it is a singleton.** A partition holds one profile or none, so its whole surface is
+`GET /v1/profile` and `PUT /v1/profile`: no `{id}` to address a member with, no `{date}`, no `/batch`
+to chunk, and no `?days=` window to ask for. `PUT` rather than `POST`, because the app's own save is a
+whole-row upsert and there is no meaningful "create a second one". **The path is the only segment in
+this document that is singular**, because a plural collection path for a resource that can never hold
+more than one row reads as "list them" and there is no list — while the file, the type and the D1 table
+all keep the resource's own name (`userProfiles.ts`, `UserProfile`, `user_profiles`). It is also the
+only resource here whose table has **no `id` column at all** — `PRIMARY KEY (user_id)` alone — and the
+only one whose refusal code is `not_found` with **no** service error class behind it: the one rule it
+publishes (`restingHeartRate` strictly below `maxHeartRate`) is stated on the write body's `.refine()`
+and therefore in the contract, so there is nothing left for a service to refuse.
+**Three of the eight have a kebab-case path, and it is the one URL here a reader cannot spell from
+the resource's own name**: `/v1/step-counts`, where the type is `StepCount` and the table is
+`step_counts`; `/v1/receptive-inactivities`, where the type is `ReceptiveInactivity` and the table is
+`receptive_inactivities`; and `/v1/biometric-samples`, where the type is `BiometricSample` and the
+table is `biometric_samples`. `receptive-inactivities` is also the only three-segment path in the
+document, so it sorts above `/v1/recoveries` rather than among the resources it resembles — and
+`biometric-samples` sorts above it, being the document's one entry that precedes every
+`/v1/recoveries` path on the letter `b`.
+[`§ The backend`](#the-backend) below is how to run it.
 
 ---
 
@@ -180,7 +246,7 @@ looks like data. **A fresh clone will not compile until you put five files back*
 | `Whoop/sleeps.csv` | **Required to build**, for the same reason — it is the second `.process(…)` entry. Read only for the **eight nap rows** it carries and nothing else |
 | `Whoop/workouts.csv` | **Required to build**, for the same reason — the third `.process(…)` entry, and it is a build input like any other. §17/§19 of the suite also read it for its `HR Zone 1 %`…`5 %` block and its `Activity name` column, so the two zone rows and the activity-name path can only be exercised against a real one |
 | `ZeroFasting/fasts.json` | **Required to build.** The fourth `.process(…)` entry, read by `ZeroFastingParser` through `Bundle.module` for the 170 fasts it carries. A placeholder of `{"fast_data": []}` is enough to compile and imports nothing |
-| `Custom/dreams.json` | **Required to build.** The fifth `.process(…)` entry, read by `InactivityImporter` through `Bundle.module` for the 60 dreams it carries. A placeholder of `{"receptive_inactivities": []}` is enough to compile and imports nothing. It is generated from `Custom/dreams.csv`, the owner's own notes file, by a generator that is **not part of this repository** — the owner's own tooling, kept untracked like the `Custom/` directory it writes into — and unlike the two files above, its directory names no producer app, which is why the button that reads it is named for the row it produces (`IMPORT RECEPTIVE INACTIVITIES`) rather than for where the file came from |
+| `Custom/dreams.json` | **Required to build.** The fifth `.process(…)` entry, read by `InactivityImporter` through `Bundle.module` for the 62 dreams it carries. A placeholder of `{"receptive_inactivities": []}` is enough to compile and imports nothing. It is generated from `Custom/dreams.csv`, the owner's own notes file, by a generator that is **not part of this repository** — the owner's own tooling, kept untracked like the `Custom/` directory it writes into — and unlike the two files above, its directory names no producer app, which is why the button that reads it is named for the row it produces (`IMPORT RECEPTIVE INACTIVITIES`) rather than for where the file came from |
 | `Whoop/journal_entries.csv` | Not needed. Nothing bundles it and nothing reads it |
 
 The three CSVs are validated as they are read, so a wrong-shaped one fails loudly instead of
@@ -209,7 +275,7 @@ The placeholders are enough to compile — **verified, not assumed**: a tree hol
 placeholders builds with `swift build` and no `Invalid Resource` warning, and the importer then
 honestly reports zero days rather than inventing any. They do **not** make the test suite pass, and
 should not: `make test` drives the real export, so §11, §13, §14, §15, §17, §20 and §21 assert those
-files' own figures (673 workouts, 910 nights, 170 fasts, 60 dreams over 55 days). Run the suite against
+files' own figures (673 workouts, 910 nights, 170 fasts, 62 dreams over 57 days). Run the suite against
 a real export.
 
 **It will not overwrite an export.** A file holding rows is reported and left byte-for-byte alone,
@@ -358,11 +424,11 @@ and compare its size and timestamp against the built one.
 
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 21 sections, 1928 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 22 sections, 2339 assertions, and no
 test discovery:
 
 ```bash
-make test                 # build + run all 21 sections
+make test                 # build + run all 22 sections
 make test SECTIONS=13,15  # just those two
 ```
 
@@ -371,7 +437,7 @@ deleted sources and the link fails) and hands the runner an absolute `#filePath`
 longer cares which directory you run it from. It ends with one machine-readable line:
 
 ```
-SUITE sections=1,2,...,21 assertions=1928 failed=0 exit=0
+SUITE sections=1,2,...,22 assertions=2339 failed=0 exit=0
 ```
 
 Read that line rather than the scrollback — the suite has no test discovery, so a section that
@@ -382,6 +448,115 @@ Note the runner is **not hermetic in the migration sense** — one section build
 container, so a run applies any pending migration to your own development database before the app is
 ever launched. It writes no rows there: every section that stores anything builds its own in-memory
 database, and a full run leaves the file byte-identical. That is documented rather than hidden.
+
+---
+
+## The backend
+
+`backend/` is a Cloudflare Worker — [Hono](https://hono.dev) in front of D1 and R2 — and it is a
+separate toolchain from everything above. **It has never been deployed.** The app does reach it, and
+only when it is told where to look: `ios/Sources/Whoopsy/Data/Networking/` is the HTTP client and
+`Data/Sync/` is the sync written on it, and both are inert on any build whose `Info.plist` carries no
+`WHOOPSYAPIBaseURL` — which is every build in this repository, so the sync's screen reports an
+unconfigured database and nothing else happens.
+
+Eight resources are carried the whole way: `recoveries` at `/v1/recoveries/{date}`, `strains` at
+`/v1/strains/{date}`, `sleeps` at `/v1/sleeps/{date}` and `stepCounts` at `/v1/step-counts/{date}` —
+one row per day each, keyed on the date — plus `workouts` at `/v1/workouts/{id}`,
+`receptiveInactivities` at `/v1/receptive-inactivities/{id}` and `biometricSamples` at
+`/v1/biometric-samples/{id}`, each keyed on an id because a day holds several rather than one, and
+`userProfiles` at `/v1/profile`. Each
+runs from the route through the service and the repository into its own D1 migration,
+and every one of them but `userProfiles` takes a `POST /batch` chunk beside its single-row verbs. `workouts` is the one that is not a
+single row: a session carries its own `route` and `splits` inline, so a session is one request and
+never three, and the server writes parent and children in one transaction. `receptiveInactivities` is
+the other id-keyed resource and it is a single row: an entry has a name, an optional start time and an
+optional note, and **no end** — which is why it is a table of its own rather than a `workouts` row,
+since `workouts`' two instants are `NOT NULL` and the half-open overlap read Home's `ACTIVITIES` card
+is built on depends on them. Both of its nullable columns are nullable rather than optional on the
+wire, so an absent note has one spelling (`null`) and `""` is refused; and its read orders
+`date ASC, started_at ASC NULLS LAST, name ASC`, because SQLite would otherwise sort untimed entries
+above the timed ones on their own day and the untimed entry is the majority case. `biometricSamples`
+is the third id-keyed resource and the one whose collection read is a different shape: a sample is a
+single row with no children, so it carries the `PUT`/`GET /{id}` pair and a batch like the other two,
+but its window takes **two instants** rather than a day and a day-count — a day of that table is up to
+86,400 rows, so the bound is a span (`MAX_BIOMETRIC_SAMPLE_WINDOW_SECONDS`, `604_800`, a constant in
+this resource's own unit rather than an alias of the four day-keyed windows') and **both bounds are
+required**, because a defaulted `to` would be the Worker's clock answering the caller's question.
+**Its id is the client's derivation rather than a key this app's storage already had**: a sample has no
+identifier that can travel — the phone's local row key is an autoincrement in that device's own SQLite
+and never reaches its entity — so the contract requires a UUID *and* that it be deterministic, and
+takes no view of the recipe. It is also **the only adapter in this Worker that handles JSON**:
+`rr_intervals_ms` holds a `[Double]` as text and is published as an array of numbers, which is the
+honest self-describing shape for a series with no interior a decoder would have to agree about — the
+same argument that keeps `sleep_stages`, whose segments carry interior `Date`s, an opaque blob. Two
+more of its decisions are worth naming because they are absences rather than values: the series is
+published under one name only (`rrIntervalsMs`; the legacy lossy `rrIntervalMs` scalar is deliberately
+not carried at all), and nine of its twelve wire fields are nullable with **no default in either
+direction** — a channel the strap did not report says `null`, and a substituted `0.0` accelerometer
+axis would be free fall, on the *still* side of every movement threshold. **`userProfiles` is the
+eighth and it is the one whose shape is a singleton**, so every clause above stops applying to it at
+once: no key on the path (`/v1/profile`, the document's only singular segment), no `/batch` chunk, no
+window, no `{id}`, no `id` column — `PRIMARY KEY (user_id)` alone — and a `PUT` rather than a `POST`,
+because a whole-row upsert is what the app's own save is and there is no second profile to create. Its
+absence is a `404 not_found` rather than `no_measurement_for_day`, since no day is the subject; and it
+is the only resource here whose service refuses nothing at all, because the one rule it holds — a
+resting heart rate strictly below the maximal one — is published on the write body's `.refine()` and
+therefore in `shared/openapi.json`, so a `UserProfileError` would be a class no code path could
+produce. **No resource here
+has a delete route**, so a client can write an entry and read it back but cannot remove it through this
+API. **The four day-keyed resources are not copies of each other** — `strains`, `sleeps` and
+`stepCounts` share a shape (an upsert, a range read, a chunk) and not an absence rule, because
+`strains` stores a `hasMeasurement` flag that can deny a row which exists while `sleeps` and
+`stepCounts` have no such column and answer a day with no row as a `404`; a night's day key is its
+**wake** day; and `stepCounts` is the narrowest of the three, with no `source` and no nullable column
+at all, because the strap is its only producer.
+`shared/openapi.json` is **generated from the route definitions** and served live by the Worker at
+`GET /openapi.json`, so the committed contract and the
+running one cannot disagree.
+
+```bash
+cd backend
+npm ci                     # or `npm install` the first time
+npm run typecheck          # tsc --noEmit, three projects
+npm test                   # the real Worker against a local D1 — see the warning below
+npm run openapi            # rewrites ../shared/openapi.json
+make -C .. backend-check   # all of the above, failing if the contract is stale
+```
+
+**It is unauthenticated and must not be deployed publicly.** `X-Whoopsy-User-Id` is a placeholder
+identity, not a credential — it selects which rows you see, and nothing verifies it. There is no
+`accounts` table. The migration carries a `user_id` column from the first file so the table already has
+its partition the day a verified token exists.
+
+**The account identifiers are placeholders, so the code runs locally and nowhere else.**
+`wrangler.toml`'s `database_id` is `REPLACE_ME_wrangler_d1_create` and the document's `servers[0].url`
+says `<account>`. The local path accepts both; `wrangler deploy` will not, and that is deliberate —
+real identifiers are pasted in when there is an account to paste them from.
+
+To exercise it by hand, note that **`wrangler dev`'s database and the test suite's are two different
+databases.** `npm test` builds its own from `migrations/` on every run; `wrangler dev` keeps one under
+`backend/.wrangler/state` that starts empty, so a fresh checkout that curls the dev server gets
+`500` with `no such table: recoveries` until:
+
+```bash
+npx wrangler d1 migrations apply whoopsy-sync --local
+npx wrangler dev --port 8787
+```
+
+The check that the two readings of the contract really are one document is a shell step rather than a
+spec, because a Worker has no filesystem:
+
+```bash
+curl -s localhost:8787/openapi.json | diff - ../shared/openapi.json && echo IDENTICAL
+```
+
+**Local development runs late-2024 `workerd` while a deployment would run `compatibility_date`'s
+semantics.** `wrangler` is pinned to exactly `3.95.0` because that is what
+`@cloudflare/vitest-pool-workers` pairs with, and it warns on every run that `2026-10-01` is ahead of
+the runtime it ships and falls back to `2024-12-05`. Nothing in this resource uses a flag from after
+that date, so the fallback is inert here — but a feature that did would be green locally and wrong
+deployed. Moving to wrangler 4 is a coordinated bump and is not this pass.
 
 ---
 

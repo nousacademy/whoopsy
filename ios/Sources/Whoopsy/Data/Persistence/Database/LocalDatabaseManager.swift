@@ -838,6 +838,88 @@ public actor LocalDatabaseManager {
         }
     }
 
+    /// Every recovery row filed in `[from, to)`, ascending — the sync's own read.
+    ///
+    /// **Half-open, and that is deliberately not `getRecoveryHistory`'s window.** A screen asks for *the
+    /// days up to and including this one*, so its window closes on `endOfDay`; a sync chunks an
+    /// arithmetic range and needs the chunks to abut without overlapping, because a shared instant
+    /// between two chunks is a day written twice. `endOfDay` is the last *instant* of a day rather than
+    /// the first of the next, so a row written at midnight would fall outside both halves of a split
+    /// built from it — see the `startOfNextDay` gotcha.
+    ///
+    /// Ascending is load-bearing rather than a convenience: the upload chunks this array and advances
+    /// the boundary to each chunk's last row, so a shuffled read would move the boundary across days it
+    /// had not sent.
+    public func syncRows(from: Date, to: Date) throws -> [RecoverySyncRow] {
+        try dbQueue.read { db in
+            try RecoveryRecord
+                .filter(Column("date") >= from.startOfDay)
+                .filter(Column("date") < to.startOfDay)
+                .order(Column("date").asc)
+                .fetchAll(db)
+                .map(\.syncRow)
+        }
+    }
+
+    /// Insert or replace every row given, in **one** transaction.
+    ///
+    /// One transaction rather than a loop of `saveRecovery` calls, and the reason is the sync's rather
+    /// than the database's: a chunk that failed halfway would leave a range the sync cannot describe —
+    /// partly written, with nothing on disk recording which rows landed.
+    ///
+    /// The date is snapped here for `saveRecovery`'s reason, and it matters more in a download than in
+    /// any other write: these rows arrive from a wire format whose day is a bare `YYYY-MM-DD`, and a
+    /// record written at a raw instant is INSERTed rather than UPDATEd by GRDB's `save` — so it would
+    /// exist, and no keyed read could ever find it.
+    public func saveSyncRows(_ rows: [RecoverySyncRow]) throws {
+        guard !rows.isEmpty else { return }
+        try dbQueue.write { db in
+            for row in rows {
+                var record = RecoveryRecord(row)
+                record.date = row.date.startOfDay
+                try record.save(db)
+            }
+        }
+    }
+
+    /// Every night filed on a day in `[from, to)`, ascending — the sleeps half of the sync's read.
+    ///
+    /// **The same window arithmetic as `syncRows(from:to:)` and the same reason for it**, quoted rather
+    /// than restated: half-open, because a sync chunks an arithmetic range and needs the chunks to abut
+    /// without overlapping, and a shared instant between two of them is a night written twice.
+    ///
+    /// **The key is the wake day and this method must not recompute it.** `SleepRecord.date` is the
+    /// morning the night ended; `startTime` is the evening before, so a read that filtered on
+    /// `startOfDay(startTime)` would miss every night it was asked about once the window's lower bound
+    /// fell between the two.
+    public func syncSleepRows(from: Date, to: Date) throws -> [SleepSyncRow] {
+        try dbQueue.read { db in
+            try SleepRecord
+                .filter(Column("date") >= from.startOfDay)
+                .filter(Column("date") < to.startOfDay)
+                .order(Column("date").asc)
+                .fetchAll(db)
+                .map(\.syncRow)
+        }
+    }
+
+    /// Insert or replace every night given, in **one** transaction.
+    ///
+    /// One transaction rather than a loop, on `saveSyncRows`'s argument. The date is snapped here for
+    /// `saveSleep`'s reason: a night arriving from the wire carries a day key that has already been
+    /// parsed back into a `Date` by the mapper, and the snap is what puts it on the same instant every
+    /// other writer in this app writes.
+    public func saveSyncSleepRows(_ rows: [SleepSyncRow]) throws {
+        guard !rows.isEmpty else { return }
+        try dbQueue.write { db in
+            for row in rows {
+                var record = SleepRecord(row)
+                record.date = row.date.startOfDay
+                try record.save(db)
+            }
+        }
+    }
+
     /// See `saveRecovery` for why the date is snapped.
     public func saveSleep(_ record: SleepRecord) throws {
         var snapped = record
@@ -966,6 +1048,59 @@ public actor LocalDatabaseManager {
         }
     }
 
+    // MARK: - The sync's door into `strains`
+
+    /// Every strain row filed in `[from, to)`, ascending — the sync's own read.
+    ///
+    /// **Half-open, on `syncRows(from:to:)`'s recoveries argument rather than a second one**: a screen
+    /// asks for *the days up to and including this one*, so its window closes on `endOfDay`, while a
+    /// sync chunks an arithmetic range and needs the chunks to abut without overlapping, because a
+    /// shared instant between two of them is a day written twice.
+    ///
+    /// **The day alone is the order, and there is no second key.** `syncWorkoutRows` needs
+    /// `started_at` and `id` behind its `date` because a day can hold several sessions; this table is
+    /// keyed on the day, so a day holds one row and `date` is already a total order. Ascending is
+    /// load-bearing rather than a convenience, for the recoveries' reason: the upload chunks this array
+    /// and advances the boundary to each chunk's last row, so a shuffled read would move the boundary
+    /// across days it had not sent.
+    public func syncStrainRows(from: Date, to: Date) throws -> [StrainSyncRow] {
+        try dbQueue.read { db in
+            try StrainRecord
+                .filter(Column("date") >= from.startOfDay)
+                .filter(Column("date") < to.startOfDay)
+                .order(Column("date").asc)
+                .fetchAll(db)
+                .map(\.syncRow)
+        }
+    }
+
+    /// Insert or replace every row given, in **one** transaction.
+    ///
+    /// One transaction rather than a loop of `saveStrain` calls, and the reason is the sync's rather
+    /// than the database's: a chunk that failed halfway would leave a range the sync cannot describe —
+    /// partly written, with nothing on disk recording which rows landed.
+    ///
+    /// The date is snapped here for `saveStrain`'s reason, and it matters more in a download than in any
+    /// other write: these rows arrive from a wire format whose day is a bare `YYYY-MM-DD`, and a record
+    /// written at a raw instant is INSERTed rather than UPDATEd by GRDB's `save` — so it would exist,
+    /// and no keyed read could ever find it.
+    ///
+    /// **A plain upsert and not a replacement**, which is the one structural difference from
+    /// `saveSyncWorkoutRows`: there is nothing filed under a strain, so there is no child to clear and
+    /// no order to restore. The `hasMeasurement` flag and the `source` string ride through unchanged,
+    /// because they are the whole reason the sync speaks the record rather than `StrainScore`.
+    public func saveSyncStrainRows(_ rows: [StrainSyncRow]) throws {
+        guard !rows.isEmpty else { return }
+        try dbQueue.write { db in
+            for row in rows {
+                var record = StrainRecord(row)
+                record.date = row.date.startOfDay
+                try record.save(db)
+            }
+        }
+    }
+
+
     /// See `saveRecovery` for why the date is snapped.
     ///
     /// The snap is load-bearing here for a second reason beyond the keyed read: `TrackStepsUseCase`
@@ -1067,17 +1202,36 @@ public actor LocalDatabaseManager {
         route: [WorkoutRoutePointRecord],
         splits: [WorkoutSplitRecord]
     ) throws {
+        try dbQueue.write { db in
+            try Self.writeWorkout(record, route: route, splits: splits, in: db)
+        }
+    }
+
+    /// The body of `saveWorkout`, taking the database so a caller can put several of them in one
+    /// transaction.
+    ///
+    /// **Extracted for `saveSyncRows`, and the extraction is the point rather than tidying.** A sync
+    /// chunk must land whole or not at all — a parent written and a route that did not is a session
+    /// whose path comes from an older write, and nothing on disk records that — so the chunk needs one
+    /// `dbQueue.write` around a loop of these. Reaching for `saveWorkout` from inside that loop would
+    /// open a transaction per session, and duplicating the four statements into the sync would be a
+    /// second definition of what saving a session means, free to drift from this one on the next
+    /// change to either.
+    private static func writeWorkout(
+        _ record: WorkoutRecord,
+        route: [WorkoutRoutePointRecord],
+        splits: [WorkoutSplitRecord],
+        in db: Database
+    ) throws {
         var snapped = record
         snapped.date = record.date.startOfDay
-        try dbQueue.write { db in
-            try snapped.save(db)
-            _ = try WorkoutRoutePointRecord
-                .filter(Column("workout_id") == snapped.id).deleteAll(db)
-            _ = try WorkoutSplitRecord
-                .filter(Column("workout_id") == snapped.id).deleteAll(db)
-            for point in route { try point.save(db) }
-            for split in splits { try split.save(db) }
-        }
+        try snapped.save(db)
+        _ = try WorkoutRoutePointRecord
+            .filter(Column("workout_id") == snapped.id).deleteAll(db)
+        _ = try WorkoutSplitRecord
+            .filter(Column("workout_id") == snapped.id).deleteAll(db)
+        for point in route { try point.save(db) }
+        for split in splits { try split.save(db) }
     }
 
     /// Removes a session and everything filed under it, and reports **how many session rows** went.
@@ -1105,6 +1259,187 @@ public actor LocalDatabaseManager {
             return try WorkoutRecord
                 .filter(Column("id") == id).deleteAll(db)
         }
+    }
+
+    // MARK: - The sync's door into `workouts`
+
+    /// Every session filed on a day in `[from, to)`, ascending, each with its route and its splits.
+    ///
+    /// **Half-open, and that is deliberately not `getWorkoutHistory`'s window**, for
+    /// `syncRows(from:to:)`'s recoveries reason: a screen asks for *the days up to and including this
+    /// one*, so its window closes on `endOfDay`; a sync chunks an arithmetic range and needs the chunks
+    /// to abut without overlapping, because a shared instant between two of them is a day written
+    /// twice.
+    ///
+    /// **The order is `date`, `started_at`, `id`, and all three are load-bearing.** `date` is what the
+    /// range is built on. `started_at` is the order the card and the export already read a day's
+    /// sessions in. `id` breaks the remaining tie so the walk is deterministic — a day holding two
+    /// sessions that started on the same second is ordinary, and an undefined order among them would
+    /// let two reads of one unchanged database disagree about which one a chunk boundary fell after.
+    ///
+    /// The children are fetched **inside this one read**, per session and in the manager's own sorted
+    /// order — `timestamp` for the route, `elapsed` for the splits. That order is not a preference: the
+    /// child tables have no `seq` column, so it is the only record of the sequence, and the wire binds
+    /// its own `seq` from this array's index. Re-sorting here would be a second ordering rule.
+    public func syncWorkoutRows(from: Date, to: Date) throws -> [WorkoutSyncRow] {
+        try dbQueue.read { db in
+            let records = try WorkoutRecord
+                .filter(Column("date") >= from.startOfDay)
+                .filter(Column("date") < to.startOfDay)
+                .order(Column("date").asc, Column("started_at").asc, Column("id").asc)
+                .fetchAll(db)
+
+            return try records.compactMap { record in
+                let route = try WorkoutRoutePointRecord
+                    .filter(Column("workout_id") == record.id)
+                    .order(Column("timestamp").asc)
+                    .fetchAll(db)
+                let splits = try WorkoutSplitRecord
+                    .filter(Column("workout_id") == record.id)
+                    .order(Column("elapsed").asc)
+                    .fetchAll(db)
+                // `nil` for a session whose stored id will not parse, which drops it from the read
+                // rather than minting an identity for it — `WorkoutSyncStore`'s doc comment carries why
+                // the parent is dropped and the children below are not.
+                return record.syncRow(route: route, splits: splits)
+            }
+        }
+    }
+
+    /// Insert or replace every session given, **with its children**, in **one** transaction.
+    ///
+    /// One transaction rather than a loop of `saveWorkout` calls, and the reason is the sync's rather
+    /// than the database's: a chunk that failed halfway would leave a set of days nothing can describe
+    /// — some written and some not — and the next run would rewrite the whole chunk by replacement
+    /// without a way to tell which half had landed. `writeWorkout` is what makes that affordable — the whole
+    /// chunk goes through one definition of saving a session, rather than through a second copy of the
+    /// four statements that a later change to either could leave behind.
+    ///
+    /// The day snap happens inside `writeWorkout`, for `saveWorkout`'s reason, and it matters more here
+    /// than in any other write: these rows arrive from a wire format whose day is a bare `YYYY-MM-DD`,
+    /// and a record written at a raw instant is INSERTed rather than UPDATEd by GRDB's `save` — so it
+    /// would exist and no keyed read could find it.
+    public func saveSyncWorkoutRows(_ rows: [WorkoutSyncRow]) throws {
+        guard !rows.isEmpty else { return }
+        try dbQueue.write { db in
+            for row in rows {
+                let record = WorkoutRecord(row)
+                try Self.writeWorkout(
+                    record,
+                    // The back-pointer comes from the parent's own id, which is the only honest source
+                    // for it — the entity has no such field, because the wire has no such field.
+                    route: row.route.map { WorkoutRoutePointRecord($0, workoutId: record.id) },
+                    splits: row.splits.map { WorkoutSplitRecord($0, workoutId: record.id) },
+                    in: db
+                )
+            }
+        }
+    }
+
+    // MARK: - The sync's doors into the remaining four tables
+
+    /// Every step-count row filed in `[from, to)`, ascending — the sync's own read.
+    ///
+    /// **Half-open, on `syncRows(from:to:)`'s recoveries argument rather than a second one**: a screen
+    /// asks for *the days up to and including this one*, so its window closes on `endOfDay`, while a
+    /// sync chunks an arithmetic range and needs the chunks to abut without overlapping, because a
+    /// shared instant between two of them is a day written twice.
+    ///
+    /// **A day with `measuredSeconds == 0` is returned like any other row**, and that is deliberate
+    /// rather than an oversight: on this table the absence is a *column*, not a missing row — see
+    /// `StepCountSyncStore` — so filtering here would answer a question the caller did not ask and would
+    /// hide a day that exists. Whether such a row is worth sending is `StepCountWireMapper.isSendable`'s
+    /// decision, one layer up, where it can name itself in a log.
+    public func syncStepCountRows(from: Date, to: Date) throws -> [StepCountSyncRow] {
+        try dbQueue.read { db in
+            try StepCountRecord
+                .filter(Column("date") >= from.startOfDay)
+                .filter(Column("date") < to.startOfDay)
+                .order(Column("date").asc)
+                .fetchAll(db)
+                .map(\.syncRow)
+        }
+    }
+
+    /// Insert or replace every step-count row given, in **one** transaction.
+    ///
+    /// The date is snapped here for `saveStepCount`'s reason, and it matters more in a download than in
+    /// any other write: these rows arrive from a wire format whose day is a bare `YYYY-MM-DD`, and a
+    /// record written at a raw instant is INSERTed rather than UPDATEd by GRDB's `save` — so it would
+    /// exist, and no keyed read could ever find it.
+    public func saveSyncStepCountRows(_ rows: [StepCountSyncRow]) throws {
+        guard !rows.isEmpty else { return }
+        try dbQueue.write { db in
+            for row in rows {
+                var record = StepCountRecord(row)
+                record.date = row.date.startOfDay
+                try record.save(db)
+            }
+        }
+    }
+
+    /// Every entry filed on a day in `[from, to)`, ascending — the sync's own read.
+    ///
+    /// **Keyed on the day in the window and on the id in the row, which is this table's whole oddity.**
+    /// A day can hold several entries, so `date` alone is not a total order — but unlike `workouts`
+    /// there is no second key to add, because nothing about an entry's identity or its upload depends on
+    /// which of its day's entries comes first. `ORDER BY date ASC` is therefore the whole of the order
+    /// this method promises.
+    ///
+    /// Half-open, on `syncRows(from:to:)`'s argument.
+    public func syncReceptiveInactivityRows(from: Date, to: Date) throws -> [ReceptiveInactivitySyncRow] {
+        try dbQueue.read { db in
+            try ReceptiveInactivityRecord
+                .filter(Column("date") >= from.startOfDay)
+                .filter(Column("date") < to.startOfDay)
+                .order(Column("date").asc)
+                .fetchAll(db)
+                .map(\.syncRow)
+        }
+    }
+
+    /// Insert or replace every entry given, in **one** transaction.
+    ///
+    /// The date is snapped here for `saveReceptiveInactivity`'s reason. **The id is not touched**: it is
+    /// the row's primary key and, on this table, the mechanism that makes re-importing the bundled file
+    /// rewrite its rows instead of appending a second copy of every one — so an implementation here that
+    /// minted an id for a row arriving without one would quietly double the table.
+    public func saveSyncReceptiveInactivityRows(_ rows: [ReceptiveInactivitySyncRow]) throws {
+        guard !rows.isEmpty else { return }
+        try dbQueue.write { db in
+            for row in rows {
+                var record = ReceptiveInactivityRecord(row)
+                record.date = row.date.startOfDay
+                try record.save(db)
+            }
+        }
+    }
+
+    /// The one stored profile, or `nil` when this database holds none.
+    ///
+    /// **No day and no range**, because the table is a singleton keyed `"primary"` — so this is
+    /// `getProfile()` read through the sync's own shape, and it deliberately goes through the same key
+    /// literal for the same reason: a second spelling of the key would be a second opinion about which
+    /// row is the profile.
+    ///
+    /// Nothing is substituted for an absent row. The app's cold-start 190/60 pair is applied by the
+    /// client that draws the form, never by a stored row — a row this method invented would be
+    /// indistinguishable from one the user typed, and the calorie estimate divides by one of these
+    /// fields.
+    public func syncProfileRow() throws -> UserProfileSyncRow? {
+        try dbQueue.read { db in
+            try UserProfileRecord.fetchOne(db, key: "primary")?.syncRow
+        }
+    }
+
+    /// Insert or replace the profile, in **one** transaction.
+    ///
+    /// It goes through `saveProfile` rather than repeating its two lines, and that is the point: a
+    /// profile write is INSERT-or-UPDATE over the *whole* row, so a second implementation that saved a
+    /// subset would silently NULL the rest and surface as a form that comes back empty on the second
+    /// launch.
+    public func saveSyncProfileRow(_ row: UserProfileSyncRow) throws {
+        try saveProfile(UserProfileRecord(row))
     }
 
     /// The workouts recorded on `date`'s day, earliest first. Several per day is normal, which is
@@ -1227,6 +1562,100 @@ public actor LocalDatabaseManager {
 /// the actor body beside `existingTableNames()` and `columnNames(in:)`, which are the two other reads
 /// that ask about the schema rather than about a day.
 extension LocalDatabaseManager: LocalDatabaseSnapshotting {}
+
+/// The sync's own door into `recoveries`, taken on at the same choke point and for the same reason.
+///
+/// **It is a second way into a table `RecoveryRepository` already reads, and the two answer different
+/// questions.** `RecoveryRepository` speaks `RecoveryMetric`, which has no `source` and carries three
+/// baseline deltas that have no column; a sync built on it would drop provenance on all 910 imported
+/// rows and would have nothing to write into three of the columns on the way back, silently and with a
+/// green build. So the sync gets a door that speaks the stored shape, and the conformance is declared
+/// here — beside the snapshotting one and away from the actor's own declaration — so that the same
+/// sentence is visible at the point the app takes it on: neither of these is one of the app's
+/// repositories and neither has a subject.
+extension LocalDatabaseManager: RecoverySyncStore {}
+
+/// The sync's own door into `workouts`, taken on at the same choke point and for the same reason —
+/// with one difference the flat resource has no equivalent for.
+///
+/// **`WorkoutRepository` is a worse fit for this resource than `RecoveryRepository` is for the one
+/// beside it, and that is not a matter of degree.** `makeSessions` drops any stored row whose id will
+/// not parse as a `UUID` and mints a **fresh** `UUID` for every route point and split it keeps, so a
+/// sync built on the entity would upload a session under an identity the database has never held and
+/// would rewrite a path with different child ids on every pass. The stored shape is the only one that
+/// round trips, which is what this door speaks.
+///
+/// The conformance is declared here, beside the snapshotting and recoveries ones and away from the
+/// actor's own declaration, so the same sentence is visible at the point the app takes it on: none of
+/// these three is one of the app's repositories and none has a subject.
+extension LocalDatabaseManager: WorkoutSyncStore {}
+
+/// The sync's own door into `strains`, taken on at the same choke point and for the same reason.
+///
+/// **`StrainRepository` is a worse fit for this resource than `RecoveryRepository` is for the one two
+/// above it, and the reason is a field it does not have.** `StrainRepository` speaks `StrainScore`,
+/// whose `zones` array is computed from `biometric_samples` and has no column, so a sync built on the
+/// entity would carry a field the database cannot store on the way up and would have nothing to
+/// reconstruct on the way back. The stored shape is the one that round trips, which is what this door
+/// speaks — and unlike the workouts half there is no id policy to state, because a strain's identity
+/// *is* its day and that is a `Date` on both sides.
+///
+/// **The two method names carry the resource because they have to**, which is `StrainSyncStore`'s own
+/// point rather than a naming preference: `syncRows(from:to:)` differs from the recoveries one in
+/// nothing at all — a signature is a name plus its argument labels, and the row type appears in neither
+/// — so declaring it a second time is `invalid redeclaration`.
+///
+/// The conformance is declared here, beside the snapshotting, recoveries and workouts ones and away
+/// from the actor's own declaration, so the same sentence is visible at the point the app takes it on:
+/// none of these is one of the app's repositories and none has a subject.
+extension LocalDatabaseManager: StrainSyncStore {}
+
+/// The sync's own door into `sleeps`, taken on at the same choke point and for the same reason.
+///
+/// **`SleepRepository` is a worse fit than `RecoveryRepository` is, for the same kind of reason and one
+/// more.** The entity is `SleepSession`, whose `id` is a `UUID` the record does not have and whose
+/// `sleepStages` is a parsed `[SleepStageSegment]` where the column holds opaque JSON text — so a sync
+/// built on it could neither round trip an identity nor hand the wire the bytes the schema asks for.
+/// The stored shape is the one that round trips, which is what this door speaks.
+///
+/// **The day this door reads is the night's wake day**, and that is the one rule worth repeating at the
+/// point the conformance is taken on: nothing here derives a key from `startTime`.
+extension LocalDatabaseManager: SleepSyncStore {}
+
+/// The sync's own door into `stepCounts`, taken on at the same choke point and for the same reason —
+/// and this is the member of the family whose entity would have been *closest* to usable, which makes
+/// saying why it is not worth the line.
+///
+/// `StepCount` carries `hasMeasurement` as a computed property over `measuredSeconds`, so a sync built
+/// on the entity would look right and would be one field short on the way out: the absence rule this
+/// table expresses as a *column* would arrive at the wire as an absence of a row, and a day the strap
+/// never counted would be stored on the far side as a day of zero steps. The stored shape carries the
+/// column, which is what this door speaks.
+extension LocalDatabaseManager: StepCountSyncStore {}
+
+/// The sync's own door into `receptive_inactivities`, taken on at the same choke point and for the same
+/// reason.
+///
+/// **The entity's id is a `UUID` and the stored id is a `String`, which is the whole reason this needs a
+/// door of its own.** A `ReceptiveInactivity` is identified by a `UUID` and `ReceptiveInactivityRecord`
+/// by the text a `UUID` renders to — and that text is not a convenience here but a *derived* value:
+/// `InactivityParser.identifier(date:type:note:)` computes a UUIDv5 from the entry's own facts, which is
+/// what makes re-importing the bundled file rewrite its rows rather than append a second copy of every
+/// one. A sync built on the entity would put a `UUID(uuidString:)` conversion in that path, where a
+/// stored id that failed to parse would either drop the row silently or be replaced by a fresh
+/// `UUID()` — and the second of those does not fail either, it appends. The stored shape has no such
+/// seam, so it is the one this door speaks.
+extension LocalDatabaseManager: ReceptiveInactivitySyncStore {}
+
+/// The sync's own door into `user_profiles`, taken on at the same choke point and for the same reason —
+/// and the one whose two questions are furthest apart.
+///
+/// **`UserProfileRepository` speaks an eleven-field entity while the table stores seven**, so a sync
+/// built on it would carry four fields with no column and no way to say which of them the user actually
+/// supplied. `UserProfileRecord` is exactly the stored row, so the stored shape is the one that round
+/// trips — and this is also the one conformance here with **no range**: the table is a singleton, so its
+/// read takes no `from`/`to` and its save takes no array.
+extension LocalDatabaseManager: UserProfileSyncStore {}
 
 /// The one conversion from what GRDB hands back to the `Sendable` value the export carries.
 ///

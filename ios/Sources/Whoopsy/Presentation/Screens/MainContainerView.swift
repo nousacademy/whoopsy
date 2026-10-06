@@ -53,6 +53,25 @@ public struct MainContainerView: View {
     /// re-evaluates, so a computed property would be rebuilt on every pass.
     private let localDataViewModel: LocalDataViewModel
 
+    /// The profile page's `STORAGE` tab, built here for `localDataViewModel`'s reason one pane over.
+    ///
+    /// **It is a third object rather than more state on either of the two above.** `BIOMETRICS` is a form
+    /// over `user_profiles`, `LOGS` is five imports and an export over `AppPreferences` and the files on
+    /// disk, and `STORAGE` is a boundary and a key over `SyncSettings` and the Keychain — three subjects
+    /// with three `status` strings. Sharing one instance would let a failed upload rewrite the sentence a
+    /// refused save had just written, under a pane that is no longer on screen.
+    ///
+    /// **It is built even on a build with no database behind it**, which is why `isCloudConfigured` is
+    /// handed in rather than consulted here: the pane's whole content in that state is the sentence
+    /// naming the missing `Info.plist` key, and a `nil` view model would make that state a special case
+    /// at the destination instead of a value the pane reads. `UnconfiguredCloudSync` carries the same
+    /// argument one layer down.
+    ///
+    /// Stored rather than computed, for `deviceViewModel`'s reason: `body` is a `ViewBuilder` and
+    /// re-evaluates, so a computed property would be rebuilt on every pass — and this one would re-read
+    /// the Keychain with it.
+    private let syncViewModel: SyncStorageViewModel
+
     /// `More → Settings`, which is now the Privacy toggle and nothing else.
     ///
     /// **It is built here because `MoreView` stopped taking a container**, and that is a fix rather
@@ -78,6 +97,16 @@ public struct MainContainerView: View {
             fasting: container.fastingImport,
             inactivities: container.inactivityImport,
             exportUseCase: container.exportLocalDataUseCase)
+        // One engine and a `Bool`, and the split between them is the pane's whole shape: the engine walks
+        // all seven resources, so there is no per-resource object for this pane to hold — the selector
+        // that chose between three use cases went with the three cutoffs that justified them. The `Bool`
+        // is not a second object but a fact about this build — whether it was given a base URL at all —
+        // and the container is the only thing that decides which `CloudSync` the engine got. See
+        // `SyncStorageViewModel.isCloudConfigured`.
+        self.syncViewModel = SyncStorageViewModel(
+            engine: container.syncEngine,
+            keyStore: container.syncKeyStore,
+            isCloudConfigured: container.isCloudConfigured)
         self.settingsViewModel = SettingsViewModel(repository: container.preferencesRepository)
         self.deviceViewModel = DeviceViewModel(
             manage: container.manageBLEConnectionUseCase,
@@ -141,6 +170,9 @@ public struct MainContainerView: View {
                 // The profile page's second subject, handed down beside the first because they are
                 // two tabbed panes of one pushed page. See its declaration for why they are two.
                 localDataViewModel: localDataViewModel,
+                // The profile page's third subject, handed down beside the other two because they are
+                // three tabbed panes of one pushed page. See its declaration for why they are three.
+                syncViewModel: syncViewModel,
                 // The app's one live session, handed down rather than built here: it has to outlive
                 // every screen that draws it, so it is the container's and this passes the reference
                 // through. See `LiveSessionUseCase`.
@@ -231,14 +263,15 @@ private struct MoreView: View {
         NavigationStack {
             List {
                 // **This list held four rows and now holds one, on the user's instruction given a row
-                // at a time: Profile, then Device, then Coach.** Do not restore any of the three as a
+                // at a time: Profile, then Device, then one more.** Do not restore any of the three as a
                 // convenience, and do not read their absence as an oversight:
                 //
                 // - **Profile** is reached from Home's day-bar row, and only from there now.
                 // - **Device** is reached from Home's status badge, and only from there now — it was
                 //   the row whose inline construction taught this file why a view model is passed to a
                 //   destination rather than built inside its closure, and that lesson outlived the row.
-                // - **Coach** went with its page, which is deleted.
+                // - **The third** went with its page, and the page, its view model and the use case
+                //   behind it are all deleted.
                 //
                 // The one rule this list still has to keep: `Settings` is here and nowhere else, so a
                 // new row added above it needs its own door or it is a page nothing can reach.

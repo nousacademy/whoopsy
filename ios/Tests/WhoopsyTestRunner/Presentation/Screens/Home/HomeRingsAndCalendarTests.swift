@@ -38,15 +38,15 @@ enum HomeRingsAndCalendarTests {
             "An unmeasured day's placeholder row is `.red` with no measurement — so a view that drew its "
                 + "colour would show an unworn night as a hard 0% red recovery")
 
-        // `state` must *be* `RecoveryState(score:)`, not a second switch that agrees today. The coach
-        // message path holds a bare score and goes through the initialiser, so a metric whose `state`
-        // drifted from it would put "you are primed" on a day the ring draws red.
+        // `state` must *be* `RecoveryState(score:)`, not a second switch that agrees today. A path that
+        // holds a bare score goes through the initialiser, so a metric whose `state` drifted from it
+        // would draw a day red on the ring while every other reader called it a good one.
         for score in [0, 20, 33, 34, 50, 66, 67, 85, 100] {
             let metric = RecoveryMetric(score: score, hrvValueMs: 60, restingHeartRate: 55)
             assertTest(
                 metric.state == RecoveryMetric.RecoveryState(score: score),
                 "\(score)% agrees between `RecoveryMetric.state` and `RecoveryState(score:)` — one "
-                    + "boundary table, read by the ring and by the coach message alike")
+                    + "boundary table, read by every screen that draws a day alike")
         }
 
         // The mapping itself, which is the one thing a boundary assertion cannot see: a switch whose

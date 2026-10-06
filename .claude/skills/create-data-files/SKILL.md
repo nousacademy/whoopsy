@@ -75,7 +75,7 @@ and every import button reports zero days rather than inventing any.
 
 **It does not make the suite green.** `make test` drives the real export through the real importers,
 so the sections that read a bundled file assert *that file's* figures — 673 workouts and 21 distinct
-activity names in §17, 910 nights in §13 and §15, 170 fasts in §20, 60 dreams over 55 days in §21,
+activity names in §17, 910 nights in §13 and §15, 170 fasts in §20, 62 dreams over 57 days in §21,
 the export-backed blocks of §11 and §14. On a placeholder those fail, correctly. **Run `make test`
 against a real export, never against placeholders**, and do not read a failing run there as a
 regression.

@@ -20,7 +20,7 @@ public struct InactivityRow: Sendable, Equatable {
     ///
     /// This is the whole reason the parser computes it rather than the importer. `ReceptiveInactivity
     /// .init` declares `id: UUID = UUID()`, and GRDB's `save` is INSERT-or-UPDATE **by primary key** —
-    /// so an importer calling the convenience initialiser per record appends all 60 rows again on every
+    /// so an importer calling the convenience initialiser per record appends all 62 rows again on every
     /// press of the button, and reads back perfectly well while doing it. It is the same trap
     /// `CLAUDE.md` records against `workouts` and `naps`.
     ///
@@ -94,7 +94,7 @@ public enum InactivityImportError: Error, LocalizedError {
 ///
 /// `date` and `type` are obvious. **`note` is the one worth arguing**, because it is prose and prose has
 /// a natural absence — but on *this* file it does not: `dreams.json` is generated from a notes journal
-/// by a generator outside this repository, every one of its 60 records carries a note, and a record without
+/// by a generator outside this repository, every one of its 62 records carries a note, and a record without
 /// one is a generator fault rather than a dream nobody wrote down. Defaulting it to `""` would store a
 /// value nobody supplied *and* — because the note is an input to the id — give two different faults the
 /// same identity. A future producer of meditations, which genuinely can carry no text, wants

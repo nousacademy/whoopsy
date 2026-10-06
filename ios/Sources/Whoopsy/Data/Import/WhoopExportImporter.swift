@@ -32,6 +32,17 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
     private let userProfileRepository: any UserProfileRepository
     private let calendar: Calendar
 
+    /// **The import takes no settings, and the parameter that used to be here is worth recording rather
+    /// than quietly dropping.** It held the sync's settings so that a day the database already owned
+    /// could be skipped — the walk below would otherwise put one measurement into two stores. That
+    /// contention is gone with the delete that created it: nothing purges a day from either store, so a
+    /// day in both is the ordinary state of a synced install rather than a defect to route around, and
+    /// this walk's remaining rule is only that it will not overwrite a row the phone already has.
+    ///
+    /// **Nothing about where the rows land is this type's business.** The writes go through the
+    /// repositories, and a repository is what answers from the store the destination names — so an
+    /// import under `WHOOPSY SYNC API` writes through to the database and an import under `DEVICE
+    /// STORAGE` does not, with no branch here.
     public init(
         recoveryRepository: any RecoveryRepository,
         sleepRepository: any SleepRepository,
@@ -478,6 +489,12 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
             // performance, and `SleepSession` derives that from asleep-over-need. Using WHOOP's own
             // `Sleep performance %` column instead would give the app a second opinion about a
             // number it already has one rule for.
+            //
+            // **This branch reads nothing about where data is stored, and neither does the strain one
+            // below.** A repository is what answers from the store the destination names, so an import
+            // under `WHOOPSY SYNC API` writes its rows through to the database without a branch here —
+            // and a branch here would be the one shape that puts a night into neither store, since
+            // skipping it locally on account of the cloud is not the same as the cloud having it.
             let session = Self.makeSession(from: row, day: day)
             if let session {
                 if try await sleepRepository.getSleepSession(for: day) == nil {

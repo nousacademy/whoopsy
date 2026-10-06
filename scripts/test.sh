@@ -4,14 +4,14 @@
 # out of `.build` and omitted the `-fmodule-map-file` flag, so it died with `missing required module
 # 'CSQLite'` before it ever reached a test.
 #
-#   ./scripts/test.sh              # all 21 sections
+#   ./scripts/test.sh              # all 22 sections
 #   ./scripts/test.sh 13 15        # §13 and §15 only
 #   ./scripts/test.sh 13,15        # same thing
 #   make test SECTIONS=13,15       # same thing, via the Makefile
 #
 # The runner prints one machine-readable line at the end:
 #
-#   SUITE sections=1,...,21 assertions=1928 failed=0 exit=0
+#   SUITE sections=1,...,22 assertions=2561 failed=0 exit=0
 #
 # Read that line rather than the `✓` scrollback. This suite has no test discovery, so a section that
 # stopped running looks exactly like one that passed — `sections=` is the field that catches it, and

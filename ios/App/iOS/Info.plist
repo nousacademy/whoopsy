@@ -82,5 +82,28 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
+    <!-- The sync database's address, and it is **deliberately empty in the committed file** — the same
+         arrangement `ios/App/Config/Mapbox.xcconfig` uses for its token, and for the same reason: a
+         clone that has never configured one gets a build with no database behind it rather than one
+         pointed at a host that does not exist.
+
+         **Empty means unconfigured, not broken.** `WhoopsyAPIClient.configuredBaseURL()` returns `nil`
+         for a missing key *and* for one holding only whitespace, and `DIContainer` answers that by
+         wiring `UnconfiguredCloudSync` and setting `isCloudConfigured` to `false` — so the STORAGE pane
+         draws the sentence naming this key, every recovery read stays in SQLite, and nothing opens a
+         socket. That is the state this app has always been in, and it stays the default.
+
+         To configure one, put the address here: `http://localhost:8787` for `npm --prefix backend run
+         dev`. Two things are unverified and must be confirmed on the first run rather than assumed:
+         whether ATS refuses a cleartext `localhost` address (if it does, the fix is a scoped
+         `NSAllowsLocalNetworking` entry and **not** `NSAllowsArbitraryLoads`, which would weaken every
+         other request this app makes), and whether a sideloaded device build can reach the Mac's
+         `localhost` at all — it cannot, so this is a simulator-only setting. **Never put a deployed
+         Cloudflare hostname here.** The endpoint authenticates nothing: anyone can mint a key and read
+         the partition it names, so `X-Whoopsy-User-Id` is a placeholder identity rather than a
+         credential, and the key the app stores is a bearer secret. A real deployment needs the token
+         step first, and that step does not exist yet. -->
+    <key>WHOOPSYAPIBaseURL</key>
+    <string></string>
 </dict>
 </plist>

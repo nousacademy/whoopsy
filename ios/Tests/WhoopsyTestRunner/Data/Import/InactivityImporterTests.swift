@@ -38,10 +38,10 @@ enum InactivityImporterTests {
             "The summary counts the file's own records, so a re-generated journal reports the number of "
                 + "lines it actually has (\(summary.rowsInFile) against \(rows.count) parsed)")
         assertTest(
-            summary.inactivitiesWritten == 60,
-            "…and all **60** of them reached `receptive_inactivities`. This is the assertion that fails "
+            summary.inactivitiesWritten == 62,
+            "…and all **62** of them reached `receptive_inactivities`. This is the assertion that fails "
                 + "if anyone reaches for `ReceptiveInactivity(date:name:startedAt:)` without passing the "
-                + "derived id — not because the write fails, but because it would write 60 rows on every "
+                + "derived id — not because the write fails, but because it would write 62 rows on every "
                 + "press and read back perfectly well while doing it (\(summary.inactivitiesWritten))")
         assertTest(
             summary.rowsUnreadable == 0,
@@ -53,7 +53,7 @@ enum InactivityImporterTests {
 
         // **The day count is recomputed, never pinned.** `startOfDay` is `Calendar.current`, and this
         // file's dates are pure days that a device time zone could in principle merge; §20 shipped the
-        // hardcoded `136` once and it was a UTC number. The figure is 55 on this machine, and the
+        // hardcoded `136` once and it was a UTC number. The figure is 57 on this machine, and the
         // assertion is that the importer's own count agrees with a set built from the parsed rows —
         // which is the property, and the one that holds in every zone.
         let expectedDays = Set(rows.map(\.date))
@@ -71,32 +71,32 @@ enum InactivityImporterTests {
                 + "\(summary.inactivitiesWritten) rows)")
 
         assertTest(
-            summary.message.contains("60 receptive inactivities") && summary.message.contains("55 days"),
+            summary.message.contains("62 receptive inactivities") && summary.message.contains("57 days"),
             "The sentence a reader is shown leads with the rows and states the days as its own clause — "
                 + "the same split the two counts above are asserted separately for "
                 + "(\(summary.message))")
         assertTest(
-            summary.message.contains("23 Jul 2023") && summary.message.contains("9 Sep 2026"),
+            summary.message.contains("23 Jul 2023") && summary.message.contains("5 Oct 2026"),
             "…and it names the span it wrote, at both ends, through the shared `formattedImportDay()` "
-                + "grammar. The last day is **9 Sep 2026** and not the 7 Aug the plan sketched: that "
+                + "grammar. The last day is **5 Oct 2026** and not the 7 Aug the plan sketched: that "
                 + "range was written from memory and the file's own tail is later than it "
                 + "(\(summary.message))")
 
-        // ---- All 60, read back on their own days ----
+        // ---- All 62, read back on their own days ----
 
         // **The read that proves the id is a real UUID string.** `GRDBReceptiveInactivityRepository`
         // `makeActivities` guards `UUID(uuidString: record.id)` and drops the row when it fails, so a
-        // string id writes 60 rows, reads back **none**, and reports a successful import of nothing.
+        // string id writes 62 rows, reads back **none**, and reports a successful import of nothing.
         // Reading through the repository rather than through `db.getReceptiveInactivities(on:)` is the
-        // point: the record-level read would return all 60 either way, and this is the one that fails.
+        // point: the record-level read would return all 62 either way, and this is the one that fails.
         var readBack: [ReceptiveInactivity] = []
         for day in expectedDays.sorted() {
             readBack.append(contentsOf: try await repository.getReceptiveInactivities(for: day))
         }
         assertTest(
-            readBack.count == 60,
-            "All **60** rows come back through `GRDBReceptiveInactivityRepository` on their own days. "
-                + "The 55 days are walked rather than one query run, because the repository has one "
+            readBack.count == 62,
+            "All **62** rows come back through `GRDBReceptiveInactivityRepository` on their own days. "
+                + "The 57 days are walked rather than one query run, because the repository has one "
                 + "day-keyed read and no windowed sibling — a receptive inactivity has no end, so there "
                 + "is nothing for a `covering:` read to overlap (\(readBack.count) read back)")
         assertTest(
@@ -113,7 +113,7 @@ enum InactivityImporterTests {
         let wrongProse = readBack.filter { proseByID[$0.id] != $0.note }
         assertTest(
             wrongProse.isEmpty,
-            "Every one of the 60 rows carries **its own record's prose** and not a neighbour's — the "
+            "Every one of the 62 rows carries **its own record's prose** and not a neighbour's — the "
                 + "assertion that fails if `save(_:)` stops passing `note:` through, or passes it to the "
                 + "wrong slot, which no count can see (\(wrongProse.count) rows disagree)")
 
@@ -145,12 +145,12 @@ enum InactivityImporterTests {
 
         // **The assertion §4 exists for.** GRDB's `save` is INSERT-or-UPDATE *by primary key*, so this
         // holds only while the id is derived from the record's own content: with a fresh `UUID()` the
-        // second press appends 60 more rows, every one of them reading back as a `Dream` on the right
+        // second press appends 62 more rows, every one of them reading back as a `Dream` on the right
         // day, and this is the only thing in the suite that would notice.
         let second = try await importer.importInactivities(at: inactivitiesURL())
         assertTest(
-            second.inactivitiesWritten == 60,
-            "The second press reports the same 60 rows, because it rewrites the same primary keys rather "
+            second.inactivitiesWritten == 62,
+            "The second press reports the same 62 rows, because it rewrites the same primary keys rather "
                 + "than writing a second journal (\(second.inactivitiesWritten))")
 
         var afterSecond: [ReceptiveInactivity] = []
@@ -158,8 +158,8 @@ enum InactivityImporterTests {
             afterSecond.append(contentsOf: try await repository.getReceptiveInactivities(for: day))
         }
         assertTest(
-            afterSecond.count == 60,
-            "…and the database still holds **60** rows and not 120. This is the assertion the whole "
+            afterSecond.count == 62,
+            "…and the database still holds **62** rows and not 124. This is the assertion the whole "
                 + "derived-id design is for, and the failure it catches is silent: an appending importer "
                 + "reports a successful import, draws a correct-looking card, and quietly doubles the "
                 + "journal on every press (\(afterSecond.count) after the second import)")

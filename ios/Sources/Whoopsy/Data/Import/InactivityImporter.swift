@@ -73,12 +73,12 @@ public struct InactivityImporter: InactivityImporting, Sendable {
         try await importInactivityRows(InactivityParser.parseInactivities(at: url))
     }
 
-    /// Rows written, which on the bundled file is **60 entries over 55 days**.
+    /// Rows written, which on the bundled file is **62 entries over 57 days**.
     ///
     /// Idempotent by primary key rather than by a day check: `receptive_inactivities` is keyed on `id`
-    /// and GRDB's `save` is INSERT-or-UPDATE, so a second press rewrites the same 60 rows. That is the
+    /// and GRDB's `save` is INSERT-or-UPDATE, so a second press rewrites the same 62 rows. That is the
     /// whole reason `InactivityParser` derives each id from the record — the mistake `ReceptiveInactivity
-    /// .init`'s `id: UUID = UUID()` default would otherwise walk straight into, appending 60 rows per
+    /// .init`'s `id: UUID = UUID()` default would otherwise walk straight into, appending 62 rows per
     /// press while reading back perfectly well.
     ///
     /// **The days are counted from the file's own dates rather than from the written rows**, and here

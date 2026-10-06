@@ -121,7 +121,7 @@ extension Date {
     /// locale-dependent style, which reorders the month and the day from region to region.
     ///
     /// **It is `en_US_POSIX` and pinned rather than `.current`, and here that is a choice rather than
-    /// a bug being avoided.** These two strings go into a sentence together — *"23 Jul 2023 → 9 Sep
+    /// a bug being avoided.** These two strings go into a sentence together — *"23 Jul 2023 → 5 Oct
     /// 2026"* — and an arrow between two dates means the pair must be read as one span. A locale that
     /// writes `"23/07/2023"` makes that span a column of digits, and one that writes `"Jul 23, 2023"`
     /// moves the separator into the middle of each end. `WhoopImportSummary` writes its own report the

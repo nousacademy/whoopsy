@@ -7,7 +7,7 @@ import Foundation
 /// told which one happened.
 ///
 /// **It leads with inactivities and states days as its own clause**, which it must: the bundled
-/// `dreams.json` holds **60 records over 55 distinct days**, so a sentence naming one figure and
+/// `dreams.json` holds **62 records over 57 distinct days**, so a sentence naming one figure and
 /// meaning the other is wrong by five. The two are separate numbers and are printed as separate
 /// things — the same reason the fasting summary prints its own pair apart, and the two files happen to
 /// differ by a similar margin for a similar reason: **a day can hold more than one dream.** Five days
@@ -24,7 +24,7 @@ public struct InactivityImportSummary: Sendable, Equatable {
     public let rowsInFile: Int
 
     /// Rows written to `receptive_inactivities`. **Not a day count** — a day can hold several entries,
-    /// and this file's 60 records land on 55 days. Equal to `rowsInFile` on the bundled file, and the
+    /// and this file's 62 records land on 57 days. Equal to `rowsInFile` on the bundled file, and the
     /// two part company only when a record is refused.
     public let inactivitiesWritten: Int
 

@@ -71,10 +71,10 @@ public struct RecoveryMetric: Identifiable, Equatable, Sendable {
 
         /// The tier boundaries, and the only place they are written down.
         ///
-        /// A caller holding a bare score — a coaching message, say — must go through this rather than
-        /// compare against `67` itself. `GenerateCoachInsightsUseCase` did exactly that, which made a
-        /// second copy of the green boundary that would have gone on disagreeing with this one in
-        /// silence the day the boundary moved.
+        /// A caller holding a bare score must go through this rather than compare against `67` itself.
+        /// The type that did exactly that is deleted — it made a second copy of the green boundary,
+        /// which would have gone on disagreeing with this one in silence the day the boundary moved,
+        /// and it is why a bare score now has one place to become a tier.
         ///
         /// Written as half-open ranges rather than as the `case 67...100` literals they replace,
         /// because a **view** now has to print them: the month calendar's legend reads `<34%`,
