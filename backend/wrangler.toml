@@ -1,10 +1,16 @@
 # The Cloudflare Worker that fronts the cloud sync.
 #
-# **Nothing here is wired to a real database yet.** Both bindings below point at names that do not
-# exist in any Cloudflare account: create them with `wrangler d1 create` / `wrangler r2 bucket
-# create`, then paste the returned `database_id` in. Until that happens `wrangler dev` runs against
-# a fully local D1 — which is enough for `npm test`, for `wrangler d1 migrations apply --local`, and
-# for the end-to-end curl checks in `README.md`. **Do not invent a UUID here.**
+# **The two resources below are real as of 2026-10-07, and the Worker itself is still not deployed.**
+# `whoopsy-sync` (D1, region ENAM) and `whoopsy-exports` (R2, Standard) exist in the account, and
+# `database_id` holds the id `wrangler d1 create` returned. Provisioning is **not** deploying: no
+# `wrangler deploy` has run, so there is no hostname, and `Info.plist`'s `WHOOPSYAPIBaseURL` is still
+# empty. **Do not put a deployed hostname there** until the token step exists — see that key's own
+# comment, and `README.md` § The backend.
+#
+# A fresh clone needs neither `wrangler d1 create` nor `wrangler r2 bucket create`: the names are
+# already taken and both commands fail on an existing resource. It needs `wrangler d1 migrations
+# apply --remote` once, and `--local` for `wrangler dev`. **Do not invent a UUID here** — a wrong id
+# points the binding at a database that does not exist, which reads as an empty one.
 #
 # `compatibility_date` is pinned rather than omitted so the Worker's runtime behaviour cannot move
 # under the app between deploys — a floating date silently changes which flags are on.
@@ -47,7 +53,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "whoopsy-sync"
-database_id = "REPLACE_ME_wrangler_d1_create"
+database_id = "545b5ad5-460f-4d86-a50c-f6d4082e67a6"
 # What `wrangler d1 migrations apply` reads, and what the test pool's `readD1Migrations` points at.
 # The two must name the same directory or a spec runs against a schema no deployment has.
 migrations_dir = "migrations"

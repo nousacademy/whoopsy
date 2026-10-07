@@ -529,10 +529,15 @@ identity, not a credential — it selects which rows you see, and nothing verifi
 `accounts` table. The migration carries a `user_id` column from the first file so the table already has
 its partition the day a verified token exists.
 
-**The account identifiers are placeholders, so the code runs locally and nowhere else.**
-`wrangler.toml`'s `database_id` is `REPLACE_ME_wrangler_d1_create` and the document's `servers[0].url`
-says `<account>`. The local path accepts both; `wrangler deploy` will not, and that is deliberate —
-real identifiers are pasted in when there is an account to paste them from.
+**The Worker is provisioned but not deployed, and those are different states.** Since 2026-10-07 the
+`whoopsy-sync` D1 database (region ENAM) and the `whoopsy-exports` R2 bucket exist in a real account,
+and `wrangler.toml`'s `database_id` holds the returned id — so `wrangler d1 migrations apply
+whoopsy-sync --remote` writes to a real schema, and it has been run there. **No `wrangler deploy` has
+run**, so there is no hostname: the document's `servers[0].url` still says `<account>`, `Info.plist`'s
+`WHOOPSYAPIBaseURL` is still empty, and the app talks to nothing. A fresh clone needs neither
+`wrangler d1 create` nor `wrangler r2 bucket create` — the names are taken and both commands fail on
+an existing resource — only `migrations apply --remote` if it wants the remote schema, and `--local`
+for `wrangler dev`.
 
 To exercise it by hand, note that **`wrangler dev`'s database and the test suite's are two different
 databases.** `npm test` builds its own from `migrations/` on every run; `wrangler dev` keeps one under

@@ -62,9 +62,12 @@ type OpenApiDocumentConfig = Parameters<
  * the route definitions and therefore cannot disagree with the Worker. Only the trailing clause about
  * `paths` being empty changed, because this pass is the one that made it false.
  *
- * `servers` keeps its placeholder. The account subdomain is a per-account fact, and a guessed one
- * would be a URL that looks deployable and is not — the same reason `wrangler.toml`'s `database_id`
- * is still `REPLACE_ME_wrangler_d1_create`. Both are filled in by whoever runs `wrangler deploy`.
+ * `servers` keeps its placeholder, and it is now the *only* placeholder left in the pair it used to
+ * share with `wrangler.toml`. That file's `database_id` holds a real id — the D1 database and the R2
+ * bucket were provisioned on 2026-10-07 — but this URL cannot follow it, because provisioning is not
+ * deploying: no `wrangler deploy` has run, so no hostname exists to write down. The account subdomain
+ * is a per-account fact, and a guessed one would be a URL that looks deployable and is not. It is
+ * filled in by whoever runs the first `wrangler deploy`.
  */
 export const openApiConfig: OpenApiDocumentConfig = {
   openapi: "3.1.0",
