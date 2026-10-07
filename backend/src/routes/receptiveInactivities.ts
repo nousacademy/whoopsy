@@ -9,14 +9,14 @@ import {
   ReceptiveInactivityWindowQuerySchema,
   ReceptiveInactivityWriteSchema,
 } from "../dto/receptiveInactivities";
-import { UserHeaderSchema } from "../dto/shared";
+import { RequestHeaderSchema } from "../dto/shared";
 import type { Env } from "../env";
 import { D1ReceptiveInactivityRepository } from "../repositories";
 import { ReceptiveInactivityService } from "../services";
 import { utcToday } from "../utils/days";
 import { apiError } from "../utils/errors";
 import { deriveUserId } from "../utils/identity";
-import { errorResponse, validationHook } from "./errors";
+import { errorResponse, unauthorizedResponse, validationHook } from "./errors";
 
 /**
  * The four `/v1/receptive-inactivities` endpoints, and nothing else.
@@ -109,9 +109,10 @@ const listReceptiveInactivities = createRoute({
     "Every entry filed on a day in an inclusive window ending on `endingOn`, ordered by day, then by start time with untimed entries last, then by name. The answer is a bare array with **no padding**: a day inside the window holding no entry is simply absent, and an empty array means nothing in the window was recorded. **`days=0` is the ordinary per-day read** — a day holds several entries, so there is no per-day slot for one to occupy and no `/{date}` endpoint to reach for instead.",
   request: {
     query: ReceptiveInactivityWindowQuerySchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The entries in the window, oldest first.",
       content: { "application/json": { schema: z.array(ReceptiveInactivitySchema) } },
@@ -128,9 +129,10 @@ const readReceptiveInactivity = createRoute({
     "One entry, or `404 not_found` if this partition holds no such id. An entry has nothing filed under it — no route, no splits, no children of any kind — so this is the whole of the row and there is nothing a second request could fetch.",
   request: {
     params: IdParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The entry, as the database holds it.",
       content: { "application/json": { schema: ReceptiveInactivitySchema } },
@@ -148,13 +150,14 @@ const writeReceptiveInactivity = createRoute({
     "Insert or replace the entry — the upsert the app's own `save` is, which is INSERT-or-UPDATE by primary key. Answers with the row **read back from the database**, so a caller can confirm that a `null` stayed `null` rather than being folded into an empty string or a midnight. There are no children to replace, so unlike a session's `PUT` an omitted field cannot silently delete a stored child — the entire row is these six fields.",
   request: {
     params: IdParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: ReceptiveInactivityWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The stored entry, as the database holds it.",
       content: { "application/json": { schema: ReceptiveInactivitySchema } },
@@ -170,13 +173,14 @@ const writeReceptiveInactivityBatch = createRoute({
   description:
     "Insert or replace up to `MAX_BATCH_RECEPTIVE_INACTIVITIES` entries in one request — the shape the app's import needs, where a sixty-entry notes log is one of these instead of sixty round trips. Every entry is keyed on the same `(userId, id)` pair the single-entry `PUT` writes, and the app derives that id from the entry's own date, type and text, so a chunk replayed after a timeout is safe: **it rewrites each entry with the values it already holds and the row count does not move.** The whole chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — an entry the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection. `written` counts entries.",
   request: {
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: ReceptiveInactivityBatchWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "How many entries the database reported writing.",
       content: { "application/json": { schema: ReceptiveInactivityBatchResultSchema } },

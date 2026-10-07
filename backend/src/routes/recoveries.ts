@@ -8,14 +8,14 @@ import {
   RecoveryWriteSchema,
   WindowQuerySchema,
 } from "../dto/recoveries";
-import { DayKeySchema, UserHeaderSchema } from "../dto/shared";
+import { DayKeySchema, RequestHeaderSchema } from "../dto/shared";
 import type { Env } from "../env";
 import { D1RecoveryRepository } from "../repositories";
 import { RecoveryService } from "../services";
 import { utcToday } from "../utils/days";
 import { apiError } from "../utils/errors";
 import { deriveUserId } from "../utils/identity";
-import { errorResponse, validationHook } from "./errors";
+import { errorResponse, unauthorizedResponse, validationHook } from "./errors";
 
 /**
  * The four `recoveries` endpoints, and nothing else.
@@ -106,9 +106,10 @@ const listRecoveries = createRoute({
     "Every measured day in an inclusive window ending on `endingOn`. Days with no measurement are **omitted** rather than returned as zero-filled records — an empty array is a real answer and means nothing in the window was measured.",
   request: {
     query: WindowQuerySchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The measured days in the window, oldest first.",
       content: { "application/json": { schema: z.array(RecoverySchema) } },
@@ -124,9 +125,10 @@ const readRecovery = createRoute({
   description: "One day's reading, or `404 no_measurement_for_day` if that day has no row.",
   request: {
     params: DateParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The day's reading.",
       content: { "application/json": { schema: RecoverySchema } },
@@ -144,13 +146,14 @@ const writeRecovery = createRoute({
     "Insert or replace the day's reading — the day-keyed upsert the app's own `saveRecovery` is. Answers with the row **read back from the database**, not with the request echoed, so a caller can see that a `null` stayed `null`.",
   request: {
     params: DateParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: RecoveryWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The stored row, as the database holds it.",
       content: { "application/json": { schema: RecoverySchema } },
@@ -166,13 +169,14 @@ const writeRecoveryBatch = createRoute({
   description:
     "Insert or replace up to `MAX_BATCH_ROWS` days in one request — the shape the app's first sync needs, where a nine-hundred-day history is five of these instead of nine hundred round trips. Every row is keyed on the same `(userId, date)` pair the single-day `PUT` writes, so a chunk replayed after a timeout is safe: **it rewrites each row with the values it already holds and the row count does not move.** The chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — a day the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection.",
   request: {
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: RecoveryBatchWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "How many rows the database reported writing.",
       content: { "application/json": { schema: RecoveryBatchResultSchema } },

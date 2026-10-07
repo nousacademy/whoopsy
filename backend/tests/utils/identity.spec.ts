@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { authHeaders } from "../Support/auth";
 import {
   deriveUserId,
   isUsableKey,
@@ -50,13 +51,13 @@ const DIGESTS: readonly (readonly [key: string, digest: string])[] = [
 ];
 
 function read(path: string, key: string): Promise<Response> {
-  return SELF.fetch(`${BASE}${path}`, { headers: { "x-whoopsy-user-id": key } });
+  return SELF.fetch(`${BASE}${path}`, { headers: { ...authHeaders(key) } });
 }
 
 function put(key: string): Promise<Response> {
   return SELF.fetch(`${BASE}/v1/recoveries/2026-08-22`, {
     method: "PUT",
-    headers: { "content-type": "application/json", "x-whoopsy-user-id": key },
+    headers: { "content-type": "application/json", ...authHeaders(key) },
     body: JSON.stringify({
       recoveryScore: 68,
       restingHeartRate: 52,

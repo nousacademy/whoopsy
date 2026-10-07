@@ -1,9 +1,31 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Env } from "./env";
 import { openApiConfig, serialiseOpenApiDocument } from "./openapi";
-import { errorHandler } from "./routes/errors";
+import { errorHandler, statusFor } from "./routes/errors";
 import { routes } from "./routes";
 import { apiError } from "./utils/errors";
+import { MIN_TOKEN_LENGTH, bearerToken, tokensMatch } from "./utils/tokens";
+
+/**
+ * The paths that answer without a credential.
+ *
+ * **An exemption list rather than a `/v1/*` prefix on the gate, and the asymmetry is the reason.** A
+ * prefix rule fails **open**: a resource mounted tomorrow at some other path is silently public, no
+ * test reports it, and the only way to notice is to read this file and think about what is missing
+ * from it. An exemption list fails **closed**: a new route is protected by default, and one that was
+ * meant to be public answers 401 loudly on its first request. This is the same rule `routes/index.ts`
+ * states for the validation hook and `onError` states below — the default must be the safe one,
+ * because the failure of a default is what nobody reviews.
+ *
+ * Both entries are infrastructure rather than API. `GET /openapi.json` is the served contract, and the
+ * iOS client reads the committed file rather than this endpoint. `GET /health` is a liveness probe —
+ * and it deliberately reports nothing about whether the gate is armed, because a probe that does is a
+ * probe that tells a stranger which Workers are worth attacking.
+ *
+ * Matched with `===` against `c.req.path` rather than by prefix, so `/health` does not also exempt
+ * `/health-secret` or `/health/anything`.
+ */
+const OPEN_PATHS: readonly string[] = ["/health", "/openapi.json"];
 
 /**
  * The Worker's one app definition, built by a function rather than exported as a value.
@@ -26,7 +48,68 @@ import { apiError } from "./utils/errors";
  * appears. Callers need only `fetch` and `getOpenAPI31Document`, both of which inference provides.
  */
 export function createApp() {
-  const app = new OpenAPIHono<{ Bindings: Env }>({}).route("/", routes);
+  const app = new OpenAPIHono<{ Bindings: Env }>({});
+
+  /**
+   * The gate. **It must be registered before `.route()` below, and that is load-bearing rather than
+   * tidy.**
+   *
+   * Hono seeds a matched route's handler array with the wildcard middleware registered *earlier* than
+   * it and runs that array in order. Every handler in this Worker returns a `Response` without calling
+   * `next`, so a gate registered *after* the mount would sit behind them in the array and never run —
+   * an open API behind a green suite, with nothing anywhere reporting it. Splitting the chained
+   * `new OpenAPIHono({}).route("/", routes)` into two statements is what makes the position writable
+   * at all.
+   *
+   * The second ordering trap, for whoever adds a second `use`: Hono sorts wildcard patterns by length
+   * **descending**, so a later-registered `use("/v1/*")` runs *before* an earlier-registered
+   * `use("*")` regardless of the order they appear in this file. Length, not registration order,
+   * decides.
+   *
+   * `*` rather than `/v1/*` — see `OPEN_PATHS` above.
+   *
+   * **The two refusal arms answer differently on purpose.**
+   *
+   * An *unarmed* Worker — `SYNC_API_TOKEN` absent, empty, or shorter than `MIN_TOKEN_LENGTH` — throws,
+   * which the funnel below turns into a `500 internal_error`. It is not the caller's fault and not a
+   * state this Worker knows how to serve under. Answering `401` here would be a lie to a human holding
+   * a curl: it says "your credential is wrong" when the truth is "the server has none", and it
+   * collapses the distinction the rest of this repo keeps between a caller's mistake and a Worker bug.
+   * The detail goes to the log and nothing about it is disclosed by the difference.
+   *
+   * A *presented* credential that is missing, malformed or simply wrong is a `401` in the shared
+   * envelope — a refusal made on purpose, about a request. **Absent and wrong get the same message**,
+   * because the difference is an oracle this API has no reason to publish.
+   */
+  app.use("*", async (c, next) => {
+    if (OPEN_PATHS.includes(c.req.path)) return next();
+
+    const configured = c.env.SYNC_API_TOKEN;
+
+    if (configured === undefined || configured.length < MIN_TOKEN_LENGTH) {
+      throw new Error(
+        `SYNC_API_TOKEN is not configured (absent, or shorter than ${MIN_TOKEN_LENGTH} characters). ` +
+          "Set it with `wrangler secret put SYNC_API_TOKEN` for a deployment, or in backend/.dev.vars " +
+          "for `wrangler dev` — see README.md § The backend.",
+      );
+    }
+
+    const presented = bearerToken(c.req.header("authorization"));
+
+    if (presented === null || !(await tokensMatch(presented, configured))) {
+      return c.json(
+        apiError(
+          "unauthorized",
+          "the Authorization: Bearer credential is missing, or it does not match the one this deployment accepts",
+        ),
+        statusFor("unauthorized"),
+      );
+    }
+
+    return next();
+  });
+
+  app.route("/", routes);
 
   /**
    * The served copy of the contract.

@@ -7,6 +7,7 @@ import {
 // package declares a global `URL` which is *not* the one `fileURLToPath` accepts. The named import
 // from `node:url` is the same class at runtime and the right one at compile time.
 import { fileURLToPath, URL } from "node:url";
+import { TEST_API_TOKEN } from "./tests/Support/auth";
 
 /**
  * The test pool: the real Worker, the real SQL, and no deploy.
@@ -75,7 +76,20 @@ export default defineWorkersConfig({
         // with the names, and the types, the Worker is compiled against.
         wrangler: { configPath: "./wrangler.toml" },
         miniflare: {
-          bindings: { TEST_MIGRATIONS: migrations },
+          bindings: {
+            TEST_MIGRATIONS: migrations,
+            // The one binding that is deliberately **not** in `wrangler.toml`, and the exception is
+            // the rule it is an exception to. Every other binding is read from that file above
+            // precisely so the test runtime and the deployed one cannot be two configurations; a
+            // *secret* is the one thing that must not be there — `wrangler.toml` is committed, and
+            // `backend/.dev.vars` (gitignored) is where a real one lives.
+            //
+            // So the test value comes from `tests/Support/auth.ts` instead, imported by *this* file
+            // and bound here, which is what keeps the config and the specs from disagreeing about
+            // it: `authHeaders()` reads the same constant, so a spec cannot send a token the runtime
+            // was not told to accept.
+            SYNC_API_TOKEN: TEST_API_TOKEN,
+          },
         },
       },
     },

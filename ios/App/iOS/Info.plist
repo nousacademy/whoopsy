@@ -29,13 +29,13 @@
          **The key lives here; the token does not.** `MBXAccessToken` stays the one read path because
          it is Mapbox's own documented mechanism, but its value is expanded at build time from
          `MBX_ACCESS_TOKEN`, which two xcconfig files define: the committed
-         `App/Config/Mapbox.xcconfig`, set as this target's base configuration in `Whoopsy.xcodeproj`
+         `App/Config/Whoopsy.xcconfig`, set as this target's base configuration in `Whoopsy.xcodeproj`
          (so it applies to Debug and Release alike) and defining the setting **empty**, and the
-         **gitignored** `App/Config/Mapbox.local.xcconfig` beside it, which the committed file pulls in
+         **gitignored** `App/Config/Whoopsy.local.xcconfig` beside it, which the committed file pulls in
          through `#include?` when it exists and whose value therefore wins. The token lives only in the
          second file, so it is never committed.
 
-         A clone that has not created `App/Config/Mapbox.local.xcconfig` therefore gets a genuinely
+         A clone that has not created `App/Config/Whoopsy.local.xcconfig` therefore gets a genuinely
          **empty** string here, not an unexpanded variable: `configure()` returns `false` and the build
          behaves exactly like `UnavailableOfflineMaps` — the switch is simply not offered and the card
          draws MapKit. Nothing is half-configured and nothing crashes.
@@ -44,7 +44,7 @@
          `xcodebuild` treats a base configuration it cannot open as a hard error —
          `Unable to open base configuration reference file` — and fails the build before compiling
          anything. A token file named as the base configuration would make every fresh clone
-         unbuildable; `#include?` makes it merely unconfigured. Do not delete `Mapbox.xcconfig`, and do
+         unbuildable; `#include?` makes it merely unconfigured. Do not delete `Whoopsy.xcconfig`, and do
          not merge the two files.
 
          This is NOT a secret: a public token ships inside every built app and Mapbox designs it to be
@@ -82,28 +82,54 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
-    <!-- The sync database's address, and it is **deliberately empty in the committed file** — the same
-         arrangement `ios/App/Config/Mapbox.xcconfig` uses for its token, and for the same reason: a
-         clone that has never configured one gets a build with no database behind it rather than one
-         pointed at a host that does not exist.
+    <!-- The sync database's address and its credential, and they are **deliberately empty in the
+         committed file** — the same arrangement the two xcconfig assignments above use, and for the
+         same reason: a clone that has never configured them gets a build with no database behind it
+         rather than one pointed at a host that does not exist.
 
-         **Empty means unconfigured, not broken.** `WhoopsyAPIClient.configuredBaseURL()` returns `nil`
-         for a missing key *and* for one holding only whitespace, and `DIContainer` answers that by
-         wiring `UnconfiguredCloudSync` and setting `isCloudConfigured` to `false` — so the STORAGE pane
-         draws the sentence naming this key, every recovery read stays in SQLite, and nothing opens a
-         socket. That is the state this app has always been in, and it stays the default.
+         **A deployed hostname is now a supported value, and the sentence that used to forbid one was
+         about a Worker with no gate.** The Worker refuses every `/v1` request until its own
+         `SYNC_API_TOKEN` is set and the request's `Authorization: Bearer` matches, so
+         `https://whoopsy-sync.<account>.workers.dev` is exactly what belongs here. What the gate buys
+         is worth stating plainly: it stops scanners, bots and drive-by requests against a discoverable
+         hostname. It does **not** authenticate a person — the token is compiled into this app and can
+         be extracted from the binary — so it is a speed bump rather than a login, which is an
+         acceptable trade for an app that exists on one device and is not one for anything else.
 
-         To configure one, put the address here: `http://localhost:8787` for `npm --prefix backend run
-         dev`. Two things are unverified and must be confirmed on the first run rather than assumed:
-         whether ATS refuses a cleartext `localhost` address (if it does, the fix is a scoped
-         `NSAllowsLocalNetworking` entry and **not** `NSAllowsArbitraryLoads`, which would weaken every
-         other request this app makes), and whether a sideloaded device build can reach the Mac's
-         `localhost` at all — it cannot, so this is a simulator-only setting. **Never put a deployed
-         Cloudflare hostname here.** The endpoint authenticates nothing: anyone can mint a key and read
-         the partition it names, so `X-Whoopsy-User-Id` is a placeholder identity rather than a
-         credential, and the key the app stores is a bearer secret. A real deployment needs the token
-         step first, and that step does not exist yet. -->
+         **Empty means unconfigured, not broken, and the two keys are one decision.**
+         `configuredBaseURL()` and `configuredToken()` each return `nil` for a missing key *and* for one
+         holding only whitespace, and `DIContainer` wires `UnconfiguredCloudSync` with
+         `isCloudConfigured` false unless **both** are present — so the STORAGE pane draws the sentence
+         naming whichever key is absent, every recovery read stays in SQLite, and nothing opens a
+         socket. A hostname with no token would otherwise be an install that opens a socket on every
+         read to collect a `401`.
+
+         **Both are expanded at build time and neither value is in this file.**
+         `ios/App/Config/Whoopsy.xcconfig` defines both empty and is this target's base configuration;
+         the gitignored `Whoopsy.local.xcconfig` beside it supplies the real values through `#include?`,
+         where the later assignment wins. Copy `Whoopsy.local.xcconfig.example` to start.
+
+         **An xcconfig value containing `//` is truncated there, because `//` opens a comment** — so
+         the address must be written `https:/$()/host` and not `https://host`. Get that wrong and this
+         key expands to the string `https:` while the build stays green, and the failure is a socket
+         error at runtime with nothing at build time to point at it. The `$()` is empty and expands to
+         nothing.
+
+         To point this at a dev server instead: `http://localhost:8787` for `npm --prefix backend run
+         dev`, beside the same `SYNC_API_TOKEN` you put in `backend/.dev.vars`. Two things are
+         unverified and must be confirmed on the first run rather than assumed: whether ATS refuses a
+         cleartext `localhost` address (if it does, the fix is a scoped `NSAllowsLocalNetworking` entry
+         and **not** `NSAllowsArbitraryLoads`, which would weaken every other request this app makes),
+         and whether a sideloaded device build can reach the Mac's `localhost` at all — it cannot, so
+         that is a simulator-only address. See README.md § The backend. -->
     <key>WHOOPSYAPIBaseURL</key>
-    <string></string>
+    <string>$(WHOOPSY_API_BASE_URL)</string>
+    <!-- The deployment's shared secret, sent as `Authorization: Bearer` on every request. Same two
+         homes as the address above and the same empty-means-off rule — see that comment, and
+         `WhoopsyAPIClient.tokenInfoKey` for what a caller does with it. **This is the same string in
+         three places**: `backend/.dev.vars` for `npm run dev`, this build's
+         `Whoopsy.local.xcconfig`, and the deployment's own `wrangler secret put SYNC_API_TOKEN`. -->
+    <key>WHOOPSYAPIToken</key>
+    <string>$(WHOOPSY_API_TOKEN)</string>
 </dict>
 </plist>

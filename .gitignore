@@ -60,20 +60,32 @@ ios/Sources/Whoopsy/Data/Resources/ZeroFasting/*
 # the same rule rather than matched separately.
 ios/Sources/Whoopsy/Data/Resources/Custom/*
 
-# Mapbox credentials — never commit.
-# `Mapbox.local.xcconfig` holds the PUBLIC (`pk.…`) access token, which is the only
-# copy of it: at the owner's request it lives outside the tree. `ios/App/Config/Mapbox.xcconfig`
-# is the committed base and carries no token — it ends with `#include? "Mapbox.local.xcconfig"`,
-# the *optional* include, so a clone without this file still builds and simply gets the
-# pre-feature behaviour (an empty `MBXAccessToken`, `MapboxSetup.configure()` returning
-# `false`, and the route card drawing `MapKit`). Recipe in README.md §Building.
-# The SECRET token (`sk.…`, `Downloads:Read`) must never be written here either —
+# The app's build-time credentials — never commit.
+# `Whoopsy.local.xcconfig` holds the PUBLIC (`pk.…`) Mapbox access token and the Worker's shared
+# sync secret (`WHOOPSY_API_TOKEN`). It is the only copy of either: at the owner's request they
+# live outside the tree. `ios/App/Config/Whoopsy.xcconfig` is the committed base — the app target's
+# *single* base configuration, which is why it is named for the app rather than for one feature —
+# and it carries no value at all. It ends with `#include? "Whoopsy.local.xcconfig"`, the *optional*
+# include, so a clone without this file still builds and simply gets both features off: an empty
+# `MBXAccessToken` (`MapboxSetup.configure()` returns `false`, the route card draws `MapKit`) and
+# an empty sync pair (`UnconfiguredCloudSync`, no socket opened). Recipe in README.md §Building.
+# The SECRET Mapbox token (`sk.…`, `Downloads:Read`) must never be written here either —
 # it is a build-time credential for SwiftPM and lives in `~/.netrc` only.
-ios/App/Config/Mapbox.local.xcconfig
+ios/App/Config/Whoopsy.local.xcconfig
 
 # Cloud sync backend — never commit.
 backend/node_modules
 backend/.wrangler
+
+# The Worker's shared secret, and the reason this line names one file rather than globbing
+# `.dev.vars*` the way Cloudflare's own guidance does. The glob would also match the *tracked*
+# `backend/.dev.vars.example` beside it and untrack it silently — the template a cloner copies
+# would vanish from the repository with nothing reporting it, which is the same reason the line
+# above names `Whoopsy.local.xcconfig` exactly rather than globbing the pair.
+#
+# It is written by hand (`npm run dev` reads it; `wrangler secret put` is for the deployment),
+# and the Worker refuses every `/v1` request until it holds a secret — see README.md § The backend.
+backend/.dev.vars
 
 # Testing scratch — never commit. `tmp/` is where everything produced *while testing* goes,
 # so that nothing is written outside the repo and nothing local reaches a commit:

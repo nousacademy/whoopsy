@@ -51,6 +51,23 @@ export function errorResponse(description: string) {
 }
 
 /**
+ * The 401 every `/v1` operation publishes, for the gate in `app.ts`.
+ *
+ * **A value rather than a function**, which is the opposite of `errorResponse` above and deliberate.
+ * That helper takes a description because each route's 400, 404 and 500 describe *that route's*
+ * failures. This one describes a single Worker-wide gate, so a per-operation description would be
+ * invented variation — thirty spellings of one sentence, each of which could drift.
+ *
+ * It is attached per operation rather than declared once as a `securitySchemes` block, so the
+ * document keeps the property `openapi.ts` claims for it: every byte generated from the route
+ * definitions. A `security` key would also fail *open* — a route mounted tomorrow would silently
+ * inherit "requires auth" whether or not the gate covers it.
+ */
+export const unauthorizedResponse = errorResponse(
+  "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+);
+
+/**
  * Maps every Zod validation failure to a `400` in the shared envelope.
  *
  * Installed once on the app rather than passed as a third argument per route, so that a route added
@@ -93,6 +110,7 @@ export const validationHook: Hook<any, { Bindings: Env }, any, any> = (result, c
  */
 const STATUS_FOR: Record<ApiErrorCode, ContentfulStatusCode> = {
   invalid_request: 400,
+  unauthorized: 401,
   no_measurement_for_day: 404,
   not_found: 404,
   route_not_found: 404,

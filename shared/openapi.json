@@ -7,8 +7,8 @@
   },
   "servers": [
     {
-      "url": "https://whoopsy-sync.<account>.workers.dev",
-      "description": "Placeholder — replace with the deployed route once `wrangler deploy` has run."
+      "url": "https://whoopsy-sync.your-account-subdomain.workers.dev",
+      "description": "The deployed Worker. Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it."
     }
   ],
   "components": {
@@ -186,6 +186,7 @@
                 "type": "string",
                 "enum": [
                   "invalid_request",
+                  "unauthorized",
                   "no_measurement_for_day",
                   "not_found",
                   "route_not_found",
@@ -2414,9 +2415,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -2447,6 +2458,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2470,9 +2491,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -2493,6 +2524,16 @@
           },
           "400": {
             "description": "`id` is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2531,9 +2572,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -2571,6 +2622,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2583,9 +2644,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -2623,6 +2694,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2635,9 +2716,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -2666,6 +2757,16 @@
               }
             }
           },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "This partition holds no profile.",
             "content": {
@@ -2685,9 +2786,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -2718,6 +2829,16 @@
           },
           "400": {
             "description": "The header or the body failed validation — including a body naming its own identity, and a resting heart rate not strictly below the maximal one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2762,9 +2883,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -2795,6 +2926,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2818,9 +2959,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -2841,6 +2992,16 @@
           },
           "400": {
             "description": "`id` is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2879,9 +3040,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -2919,6 +3090,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2931,9 +3112,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -2964,6 +3155,16 @@
           },
           "400": {
             "description": "The header or the body failed validation — including a chunk larger than the cap and an id carried twice.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3008,9 +3209,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3041,6 +3252,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3063,9 +3284,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3086,6 +3317,16 @@
           },
           "400": {
             "description": "`date` is not a calendar day in `YYYY-MM-DD` form.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3123,9 +3364,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3163,6 +3414,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3175,9 +3436,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3208,6 +3479,16 @@
           },
           "400": {
             "description": "The header or the body failed validation — including a chunk larger than the cap and a day carried twice.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3252,9 +3533,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3285,6 +3576,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3307,9 +3608,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3330,6 +3641,16 @@
           },
           "400": {
             "description": "`date` is not a calendar day in `YYYY-MM-DD` form.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3367,9 +3688,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3407,6 +3738,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3419,9 +3760,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3452,6 +3803,16 @@
           },
           "400": {
             "description": "The header or the body failed validation — including a chunk larger than the cap, a night carried twice, and a row whose `endTime` does not follow its `startTime`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3496,9 +3857,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3529,6 +3900,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3551,9 +3932,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3574,6 +3965,16 @@
           },
           "400": {
             "description": "`date` is not a calendar day in `YYYY-MM-DD` form.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3611,9 +4012,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3651,6 +4062,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3663,9 +4084,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3696,6 +4127,16 @@
           },
           "400": {
             "description": "The header or the body failed validation — including a chunk larger than the cap, a day carried twice, and a row carrying a field the contract does not have.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3740,9 +4181,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3773,6 +4224,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3795,9 +4256,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3818,6 +4289,16 @@
           },
           "400": {
             "description": "`date` is not a calendar day in `YYYY-MM-DD` form.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3855,9 +4336,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3895,6 +4386,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3907,9 +4408,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -3940,6 +4451,16 @@
           },
           "400": {
             "description": "The header or the body failed validation — including a chunk larger than the cap and a day carried twice.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3984,9 +4505,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -4017,6 +4548,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4040,9 +4581,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -4063,6 +4614,16 @@
           },
           "400": {
             "description": "`id` is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4101,9 +4662,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -4141,6 +4712,16 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4153,9 +4734,19 @@
           {
             "schema": {
               "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 32,
               "maxLength": 200,
-              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
               "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
             },
             "required": true,
@@ -4186,6 +4777,16 @@
           },
           "400": {
             "description": "The header or the body failed validation — including a chunk larger than the cap, an id carried twice, and a chunk whose routes or splits exceed what one request may hold.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
             "content": {
               "application/json": {
                 "schema": {

@@ -1,14 +1,23 @@
 # The Cloudflare Worker that fronts the cloud sync.
 #
-# **The two resources below are real as of 2026-10-07, and the Worker itself is still not deployed.**
-# `whoopsy-sync` (D1, region ENAM) and `whoopsy-exports` (R2, Standard) exist in the account, and
-# `database_id` holds the id `wrangler d1 create` returned. Provisioning is **not** deploying: no
-# `wrangler deploy` has run, so there is no hostname, and `Info.plist`'s `WHOOPSYAPIBaseURL` is still
-# empty. **Do not put a deployed hostname there** until the token step exists — see that key's own
-# comment, and `README.md` § The backend.
+# **The two resources below are real as of 2026-10-07, and so is the deployment.** `whoopsy-sync`
+# (D1, region ENAM) and `whoopsy-exports` (R2, Standard) exist in the account and `database_id` holds
+# the id `wrangler d1 create` returned — and that same day `wrangler deploy` ran, so the Worker answers
+# at the hostname `shared/openapi.json`'s `servers[0].url` records. The two are separate steps and were
+# separate days' worth of confusion: provisioning is **not** deploying, and a real `database_id` said
+# nothing about whether a hostname existed.
+#
+# **What this file cannot hold is the credential.** `SYNC_API_TOKEN` is a secret, so it is not here:
+# `wrangler secret put SYNC_API_TOKEN` sets it on the deployment, `backend/.dev.vars` supplies it to
+# `wrangler dev`, and it is declared `SYNC_API_TOKEN?: string` in `src/env.ts` — optional, because a
+# binding declared in this file always exists and a secret never does. **Set it before deploying**:
+# `wrangler deploy` does not fail on a missing one, it ships a Worker whose every `/v1` request answers
+# `500` (the gate throws rather than returning `401`, because an unarmed server is the operator's
+# problem and not the caller's). See `README.md` § The backend.
 #
 # A fresh clone needs neither `wrangler d1 create` nor `wrangler r2 bucket create`: the names are
-# already taken and both commands fail on an existing resource. It needs `wrangler d1 migrations
+# already taken and both commands fail on an existing resource. It needs its **own**
+# `SYNC_API_TOKEN` — two deployments sharing one would be sharing rows — `wrangler d1 migrations
 # apply --remote` once, and `--local` for `wrangler dev`. **Do not invent a UUID here** — a wrong id
 # points the binding at a database that does not exist, which reads as an empty one.
 #

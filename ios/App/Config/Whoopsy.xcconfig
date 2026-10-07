@@ -1,0 +1,49 @@
+// WHOOPsy build settings — THE COMMITTED BASE.
+//
+// **This is the app target's single base configuration**, named by both of `WhoopsyApp`'s
+// configurations through `baseConfigurationReference`. A build configuration can have exactly one,
+// which is why this file holds every build-time value the app has rather than only Mapbox's: a
+// second file would displace this one, not sit beside it. It was `Mapbox.xcconfig` while a Mapbox
+// token was the only thing in it, and it was renamed when the Worker's credentials moved in — a
+// file named for one feature holding another's secret is a name that lies.
+//
+// It is checked in and carries NO secret. It exists so the Xcode project always has a base
+// configuration to read: `xcodebuild` treats a base configuration it cannot open as a hard error —
+//
+//     error: Unable to open base configuration reference file '…/App/Config/Whoopsy.xcconfig'
+//
+// — which fails the whole build before a single source file is compiled. That is why no value is
+// in this file. The pattern below is the whole of the arrangement, and it is the same three lines
+// repeated for each credential:
+//
+//     1. Each setting is assigned empty. These are the values a build with no credentials uses.
+//     2. `#include?` then pulls in the local overrides *if the file exists*. `?` is the optional
+//        include: a missing file is silently skipped rather than being an error, and because an
+//        xcconfig assignment is last-one-wins, the include coming last is what lets it override the
+//        empty defaults above it.
+//
+// **So a fresh clone builds, and the built `Info.plist` gets empty strings for all three.**
+//
+//   - `MBX_ACCESS_TOKEN` empty: `MapboxSetup.configure()` returns `false`, `UnavailableOfflineMaps`
+//     is handed to the session, the `USE OFFLINE MAP` switch is never offered and the route card
+//     draws `MapKit`. That is the feature's safety property.
+//   - `WHOOPSY_API_BASE_URL` / `WHOOPSY_API_TOKEN` empty: `DIContainer` installs `UnconfiguredCloudSync`
+//     and leaves `isCloudConfigured` false, so the STORAGE pane draws its sentence and **no socket is
+//     ever opened**. The app is exactly as it was before the sync existed.
+//
+// To turn either on, copy `Whoopsy.local.xcconfig.example` to `Whoopsy.local.xcconfig` in this
+// directory and fill in what you have. That file is gitignored — see `.gitignore` — so it stays out
+// of the tree. Recipe in `README.md` §Building; the Worker's half in `README.md` § The backend.
+//
+// **The two sync settings are one decision, not two.** A base URL with no token is still an
+// unconfigured build — the Worker refuses every `/v1` request without a credential, so an install
+// holding only a hostname would open a socket to collect a `401` on every read. Set both or neither.
+//
+// The order matters and must not be tidied: swapping these lines puts the empty assignments last,
+// the included values are discarded, and the app silently reverts to `MapKit` and an unconfigured
+// sync with no build error and nothing on screen to say why.
+
+MBX_ACCESS_TOKEN =
+WHOOPSY_API_BASE_URL =
+WHOOPSY_API_TOKEN =
+#include? "Whoopsy.local.xcconfig"

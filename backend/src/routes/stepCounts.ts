@@ -8,14 +8,14 @@ import {
   StepCountWriteSchema,
   WindowQuerySchema,
 } from "../dto/stepCounts";
-import { DayKeySchema, UserHeaderSchema } from "../dto/shared";
+import { DayKeySchema, RequestHeaderSchema } from "../dto/shared";
 import type { Env } from "../env";
 import { D1StepCountRepository } from "../repositories";
 import { StepCountService } from "../services";
 import { utcToday } from "../utils/days";
 import { apiError } from "../utils/errors";
 import { deriveUserId } from "../utils/identity";
-import { errorResponse, validationHook } from "./errors";
+import { errorResponse, unauthorizedResponse, validationHook } from "./errors";
 
 /**
  * The four `step-counts` endpoints, and nothing else.
@@ -117,9 +117,10 @@ const listStepCounts = createRoute({
     "Every day holding a row in an inclusive window ending on `endingOn`. Days with no row are **omitted** rather than returned as zero-filled records — an empty array is a real answer, and on a step history it is a common one: the strap is worn intermittently, so the gaps are inside the range rather than only at its ends. The window is inclusive at both ends, so `days=14` spans 15 calendar days.",
   request: {
     query: WindowQuerySchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The days holding a row in the window, oldest first.",
       content: { "application/json": { schema: z.array(StepCountSchema) } },
@@ -136,9 +137,10 @@ const readStepCount = createRoute({
     "One day's row, or `404 no_measurement_for_day` if that day has no row at all. **There is no second kind of row here**: a day the strap did not measure is never written, so unlike `strains` there is no unmeasured-row state to tell a reading apart from. A measured day of no walking is a `200` carrying `stepCount: 0`, which is a real reading rather than an absence.",
   request: {
     params: DateParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The day's row.",
       content: { "application/json": { schema: StepCountSchema } },
@@ -156,13 +158,14 @@ const writeStepCount = createRoute({
     "Insert or replace the day's row — the day-keyed upsert the app's own step-row write is. Answers with the row **read back from the database**, not with the request echoed, so a caller can see that a `0` was stored as a `0` rather than arriving back as some default the write path might have folded it into. On this resource that assertion has a sharp edge: `measuredSeconds` is the field that separates a measured day of no walking from a day nothing measured, so a default on it would publish the second state as the first.",
   request: {
     params: DateParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: StepCountWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The stored row, as the database holds it.",
       content: { "application/json": { schema: StepCountSchema } },
@@ -180,13 +183,14 @@ const writeStepCountBatch = createRoute({
   description:
     "Insert or replace up to `MAX_BATCH_STEP_COUNTS` days in one request — the shape a first sync needs, where a long worn history is a handful of these rather than one round trip per day. Every row is keyed on the same `(userId, date)` pair the single-day `PUT` writes, so a chunk replayed after a timeout is safe: **it rewrites each row with the values it already holds and the row count does not move.** The chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — a day the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection. That promise is worth more here than on any sibling: a step history is mostly days the strap was not worn, so a verb that said `these are the days` would be a request to delete most of the user's record every time it was sent.",
   request: {
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: StepCountBatchWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "How many rows the database reported writing.",
       content: { "application/json": { schema: StepCountBatchResultSchema } },

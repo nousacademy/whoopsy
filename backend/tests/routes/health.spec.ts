@@ -1,6 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { SERVICE_NAME } from "../../src/openapi";
+import { authHeaders } from "../Support/auth";
 
 /**
  * `GET /health`, and the shape of a path that is not a route.
@@ -41,10 +42,18 @@ describe("GET /health", () => {
   });
 });
 
+/**
+ * **Both of these now carry a credential, and that is a consequence worth naming rather than a
+ * detail of the fixture.** The gate covers `*` rather than `/v1/*`, so an unmatched path is refused
+ * before Hono's router ever fails to match it — an unauthenticated caller can no longer probe the
+ * route table at all, and `/v1/nothing-here` answers `401` rather than `404`. That is the fail-closed
+ * property `OPEN_PATHS` in `src/app.ts` is chosen for, and it means what these two assert is the
+ * behaviour for a caller who *is* admitted.
+ */
 describe("an unmatched path", () => {
   it("is a 404 in the shared error envelope, not Hono's bare text default", async () => {
     const response = await SELF.fetch(`${BASE}/v1/nothing-here`, {
-      headers: { "x-whoopsy-user-id": "test" },
+      headers: { ...authHeaders("test") },
     });
 
     expect(response.status).toBe(404);
@@ -57,7 +66,10 @@ describe("an unmatched path", () => {
   });
 
   it("echoes the method back, so a reader can tell two similar paths apart", async () => {
-    const response = await SELF.fetch(`${BASE}/v1/recoveries`, { method: "DELETE" });
+    const response = await SELF.fetch(`${BASE}/v1/recoveries`, {
+      method: "DELETE",
+      headers: { ...authHeaders() },
+    });
     const body = (await response.json()) as { error: { message: string } };
 
     expect(response.status).toBe(404);

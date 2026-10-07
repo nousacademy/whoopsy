@@ -16,6 +16,15 @@
 export const API_ERROR_CODES = [
   /** The request was malformed — a bad path parameter, query, header or body. */
   "invalid_request",
+  /**
+   * The `Authorization: Bearer` credential is missing, or it is not the one this deployment accepts.
+   *
+   * One code for both, deliberately: telling "you sent no token" apart from "you sent the wrong one"
+   * is an oracle this API has no reason to publish. Distinct from `internal_error`, which is what an
+   * *unarmed* deployment answers — a missing `SYNC_API_TOKEN` is the operator's problem and not a
+   * refusal of the caller.
+   */
+  "unauthorized",
   /** The day asked for exists as a day but carries no measurement. See `GET .../{date}`. */
   "no_measurement_for_day",
   /** The addressed thing is not here. */

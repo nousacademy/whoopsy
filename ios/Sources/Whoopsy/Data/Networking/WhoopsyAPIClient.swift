@@ -18,13 +18,14 @@ import Foundation
 /// every day one early in a way nothing on screen shows. See `RecoveryWireMapper.dayKey(for:in:)`.
 public struct WhoopsyAPIClient: Sendable {
 
-    /// The header the API partitions on, and the only identity this app has.
+    /// The header that selects **which partition** a request is about.
     ///
-    /// **It is a bearer credential that the server hashes and never stores.** The endpoint itself
-    /// verifies nothing: anyone can mint a key and get a partition of their own, and a key someone
-    /// guesses is a partition someone can read. That is why the key is 32 random bytes rather than
-    /// anything derived from the device, and why this API must not be deployed to a public host until
-    /// the token step lands.
+    /// **It is a partition name and not a credential, and the difference is the thing to hold on to.**
+    /// The server hashes this value and never stores it, and it verifies nothing about it: anyone can
+    /// mint a key and get a partition of their own, and a key someone guesses is a partition someone
+    /// can read. That is why the key is 32 random bytes rather than anything derived from the device.
+    /// What the header does **not** do is earn the right to read that partition — `authorizationToken`
+    /// below is what the Worker checks first, and this header is not looked at until it has passed.
     public static let userIDHeader = "X-Whoopsy-User-Id"
 
     /// The `Info.plist` key the base URL is read from.
@@ -35,7 +36,19 @@ public struct WhoopsyAPIClient: Sendable {
     /// that does not exist.
     public static let baseURLInfoKey = "WHOOPSYAPIBaseURL"
 
+    /// The `Info.plist` key the shared deployment secret is read from.
+    ///
+    /// **A second key rather than a second meaning for the first**, because the two answer different
+    /// questions and either can be present without the other: the base URL says *where* the database
+    /// is, this says *what to present* when asking. A build holding the address and not the secret is
+    /// not half-configured in an interesting way — the Worker refuses every `/v1` request without a
+    /// credential — so it is an install that opens a socket on every read to collect a `401`, which is
+    /// why `DIContainer` treats the pair as one decision and wires the offline stub when either is
+    /// missing.
+    public static let tokenInfoKey = "WHOOPSYAPIToken"
+
     private let baseURL: URL
+    private let token: String
     private let keyStore: any SyncKeyStore
     private let session: URLSession
 
@@ -48,8 +61,19 @@ public struct WhoopsyAPIClient: Sendable {
     ///   asking it per request costs one cached `String` return for the life of the process — the actor
     ///   caches after its first call — and it keeps the key from ever being a value copied onto a type
     ///   that crosses actors.
-    public init(baseURL: URL, keyStore: any SyncKeyStore, session: URLSession = .shared) {
+    /// - Parameter token: **a `String`, where the identity key above is a store — and the two looking
+    ///   alike is exactly why this is worth stating.** The identity key is *minted* on first read and
+    ///   kept in the Keychain, so it has to be asked for behind an actor that makes read-or-mint
+    ///   single-flight. This is a constant of the build: expanded into `Info.plist` at compile time
+    ///   from the gitignored `Whoopsy.local.xcconfig`, the same value on every request, and never
+    ///   written down by the app. There is nothing to mint, nothing to persist and no race to close, so
+    ///   a plain value is the whole of it — and it is **required rather than defaulted**, so a caller
+    ///   cannot build a client that would send no credential. The failure that produces is a `401` on
+    ///   every read with nothing at the call site to suggest why; `DIContainer` is the only caller and
+    ///   it holds both halves.
+    public init(baseURL: URL, token: String, keyStore: any SyncKeyStore, session: URLSession = .shared) {
         self.baseURL = baseURL
+        self.token = token
         self.keyStore = keyStore
         self.session = session
     }
@@ -66,6 +90,23 @@ public struct WhoopsyAPIClient: Sendable {
               let url = URL(string: raw)
         else { return nil }
         return url
+    }
+
+    /// The shared secret this build was configured with, or `nil` when it was configured with none.
+    ///
+    /// **The same `nil`-for-missing-and-whitespace rule as above, and here it is doing more work.** An
+    /// xcconfig line left empty expands to an empty `Info.plist` string rather than to a missing key,
+    /// so a build with no credential and a build with a blank one are the same build — and both must
+    /// read as *unconfigured* rather than as *configured with the empty string*, which would send
+    /// `Authorization: Bearer ` and collect a `401` on every request.
+    ///
+    /// The value is **trimmed and the trimmed copy is what a caller gets.** Whitespace around an
+    /// xcconfig assignment is not part of the secret, and a token compared with a trailing space
+    /// against the deployment's own is a mismatch nothing on any screen explains.
+    public static func configuredToken(bundle: Bundle = .main) -> String? {
+        guard let raw = bundle.object(forInfoDictionaryKey: tokenInfoKey) as? String else { return nil }
+        let token = raw.trimmingCharacters(in: .whitespaces)
+        return token.isEmpty ? nil : token
     }
 
     // MARK: - The four calls
@@ -548,8 +589,14 @@ public struct WhoopsyAPIClient: Sendable {
         )
     }
 
-    /// The key is read here and nowhere else, so every request the app makes carries the same header and
-    /// there is one place to look when it does not.
+    /// Both headers are written here and nowhere else, so every request the app makes carries the same
+    /// pair and there is one place to look when one of them is wrong.
+    ///
+    /// **The two are set together and answer to different failures.** The credential is the build's own
+    /// constant, so a request that goes out without it is a bug in this app — visible immediately as a
+    /// `401`, which is the server saying it did not recognise this deployment's secret. The identity
+    /// header is a value read per request, so the failure below is about the Keychain rather than the
+    /// network.
     ///
     /// **A store failure is reported as `.unreachable`, and that is a judgement rather than a
     /// convenience.** The two facts a caller can act on are "the database answered" and "it did not", and
@@ -584,6 +631,7 @@ public struct WhoopsyAPIClient: Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(key, forHTTPHeaderField: Self.userIDHeader)
         if let body {
             request.httpBody = body

@@ -1,0 +1,26 @@
+# The Worker's shared secret, for `npm run dev`.
+#
+# Copy this file to `backend/.dev.vars` (same directory, no `.example`) and paste your own secret
+# after the `=`. That file is gitignored; this one is not, and it deliberately holds no value.
+#
+# Generate one:
+#
+#   openssl rand -base64 32
+#
+# **Any non-empty value here is a secret, including this comment's.** The Worker refuses every
+# `/v1` request until `SYNC_API_TOKEN` is set and at least 32 characters long — and it answers
+# `500` rather than `401` when it is not, because an unarmed deployment is the operator's problem
+# and not the caller's. `GET /health` and `GET /openapi.json` answer regardless.
+#
+# The same secret goes in two more places, and they are three homes for one value:
+#
+#   backend/.dev.vars                       this file's copy    — `npm run dev`
+#   ios/App/Config/Whoopsy.local.xcconfig   `WHOOPSY_API_TOKEN` — the app
+#   `npx wrangler secret put SYNC_API_TOKEN`                    — the deployment
+#
+# **The deployment one must be set before `wrangler deploy`.** A deploy does not fail on a missing
+# secret — it ships a Worker that refuses everything.
+#
+# See README.md § The backend.
+
+SYNC_API_TOKEN=

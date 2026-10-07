@@ -1,4 +1,5 @@
 import { SELF, env } from "cloudflare:test";
+import { authHeaders } from "../Support/auth";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   MAX_BATCH_BIOMETRIC_SAMPLES,
@@ -230,19 +231,19 @@ function without<K extends keyof SampleFields>(
 function put(id: string, body: unknown, userId = ALICE): Promise<Response> {
   return SELF.fetch(`${BASE}/v1/biometric-samples/${id}`, {
     method: "PUT",
-    headers: { "content-type": "application/json", "x-whoopsy-user-id": userId },
+    headers: { "content-type": "application/json", ...authHeaders(userId) },
     body: JSON.stringify(body),
   });
 }
 
 function read(path: string, userId = ALICE): Promise<Response> {
-  return SELF.fetch(`${BASE}${path}`, { headers: { "x-whoopsy-user-id": userId } });
+  return SELF.fetch(`${BASE}${path}`, { headers: { ...authHeaders(userId) } });
 }
 
 function postBatch(body: unknown, userId = ALICE): Promise<Response> {
   return SELF.fetch(`${BASE}/v1/biometric-samples/batch`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-whoopsy-user-id": userId },
+    headers: { "content-type": "application/json", ...authHeaders(userId) },
     body: JSON.stringify(body),
   });
 }
@@ -800,7 +801,7 @@ describe("the partition", () => {
 
 describe("identity", () => {
   it("refuses a request with no X-Whoopsy-User-Id", async () => {
-    const response = await SELF.fetch(`${BASE}/v1/biometric-samples/${SAMPLE}`);
+    const response = await SELF.fetch(`${BASE}/v1/biometric-samples/${SAMPLE}`, { headers: { ...authHeaders() } });
 
     expect(response.status).toBe(400);
     expect((await response.json() as ErrorWire).error.code).toBe("invalid_request");

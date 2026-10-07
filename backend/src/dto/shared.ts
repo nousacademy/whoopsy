@@ -81,6 +81,27 @@ export const InstantSchema = z
   });
 
 /**
+ * The deployment's shared secret, as a header.
+ *
+ * **Required, and it is checked before anything else in the request is looked at.** The header is
+ * published per operation rather than declared once as a `securitySchemes` block, so that every byte
+ * of the contract stays generated from the route definitions — see `routes/errors.ts`'s
+ * `unauthorizedResponse`, which is the 401 that goes with it.
+ *
+ * What it buys and what it does not is argued in `utils/tokens.ts`, and the short version is worth
+ * having in the published document too, because this is where a client's author will read it: it
+ * keeps scanners and drive-by requests off a discoverable `workers.dev` hostname, and it is **not**
+ * an identity. Every install of one deployment sends the same string.
+ */
+export const TokenHeaderSchema = z.object({
+  authorization: z.string().openapi({
+    description:
+      "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+    example: "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM",
+  }),
+});
+
+/**
  * The caller's key, as a header — and the two things it is not.
  *
  * **It is not an account.** There is no accounts table and no registration: the app mints 32 random
@@ -91,8 +112,12 @@ export const InstantSchema = z
  * that key's rows; there is no signature, no expiry and no revocation. What the length floor below
  * buys is that the key must be too long to guess — 32 random bytes encode to at least 43 characters
  * — and what it cannot buy is anything more, because this Worker has no way to tell a key it issued
- * from a key somebody made up. A deployment of this Worker must therefore not be public until the
- * token step lands.
+ * from a key somebody made up.
+ *
+ * **The shared token gate does not change any of that**, and the two must not be read as one thing.
+ * `TokenHeaderSchema` above decides whether a request is served; this decides *which partition* it is
+ * served from, and it verifies nothing about the caller. A deployment is now safe to expose because
+ * a credential is required, not because this header became an identity.
  *
  * **The value here is never stored.** Each resource's route hashes it with `deriveUserId` and the
  * `user_id` column holds the digest, so a dump of the database is not a list of usable keys. The
@@ -108,7 +133,22 @@ export const UserHeaderSchema = z.object({
     .max(MAX_KEY_LENGTH)
     .openapi({
       description:
-        `The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **A bearer credential that nothing verifies** — anyone holding it reads and writes its rows, and this API must not be exposed publicly until the token step lands. **It is hashed on arrival and never stored**: the \`user_id\` column holds \`sha256\` of it. At least ${MIN_KEY_LENGTH} characters, at most ${MAX_KEY_LENGTH}.`,
+        `The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the \`Authorization\` header above. **It is hashed on arrival and never stored**: the \`user_id\` column holds \`sha256\` of it. At least ${MIN_KEY_LENGTH} characters, at most ${MAX_KEY_LENGTH}.`,
       example: "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y",
     }),
 });
+
+/**
+ * The two headers every `/v1` operation takes, in the order they are checked.
+ *
+ * **`merge` rather than a `z.object` listing both fields**, so the two halves stay declared once and a
+ * change to either reaches every operation. **Token first, deliberately**: `merge` appends the second
+ * object's keys after the first's, so the published parameter list reads gate-then-identity, which is
+ * also the order the Worker evaluates them in at runtime. A client reading the document top to bottom
+ * therefore sees them in the order they will actually matter.
+ *
+ * That order is deterministic — `merge` preserves declaration order and Zod does not reorder — which
+ * matters more than it sounds: `shared/openapi.json` is a committed file that `make backend-check`
+ * diffs, so an unstable parameter order would show up as a spurious change on every regeneration.
+ */
+export const RequestHeaderSchema = TokenHeaderSchema.merge(UserHeaderSchema);

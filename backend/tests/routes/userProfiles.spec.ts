@@ -1,4 +1,5 @@
 import { SELF, env } from "cloudflare:test";
+import { authHeaders } from "../Support/auth";
 import { describe, expect, it } from "vitest";
 import { USER_PROFILE_GENDERS } from "../../src/domain";
 import { deriveUserId, MIN_KEY_LENGTH } from "../../src/utils/identity";
@@ -168,13 +169,13 @@ function without<K extends keyof UserProfileWire>(
 function put(body: unknown, userId = ALICE): Promise<Response> {
   return SELF.fetch(`${BASE}/v1/profile`, {
     method: "PUT",
-    headers: { "content-type": "application/json", "x-whoopsy-user-id": userId },
+    headers: { "content-type": "application/json", ...authHeaders(userId) },
     body: JSON.stringify(body),
   });
 }
 
 function read(path = "/v1/profile", userId = ALICE): Promise<Response> {
-  return SELF.fetch(`${BASE}${path}`, { headers: { "x-whoopsy-user-id": userId } });
+  return SELF.fetch(`${BASE}${path}`, { headers: { ...authHeaders(userId) } });
 }
 
 /** The profile, asserting the read succeeded — so a 404 cannot be mistaken for a payload. */
@@ -468,7 +469,7 @@ describe("the partition", () => {
 
 describe("identity", () => {
   it("refuses a request with no X-Whoopsy-User-Id", async () => {
-    const response = await SELF.fetch(`${BASE}/v1/profile`);
+    const response = await SELF.fetch(`${BASE}/v1/profile`, { headers: { ...authHeaders() } });
 
     expect(response.status).toBe(400);
     expect((await response.json() as ErrorWire).error.code).toBe("invalid_request");
@@ -498,7 +499,7 @@ describe("identity", () => {
   it("refuses a write with no credential as readily as a read", async () => {
     const response = await SELF.fetch(`${BASE}/v1/profile`, {
       method: "PUT",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify(fullProfile()),
     });
 
@@ -524,7 +525,7 @@ describe("the endpoints this shape does not have", () => {
   it("has no second write verb, so there is no POST", async () => {
     const response = await SELF.fetch(`${BASE}/v1/profile`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-whoopsy-user-id": ALICE },
+      headers: { "content-type": "application/json", ...authHeaders(ALICE) },
       body: JSON.stringify(fullProfile()),
     });
 
@@ -543,7 +544,7 @@ describe("the endpoints this shape does not have", () => {
 
     const response = await SELF.fetch(`${BASE}/v1/profile`, {
       method: "DELETE",
-      headers: { "x-whoopsy-user-id": ALICE },
+      headers: { ...authHeaders(ALICE) },
     });
 
     // The standing convention rather than this resource's omission — `WorkoutRepository.delete(_:)` and
@@ -558,7 +559,7 @@ describe("the endpoints this shape does not have", () => {
   it("has no batch, because a partition holds one profile", async () => {
     const response = await SELF.fetch(`${BASE}/v1/profile/batch`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-whoopsy-user-id": ALICE },
+      headers: { "content-type": "application/json", ...authHeaders(ALICE) },
       body: JSON.stringify([fullProfile()]),
     });
 

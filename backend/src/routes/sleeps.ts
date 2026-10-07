@@ -8,14 +8,14 @@ import {
   SleepWriteSchema,
   WindowQuerySchema,
 } from "../dto/sleeps";
-import { DayKeySchema, UserHeaderSchema } from "../dto/shared";
+import { DayKeySchema, RequestHeaderSchema } from "../dto/shared";
 import type { Env } from "../env";
 import { D1SleepRepository } from "../repositories";
 import { SleepService } from "../services";
 import { utcToday } from "../utils/days";
 import { apiError } from "../utils/errors";
 import { deriveUserId } from "../utils/identity";
-import { errorResponse, validationHook } from "./errors";
+import { errorResponse, unauthorizedResponse, validationHook } from "./errors";
 
 /**
  * The four `sleeps` endpoints, and nothing else.
@@ -125,9 +125,10 @@ const listSleeps = createRoute({
     "Every night holding a row in an inclusive window ending on `endingOn`. Days with no row are **omitted** rather than returned as zero-filled records — an empty array is a real answer and means nothing in the window has a row. On a partially-worn history that is the ordinary case rather than an edge: a night the user did not wear the strap is a hole in the middle of the range, not a missing tail. The window is inclusive at both ends, so `days=14` spans 15 calendar days.",
   request: {
     query: WindowQuerySchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The nights holding a row in the window, oldest first.",
       content: { "application/json": { schema: z.array(SleepSchema) } },
@@ -144,9 +145,10 @@ const readSleep = createRoute({
     "One night's row, or `404 no_measurement_for_day` if that day has no row at all. **There is no second kind of row here**: a night the classifier could not read is never written, so unlike `strains` there is no unmeasured-row state to tell a reading apart from. The `date` is the night's **wake** day, not the day it began on.",
   request: {
     params: DateParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The night's row.",
       content: { "application/json": { schema: SleepSchema } },
@@ -164,13 +166,14 @@ const writeSleep = createRoute({
     "Insert or replace the day's row — the day-keyed upsert the app's own `saveSleep` is. Answers with the row **read back from the database**, not with the request echoed, so a caller can see that a `null` stayed `null` rather than arriving back as the `0` a default somewhere in the write path might have folded it into. That assertion is the whole of what this resource's write path has to get right: three of its nullable fields are values a model on the device computes, and the device is the only party that knows whether one exists.",
   request: {
     params: DateParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: SleepWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The stored row, as the database holds it.",
       content: { "application/json": { schema: SleepSchema } },
@@ -188,13 +191,14 @@ const writeSleepBatch = createRoute({
   description:
     "Insert or replace up to `MAX_BATCH_SLEEPS` nights in one request — the shape the app's first sync needs, where a nine-hundred-day history is five of these instead of nine hundred round trips. Every row is keyed on the same `(userId, date)` pair the single-day `PUT` writes, so a chunk replayed after a timeout is safe: **it rewrites each row with the values it already holds and the row count does not move.** The chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — a day the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection: on a nine-hundred-day history with holes in it, a verb that said `these are the nights` would oblige the server to remove a fourth of the user's sleep history on the first sync of a partially-worn range.",
   request: {
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: SleepBatchWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "How many rows the database reported writing.",
       content: { "application/json": { schema: SleepBatchResultSchema } },

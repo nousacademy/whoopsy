@@ -19,19 +19,18 @@ Worker (Hono in front of D1 + R2) with eight resources carried end to end — `r
 `receptiveInactivities` at `/v1/receptive-inactivities/{id}`, `biometricSamples` at
 `/v1/biometric-samples/{id}` and `userProfiles` at `/v1/profile`, each from the route through the
 service and the repository into its own D1 migration — plus the contract generated from those route
-definitions rather than written by hand. **Eight of them are the Worker's; the app's sync still speaks
-to three of them** — there is no sleep mapper, sleep sync store, step-count mapper, step-count sync
-store, receptive-inactivity mapper, receptive-inactivity sync store, biometric-sample mapper,
-biometric-sample sync store, user-profile mapper or user-profile sync store on the iOS side yet — so
-the two counts in this file differ on purpose. `userProfiles` is the one of those four whose missing
-client half is not a missing copy of a sibling: its mapper will have to supply the `"primary"` id this
-app's local row carries and convert a `.datetime` birthday column to the day key the wire publishes. **The
-app does reach it, and only when it is told where to look.** `ios/Sources/Whoopsy/Data/Networking/` is
-the HTTP client and `Data/Sync/` is the sync behind
-the profile page's `Storage` pane — the app's only network code — and both are inert on every build in
-this repository, because `Info.plist` carries no `WHOOPSYAPIBaseURL`. An unconfigured build draws a
-sentence naming that key, and nothing else happens. Nothing has been deployed, so that is the state
-every build here is in. Read it as the pattern settled rather than as infrastructure.
+definitions rather than written by hand. **Eight of them are the Worker's; the app's sync speaks to
+seven** — `biometricSamples` deliberately stays on the phone, because its window is measured in
+seconds rather than days — so the two counts in this file differ on purpose, and everything the
+Worker carries is described in [§ The backend](#the-backend). **The app reaches it, and only when it
+is told where to look.** `ios/Sources/Whoopsy/Data/Networking/` is the HTTP client and `Data/Sync/`
+is the sync behind the profile page's `STORAGE` pane — the app's only network code — and both are
+inert on a build that has not been configured with a base URL *and* a credential. Such a build draws
+a sentence naming the key it is missing and hard-codes no hostname; that is the state every fresh
+clone is in, and it is the pattern settled rather than infrastructure. **A configured build is the
+other state, and it is the one this repository's owner runs**: the Worker is deployed, every `/v1`
+request it serves carries a bearer credential, and the run button on that pane is what moves a
+resource.
 
 **One exception, and it is opt-in and off until you configure it.** The route card's offline map hands
 its tile requests to Mapbox's SDK — a third-party binary the *Xcode target* links, because it is
@@ -311,7 +310,7 @@ records exactly as before and the card draws `MapKit`'s live tiles.
 
 | Token | Scope | Where it goes | Why |
 | :--- | :--- | :--- | :--- |
-| **Public** `pk.…` | none | `ios/App/Config/Mapbox.local.xcconfig` — **gitignored** | Expands into `MBXAccessToken` in `Info.plist` at build time. Kept out of the repository; a clone copies the example and pastes its own |
+| **Public** `pk.…` | none | `ios/App/Config/Whoopsy.local.xcconfig` — **gitignored** | Expands into `MBXAccessToken` in `Info.plist` at build time. Kept out of the repository; a clone copies the example and pastes its own |
 | **Secret** `sk.…` | `Downloads:Read` | `~/.netrc` | Needed for SwiftPM to *resolve* the binary package at all — a build credential, not a runtime one |
 
 Neither is in this repository, and the public one is deliberately untracked even though Mapbox's model
@@ -337,27 +336,27 @@ rather than an authorisation one** — that is the first thing to check if `make
 Then the public one:
 
 ```bash
-cp ios/App/Config/Mapbox.local.xcconfig.example ios/App/Config/Mapbox.local.xcconfig
+cp ios/App/Config/Whoopsy.local.xcconfig.example ios/App/Config/Whoopsy.local.xcconfig
 # edit it and set: MBX_ACCESS_TOKEN = pk.YOUR_PUBLIC_TOKEN
 ```
 
-`ios/App/Config/Mapbox.local.xcconfig` is where the token goes and it is gitignored, so it is never
+`ios/App/Config/Whoopsy.local.xcconfig` is where the token goes and it is gitignored, so it is never
 committed; `.example` is tracked purely so a clone knows what to create. With both credentials in
 place the switch appears; with either missing the app is exactly what it was before the feature, with
 no crash and no half-configured SDK.
 
 **The token is in the second of two xcconfig files, and which one is committed is the whole trick.**
-`ios/App/Config/Mapbox.xcconfig` is **tracked** and carries no token — it sets `MBX_ACCESS_TOKEN` empty and
-then ends with `#include? "Mapbox.local.xcconfig"`, the *optional* include, which pulls in your file
+`ios/App/Config/Whoopsy.xcconfig` is **tracked** and carries no token — it sets `MBX_ACCESS_TOKEN` empty and
+then ends with `#include? "Whoopsy.local.xcconfig"`, the *optional* include, which pulls in your file
 when it exists and is silently skipped when it does not. Because an xcconfig assignment is
 last-one-wins, the include coming last is what lets your token override the empty default.
 
-That split exists because of how Xcode treats a base configuration it cannot open. `Mapbox.xcconfig`
+That split exists because of how Xcode treats a base configuration it cannot open. `Whoopsy.xcconfig`
 is the app target's `baseConfigurationReference` on both Debug and Release, and a missing one is a
 hard build failure, not a warning:
 
 ```
-ios/Whoopsy.xcodeproj: error: Unable to open base configuration reference file '…/ios/App/Config/Mapbox.xcconfig'
+ios/Whoopsy.xcodeproj: error: Unable to open base configuration reference file '…/ios/App/Config/Whoopsy.xcconfig'
 ```
 
 If the file holding the token were the base configuration, every fresh clone would be unbuildable.
@@ -376,6 +375,56 @@ It cannot be a dependency of `Package.swift`, which also declares `.macOS(.v14)`
 and the test runner, so `swift build` and `make test` never see it. That is why the card's design keeps
 the drawing in `Presentation` and hands the unverifiable module a single `AnyView` to draw inside a
 frame the card has already fixed; the reasoning is in [`CLAUDE.md`](CLAUDE.md)'s gotchas.
+
+### Optional: the sync database
+
+`STORAGE` — the third pane on the profile page — is a `DEVICE STORAGE │ WHOOPSY SYNC API` switch over
+the seven resources the app mirrors into the Worker under `backend/`. This section is the app's half of
+turning it on; the Worker's own half is [§ The backend](#the-backend).
+
+**It is off at every layer until you supply both halves of one decision, and neither is in this
+repository.**
+
+| Setting | Where it goes | Why |
+| :--- | :--- | :--- |
+| `WHOOPSY_API_BASE_URL` | `ios/App/Config/Whoopsy.local.xcconfig` — **gitignored** | The deployed Worker's origin. Expands into `WHOOPSYAPIBaseURL` in `Info.plist` at build time; kept out of the repository, so a clone copies the example and pastes its own |
+| `WHOOPSY_API_TOKEN` | the same file | **The deployment's shared secret**, sent as `Authorization: Bearer`. The same string in three homes — `backend/.dev.vars` for `npm run dev`, this file for the app, and `wrangler secret put SYNC_API_TOKEN` for the deployment |
+
+**Both or neither, and that is the Worker's rule rather than a preference.** It refuses every `/v1`
+request until its own `SYNC_API_TOKEN` is set and the request's credential matches it, so a hostname on
+its own is not a half-configured build — it is an install that opens a socket on every read to collect
+a `401`. `DIContainer` reads the pair together and wires `UnconfiguredCloudSync` when *either* is
+missing, which is what a fresh clone, every SwiftUI preview and the host test runner all get.
+
+```bash
+cp ios/App/Config/Whoopsy.local.xcconfig.example ios/App/Config/Whoopsy.local.xcconfig
+openssl rand -base64 32 | tr '+/' '-_' | tr -d '='   # your secret — the same value in all three homes
+# edit the copy and set both keys, beside the Mapbox token if you want the offline map too
+```
+
+The `tr` is not decoration: **an xcconfig value containing `//` is truncated at that point**, because
+`//` opens a comment. Plain base64 can produce one, and the failure would be a token that silently
+differs from the deployment's by everything after the slash.
+
+**The base URL hits that rule every time, because `https://` contains it**, so it has to be written
+with an empty `$()` standing in for the second slash:
+
+```
+WHOOPSY_API_BASE_URL = https:/$()/whoopsy-sync.your-account-subdomain.workers.dev
+```
+
+Get this wrong and the build is **green** and the app's base URL is the string `https:` — an
+`NSURLSession` failure at runtime with nothing at build time to suggest why. The `$()` expands to
+nothing, so the two slashes never sit adjacently in the file and the expansion puts them back. Both
+traps are the same rule seen twice: an xcconfig value is not a string literal, and what looks like
+punctuation in one is syntax.
+
+**Your secret is yours, and two deployments sharing one would be sharing rows.** It is not in this
+repository. What it buys is bounded and worth stating plainly: it stops scanners, bots and drive-by
+requests against a discoverable `*.workers.dev` hostname. It is **not** authentication — the token is
+compiled into the app and extractable from the binary, so anyone holding the string has the same access
+you do. There is no `accounts` table, no registration and no revocation, and `X-Whoopsy-User-Id` is a
+partition name rather than a credential. Real per-install identity is a design that is not built.
 
 ### Then build
 
@@ -454,11 +503,14 @@ database, and a full run leaves the file byte-identical. That is documented rath
 ## The backend
 
 `backend/` is a Cloudflare Worker — [Hono](https://hono.dev) in front of D1 and R2 — and it is a
-separate toolchain from everything above. **It has never been deployed.** The app does reach it, and
-only when it is told where to look: `ios/Sources/Whoopsy/Data/Networking/` is the HTTP client and
-`Data/Sync/` is the sync written on it, and both are inert on any build whose `Info.plist` carries no
-`WHOOPSYAPIBaseURL` — which is every build in this repository, so the sync's screen reports an
-unconfigured database and nothing else happens.
+separate toolchain from everything above. **It is deployed**, at the hostname `shared/openapi.json`'s
+`servers[0].url` names, and it refuses every `/v1` request that does not carry the deployment's own
+secret. The app does reach it, and only when it is told where to look: `ios/Sources/Whoopsy/Data/Networking/`
+is the HTTP client and `Data/Sync/` is the sync written on it, and both are inert on any build whose
+`Info.plist` expands `WHOOPSYAPIBaseURL` or `WHOOPSYAPIToken` to nothing — which is every fresh clone,
+so the sync's screen reports an unconfigured database and nothing else happens. Neither half of that
+credential is in this repository, and [§ Optional: the sync database](#optional-the-sync-database)
+above is where a clone supplies its own.
 
 Eight resources are carried the whole way: `recoveries` at `/v1/recoveries/{date}`, `strains` at
 `/v1/strains/{date}`, `sleeps` at `/v1/sleeps/{date}` and `stepCounts` at `/v1/step-counts/{date}` —
@@ -524,20 +576,39 @@ npm run openapi            # rewrites ../shared/openapi.json
 make -C .. backend-check   # all of the above, failing if the contract is stale
 ```
 
-**It is unauthenticated and must not be deployed publicly.** `X-Whoopsy-User-Id` is a placeholder
-identity, not a credential — it selects which rows you see, and nothing verifies it. There is no
-`accounts` table. The migration carries a `user_id` column from the first file so the table already has
-its partition the day a verified token exists.
+**It requires a credential, and the credential is one shared secret rather than an identity.** Every
+`/v1` path refuses a request that does not carry `Authorization: Bearer <SYNC_API_TOKEN>` — the
+deployment's own secret, set with `wrangler secret put` and never in this repository. `GET /health` and
+`GET /openapi.json` are the two paths that answer without it. **What that buys is bounded and worth
+stating plainly**: it stops scanners, bots and drive-by requests against a discoverable `*.workers.dev`
+hostname. It does **not** authenticate a person — the same string is compiled into the app and
+extractable from the binary, so anyone holding it has the same access you do.
 
-**The Worker is provisioned but not deployed, and those are different states.** Since 2026-10-07 the
-`whoopsy-sync` D1 database (region ENAM) and the `whoopsy-exports` R2 bucket exist in a real account,
-and `wrangler.toml`'s `database_id` holds the returned id — so `wrangler d1 migrations apply
-whoopsy-sync --remote` writes to a real schema, and it has been run there. **No `wrangler deploy` has
-run**, so there is no hostname: the document's `servers[0].url` still says `<account>`, `Info.plist`'s
-`WHOOPSYAPIBaseURL` is still empty, and the app talks to nothing. A fresh clone needs neither
-`wrangler d1 create` nor `wrangler r2 bucket create` — the names are taken and both commands fail on
-an existing resource — only `migrations apply --remote` if it wants the remote schema, and `--local`
-for `wrangler dev`.
+**`X-Whoopsy-User-Id` is not a credential and is checked second.** It selects which rows a request is
+about, the Worker hashes it and never stores it, and nothing verifies it as an identity — what makes it
+unguessable is its length, not anything the server checks. There is no `accounts` table, no
+registration and no revocation; the migration carries a `user_id` column from the first file so the
+table already has its partition the day a verified one exists, and that is a design this repository has
+not built.
+
+**A deployment with no secret refuses everything, and it answers `500` rather than `401`.** An unarmed
+Worker is the operator's problem and not the caller's, and a `401` there would tell a person holding a
+curl that their credential was wrong when the truth is that there is no secret for it to be wrong
+about. The body is the shared envelope and carries no detail; the sentence naming `SYNC_API_TOKEN` is
+in the Worker's own log. **Set the secret before you deploy** — `wrangler deploy` does not fail on a
+missing one, it ships a Worker that refuses every request.
+
+**It is deployed, and the deployment belongs to one account.** `wrangler deploy` ran on 2026-10-07 and
+the hostname it printed is in `shared/openapi.json`'s `servers[0].url`. **Nothing reads that field** —
+the app is handed its own base URL through `Info.plist` — so a fork deploying under another account has
+a stale string there and nothing breaks; it is documentation. The two Cloudflare resources predate the
+deploy: the `whoopsy-sync` D1 database (region ENAM) and the `whoopsy-exports` R2 bucket exist in that
+account, and `wrangler.toml`'s `database_id` holds the id `wrangler d1 create` returned — so
+`wrangler d1 migrations apply whoopsy-sync --remote` writes to a real schema, and it has been run
+there. A fresh clone needs neither `wrangler d1 create` nor `wrangler r2 bucket create` — the names are
+taken and both commands fail on an existing resource — only `migrations apply --remote` if it wants the
+remote schema, `--local` for `wrangler dev`, and **its own** `SYNC_API_TOKEN`: the secret belongs to the
+deployment, and two deployments sharing one would be sharing rows.
 
 To exercise it by hand, note that **`wrangler dev`'s database and the test suite's are two different
 databases.** `npm test` builds its own from `migrations/` on every run; `wrangler dev` keeps one under
@@ -549,8 +620,23 @@ npx wrangler d1 migrations apply whoopsy-sync --local
 npx wrangler dev --port 8787
 ```
 
+**And it answers `500` on every `/v1` request until `backend/.dev.vars` holds a secret.** `wrangler
+dev` reads that file — gitignored, with `backend/.dev.vars.example` committed as the template — and
+it is where the local `SYNC_API_TOKEN` goes:
+
+```bash
+cp .dev.vars.example .dev.vars    # from backend/, then paste your own token after the `=`
+curl -s localhost:8787/v1/recoveries?days=2 \
+  -H "Authorization: Bearer $SYNC_API_TOKEN" -H "X-Whoopsy-User-Id: $ANY_32_CHAR_STRING"
+```
+
+Without it the gate throws rather than returning `401`, which is deliberate and is the paragraph
+above: an unarmed Worker is the operator's problem, not the caller's. `GET /health` and `GET
+/openapi.json` answer either way.
+
 The check that the two readings of the contract really are one document is a shell step rather than a
-spec, because a Worker has no filesystem:
+spec, because a Worker has no filesystem — and `/openapi.json` is one of the two paths that needs no
+credential, so this works on an unarmed dev server:
 
 ```bash
 curl -s localhost:8787/openapi.json | diff - ../shared/openapi.json && echo IDENTICAL

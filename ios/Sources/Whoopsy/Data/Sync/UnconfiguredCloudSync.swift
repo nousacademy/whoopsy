@@ -1,10 +1,16 @@
 import Foundation
 
-/// The `CloudSync` a build with no `WHOOPSYAPIBaseURL` gets, and **it is not a stub.**
+/// The `CloudSync` a build with no database behind it gets, and **it is not a stub.**
 ///
 /// Nothing about it is fake: every method throws `CloudSyncError.unreachable`, which is exactly what a
 /// request to a base URL that does not exist would produce, and the message says which key is absent
-/// rather than reporting a network fault that never happened. A caller that degrades over
+/// rather than reporting a network fault that never happened.
+///
+/// **There are two keys it can be missing and `missingKey` names whichever one it was.** A build is
+/// configured only when `WHOOPSYAPIBaseURL` *and* `WHOOPSYAPIToken` are both set — the Worker refuses
+/// every `/v1` request without a credential, so a hostname alone is not a database this app can read —
+/// and `DIContainer` hands over the one that is actually absent so the sentence points at the line the
+/// operator has to go and fill in. A caller that degrades over
 /// `.unreachable` degrades here for the same reason it degrades anywhere else, and a caller that does
 /// not gets a sentence naming the actual problem.
 ///

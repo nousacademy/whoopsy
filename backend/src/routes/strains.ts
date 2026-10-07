@@ -8,14 +8,14 @@ import {
   StrainWriteSchema,
   WindowQuerySchema,
 } from "../dto/strains";
-import { DayKeySchema, UserHeaderSchema } from "../dto/shared";
+import { DayKeySchema, RequestHeaderSchema } from "../dto/shared";
 import type { Env } from "../env";
 import { D1StrainRepository } from "../repositories";
 import { StrainService } from "../services";
 import { utcToday } from "../utils/days";
 import { apiError } from "../utils/errors";
 import { deriveUserId } from "../utils/identity";
-import { errorResponse, validationHook } from "./errors";
+import { errorResponse, unauthorizedResponse, validationHook } from "./errors";
 
 /**
  * The four `strains` endpoints, and nothing else.
@@ -114,9 +114,10 @@ const listStrains = createRoute({
     "Every day holding a row in an inclusive window ending on `endingOn`. Days with no row are **omitted** rather than returned as zero-filled records — an empty array is a real answer and means nothing in the window has a row. Note that a day *with* a row is always returned, including one carrying `hasMeasurement: false`: the window is a read of rows, and which of them are readings is the flag's job.",
   request: {
     query: WindowQuerySchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The days holding a row in the window, oldest first.",
       content: { "application/json": { schema: z.array(StrainSchema) } },
@@ -133,9 +134,10 @@ const readStrain = createRoute({
     "One day's row, or `404 no_measurement_for_day` if that day has no row at all. **A row that exists but was never measured is a `200` with `hasMeasurement: false`** — it is a real row the client stores, and the flag is what separates it from a reading.",
   request: {
     params: DateParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The day's row, measured or not.",
       content: { "application/json": { schema: StrainSchema } },
@@ -153,13 +155,14 @@ const writeStrain = createRoute({
     "Insert or replace the day's row — the day-keyed upsert the app's own `saveStrain` is. Answers with the row **read back from the database**, not with the request echoed, so a caller can see that a `null` stayed `null` and that a `false` stayed `false` rather than arriving back as the `1` the column stores.",
   request: {
     params: DateParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: StrainWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The stored row, as the database holds it.",
       content: { "application/json": { schema: StrainSchema } },
@@ -175,13 +178,14 @@ const writeStrainBatch = createRoute({
   description:
     "Insert or replace up to `MAX_BATCH_STRAINS` days in one request — the shape the app's first sync needs, where a nine-hundred-day history is five of these instead of nine hundred round trips. Every row is keyed on the same `(userId, date)` pair the single-day `PUT` writes, so a chunk replayed after a timeout is safe: **it rewrites each row with the values it already holds and the row count does not move.** The chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — a day the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection.",
   request: {
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: StrainBatchWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "How many rows the database reported writing.",
       content: { "application/json": { schema: StrainBatchResultSchema } },

@@ -8,11 +8,12 @@
  * cannot be replayed as a header, because the header is hashed again on the way in and the two
  * digests are of different strings.
  *
- * **This does not authenticate anybody, and it is not a substitute for the token step.** Anyone can
- * mint a key, and a key that is guessed is a partition that is read — which is exactly what being a
- * bearer credential means. What the digest buys is the blast radius of a database leak, not the
- * integrity of a request. `dto/recoveries.ts` carries the consequences in the header
- * schema's own description, and `wrangler.toml` carries the deployment constraint.
+ * **This does not authenticate anybody, and the token step does not change that.** The gate in
+ * `utils/tokens.ts` decides whether a request may be served at all; this file decides *which
+ * partition* it is served from, and it verifies nothing — anyone can mint a key, and a key that is
+ * guessed is a partition that is read, which is exactly what being a bearer credential means. What
+ * the digest buys is the blast radius of a database leak, not the integrity of a request.
+ * `dto/shared.ts` carries the consequences in the header schema's own description.
  *
  * The hash is unsalted and unstretched on purpose. A salt would have to live beside the database it
  * protects, so it would leak with it and buy nothing; a KDF would be right for a human-chosen
@@ -56,21 +57,35 @@ export function isUsableKey(key: string): boolean {
 }
 
 /**
- * The partition a key's rows live under: `sha256(key)`, lowercase hex.
+ * The Worker's digest primitive: SHA-256 of a string, as raw bytes.
+ *
+ * It lives here because this file is where the hashing rule is argued, and it is exported because a
+ * second caller exists — `utils/tokens.ts` hashes both sides of the token comparison so that
+ * `timingSafeEqual` is handed two equal-length inputs. That caller wants the **bytes** and this file
+ * wants a hex **string**, which is why the digest is the exported thing and `toHex` is not: a
+ * security-relevant primitive written out twice is a primitive that can be changed in one place.
  *
  * `crypto.subtle` rather than `node:crypto`, because this is the Worker's own runtime primitive and
  * the `nodejs_compat` flag is declared for the test pool's sake rather than for `src/`'s — nothing
  * here should start depending on it. `digest` is async, which is why identity derivation is an
  * `await` at the call site rather than a pure expression.
+ */
+export async function sha256(value: string): Promise<Uint8Array> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+
+  return new Uint8Array(digest);
+}
+
+/**
+ * The partition a key's rows live under: `sha256(key)`, lowercase hex.
  *
  * Lowercase hex and not base64: the value is a database column that a human will occasionally read
  * out of `wrangler d1 execute` while debugging, and one canonical spelling of it is worth more than
  * four bytes of width.
  */
 export async function deriveUserId(key: string): Promise<string> {
-  const bytes = new TextEncoder().encode(key);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return toHex(new Uint8Array(digest));
+  return toHex(await sha256(key));
 }
 
 /**

@@ -9,13 +9,13 @@ import {
   BiometricSampleWindowQuerySchema,
   BiometricSampleWriteSchema,
 } from "../dto/biometricSamples";
-import { UserHeaderSchema } from "../dto/shared";
+import { RequestHeaderSchema } from "../dto/shared";
 import type { Env } from "../env";
 import { D1BiometricSampleRepository } from "../repositories";
 import { BiometricSampleService } from "../services";
 import { apiError } from "../utils/errors";
 import { deriveUserId } from "../utils/identity";
-import { errorResponse, validationHook } from "./errors";
+import { errorResponse, unauthorizedResponse, validationHook } from "./errors";
 
 /**
  * The four `/v1/biometric-samples` endpoints, and nothing else.
@@ -120,9 +120,10 @@ const listBiometricSamples = createRoute({
     "Every sample whose arrival instant falls in `from`…`to`, **inclusive at both ends**, oldest first. The answer is a bare array with **no padding**: an empty array means nothing was recorded in the window, which is the ordinary answer for a stretch the strap did not cover rather than an error. **Both bounds are required** — `to` is not defaulted to the server's now, because that would be the Worker's clock answering the caller's question. The window may span at most a week; a client syncing a longer history chunks it. Samples sharing a millisecond are ordered by id, which is arbitrary rather than chronological: the app's own tiebreak *is* arrival order, and this resource's id is content-derived, so that clause is a stable order and not a recovered one.",
   request: {
     query: BiometricSampleWindowQuerySchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The samples in the window, oldest first.",
       content: { "application/json": { schema: z.array(BiometricSampleSchema) } },
@@ -141,9 +142,10 @@ const readBiometricSample = createRoute({
     "One sample, or `404 not_found` if this partition holds no such id. A sample has nothing filed under it — its R-R series is a column rather than rows of its own — so this is the whole of the row. It is addressed by id because every id-keyed resource in this API is, which is worth saying here: **the app's own port has no such read** (`getSamples(from:to:)` is the whole of it), so this endpoint exists so that a client which has just written an id can confirm it landed without asking for a window around it.",
   request: {
     params: IdParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The sample, as the database holds it.",
       content: { "application/json": { schema: BiometricSampleSchema } },
@@ -161,13 +163,14 @@ const writeBiometricSample = createRoute({
     "Insert or replace the sample — the upsert the app's own `save` is, which is INSERT-or-UPDATE by primary key. Answers with the row **read back from the database**, which on this resource is the assertion that matters: nine of these twelve fields are nullable, so a stray default anywhere in the write path would be invisible in an echo of the request. **The id is the client's own derivation and must be deterministic**, so that re-sending the same sample replaces a row rather than adding one; the Worker validates the shape and takes no view of how it was derived. **`timestamp` is required and travels in the body**, because the instant *is* the sample — it is the lookup column and the read window's subject — and deriving it from the server's clock would stamp when the write arrived rather than when the beats were heard.",
   request: {
     params: IdParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: BiometricSampleWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The stored sample, as the database holds it.",
       content: { "application/json": { schema: BiometricSampleSchema } },
@@ -183,13 +186,14 @@ const writeBiometricSampleBatch = createRoute({
   description:
     "Insert or replace up to `MAX_BATCH_BIOMETRIC_SAMPLES` samples in one request — the shape a sync needs, where a burst of notifications is one request instead of one per sample. **On this resource that cap is a chunk size rather than a day's worth**: a sample is one row and has no children, so the row cap *is* the whole bound on the request's work, and a day at 1 Hz is roughly 432 chunks. Every sample is keyed on the same `(userId, id)` pair the single-sample `PUT` writes, so a chunk replayed after a timeout is safe: **it rewrites each sample with the values it already holds and the row count does not move.** The whole chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — a sample the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection. `written` counts samples, and a replay reports the same number as the first send rather than zero.",
   request: {
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: BiometricSampleBatchWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "How many samples the database reported writing.",
       content: { "application/json": { schema: BiometricSampleBatchResultSchema } },

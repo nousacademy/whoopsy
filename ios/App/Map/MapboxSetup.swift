@@ -40,8 +40,8 @@ enum MapboxSetup {
     ///
     /// **It exists because the value in `Info.plist` is a build setting, not a literal.** The key reads
     /// `$(MBX_ACCESS_TOKEN)`, and that setting resolves through two files: the committed
-    /// `App/Config/Mapbox.xcconfig`, which sets it empty, and the gitignored
-    /// `App/Config/Mapbox.local.xcconfig` beside it, which the committed file pulls in through
+    /// `App/Config/Whoopsy.xcconfig`, which sets it empty, and the gitignored
+    /// `App/Config/Whoopsy.local.xcconfig` beside it, which the committed file pulls in through
     /// `#include?` when it exists. So a clone with no token gets a genuinely **empty** string here —
     /// which is exactly what the first case below catches.
     ///
@@ -54,7 +54,7 @@ enum MapboxSetup {
     ///
     /// **A missing token file is not what this guards, because the build never reaches here.**
     /// `xcodebuild` treats an unopenable `baseConfigurationReference` as a hard error and stops — so
-    /// deleting `App/Config/Mapbox.xcconfig` fails the build outright rather than leaving a plist with
+    /// deleting `App/Config/Whoopsy.xcconfig` fails the build outright rather than leaving a plist with
     /// an unexpanded `$(MBX_ACCESS_TOKEN)` in it. That is why the file with the token *in* it is the
     /// optional one, and why a clone can build with no credentials at all.
     static let publicTokenPrefix = "pk."

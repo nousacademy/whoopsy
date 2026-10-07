@@ -1,13 +1,13 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
 import type { UserProfile } from "../domain";
 import { UserProfileSchema, type UserProfileWire, UserProfileWriteSchema } from "../dto/userProfiles";
-import { UserHeaderSchema } from "../dto/shared";
+import { RequestHeaderSchema } from "../dto/shared";
 import type { Env } from "../env";
 import { D1UserProfileRepository } from "../repositories";
 import { UserProfileService } from "../services";
 import { apiError } from "../utils/errors";
 import { deriveUserId } from "../utils/identity";
-import { errorResponse, validationHook } from "./errors";
+import { errorResponse, unauthorizedResponse, validationHook } from "./errors";
 
 /**
  * The two `user_profiles` endpoints, and nothing else.
@@ -106,8 +106,9 @@ const readProfile = createRoute({
   summary: "Read the caller's profile",
   description:
     "The one profile this caller owns, or `404 not_found` if the partition holds none. **There is no empty-row state here and no window and no list**: a profile is a singleton, so this endpoint answers the whole of what the resource is, and a client that gets a `404` has a user who has not filled the form in rather than a user whose profile is blank. The app's own cold-start 190/60 pair is applied by the *client* when it merges that absence with its local copy — this API does not publish it, because a server that did would be inventing a zone table and calling it a row.",
-  request: { headers: UserHeaderSchema },
+  request: { headers: RequestHeaderSchema },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The caller's profile.",
       content: { "application/json": { schema: UserProfileSchema } },
@@ -124,13 +125,14 @@ const writeProfile = createRoute({
   description:
     "Insert or replace the caller's profile — the whole-row upsert the app's own `saveUserProfile` is. Answers with the row **read back from the database**, not with the request echoed, so a caller can see that a `weightKg` sent as `null` is still `null` rather than a `0` some layer defaulted. **Every field must be sent**: this is a whole-row write, so a field sent as `null` is cleared and a field omitted is a `400` — there is no partial update on this resource and a client changing one field reads the row, changes it and sends the whole thing back.",
   request: {
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: UserProfileWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The stored profile, as the database holds it.",
       content: { "application/json": { schema: UserProfileSchema } },

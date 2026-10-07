@@ -62,12 +62,16 @@ type OpenApiDocumentConfig = Parameters<
  * the route definitions and therefore cannot disagree with the Worker. Only the trailing clause about
  * `paths` being empty changed, because this pass is the one that made it false.
  *
- * `servers` keeps its placeholder, and it is now the *only* placeholder left in the pair it used to
- * share with `wrangler.toml`. That file's `database_id` holds a real id — the D1 database and the R2
- * bucket were provisioned on 2026-10-07 — but this URL cannot follow it, because provisioning is not
- * deploying: no `wrangler deploy` has run, so no hostname exists to write down. The account subdomain
- * is a per-account fact, and a guessed one would be a URL that looks deployable and is not. It is
- * filled in by whoever runs the first `wrangler deploy`.
+ * `servers` is no longer a placeholder: the first `wrangler deploy` has run, and the URL below is the
+ * hostname it printed. The account subdomain is a per-account fact, so it could not have been guessed
+ * — which is why this line stayed a placeholder through the whole of the provisioning step, when
+ * `wrangler.toml`'s `database_id` already held a real id. **Provisioning is not deploying**, and this
+ * is the field where the difference was visible.
+ *
+ * **It is one deployment's hostname, and a fork's is different.** Nothing in the app reads this value
+ * — the client is handed its own base URL through `Info.plist`, and the Worker never reads its own
+ * `servers` block either — so a fork that deploys under another account has a stale string here and
+ * nothing breaks. It is documentation, and it is regenerated with everything else.
  */
 export const openApiConfig: OpenApiDocumentConfig = {
   openapi: "3.1.0",
@@ -79,8 +83,9 @@ export const openApiConfig: OpenApiDocumentConfig = {
   },
   servers: [
     {
-      url: "https://whoopsy-sync.<account>.workers.dev",
-      description: "Placeholder — replace with the deployed route once `wrangler deploy` has run.",
+      url: "https://whoopsy-sync.your-account-subdomain.workers.dev",
+      description:
+        "The deployed Worker. Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it.",
     },
   ],
 };

@@ -1,6 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { openApiConfig, serialiseOpenApiDocument } from "../src/openapi";
+import { bearerToken } from "../src/utils/tokens";
 
 /**
  * The served contract, checked against the config it was generated from.
@@ -245,12 +246,28 @@ describe("GET /openapi.json", () => {
     expect(document.servers?.[0]?.url).toBe(openApiConfig.servers?.[0]?.url);
   });
 
-  it("keeps the placeholder server rather than inventing a deployed URL", async () => {
+  it("publishes a real origin, and no unsubstituted placeholder, now that the Worker is deployed", async () => {
     const document = await served();
+    const url = document.servers?.[0]?.url ?? "";
 
-    // The account subdomain is a per-account fact that nobody has filled in yet. A guessed one
-    // would be a URL that looks deployable and is not.
-    expect(document.servers?.[0]?.url).toBe("https://whoopsy-sync.<account>.workers.dev");
+    // **The shape rather than the literal**, and the difference is the reason this test survives the
+    // deploy. It used to assert the placeholder string, because nothing had been deployed and a
+    // guessed subdomain would have been a URL that looks deployable and is not. That is now the wrong
+    // assertion in both directions: this deployment's subdomain is one operator's own fact, so
+    // pinning it would make a fork's *correct* document a failing test, while the property the old
+    // test was really guarding — that the published origin is a real `workers.dev` origin and not a
+    // template nobody substituted — survives as a pattern.
+    expect(url).toMatch(/^https:\/\/whoopsy-sync\.[a-z0-9-]+\.workers\.dev$/);
+
+    // **An origin, not an address.** No trailing slash and no path, because a client concatenating
+    // `/v1/...` onto this is doing so blindly and would produce a double slash on one and a correct
+    // URL on the other — a difference that shows up as a 404 on one route and not its sibling.
+    expect(url.endsWith("/")).toBe(false);
+    expect(new URL(url).pathname).toBe("/");
+
+    // And the deployed origin's description is the one place the document states the gate, which is
+    // what a client's author reads before writing an integration against it.
+    expect(document.servers?.[0]?.description).toContain("Authorization");
   });
 
   it("publishes the schemas the routes were declared with", async () => {
@@ -451,6 +468,93 @@ describe("GET /openapi.json", () => {
     const second = await SELF.fetch("https://whoopsy.test/openapi.json");
 
     expect(await first.text()).toBe(await second.text());
+  });
+});
+
+/**
+ * The gate, as the contract describes it.
+ *
+ * **This is the loop that fails when a resource is mounted without the schema**, and it is the only
+ * thing that does. `src/app.ts`'s gate covers `*`, so a new route is *protected* whether or not it
+ * publishes a credential — the request is refused either way, because the middleware runs before the
+ * router does. What a route that forgot `RequestHeaderSchema` loses is not the protection but the
+ * *description* of it: the document would offer a client an operation with no credential parameter
+ * and no possible `401`, and a generated client would have no way to send a token it is required to
+ * send. Green suite, unusable contract. That is the shape of defect this block exists for.
+ *
+ * It reads the document rather than the route files, so it is also what catches the reverse: a route
+ * that publishes the parameter while reaching a handler some other way.
+ */
+describe("every operation's credential, as published", () => {
+  /** The parameters an operation declares, whether under `parameters` or on the path item. */
+  function parametersOf(
+    document: ServedDocument,
+    path: string,
+    method: string,
+  ): { name?: string; in?: string; required?: boolean }[] {
+    const item = document.paths[path] as Record<string, unknown>;
+    const operation = item[method] as { parameters?: unknown[] } | undefined;
+
+    return (operation?.parameters ?? []) as { name?: string; in?: string; required?: boolean }[];
+  }
+
+  it("requires an Authorization header on every /v1 operation, and offers a 401", async () => {
+    const document = await served();
+    const operations = Object.entries(document.paths)
+      .filter(([path]) => path.startsWith("/v1/"))
+      .flatMap(([path, item]) => Object.keys(item).map((method) => ({ path, method })));
+
+    // Twenty-two paths carrying thirty operations. Asserted as a floor rather than an equality,
+    // because the list of paths is pinned in the block above and a second assertion of the same
+    // fact here would be a second thing to update.
+    expect(operations.length).toBeGreaterThanOrEqual(30);
+
+    for (const { path, method } of operations) {
+      const authorization = parametersOf(document, path, method).find(
+        (parameter) => parameter.name === "authorization" && parameter.in === "header",
+      );
+
+      expect(authorization, `${method.toUpperCase()} ${path} publishes no authorization header`).toBeDefined();
+      expect(authorization?.required, `${method.toUpperCase()} ${path} has an optional credential`).toBe(true);
+
+      // Read off the operation's own `responses`, not off the operation: `Object.hasOwn(op, "401")`
+      // is `false` for every operation in this document, which is a green-looking assertion that
+      // measures nothing.
+      const item = document.paths[path] as Record<string, Record<string, unknown>>;
+      const responses = (item[method] ?? {})["responses"] as Record<string, unknown> | undefined;
+
+      expect(
+        Object.hasOwn(responses ?? {}, "401"),
+        `${method.toUpperCase()} ${path} publishes no 401`,
+      ).toBe(true);
+    }
+  });
+
+  it("leaves the two open paths without a credential of their own", async () => {
+    const document = await served();
+
+    // `/health` is a liveness probe and `/openapi.json` is the contract itself; neither is a `/v1`
+    // operation and neither may claim a credential, or the document would describe a Worker a probe
+    // could not reach. (`/openapi.json` is not in `document.paths` at all — asserted above — so the
+    // second half of this is about `/health` alone.)
+    expect(parametersOf(document, "/health", "get")).toEqual([]);
+
+    const health = document.paths["/health"]!.get as { responses?: Record<string, unknown> };
+    expect(Object.hasOwn(health.responses ?? {}, "401")).toBe(false);
+  });
+
+  it("names a credential the runtime would actually accept as well-formed", async () => {
+    // The example is prose, and prose that cannot pass the gate is worse than none: a reader who
+    // copies it into a curl and gets a 401 has been told something false by the contract. `bearerToken`
+    // is the parser the Worker itself uses, so this is the same reading the gate takes.
+    const document = await served();
+    const authorization = parametersOf(document, "/v1/recoveries", "get").find(
+      (parameter) => parameter.name === "authorization",
+    ) as { schema?: { example?: string } } | undefined;
+
+    // The example sits on the parameter's **schema**, not on the parameter — an `example` written one
+    // level up is not published at all, which is the same silent drop the description would suffer.
+    expect(bearerToken(authorization?.schema?.example)).not.toBeNull();
   });
 });
 

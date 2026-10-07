@@ -270,7 +270,7 @@ public protocol CloudSync: Sendable {
 ///   looks exactly like a connectivity problem if you only ask "did I get data", and degrading over it
 ///   would silently paper over a client and a server that disagree about the shape of a day. It is a
 ///   bug, so it surfaces as one.
-public enum CloudSyncError: Error, Equatable, Sendable {
+public enum CloudSyncError: Error, LocalizedError, Equatable, Sendable {
     /// No answer at all. The only case a caller may degrade to local storage over.
     case unreachable(message: String)
 
@@ -280,4 +280,26 @@ public enum CloudSyncError: Error, Equatable, Sendable {
 
     /// An answer this client could not read.
     case malformed(message: String)
+
+    /// **The reason this enum conforms to `LocalizedError`, and it is about one screen.** Every one of
+    /// these carries a sentence written for a person, and every one of them reaches a reader the same
+    /// way: `HomeViewModel` and its siblings put `error.localizedDescription` into an `errorMessage`
+    /// that a view draws. Without this conformance that description is the generic
+    /// *"The operation couldn't be completed. (Whoopsy.CloudSyncError error 1.)"* — the sentence is
+    /// discarded on the way to the only place it was going to be read.
+    ///
+    /// It matters most for `.rejected`, which is the case a misconfigured deployment produces: a build
+    /// whose token does not match the Worker's secret gets a `401` on every cloud read, and the two
+    /// possible outcomes are a screen that says the credential was refused and a screen that says
+    /// nothing legible at all.
+    public var errorDescription: String? {
+        switch self {
+        case .unreachable(let message):
+            return message
+        case .rejected(let code, let message):
+            return "\(message) (\(code))"
+        case .malformed(let message):
+            return message
+        }
+    }
 }

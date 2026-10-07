@@ -1,4 +1,5 @@
 import { SELF, env } from "cloudflare:test";
+import { authHeaders } from "../Support/auth";
 import { beforeEach, describe, expect, it } from "vitest";
 import { MAX_BATCH_STRAINS, MAX_STRAIN_WINDOW_DAYS } from "../../src/services";
 import { deriveUserId, MIN_KEY_LENGTH } from "../../src/utils/identity";
@@ -126,19 +127,19 @@ function unmeasuredDay(overrides: Partial<Omit<StrainWire, "date">> = {}): Omit<
 function put(date: string, body: unknown, userId = ALICE): Promise<Response> {
   return SELF.fetch(`${BASE}/v1/strains/${date}`, {
     method: "PUT",
-    headers: { "content-type": "application/json", "x-whoopsy-user-id": userId },
+    headers: { "content-type": "application/json", ...authHeaders(userId) },
     body: JSON.stringify(body),
   });
 }
 
 function read(path: string, userId = ALICE): Promise<Response> {
-  return SELF.fetch(`${BASE}${path}`, { headers: { "x-whoopsy-user-id": userId } });
+  return SELF.fetch(`${BASE}${path}`, { headers: { ...authHeaders(userId) } });
 }
 
 function postBatch(body: unknown, userId = ALICE): Promise<Response> {
   return SELF.fetch(`${BASE}/v1/strains/batch`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-whoopsy-user-id": userId },
+    headers: { "content-type": "application/json", ...authHeaders(userId) },
     body: JSON.stringify(body),
   });
 }
@@ -563,7 +564,7 @@ describe("the partition", () => {
 
 describe("identity", () => {
   it("refuses a request with no X-Whoopsy-User-Id", async () => {
-    const response = await SELF.fetch(`${BASE}/v1/strains?days=2&endingOn=2026-08-22`);
+    const response = await SELF.fetch(`${BASE}/v1/strains?days=2&endingOn=2026-08-22`, { headers: { ...authHeaders() } });
 
     expect(response.status).toBe(400);
     expect((await response.json() as ErrorWire).error.code).toBe("invalid_request");
@@ -594,7 +595,7 @@ describe("identity", () => {
   it("refuses a header on the batch endpoint too", async () => {
     const response = await SELF.fetch(`${BASE}/v1/strains/batch`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify({ rows: batchRows("2026-08-22", 1) }),
     });
 

@@ -98,10 +98,13 @@ public final class DIContainer: @unchecked Sendable {
 
     /// Whether this build has a database behind it at all.
     ///
-    /// `false` for a clone that has never set `WHOOPSYAPIBaseURL`, for the host test runner, and for
-    /// every SwiftUI preview — `preview` is `shared`'s own initialiser with `useMockBLE: true`, so it
-    /// reads the same `Info.plist` and finds the same absent key. The `STORAGE` pane uses this to say
-    /// so in words rather than to offer a control that could only fail.
+    /// `false` for a clone that has never set `WHOOPSYAPIBaseURL`, for one that has set it without also
+    /// setting `WHOOPSYAPIToken`, for the host test runner, and for every SwiftUI preview — `preview`
+    /// is `shared`'s own initialiser with `useMockBLE: true`, so it reads the same `Info.plist` and
+    /// finds the same absent keys. **The two keys are one answer**, because the Worker refuses every
+    /// `/v1` request without a credential: a hostname on its own is not a database this build can read,
+    /// it is a socket that collects a `401`. The `STORAGE` pane uses this to say so in words rather
+    /// than to offer a control that could only fail.
     public let isCloudConfigured: Bool
 
     @MainActor public let locationTracking: any LocationTracking
@@ -193,10 +196,16 @@ public final class DIContainer: @unchecked Sendable {
         let syncKeyStore = KeychainSyncKeyStore()
         self.syncKeyStore = syncKeyStore
         self.syncStatus = SyncStatusLog()
-        // Read once and stored: the pane that reports this and the wiring immediately below that acts
-        // on it must not be able to disagree about whether this build has a database behind it.
+        // Read once each and stored: the pane that reports this and the wiring immediately below that
+        // acts on it must not be able to disagree about whether this build has a database behind it.
+        //
+        // **Both halves are read here because either one alone is not a configured build.** A base URL
+        // with no token is an install that opens a socket on every read to collect a `401` — the Worker
+        // refuses every `/v1` request until its own `SYNC_API_TOKEN` is set and matched — so the pair is
+        // read as one decision and `nil` on either side means the same thing. See `isCloudConfigured`.
         let apiBaseURL = WhoopsyAPIClient.configuredBaseURL()
-        self.isCloudConfigured = apiBaseURL != nil
+        let apiToken = WhoopsyAPIClient.configuredToken()
+        self.isCloudConfigured = apiBaseURL != nil && apiToken != nil
         self.protocolCatalog = WhoopProtocolCatalog()
         self.bleRepository = WhoopBLEDeviceRepositoryImpl(
             useMock: useMockBLE, strapModelRepository: strapModels)
@@ -207,12 +216,13 @@ public final class DIContainer: @unchecked Sendable {
         // of "local to DB is seamless": no screen learns a second read path, because the port's four
         // methods are the same four either way.
         //
-        // The `else` is not a degraded mode. A build with no `WHOOPSYAPIBaseURL` has no database to
-        // route to, so a decorator there would be a hop that can only add a failure — every call would
-        // consult a destination that can never send it anywhere, and take an `await` to do it. That is
-        // the host runner, every SwiftUI preview (`preview` is this initialiser with `useMockBLE:
-        // true`), and every fresh clone, so the unconfigured branch is the one most builds take and it
-        // is byte-identical to the app before this feature existed.
+        // The `else` is not a degraded mode. A build with no `WHOOPSYAPIBaseURL` — or with one and no
+        // `WHOOPSYAPIToken`, which is the same build — has no database to route to, so a decorator
+        // there would be a hop that can only add a failure: every call would consult a destination that
+        // can never send it anywhere, and take an `await` to do it. That is the host runner, every
+        // SwiftUI preview (`preview` is this initialiser with `useMockBLE: true`), and every fresh
+        // clone, so the unconfigured branch is the one most builds take and it is byte-identical to the
+        // app before this feature existed.
         //
         // Built **before** `whoopExportImport` below, and that ordering is load-bearing: the importer
         // holds whatever it is handed for the life of the process, so a plain repository here would
@@ -227,9 +237,9 @@ public final class DIContainer: @unchecked Sendable {
         // of the key store and one base URL behind every request the app makes. Two constructions would
         // be two `WhoopsyAPIClient`s reading the same Keychain.
         let cloud: any CloudSync
-        if let apiBaseURL {
+        if let apiBaseURL, let apiToken {
             let http = HTTPCloudSync(
-                client: WhoopsyAPIClient(baseURL: apiBaseURL, keyStore: syncKeyStore))
+                client: WhoopsyAPIClient(baseURL: apiBaseURL, token: apiToken, keyStore: syncKeyStore))
             cloud = http
             self.recoveryRepository = CloudRecoveryRepository(
                 local: GRDBRecoveryRepository(db: db),
@@ -237,7 +247,11 @@ public final class DIContainer: @unchecked Sendable {
                 settingsStore: syncSettings,
                 status: syncStatus)
         } else {
-            cloud = UnconfiguredCloudSync()
+            // The key named is whichever half is actually absent, so the STORAGE pane's sentence points
+            // at the line to fill in rather than at the one that is already correct.
+            cloud = UnconfiguredCloudSync(
+                missingKey: apiBaseURL == nil
+                    ? WhoopsyAPIClient.baseURLInfoKey : WhoopsyAPIClient.tokenInfoKey)
             self.recoveryRepository = GRDBRecoveryRepository(db: db)
         }
         // One engine, seven descriptors, and every store the same database object. The `db` is handed

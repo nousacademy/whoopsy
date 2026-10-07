@@ -1,4 +1,5 @@
 import { SELF, env } from "cloudflare:test";
+import { authHeaders } from "../Support/auth";
 import { beforeEach, describe, expect, it } from "vitest";
 import { MAX_BATCH_RECEPTIVE_INACTIVITIES, MAX_WINDOW_DAYS } from "../../src/services";
 import { deriveUserId, MIN_KEY_LENGTH } from "../../src/utils/identity";
@@ -212,19 +213,19 @@ function without<K extends keyof ReceptiveInactivityFields>(
 function put(id: string, body: unknown, userId = ALICE): Promise<Response> {
   return SELF.fetch(`${BASE}/v1/receptive-inactivities/${id}`, {
     method: "PUT",
-    headers: { "content-type": "application/json", "x-whoopsy-user-id": userId },
+    headers: { "content-type": "application/json", ...authHeaders(userId) },
     body: JSON.stringify(body),
   });
 }
 
 function read(path: string, userId = ALICE): Promise<Response> {
-  return SELF.fetch(`${BASE}${path}`, { headers: { "x-whoopsy-user-id": userId } });
+  return SELF.fetch(`${BASE}${path}`, { headers: { ...authHeaders(userId) } });
 }
 
 function postBatch(body: unknown, userId = ALICE): Promise<Response> {
   return SELF.fetch(`${BASE}/v1/receptive-inactivities/batch`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-whoopsy-user-id": userId },
+    headers: { "content-type": "application/json", ...authHeaders(userId) },
     body: JSON.stringify(body),
   });
 }
@@ -588,6 +589,7 @@ describe("identity", () => {
   it("refuses a request with no X-Whoopsy-User-Id", async () => {
     const response = await SELF.fetch(
       `${BASE}/v1/receptive-inactivities?days=2&endingOn=2026-08-22`,
+      { headers: { ...authHeaders() } },
     );
 
     expect(response.status).toBe(400);

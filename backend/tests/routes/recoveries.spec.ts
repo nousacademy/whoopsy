@@ -1,4 +1,5 @@
 import { SELF, env } from "cloudflare:test";
+import { authHeaders } from "../Support/auth";
 import { beforeEach, describe, expect, it } from "vitest";
 import { MAX_BATCH_ROWS, MAX_WINDOW_DAYS } from "../../src/services";
 import { deriveUserId, MIN_KEY_LENGTH } from "../../src/utils/identity";
@@ -102,19 +103,19 @@ function measuredDay(overrides: Partial<RecoveryWire> = {}): Omit<RecoveryWire, 
 function put(date: string, body: unknown, userId = ALICE): Promise<Response> {
   return SELF.fetch(`${BASE}/v1/recoveries/${date}`, {
     method: "PUT",
-    headers: { "content-type": "application/json", "x-whoopsy-user-id": userId },
+    headers: { "content-type": "application/json", ...authHeaders(userId) },
     body: JSON.stringify(body),
   });
 }
 
 function read(path: string, userId = ALICE): Promise<Response> {
-  return SELF.fetch(`${BASE}${path}`, { headers: { "x-whoopsy-user-id": userId } });
+  return SELF.fetch(`${BASE}${path}`, { headers: { ...authHeaders(userId) } });
 }
 
 function postBatch(body: unknown, userId = ALICE): Promise<Response> {
   return SELF.fetch(`${BASE}/v1/recoveries/batch`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-whoopsy-user-id": userId },
+    headers: { "content-type": "application/json", ...authHeaders(userId) },
     body: JSON.stringify(body),
   });
 }
@@ -326,8 +327,9 @@ describe("the partition", () => {
     await put("2026-08-22", measuredDay(), ALICE);
 
     expect((await read("/v1/recoveries/2026-08-22", ALICE)).status).toBe(200);
-    // Nothing verifies the header yet, so this is the `user_id` column doing real work: the row is
-    // there, and a different owner cannot reach it.
+    // Both requests carry the same valid token, so the gate is not what separates them — this is the
+    // `user_id` column doing real work: the row is there, and a different owner cannot reach it. The
+    // shared credential admits everyone; the partition is the only thing here that is per-install.
     expect((await read("/v1/recoveries/2026-08-22", BOB)).status).toBe(404);
 
     const list = await read("/v1/recoveries?days=2&endingOn=2026-08-22", BOB);
@@ -365,7 +367,7 @@ describe("the partition", () => {
 
 describe("identity", () => {
   it("refuses a request with no X-Whoopsy-User-Id", async () => {
-    const response = await SELF.fetch(`${BASE}/v1/recoveries?days=2&endingOn=2026-08-22`);
+    const response = await SELF.fetch(`${BASE}/v1/recoveries?days=2&endingOn=2026-08-22`, { headers: { ...authHeaders() } });
 
     expect(response.status).toBe(400);
     expect((await response.json() as ErrorWire).error.code).toBe("invalid_request");

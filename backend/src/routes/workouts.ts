@@ -1,6 +1,6 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Workout } from "../domain";
-import { UserHeaderSchema } from "../dto/shared";
+import { RequestHeaderSchema } from "../dto/shared";
 import {
   WorkoutBatchResultSchema,
   WorkoutBatchWriteSchema,
@@ -16,7 +16,7 @@ import { WorkoutService } from "../services";
 import { utcToday } from "../utils/days";
 import { apiError } from "../utils/errors";
 import { deriveUserId } from "../utils/identity";
-import { errorResponse, validationHook } from "./errors";
+import { errorResponse, unauthorizedResponse, validationHook } from "./errors";
 
 /**
  * The four `workouts` endpoints, and nothing else.
@@ -133,9 +133,10 @@ const listWorkouts = createRoute({
     "Every session filed on a day in an inclusive window ending on `endingOn`, oldest first. The answer is a bare array with **no padding**: a day inside the window holding no session is simply absent, and an empty array means nothing in the window was recorded. A day holds several sessions, so there is no per-day slot for one to occupy.",
   request: {
     query: WorkoutWindowQuerySchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The sessions in the window, oldest first, each with its route and splits.",
       content: { "application/json": { schema: z.array(WorkoutSchema) } },
@@ -152,9 +153,10 @@ const readWorkout = createRoute({
     "One session and everything filed under it, or `404 not_found` if this partition holds no such id. The children come back with it — a caller never fetches a route separately, because a route has no identity outside the session that owns it.",
   request: {
     params: IdParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The session, with its route and splits in order.",
       content: { "application/json": { schema: WorkoutSchema } },
@@ -172,13 +174,14 @@ const writeWorkout = createRoute({
     "Insert or replace the session and its children — the upsert the app's own `saveWorkout` is. **A write replaces the route and the splits**, so a body must carry them: an omitted `route` is a `400`, not a silent deletion of a stored path. Answers with the row **read back from the database**, so a caller can see that a `null` stayed `null` rather than being folded into a `0` or an empty array.",
   request: {
     params: IdParamSchema,
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: WorkoutWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "The stored session, as the database holds it.",
       content: { "application/json": { schema: WorkoutSchema } },
@@ -194,13 +197,14 @@ const writeWorkoutBatch = createRoute({
   description:
     "Insert or replace up to `MAX_BATCH_WORKOUTS` sessions in one request — the shape the app's first sync needs, where a six-hundred-and-seventy-three-session history is four of these instead of six hundred and seventy-three round trips. Every session is keyed on the same `(userId, id)` pair the single-session `PUT` writes, so a chunk replayed after a timeout is safe: **it rewrites each session with the values it already holds and the row count does not move.** The whole chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — a session the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection. `written` counts sessions and not rows.",
   request: {
-    headers: UserHeaderSchema,
+    headers: RequestHeaderSchema,
     body: {
       required: true,
       content: { "application/json": { schema: WorkoutBatchWriteSchema } },
     },
   },
   responses: {
+    401: unauthorizedResponse,
     200: {
       description: "How many sessions the database reported writing.",
       content: { "application/json": { schema: WorkoutBatchResultSchema } },
