@@ -63,12 +63,25 @@ import SwiftUI
     /// a control whose first press would write the default over the stored answer.
     public private(set) var hasLoaded = false
 
-    /// Whether this build was given a base URL at all.
+    /// The `Info.plist` key this build is missing, or `nil` when it has both — **and the pane's one
+    /// branch condition**.
     ///
     /// Read from `DIContainer` rather than probed here, because it is the container that decides which
     /// `CloudSync` the engine got, and a second answer derived a second way is a second answer free to
     /// disagree with the object doing the work.
-    public let isCloudConfigured: Bool
+    ///
+    /// **It carries the key rather than a bare `Bool`, because there are two keys now and the pane's
+    /// sentence has to name the one that is empty.** A build missing only `WHOOPSYAPIToken` has a
+    /// correct `WHOOPSYAPIBaseURL`, and a sentence pointing at the address would send its reader to a
+    /// line they already filled in.
+    public let missingCloudKey: String?
+
+    /// Whether this build was given a database to talk to.
+    ///
+    /// **Derived from `missingCloudKey` rather than passed beside it**, so the button's gate and the
+    /// pane's sentence cannot come from two answers that agree today. There is one stored fact here and
+    /// two spellings of it: a build is configured exactly when no key is absent.
+    public var isCloudConfigured: Bool { missingCloudKey == nil }
 
     /// Where data is stored: this phone, or the database. **A switch and not a move** — see the type's
     /// own doc comment, and `SyncSettings.Destination`.
@@ -109,11 +122,11 @@ import SwiftUI
     public init(
         engine: SyncEngine,
         keyStore: any SyncKeyStore,
-        isCloudConfigured: Bool
+        missingCloudKey: String?
     ) {
         self.engine = engine
         self.keyStore = keyStore
-        self.isCloudConfigured = isCloudConfigured
+        self.missingCloudKey = missingCloudKey
     }
 
     // MARK: - What the pane draws

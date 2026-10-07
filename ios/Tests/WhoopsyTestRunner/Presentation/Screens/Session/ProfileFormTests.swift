@@ -271,10 +271,17 @@ enum ProfileFormTests {
         assertTest(
             !ProfileDashboardView.storageKeyNote.isEmpty
                 && !ProfileDashboardView.storageResourcesNote.isEmpty
-                && ProfileDashboardView.storageNoDatabaseNotice.contains(WhoopsyAPIClient.baseURLInfoKey),
+                && ProfileDashboardView.storageNoDatabaseNotice(missingKey: WhoopsyAPIClient.baseURLInfoKey)
+                    .contains(WhoopsyAPIClient.baseURLInfoKey)
+                && ProfileDashboardView.storageNoDatabaseNotice(missingKey: WhoopsyAPIClient.tokenInfoKey)
+                    .contains(WhoopsyAPIClient.tokenInfoKey),
             "…the explanatory paragraphs are present, and the unconfigured build's sentence names the "
                 + "`Info.plist` key that is missing rather than reporting a network fault that never "
-                + "happened")
+                + "happened. **Both keys are exercised, and the second is the one that was wrong**: the "
+                + "sync needs an address *and* a credential, so a build holding one and missing the other "
+                + "is a state that exists — and this sentence used to be a constant naming the address, "
+                + "which on that build sent its reader to check a line they had already filled in. The "
+                + "key is a parameter now, and this is the pair of calls that says so")
         assertTest(
             ![ProfileDashboardView.storageKeyNote,
               ProfileDashboardView.storageDestinationNote(for: .device),
@@ -282,7 +289,7 @@ enum ProfileFormTests {
               ProfileDashboardView.storageRangeNote(isEnabled: true),
               ProfileDashboardView.storageRangeNote(isEnabled: false),
               ProfileDashboardView.storageResourcesNote,
-              ProfileDashboardView.storageNoDatabaseNotice]
+              ProfileDashboardView.storageNoDatabaseNotice(missingKey: WhoopsyAPIClient.baseURLInfoKey)]
                 .contains { $0.contains("**") },
             "…and none of the pane's seven paragraphs carries Markdown. This is the `Text` trap this repo "
                 + "already carries: a `String` built with `+` takes the `StringProtocol` overload, which "
@@ -352,9 +359,14 @@ enum ProfileFormTests {
             "`storageTab` draws the `SYNCED RESOURCES` list twice — once in each arm — so neither a "
                 + "configured nor an unconfigured build can open the pane to a list that is missing")
         assertTest(
-            pane.components(separatedBy: "storageNoDatabaseNotice").count == 2,
-            "…and the `else` arm is in the same text, drawing the sentence that names the `Info.plist` "
-                + "key that is missing rather than reporting a fault that never happened")
+            pane.components(separatedBy: "storageNoDatabaseNotice").count == 2
+                && pane.components(separatedBy: "missingCloudKey").count == 2,
+            "…and the other arm is in the same text, drawing the sentence that names whichever "
+                + "`Info.plist` key is missing rather than reporting a fault that never happened. **The "
+                + "arm is bound to `missingCloudKey`**, which is the second count: the pane branches on "
+                + "*which key* is absent rather than on a flag, and that is what lets the sentence name "
+                + "the right line — a `Bool` here would make the two arms' conditions the same while "
+                + "leaving the sentence with nothing to interpolate")
         assertTest(
             pane.components(separatedBy: "destinationRow").count == 2,
             "…beside the configured arm's own destination row, once — so the two counts above are two "

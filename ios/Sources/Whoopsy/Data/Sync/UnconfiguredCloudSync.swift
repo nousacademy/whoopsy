@@ -20,7 +20,8 @@ import Foundation
 /// recovery read for a settings store that can never mark a day cloud-held — while the engine is
 /// reached only when a user opens `STORAGE` and presses a button, and the pane needs an object to hold
 /// regardless. Handing it `nil` instead would be a second spelling of *this build has no database*,
-/// free to disagree with `DIContainer.isCloudConfigured`, which is the one the pane actually draws.
+/// free to disagree with `DIContainer.missingCloudKey`, which is the fact the pane draws its sentence
+/// from and the same value this object was constructed with.
 ///
 /// This is `UnavailableOfflineMaps`' shape one layer down, and that type's own argument applies here
 /// verbatim: a build whose capability is absent gets an implementation that behaves the way the app

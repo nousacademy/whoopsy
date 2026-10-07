@@ -234,13 +234,22 @@ public struct ProfileDashboardView: View {
     /// for a reason the screen had already been told, and the reader would be left to work out that the
     /// app was never configured. The key names the `Info.plist` entry rather than the URL, because the
     /// URL is build configuration and the entry is the thing a reader would set — see
-    /// `WhoopsyAPIClient.baseURLInfoKey` and `UnconfiguredCloudSync`, which is the object that fails
-    /// this build's requests and says the same sentence.
-    public nonisolated static let storageNoDatabaseNotice = """
-        This build has no database behind it, so there is nowhere for your days to go. \
-        \(WhoopsyAPIClient.baseURLInfoKey) is not set in Info.plist. Until it is, every day stays on \
-        this phone and nothing leaves it.
+    /// `WhoopsyAPIClient.baseURLInfoKey`, `WhoopsyAPIClient.tokenInfoKey` and `UnconfiguredCloudSync`,
+    /// which is the object that fails this build's requests and names the same key.
+    ///
+    /// **A function of the key rather than a constant, and the two-key build is the whole reason.** The
+    /// sync needs an address *and* a credential, so a build can be missing either one while the other is
+    /// already correct — and a fixed sentence naming the address would, on the build that has one and no
+    /// token, send its reader to check a line they filled in. The key is passed in from the view model
+    /// rather than chosen here, because `DIContainer` is what decided which half was absent and a second
+    /// decision here would be free to disagree with the object doing the refusing.
+    public nonisolated static func storageNoDatabaseNotice(missingKey: String) -> String {
         """
+        This build has no database behind it, so there is nowhere for your days to go. \
+        \(missingKey) is not set in Info.plist. Until it is, every day stays on this phone and \
+        nothing leaves it.
+        """
+    }
 
     public var body: some View {
         Form {
@@ -804,7 +813,25 @@ public struct ProfileDashboardView: View {
     /// `SyncStorageViewModel.runTitle`.
     @ViewBuilder
     private var storageTab: some View {
-        if syncViewModel.isCloudConfigured {
+        // **The branch condition is the missing key itself**, so the arm that names a key is the arm
+        // that has one and there is no fallback to invent. `isCloudConfigured` is this property's
+        // nil-ness — see `SyncStorageViewModel`, where it is defined that way — so branching on either
+        // would be the same decision written twice.
+        if let missingKey = syncViewModel.missingCloudKey {
+            Section {
+                Text(Self.storageNoDatabaseNotice(missingKey: missingKey))
+                    .font(.callout)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            // **The list is drawn in this arm too, and it is the one row that survives the branch.** See
+            // `storageResourcesEyebrow`: *what would move* is a fact about this app rather than about
+            // this build's configuration, and it is the answer a reader came to the pane for. What
+            // changes between the arms is the sentence above it, not the list.
+            Section {
+                syncedResourcesRow
+            }
+        } else {
             Section {
                 keyRow
             }
@@ -872,20 +899,6 @@ public struct ProfileDashboardView: View {
                     Text(syncViewModel.status)
                         .font(.footnote)
                 }
-            }
-        } else {
-            Section {
-                Text(Self.storageNoDatabaseNotice)
-                    .font(.callout)
-                    .foregroundStyle(Theme.textSecondary)
-            }
-
-            // **The list is drawn in this arm too, and it is the one row that survives the branch.** See
-            // `storageResourcesEyebrow`: *what would move* is a fact about this app rather than about
-            // this build's configuration, and it is the answer a reader came to the pane for. What
-            // changes between the arms is the sentence above it, not the list.
-            Section {
-                syncedResourcesRow
             }
         }
     }

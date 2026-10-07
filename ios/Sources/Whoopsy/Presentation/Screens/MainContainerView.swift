@@ -97,16 +97,17 @@ public struct MainContainerView: View {
             fasting: container.fastingImport,
             inactivities: container.inactivityImport,
             exportUseCase: container.exportLocalDataUseCase)
-        // One engine and a `Bool`, and the split between them is the pane's whole shape: the engine walks
-        // all seven resources, so there is no per-resource object for this pane to hold — the selector
-        // that chose between three use cases went with the three cutoffs that justified them. The `Bool`
-        // is not a second object but a fact about this build — whether it was given a base URL at all —
-        // and the container is the only thing that decides which `CloudSync` the engine got. See
-        // `SyncStorageViewModel.isCloudConfigured`.
+        // One engine and the key this build is missing, and the split between them is the pane's whole
+        // shape: the engine walks all seven resources, so there is no per-resource object for this pane
+        // to hold — the selector that chose between three use cases went with the three cutoffs that
+        // justified them. The key is not a second object but a fact about this build — which half of
+        // the sync's credential `Info.plist` does not carry, or `nil` when it carries both — and the
+        // container is the only thing that decides which `CloudSync` the engine got. See
+        // `SyncStorageViewModel.missingCloudKey`.
         self.syncViewModel = SyncStorageViewModel(
             engine: container.syncEngine,
             keyStore: container.syncKeyStore,
-            isCloudConfigured: container.isCloudConfigured)
+            missingCloudKey: container.missingCloudKey)
         self.settingsViewModel = SettingsViewModel(repository: container.preferencesRepository)
         self.deviceViewModel = DeviceViewModel(
             manage: container.manageBLEConnectionUseCase,

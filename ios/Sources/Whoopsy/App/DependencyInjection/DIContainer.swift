@@ -81,8 +81,8 @@ public final class DIContainer: @unchecked Sendable {
     /// `await` for a settings store that can never route a read anywhere. This is not a hop — nothing
     /// calls it unless a user opens `STORAGE` and presses a button — and the pane needs an object to
     /// ask even when there is no database, because *there is no database behind this build* is a
-    /// sentence it draws from `isCloudConfigured`. A `nil` here would be a second spelling of that same
-    /// fact, free to disagree with the first.
+    /// sentence it draws from `missingCloudKey` one property down. A `nil` here would be a second
+    /// spelling of that same fact, free to disagree with the first.
     ///
     /// The cloud half is `UnconfiguredCloudSync` when there is no base URL: every method throws
     /// `.unreachable` with the reason, which is the one error a caller may degrade over, so the failure
@@ -96,16 +96,31 @@ public final class DIContainer: @unchecked Sendable {
     /// with no column, so a push built on the entity would invent them.
     public let syncEngine: SyncEngine
 
-    /// Whether this build has a database behind it at all.
+    /// The `Info.plist` key this build is missing, or `nil` when it has both.
     ///
-    /// `false` for a clone that has never set `WHOOPSYAPIBaseURL`, for one that has set it without also
-    /// setting `WHOOPSYAPIToken`, for the host test runner, and for every SwiftUI preview — `preview`
-    /// is `shared`'s own initialiser with `useMockBLE: true`, so it reads the same `Info.plist` and
-    /// finds the same absent keys. **The two keys are one answer**, because the Worker refuses every
-    /// `/v1` request without a credential: a hostname on its own is not a database this build can read,
-    /// it is a socket that collects a `401`. The `STORAGE` pane uses this to say so in words rather
-    /// than to offer a control that could only fail.
-    public let isCloudConfigured: Bool
+    /// **It is the one answer to *has this build got a database*, and it is a key rather than a `Bool`
+    /// for the pane's sake.** A build can be missing the address, or missing the credential while the
+    /// address is already correct, and the `STORAGE` pane's sentence has to name the line the operator
+    /// would go and fill in — the failure being a person re-pasting a token into the wrong key because
+    /// the screen told them the other one was empty. `UnconfiguredCloudSync` is constructed with this
+    /// same value, so the object that fails this build's requests and the sentence that describes them
+    /// are one answer rather than two.
+    ///
+    /// **A `Bool` beside it would be the same fact spelled twice**, which is why there is not one: the
+    /// pane's `isCloudConfigured` and the branch that installs the routing decorator are both this
+    /// property's nil-ness, and `SyncStorageViewModel` is where that second spelling lives because it is
+    /// the pane's own question rather than the container's.
+    ///
+    /// This is `false`-shaped for a clone that has never set `WHOOPSYAPIBaseURL`, for one that has set
+    /// it without also setting `WHOOPSYAPIToken`, for the host test runner, and for every SwiftUI
+    /// preview — `preview` is `shared`'s own initialiser with `useMockBLE: true`, so it reads the same
+    /// `Info.plist` and finds the same absent keys. **The two keys are one answer**, because the Worker
+    /// refuses every `/v1` request without a credential: a hostname on its own is not a database this
+    /// build can read, it is a socket that collects a `401`.
+    ///
+    /// `DIContainer` reads it off `WhoopsyAPIClient`'s two `configured…` accessors, which already treat
+    /// a missing key and a whitespace-only one alike.
+    public let missingCloudKey: String?
 
     @MainActor public let locationTracking: any LocationTracking
 
@@ -202,10 +217,10 @@ public final class DIContainer: @unchecked Sendable {
         // **Both halves are read here because either one alone is not a configured build.** A base URL
         // with no token is an install that opens a socket on every read to collect a `401` — the Worker
         // refuses every `/v1` request until its own `SYNC_API_TOKEN` is set and matched — so the pair is
-        // read as one decision and `nil` on either side means the same thing. See `isCloudConfigured`.
+        // read as one decision and `nil` on either side means the same thing. See `missingCloudKey`,
+        // which is where the decision is published.
         let apiBaseURL = WhoopsyAPIClient.configuredBaseURL()
         let apiToken = WhoopsyAPIClient.configuredToken()
-        self.isCloudConfigured = apiBaseURL != nil && apiToken != nil
         self.protocolCatalog = WhoopProtocolCatalog()
         self.bleRepository = WhoopBLEDeviceRepositoryImpl(
             useMock: useMockBLE, strapModelRepository: strapModels)
@@ -246,13 +261,18 @@ public final class DIContainer: @unchecked Sendable {
                 cloud: http,
                 settingsStore: syncSettings,
                 status: syncStatus)
+            self.missingCloudKey = nil
         } else {
-            // The key named is whichever half is actually absent, so the STORAGE pane's sentence points
-            // at the line to fill in rather than at the one that is already correct.
-            cloud = UnconfiguredCloudSync(
-                missingKey: apiBaseURL == nil
-                    ? WhoopsyAPIClient.baseURLInfoKey : WhoopsyAPIClient.tokenInfoKey)
+            // **The key named is the half that is actually absent**, and it is named once: the object
+            // below carries it as its own refusal message and the container publishes the same value
+            // for the pane's sentence, so a reader is pointed at the line to fill in rather than at the
+            // one that is already correct. `WHOOPSYAPIBaseURL` and `WHOOPSYAPIToken` are the two keys
+            // this can be — see `Info.plist`, where both are documented as one decision.
+            let absent = apiBaseURL == nil
+                ? WhoopsyAPIClient.baseURLInfoKey : WhoopsyAPIClient.tokenInfoKey
+            cloud = UnconfiguredCloudSync(missingKey: absent)
             self.recoveryRepository = GRDBRecoveryRepository(db: db)
+            self.missingCloudKey = absent
         }
         // One engine, seven descriptors, and every store the same database object. The `db` is handed
         // over rather than a repository because the sync moves *records*: `RecoveryRecord` is the only
