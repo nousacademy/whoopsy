@@ -28,8 +28,9 @@
 //     is handed to the session, the `USE OFFLINE MAP` switch is never offered and the route card
 //     draws `MapKit`. That is the feature's safety property.
 //   - `WHOOPSY_API_BASE_URL` / `WHOOPSY_API_TOKEN` empty: `DIContainer` installs `UnconfiguredCloudSync`
-//     and leaves `isCloudConfigured` false, so the STORAGE pane draws its sentence and **no socket is
-//     ever opened**. The app is exactly as it was before the sync existed.
+//     and publishes `missingCloudKey`, naming whichever of the two is absent, so the STORAGE pane draws
+//     its sentence and **no socket is ever opened**. The app is exactly as it was before the sync
+//     existed.
 //
 // To turn either on, copy `Whoopsy.local.xcconfig.example` to `Whoopsy.local.xcconfig` in this
 // directory and fill in what you have. That file is gitignored — see `.gitignore` — so it stays out

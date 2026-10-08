@@ -5,7 +5,7 @@ import { writeFileSync } from "node:fs";
 // from `node:url` is the same class at runtime and the right one at compile time.
 import { fileURLToPath, URL } from "node:url";
 import { createApp } from "../src/app";
-import { openApiConfig, serialiseOpenApiDocument } from "../src/openapi";
+import { RELATIVE_ORIGIN, openApiConfig, serialiseOpenApiDocument } from "../src/openapi";
 
 /**
  * Writes the API contract to `shared/openapi.json`.
@@ -33,13 +33,24 @@ import { openApiConfig, serialiseOpenApiDocument } from "../src/openapi";
  * resolver still demands an explicit extension on every relative import, and this Worker's sources
  * are written extensionlessly under `moduleResolution: "bundler"` — so `node` fails on the first
  * `import` above. `tsx` resolves bundler-style, which is the only reason it is a devDependency.
+ *
+ * **The committed contract carries a relative origin and the served one an absolute, and that is the
+ * asymmetry between the two readings.** `servers[0].url` is the only field in the document that is a
+ * fact about a *deployment* rather than about the API — and this file is **committed**, so it must not
+ * name one. It writes `RELATIVE_ORIGIN`, the OpenAPI relative form meaning *the origin this document
+ * was fetched from*: true of every deployment that serves it, and a single operator's subdomain in a
+ * repository everyone reads if it were a hostname instead. The Worker's own reading takes the
+ * absolute form, `app.ts` naming the origin each request arrived on, which is why the shell gate
+ * drops exactly that line. **There is nothing to configure here**, deliberately: an env var that let
+ * a clone write its own hostname into this file would reintroduce the one thing the relative origin
+ * exists to keep out of it.
  */
 
 const target = fileURLToPath(new URL("../../shared/openapi.json", import.meta.url));
 const relativeTarget = "../shared/openapi.json";
 
 try {
-  const document = createApp().getOpenAPI31Document(openApiConfig);
+  const document = createApp().getOpenAPI31Document(openApiConfig(RELATIVE_ORIGIN));
 
   writeFileSync(target, serialiseOpenApiDocument(document), "utf8");
 

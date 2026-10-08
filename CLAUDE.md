@@ -54,8 +54,13 @@ repository.** `SYNC_API_TOKEN` is one value in three homes — `backend/.dev.var
 `.dev.vars.example`) for `wrangler dev`, `ios/App/Config/Whoopsy.local.xcconfig` (`WHOOPSY_API_TOKEN`)
 for the app, and `npx wrangler secret put SYNC_API_TOKEN` for the deployment. `vitest.config.ts` binds
 its own fixture token as `SYNC_API_TOKEN`, deliberately as the one binding that is *not* in
-`wrangler.toml`, so `npm test` stays runnable on a fresh clone. **The Worker answers `500`, not `401`,
-when it has no secret** — an unarmed deployment is the operator's problem rather than the caller's, and
+`wrangler.toml`, so `npm test` stays runnable on a fresh clone. **That file carries one setting and
+nothing else — the token.** The contract's `servers[0].url` is not configured anywhere: the committed
+`shared/openapi.json` carries `/`, the OpenAPI form meaning *the origin this document was fetched
+from*, because that file is committed and a hostname in it would be one operator's subdomain in a
+repository everyone reads, while a deployment names its own origin in the document it serves. **The Worker
+answers `500`, not `401`, when it has no secret** — an unarmed deployment is the operator's problem
+rather than the caller's, and
 a `401` there would tell a person holding a curl that their credential was wrong. `wrangler dev`
 therefore answers `500` on every `/v1` request until `.dev.vars` exists, and `GET /health` and
 `GET /openapi.json` are the two paths that answer regardless.

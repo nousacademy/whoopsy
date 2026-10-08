@@ -44,6 +44,12 @@
 // socket error at runtime and nothing at build time says so. An empty `$()` expands to nothing, so the
 // two slashes never sit next to each other in the file and the expansion puts them back.
 //
+// **This file is that origin's only home in the tree.** The Worker serves the origin each request
+// arrived on, and the committed `shared/openapi.json` publishes `/` — the OpenAPI relative form,
+// meaning *the origin this document was fetched from* — rather than any one operator's hostname. So
+// nothing in `backend/` needs configuring for it, and a clone that has never seen this line still
+// regenerates a correct contract. See `README.md` § The backend.
+//
 // `WHOOPSY_API_TOKEN` is **the deployment's shared secret**, the same string in three homes:
 //
 //     backend/.dev.vars                      `SYNC_API_TOKEN=`      — for `npm run dev`

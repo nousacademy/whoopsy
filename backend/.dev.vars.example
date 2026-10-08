@@ -1,7 +1,15 @@
-# The Worker's shared secret, for `npm run dev`.
+# The Worker's one local setting: the deployment's shared secret.
 #
-# Copy this file to `backend/.dev.vars` (same directory, no `.example`) and paste your own secret
-# after the `=`. That file is gitignored; this one is not, and it deliberately holds no value.
+# Copy this file to `backend/.dev.vars` (same directory, no `.example`) and paste your own value
+# after the `=`. That file is gitignored; this one is not, and it deliberately holds no secret.
+#
+# **A deployment does not read this file at all.** `wrangler dev` reads it into `c.env`, and a
+# deployed Worker is given its secret by `wrangler secret put`. There is no origin to set here
+# either: a deployment answers with the origin each request arrived on, and the committed
+# `shared/openapi.json` carries `/` rather than any operator's hostname. See README.md § The
+# backend.
+#
+# ## `SYNC_API_TOKEN` — the deployment's shared secret
 #
 # Generate one:
 #

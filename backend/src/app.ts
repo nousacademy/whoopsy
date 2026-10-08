@@ -121,22 +121,40 @@ export function createApp() {
    * human (or a shell gate) can see what the deployed Worker is actually answering without running
    * the generator against a checkout.
    *
-   * **Memoised, because the document cannot change within an isolate.** It is generated from the
-   * registry, which is fixed at module load, and from `openApiConfig`, which is a constant — the
-   * config is deliberately not the `(c) => config` form, so there is nothing request-dependent to
-   * generate. Without the cache every request to this path re-walks the whole registry and
-   * re-serialises the document to produce bytes identical to the last ones. The cache holds the
-   * *serialised string*, so the expensive half is what is cached and the `Response` is cheap.
+   * **Memoised per origin, and the origin is the `Host` the request arrived on.** The document is
+   * generated from the registry, which is fixed at module load, and from `openApiConfig(origin)` —
+   * and the origin is the one part of it a request decides. Without the cache every fetch of this
+   * path would re-walk the whole registry to produce bytes identical to the last ones. The cache holds
+   * the *serialised string*, so the expensive half is what is cached and the `Response` is cheap.
+   *
+   * **One entry rather than a `Map`, and that is a limit an attacker does not get to set.** In
+   * practice an isolate answers on one hostname and the entry is written once, so a keyed map would
+   * only ever hold the same pair — while a map keyed on a caller-controlled header grows by one
+   * serialised document per `Host` a stranger sends.
+   *
+   * **`c.req.url` is where the origin comes from, and that is what makes a deployment describe
+   * itself with nothing configured.** A document fetched from `https://<host>/openapi.json` names
+   * `https://<host>`, and one fetched from `wrangler dev` names `http://localhost:8787` rather than
+   * the template. The committed `shared/openapi.json` cannot do this — a script has no request to
+   * read an origin from — so the two readings differ in this one field, which `openapi.ts`'s module
+   * comment argues and README § The backend shows how to compare them.
    *
    * Lazy rather than computed at construction: an isolate that never serves this path should not pay
    * for it on a request that is going to `GET /v1/recoveries/…`.
    */
-  let servedDocument: string | null = null;
+  let served: { origin: string; body: string } | null = null;
 
   app.get("/openapi.json", (c) => {
-    servedDocument ??= serialiseOpenApiDocument(app.getOpenAPI31Document(openApiConfig));
+    const origin = new URL(c.req.url).origin;
 
-    return c.body(servedDocument, 200, {
+    if (served?.origin !== origin) {
+      served = {
+        origin,
+        body: serialiseOpenApiDocument(app.getOpenAPI31Document(openApiConfig(origin))),
+      };
+    }
+
+    return c.body(served.body, 200, {
       "content-type": "application/json; charset=utf-8",
     });
   });

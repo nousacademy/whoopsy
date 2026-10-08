@@ -3,9 +3,10 @@
 # **The two resources below are real as of 2026-10-07, and so is the deployment.** `whoopsy-sync`
 # (D1, region ENAM) and `whoopsy-exports` (R2, Standard) exist in the account and `database_id` holds
 # the id `wrangler d1 create` returned — and that same day `wrangler deploy` ran, so the Worker answers
-# at the hostname `shared/openapi.json`'s `servers[0].url` records. The two are separate steps and were
-# separate days' worth of confusion: provisioning is **not** deploying, and a real `database_id` said
-# nothing about whether a hostname existed.
+# at a `*.workers.dev` hostname that is deliberately in no file in this repository: the committed
+# contract carries `/`, and a deployment names its own origin in the document it serves. The two are
+# separate steps and were separate days' worth of confusion: provisioning is **not** deploying, and a
+# real `database_id` said nothing about whether a hostname existed.
 #
 # **What this file cannot hold is the credential.** `SYNC_API_TOKEN` is a secret, so it is not here:
 # `wrangler secret put SYNC_API_TOKEN` sets it on the deployment, `backend/.dev.vars` supplies it to

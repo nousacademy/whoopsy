@@ -396,6 +396,14 @@ its own is not a half-configured build — it is an install that opens a socket 
 a `401`. `DIContainer` reads the pair together and wires `UnconfiguredCloudSync` when *either* is
 missing, which is what a fresh clone, every SwiftUI preview and the host test runner all get.
 
+**The origin has one home, and it is the table's first row.** `shared/openapi.json` is committed, so
+its `servers[0].url` carries `/` — the OpenAPI *relative* form, meaning *the origin this document was
+fetched from* — and therefore names no deployment at all: a hostname there would be one operator's
+subdomain living in a file every reader opens and every clone regenerates. Nothing in `backend/` has
+to agree with it. The Worker serves the origin each request arrived on and `wrangler dev` names
+`http://localhost:8787`, so neither needs configuring, and `GET /openapi.json` is where you ask a
+deployment what its own hostname is. See [§ The backend](#the-backend).
+
 ```bash
 cp ios/App/Config/Whoopsy.local.xcconfig.example ios/App/Config/Whoopsy.local.xcconfig
 openssl rand -base64 32 | tr '+/' '-_' | tr -d '='   # your secret — the same value in all three homes
@@ -503,8 +511,10 @@ database, and a full run leaves the file byte-identical. That is documented rath
 ## The backend
 
 `backend/` is a Cloudflare Worker — [Hono](https://hono.dev) in front of D1 and R2 — and it is a
-separate toolchain from everything above. **It is deployed**, at the hostname `shared/openapi.json`'s
-`servers[0].url` names, and it refuses every `/v1` request that does not carry the deployment's own
+separate toolchain from everything above. **It is deployed**, at a `*.workers.dev` hostname that is
+deliberately written down nowhere in this repository — the committed contract carries `/`, and the
+deployment names its own origin in the document it serves — and it refuses every `/v1` request that
+does not carry the deployment's own
 secret. The app does reach it, and only when it is told where to look: `ios/Sources/Whoopsy/Data/Networking/`
 is the HTTP client and `Data/Sync/` is the sync written on it, and both are inert on any build whose
 `Info.plist` expands `WHOOPSYAPIBaseURL` or `WHOOPSYAPIToken` to nothing — which is every fresh clone,
@@ -598,10 +608,15 @@ about. The body is the shared envelope and carries no detail; the sentence namin
 in the Worker's own log. **Set the secret before you deploy** — `wrangler deploy` does not fail on a
 missing one, it ships a Worker that refuses every request.
 
-**It is deployed, and the deployment belongs to one account.** `wrangler deploy` ran on 2026-10-07 and
-the hostname it printed is in `shared/openapi.json`'s `servers[0].url`. **Nothing reads that field** —
-the app is handed its own base URL through `Info.plist` — so a fork deploying under another account has
-a stale string there and nothing breaks; it is documentation. The two Cloudflare resources predate the
+**It is deployed, and the deployment belongs to one account.** `wrangler deploy` ran on 2026-10-07, and
+the hostname it printed is written down in exactly one place: the gitignored
+`ios/App/Config/Whoopsy.local.xcconfig`, which is what the app reads. It is not in
+`shared/openapi.json` — that file is committed, and its `servers[0].url` carries `/` so that it names
+no deployment at all. **Nothing reads that field** — the client is handed its base URL through
+`Info.plist` — so a fork regenerates the contract unchanged and nothing breaks; it is documentation.
+The live document reads its own instead: `GET /openapi.json` names the origin the request arrived on,
+which a deployed Worker and `wrangler dev` both answer correctly with nothing configured. The two
+Cloudflare resources predate the
 deploy: the `whoopsy-sync` D1 database (region ENAM) and the `whoopsy-exports` R2 bucket exist in that
 account, and `wrangler.toml`'s `database_id` holds the id `wrangler d1 create` returned — so
 `wrangler d1 migrations apply whoopsy-sync --remote` writes to a real schema, and it has been run
@@ -622,7 +637,7 @@ npx wrangler dev --port 8787
 
 **And it answers `500` on every `/v1` request until `backend/.dev.vars` holds a secret.** `wrangler
 dev` reads that file — gitignored, with `backend/.dev.vars.example` committed as the template — and
-it is where the local `SYNC_API_TOKEN` goes:
+it is where the local `SYNC_API_TOKEN` goes, and the only thing that goes there:
 
 ```bash
 cp .dev.vars.example .dev.vars    # from backend/, then paste your own token after the `=`
@@ -639,8 +654,18 @@ spec, because a Worker has no filesystem — and `/openapi.json` is one of the t
 credential, so this works on an unarmed dev server:
 
 ```bash
-curl -s localhost:8787/openapi.json | diff - ../shared/openapi.json && echo IDENTICAL
+curl -s localhost:8787/openapi.json | grep -v '"url"' | diff - <(grep -v '"url"' ../shared/openapi.json) \
+  && echo IDENTICAL
 ```
+
+**The `grep` drops one line, and it is the one line the two readings are allowed to disagree about.**
+`servers[0].url` is the document's only `"url"` line (`grep -c '"url"' ../shared/openapi.json`) and the
+only field in it that belongs to a *deployment* rather than to the API: the dev server names
+`http://localhost:8787`, which is the origin its request arrived on, while the committed file names
+`/`, which is the origin a document is served from. Everything else — the paths, the schemas, the
+pretty-printing — comes out of one `getOpenAPI31Document` call on one `createApp()`, which is what
+this compares. The filter is exact rather than approximate, which is why it is a `grep` and not a
+hand-trimmed `diff`.
 
 **Local development runs late-2024 `workerd` while a deployment would run `compatibility_date`'s
 semantics.** `wrangler` is pinned to exactly `3.95.0` because that is what

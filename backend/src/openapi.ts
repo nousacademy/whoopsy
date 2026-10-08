@@ -10,6 +10,17 @@ import type { Env } from "./env";
  * with the config below and both serialise it with `serialiseOpenApiDocument`, so the two readings
  * cannot differ — not in the paths, and not in the pretty-printing either.
  *
+ * **They differ in exactly one field, and it is `servers[0].url`.** An origin is a fact about a
+ * *deployment* rather than about the API, and this contract is **committed**, so it cannot name one:
+ * a hostname written here would be one operator's subdomain living in a file every reader opens and
+ * every clone regenerates. So the committed reading carries the OpenAPI **relative** form —
+ * `RELATIVE_ORIGIN`, `/`, which the specification defines as *the origin this document was fetched
+ * from*, and which is therefore true of every deployment that serves it and false of none — while the
+ * Worker's own reading is absolute, built from `c.req.url`, because a server that knows its own
+ * hostname has no reason to withhold it. `openApiConfig` takes the origin as a parameter and each
+ * caller supplies its own, which is why a `diff` of the two documents has to drop that one line to
+ * mean anything.
+ *
  * **The prose lives here and nowhere else.** The document's `info` block is the one part of the
  * contract that is not generated from the routes, and a copy of it in the script would be a second
  * source for the same sentences. `shared/openapi.json`'s checked-in description and this one are the
@@ -51,7 +62,24 @@ type OpenApiDocumentConfig = Parameters<
 >[0];
 
 /**
- * The document's identity: what it is, and where the deployed Worker would answer.
+ * The origin the committed contract carries, and it is deliberately not a hostname.
+ *
+ * OpenAPI 3.1 defines a **relative** `servers[].url` as resolving against the location the document
+ * itself was served from, so `/` reads as *the origin this document was fetched from* — which is
+ * exactly right for an API whose contract is committed and whose deployments are not. A hostname
+ * would be one operator's subdomain, and `shared/openapi.json` is read by everyone who opens the
+ * repository and rewritten by everyone who runs `make backend-check`.
+ *
+ * It is a **constant rather than a default somebody may override**, and that is the whole point: an
+ * env var a clone could set would put a hostname back into that file, which is the one thing this
+ * value exists to prevent. So the export script passes this and has nothing to configure, and an
+ * operator who wants to see their own hostname in a document asks the deployment for it —
+ * `GET /openapi.json` names the origin the request arrived on.
+ */
+export const RELATIVE_ORIGIN = "/";
+
+/**
+ * The document's identity: what it is, and the origin the reading that asked for it answers on.
  *
  * `info` is carried through generation untouched — `OpenApiGeneratorV31.generateDocument` merges its
  * own `{ components, paths }` over this config rather than replacing it — so everything written here
@@ -62,33 +90,42 @@ type OpenApiDocumentConfig = Parameters<
  * the route definitions and therefore cannot disagree with the Worker. Only the trailing clause about
  * `paths` being empty changed, because this pass is the one that made it false.
  *
- * `servers` is no longer a placeholder: the first `wrangler deploy` has run, and the URL below is the
- * hostname it printed. The account subdomain is a per-account fact, so it could not have been guessed
- * — which is why this line stayed a placeholder through the whole of the provisioning step, when
- * `wrangler.toml`'s `database_id` already held a real id. **Provisioning is not deploying**, and this
- * is the field where the difference was visible.
+ * **`origin` is a parameter because a hostname is a fact about a deployment, and this config is read
+ * by two of them.** It was a literal for one deploy — the hostname the first `wrangler deploy`
+ * printed — and that made one operator's subdomain a constant of the API's *source*, regenerated into
+ * the committed contract on every run. It belongs to whoever runs the Worker, so the Worker now
+ * answers with the origin it was reached on and the export script passes `RELATIVE_ORIGIN`; the module
+ * comment above carries the reasoning for both halves. **Nothing in the app reads this value** — the
+ * client is handed its own base URL through `Info.plist`, and the Worker never reads its own `servers`
+ * block either — so it is documentation, and the one place a reader is told where a deployment
+ * answers.
  *
- * **It is one deployment's hostname, and a fork's is different.** Nothing in the app reads this value
- * — the client is handed its own base URL through `Info.plist`, and the Worker never reads its own
- * `servers` block either — so a fork that deploys under another account has a stale string here and
- * nothing breaks. It is documentation, and it is regenerated with everything else.
+ * Annotated and not inferred, for the reason it always was here: inference has no excess-property
+ * check, so a misspelled `server:` key would be a silently ignored field on a document that still
+ * generates, still validates and simply never publishes the servers block.
  */
-export const openApiConfig: OpenApiDocumentConfig = {
-  openapi: "3.1.0",
-  info: {
-    title: "Whoopsy Sync API",
-    version: "0.0.0",
-    description:
-      "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. This document is also served live by the Worker at `GET /openapi.json`, from the same configuration.",
-  },
-  servers: [
-    {
-      url: "https://whoopsy-sync.your-account-subdomain.workers.dev",
+export function openApiConfig(origin: string): OpenApiDocumentConfig {
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "Whoopsy Sync API",
+      version: "0.0.0",
       description:
-        "The deployed Worker. Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it.",
+        "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold.",
     },
-  ],
-};
+    servers: [
+      {
+        // No leading clause naming this as "the deployed Worker", because it no longer always is:
+        // the same description reaches a `wrangler dev` document naming `http://localhost:8787`, a
+        // deployed one naming its own hostname, and the committed one naming `/`. What is true of all
+        // of them is the gate.
+        url: origin,
+        description:
+          "Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it.",
+      },
+    ],
+  };
+}
 
 /**
  * The one way this document becomes text.

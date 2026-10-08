@@ -12,10 +12,14 @@ import { bearerToken } from "../src/utils/tokens";
  * and it is in the README's backend section rather than in this suite.
  *
  * **What is worth asserting is the shape a client depends on**, not the whole document: the paths
- * that exist, the methods on each, and the two fields that are prose rather than generated — the
+ * that exist, the methods on each, and the fields that are prose rather than generated — the
  * description and the servers block, which `OpenApiGeneratorV31` merges its own output over rather
  * than replacing. Those are the parts a regeneration cannot derive, so they are the parts a
  * regeneration could silently lose.
+ *
+ * The servers block's **url** is a third kind, and the odd one out: it is derived per request rather
+ * than configured, so what is asserted of it is that it follows the request — a property no
+ * hardcoded origin can have, which is exactly why the assertion reads it off two different hosts.
  */
 
 interface ServedDocument {
@@ -26,8 +30,17 @@ interface ServedDocument {
   components?: { schemas?: Record<string, unknown> };
 }
 
-async function served(): Promise<ServedDocument> {
-  const response = await SELF.fetch("https://whoopsy.test/openapi.json");
+/**
+ * The origin every fetch below is made on, and the value `servers[0].url` is asserted to equal.
+ *
+ * A `let`-free constant rather than a literal at each call site, because the whole point of the
+ * origin assertion is that it is the *request's* origin: a spec that fetched one host and asserted
+ * another would be asserting nothing.
+ */
+const SERVED_ORIGIN = "https://whoopsy.test";
+
+async function served(origin: string = SERVED_ORIGIN): Promise<ServedDocument> {
+  const response = await SELF.fetch(`${origin}/openapi.json`);
 
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).toContain("application/json");
@@ -239,25 +252,31 @@ describe("GET /openapi.json", () => {
   it("carries the config's prose through generation untouched", async () => {
     const document = await served();
 
+    const config = openApiConfig(SERVED_ORIGIN);
+
     // These two come from `openApiConfig` rather than from the routes, which is exactly why they are
     // asserted against it: a generator that replaced the config wholesale would leave a document
-    // that still validates and has simply lost its description and its server.
-    expect(document.info.description).toBe(openApiConfig.info.description);
-    expect(document.servers?.[0]?.url).toBe(openApiConfig.servers?.[0]?.url);
+    // that still validates and has simply lost its description and its server. The config is called
+    // on the origin this fetch used, so the two sides are the same reading of one source — the
+    // *origin* half of the block has its own test below, where it is checked against the request.
+    expect(document.info.description).toBe(config.info.description);
+    expect(document.servers?.[0]?.description).toBe(config.servers?.[0]?.description);
   });
 
-  it("publishes a real origin, and no unsubstituted placeholder, now that the Worker is deployed", async () => {
+  it("names the origin it was fetched on, so a deployment describes itself unconfigured", async () => {
     const document = await served();
     const url = document.servers?.[0]?.url ?? "";
 
-    // **The shape rather than the literal**, and the difference is the reason this test survives the
-    // deploy. It used to assert the placeholder string, because nothing had been deployed and a
-    // guessed subdomain would have been a URL that looks deployable and is not. That is now the wrong
-    // assertion in both directions: this deployment's subdomain is one operator's own fact, so
-    // pinning it would make a fork's *correct* document a failing test, while the property the old
-    // test was really guarding — that the published origin is a real `workers.dev` origin and not a
-    // template nobody substituted — survives as a pattern.
-    expect(url).toMatch(/^https:\/\/whoopsy-sync\.[a-z0-9-]+\.workers\.dev$/);
+    // **The request's own origin, rather than a shape.** This began by asserting the placeholder
+    // string, because nothing had been deployed and a guessed subdomain would have looked
+    // deployable; it became a pattern (`^https://whoopsy-sync\.[a-z0-9-]+\.workers\.dev$`) so that a
+    // fork's *correct* document was not a failing test. Deriving the origin from the request retires
+    // what the pattern was working around: **no stored string can satisfy this**, because the second
+    // fetch below asks from a different host and reads a different answer back.
+    expect(url).toBe(SERVED_ORIGIN);
+
+    const elsewhere = await served("https://whoopsy-sync.example.workers.dev");
+    expect(elsewhere.servers?.[0]?.url).toBe("https://whoopsy-sync.example.workers.dev");
 
     // **An origin, not an address.** No trailing slash and no path, because a client concatenating
     // `/v1/...` onto this is doing so blindly and would produce a double slash on one and a correct
@@ -265,8 +284,8 @@ describe("GET /openapi.json", () => {
     expect(url.endsWith("/")).toBe(false);
     expect(new URL(url).pathname).toBe("/");
 
-    // And the deployed origin's description is the one place the document states the gate, which is
-    // what a client's author reads before writing an integration against it.
+    // And the description is the one place the document states the gate, which is what a client's
+    // author reads before writing an integration against it.
     expect(document.servers?.[0]?.description).toContain("Authorization");
   });
 

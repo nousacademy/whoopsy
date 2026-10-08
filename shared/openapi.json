@@ -3,12 +3,12 @@
   "info": {
     "title": "Whoopsy Sync API",
     "version": "0.0.0",
-    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. This document is also served live by the Worker at `GET /openapi.json`, from the same configuration."
+    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold."
   },
   "servers": [
     {
-      "url": "https://whoopsy-sync.your-account-subdomain.workers.dev",
-      "description": "The deployed Worker. Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it."
+      "url": "/",
+      "description": "Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it."
     }
   ],
   "components": {

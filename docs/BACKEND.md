@@ -5,7 +5,15 @@ carries. This is the reference for the Worker's own conventions; `CLAUDE.md` kee
 one-line version, because most work in this repo is on the app, not on the Worker.
 
 `shared/openapi.json` is the contract the two halves agree on, and it is an **output** rather
-than a hand-written stub — regenerate it with `npm --prefix backend run openapi`.
+than a hand-written stub — regenerate it with `npm --prefix backend run openapi`. **Its
+`servers[0].url` is the one field in it that is not derived from the routes, and it is a relative
+one**: the committed contract carries `/`, the OpenAPI form meaning *the origin this document was
+fetched from*, because this file is committed and a hostname in it would be one operator's subdomain
+in a repository everyone reads. Nothing in the Worker reads that value, and nothing under `backend/`
+configures it. `GET /openapi.json` is where a deployment names itself instead — it publishes the
+origin each request arrived on, so a deployed Worker reports its own hostname and `wrangler dev`
+reports `http://localhost:8787`. That one field is the whole of why the served document and the
+committed one differ in exactly one line.
 
 ## The gate
 
