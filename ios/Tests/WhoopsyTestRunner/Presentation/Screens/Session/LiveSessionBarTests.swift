@@ -9,12 +9,13 @@ import Whoopsy
 
 enum LiveSessionBarTests {
     static func run() async throws {
-        // ---- The `+` menu's one actionable row ----
+        // ---- The `+` menu's one recording row ----
         //
-        // §14 owns the rows themselves — that there are two, titled in that order, each with a symbol.
-        // This is the dimension §14 cannot see: **which one does something**. `ActivityMenu` is a value
-        // rather than a rule written into `HomeDashboardView`'s body for the same reason as before — the
-        // runner has no renderer, so a `switch` in a view's body is a switch nothing here can read.
+        // §14 owns the rows themselves — that there are three, titled in that order, each with a symbol,
+        // and that each carries its own destination. This is the dimension §14 cannot see: **which one
+        // starts a clock**. `ActivityMenu` is a value rather than a rule written into
+        // `HomeDashboardView`'s body for the same reason as before — the runner has no renderer, so a
+        // `switch` in a view's body is a switch nothing here can read.
         //
         // Two live-actionable rows would be two recording paths, which is why the count and not the
         // membership is the assertion that matters.
@@ -22,18 +23,23 @@ enum LiveSessionBarTests {
         let actionable = ActivityMenu.entries.filter { $0.action == .startSession }
         assertTest(
             actionable.count == 1,
-            "Exactly one `+` row carries `.startSession` (\(actionable.count) held) — the second row is "
-                + "inert, and a second recording path is the thing this count exists to prevent")
+            "Exactly one `+` row carries `.startSession` (\(actionable.count) held) — the other two write "
+                + "a row and start nothing, and a second recording path is the thing this count prevents")
 
         assertTest(
             actionable.first?.title == "START ACTIVITY",
-            "…and it is `START ACTIVITY`, not the row above it (\(actionable.first?.title ?? "none"))")
+            "…and it is `START ACTIVITY`, not a row above it (\(actionable.first?.title ?? "none"))")
 
-        let inert = ActivityMenu.entries.filter { $0.action == .none }
+        // **The row above it is no longer inert, and this is the assertion that says so.** `ADD ACTIVITY`
+        // used to be the menu's one row with no destination; it now carries `.addActivity` and opens
+        // `AddActivitySheet`. That case is still distinct from `.startSession` — entering a session by
+        // hand runs no clock and reaches no use case — so the count above is unchanged and this is the
+        // claim that keeps the two from being conflated in the other direction.
+        let addRows = ActivityMenu.entries.filter { $0.action == .addActivity }
         assertTest(
-            inert.map(\.title) == ["ADD ACTIVITY"],
-            "…leaving `ADD ACTIVITY` with no destination at all (\(inert.map(\.title))), which is what "
-                + "makes the import path's absence structural rather than a promise")
+            addRows.map(\.title) == ["ADD ACTIVITY"],
+            "…and `ADD ACTIVITY` opens the add sheet rather than starting one or doing nothing "
+                + "(\(addRows.map(\.title)))")
 
         // ---- The bar Home pins over a running session ----
         //

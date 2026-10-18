@@ -185,7 +185,9 @@ struct ActivityDetailView_CompositeGlyph_Previews: PreviewProvider {
 struct LiveSessionView_Previews: PreviewProvider {
     static var previews: some View {
         NavigationStack {
-            LiveSessionView(useCase: DIContainer.preview.liveSessionUseCase)
+            // A preview has no Home behind it to hand the row to, so the callback is a no-op here and
+            // deliberately not defaulted on the type — every real caller has to decide.
+            LiveSessionView(useCase: DIContainer.preview.liveSessionUseCase, onEnded: { _ in })
         }
         .preferredColorScheme(.dark)
     }

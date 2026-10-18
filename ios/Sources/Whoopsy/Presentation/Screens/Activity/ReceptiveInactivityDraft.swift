@@ -219,14 +219,14 @@ public struct ReceptiveInactivityDraft: Equatable, Identifiable, Sendable {
 
     /// `time`'s hour and minute, rebuilt onto `day`'s own midnight.
     ///
-    /// The one definition of the invariant, called from the three places that need it: `applying(to:)`
-    /// when it writes, `hasChanges(on:)` when it compares, and the sheet when it hands the picker the
-    /// instant to display. A second copy of this arithmetic is how one of the three drifts — the shape
+    /// The definition this type needs, called from the three places that ask: `applying(to:)` when it
+    /// writes, `hasChanges(on:)` when it compares, and the sheet when it hands the picker the instant
+    /// to display. A second copy of this arithmetic is how one of the three drifts — the shape
     /// `SleepConsistencyMath.clockMinutes(fromNightClock:)` records against a bridge that must not be
-    /// inlined.
+    /// inlined. **The arithmetic itself now lives on `Date.clockTime(on:)`**, so this is a forwarding
+    /// name that keeps the receptive draft's own call sites reading as one rule rather than as
+    /// `AddActivityDraft` and this type each carrying a copy.
     public static func instant(of time: Date, on day: Date) -> Date {
-        let clock = Calendar.current.dateComponents([.hour, .minute], from: time)
-        let offset = (clock.hour ?? 0) * 3600 + (clock.minute ?? 0) * 60
-        return day.startOfDay.addingTimeInterval(TimeInterval(offset))
+        time.clockTime(on: day)
     }
 }

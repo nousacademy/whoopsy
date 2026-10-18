@@ -4,6 +4,13 @@ import CoreBluetooth
 /// Real CoreBluetooth manager handling discovery, bonding, and telemetry streaming from WHOOP hardware.
 public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     private var centralManager: CBCentralManager!
+    /// The serial queue every CoreBluetooth callback runs on, kept for the keep-alive timer.
+    ///
+    /// The timer is a `DispatchSourceTimer` on **this** queue rather than a second thread, so the
+    /// keep-alive state below needs no lock: it is written from ticks and from delegate callbacks,
+    /// which are serialized here by construction. That is the same reason `reassembler` and the
+    /// `hasLogged*` flags are plain properties — see `reassembler`'s comment.
+    private let bleQueue: DispatchQueue
     private var connectedPeripheral: CBPeripheral?
     private var commandCharacteristic: CBCharacteristic?
     private let decoder = WhoopPacketDecoder()
@@ -98,10 +105,109 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     /// payload length — so it is worth exactly one line per connection and no more.
     private var hasLoggedProprietaryFrame = false
 
+    /// Whether the 5.0/MG bond handshake has been written and is waiting on its acknowledgement.
+    ///
+    /// **This flag exists because `didWriteValueFor` cannot say which write it is reporting.** The
+    /// callback carries the characteristic and an error and not the bytes, and the hello and the
+    /// enable sequence that follows it go to the *same* characteristic — so "am I waiting on the
+    /// handshake?" is state this type has to keep rather than a question it can ask.
+    ///
+    /// **It is cleared on the first acknowledgement and never set again in that connection**, which
+    /// is a correctness guard rather than tidiness: `didWriteValueFor` re-fires on every later
+    /// confirmed write, and a handshake re-run mid-drain is the documented cause of a strap refusing
+    /// to stream its type-47 records. See `didWriteValueFor` below.
+    private var isAwaitingBondHandshakeAck = false
+
+    /// The identifier iOS uses to summon this app back for Bluetooth events after terminating it.
+    ///
+    /// One per app for the life of the install, because a second `CBCentralManager` constructed with
+    /// the same identifier is invalid — and there is exactly one manager here. Without it iOS is free
+    /// to kill a backgrounded app and never tell it the strap came back; with it, a pending
+    /// `connect` outlives the process and the app is relaunched to be told the link is up.
+    private static let restoreIdentifier = "org.whoopsy.ble.central"
+
+    /// Whether the drop in progress is one the user asked for.
+    ///
+    /// **This is the difference between a fault and an instruction.** Every involuntary disconnect is
+    /// answered with a standing connect, which is what keeps the strap reachable while the app is
+    /// suspended — so an explicit `disconnect()` that did not set this would undo itself immediately.
+    /// It is cleared by a new connection and by nothing else, because cancelling a *pending* connect
+    /// can arrive as `didFailToConnect`, and that failure must stay suppressed by the same instruction
+    /// that caused it.
+    private var intentionalDisconnect = false
+
+    /// When the most recent standing connect was issued, and the delayed retry waiting on the floor.
+    ///
+    /// The timestamp exists only to tell a strap that answered and refused from one that has not
+    /// answered yet; see `ReconnectPolicy.step`. The task is what carries a retry across the floor
+    /// without leaving a `connect` outstanding in the refused case.
+    private var standingConnectAttemptedAt: Date?
+    private var reconnectTask: Task<Void, Never>?
+
+    /// The restored peripheral, when `willRestoreState` ran before the central reported powered on.
+    ///
+    /// `willRestoreState` is the **first** delegate method after a background relaunch, and a central
+    /// that has not reported its state cannot be asked to connect. This hands the peripheral to
+    /// `centralManagerDidUpdateState`, which is the first place it is safe to issue the call.
+    private var pendingRestorePeripheral: CBPeripheral?
+
+    /// Guards the four properties above.
+    ///
+    /// `didDisconnectPeripheral`, `didFailToConnect` and `willRestoreState` run on the BLE queue;
+    /// `disconnect()` and `rearmConnection()` run on whichever thread the UI action is on. That is the
+    /// same three-thread shape as the drain's, so it gets the same answer.
+    private let reconnectLock = NSLock()
+
+    /// How many fast refusals in a row the most recent failure makes.
+    ///
+    /// Only a 5.0/MG acts on it — see `ReconnectPolicy.consecutiveRefusalCap` — but every generation
+    /// carries the count so the reset rule is one rule. Guarded by `reconnectLock`, beside the
+    /// timestamp and the retry task it is decided with.
+    private var consecutiveRefusals = 0
+
+    // MARK: - Keep-alive
+    //
+    // Every property in this block is touched **only from the BLE queue**: by the timer below, whose
+    // source is created on that queue, and by the delegate callbacks, which CoreBluetooth serializes
+    // there. `disconnect()` and `rearmConnection()` hop onto it before starting or stopping anything,
+    // which is what keeps that sentence true from the UI side.
+
+    /// The battery characteristic, kept so a keep-alive tick can ask for a fresh reading.
+    private var batteryCharacteristic: CBCharacteristic?
+
+    private var keepAliveTimer: DispatchSourceTimer?
+
+    /// The start of the window this process could actually observe, and the clocks read off it.
+    ///
+    /// `lastActivityAt` advanced on every inbound notification and on a successful confirmed write, and
+    /// it is **advanced forward on a resumed tick** — see `KeepAlivePolicy.suspensionGapSeconds`. It is
+    /// therefore "when the silence began, as far as this process can tell", not a claim about the
+    /// strap.
+    private var lastActivityAt: Date?
+    private var lastActivationSentAt: Date?
+    private var lastBatteryReadAt: Date?
+    private var lastKeepAliveTickAt: Date?
+
+    /// Whether the enable sequence has been written on this link.
+    ///
+    /// It exists for one case: a 5.0/MG whose bond handshake was never acknowledged. `sendConnectCommands`
+    /// is deliberately never called there — a pre-bond command is refused — so a silent-stream re-send
+    /// must not call it either, and the liveness fuse's bounce is what recovers that link instead.
+    private var hasSentConnectCommands = false
+
+    /// Whether the unreadable-battery log has fired for this link.
+    private var hasLoggedUnreadableBattery = false
+
     public init(strapModelRepository: (any StrapModelRepository)? = nil) {
         self.strapModelRepository = strapModelRepository
+        let queue = DispatchQueue(label: "org.whoopsy.ble.queue")
+        self.bleQueue = queue
         super.init()
-        self.centralManager = CBCentralManager(delegate: self, queue: DispatchQueue(label: "org.whoopsy.ble.queue"))
+        self.centralManager = CBCentralManager(
+            delegate: self,
+            queue: queue,
+            options: [CBCentralManagerOptionRestoreIdentifierKey: Self.restoreIdentifier]
+        )
     }
 
     // MARK: - Strap generation
@@ -310,11 +416,50 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         }
     }
 
+    /// Re-arms the path to the strap when the app returns to the foreground.
+    ///
+    /// **Nothing is guaranteed to be outstanding after a suspension, and that is what this covers.** A
+    /// standing connect survives the app being suspended, but not the system moving it out of memory,
+    /// and a scan is not resumed for an app that is already running. So on `.active` an unchanged link
+    /// is left alone, a link that is down is given another standing connect, and a process that never
+    /// found a strap scans again.
+    ///
+    /// **An explicit `disconnect()` wins.** A strap the user switched off must not come back on its own
+    /// the next time the app is opened; only the Device page's scan can link it again.
+    public func rearmConnection() {
+        guard !isIntentionalDisconnect(), centralManager.state == .poweredOn else { return }
+        if let peripheral = connectedPeripheral {
+            // `.connected` here means there is nothing to arm. The keep-alive window is restarted
+            // anyway, because the app may have spent the intervening time suspended with no ticks —
+            // and the fuse must not read that as silence.
+            guard peripheral.state != .connected else {
+                bleQueue.async { [weak self] in self?.restartKeepAliveWindow() }
+                return
+            }
+            // `.disconnected` covers both a drop with a standing connect still pending and a process
+            // that was suspended long enough for the system to forget one; re-issuing is idempotent
+            // from CoreBluetooth's side.
+            issueStandingConnect(for: peripheral, after: .failedToConnect)
+        } else {
+            startScanning()
+        }
+    }
+
     public func connect(to deviceId: String) {
         // If peripheral is discovered, initiate connection
         guard let peripheral = connectedPeripheral, peripheral.identifier.uuidString == deviceId else {
             return
         }
+        // An explicit connect is the instruction that cancels an earlier explicit disconnect, and it
+        // also supersedes a retry still waiting on the refusal floor.
+        reconnectLock.lock()
+        intentionalDisconnect = false
+        standingConnectAttemptedAt = Date()
+        // An explicit connect is a person's answer to a capped loop, so it clears the count too.
+        consecutiveRefusals = 0
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        reconnectLock.unlock()
         updateDeviceState {
             WhoopDevice(id: deviceId, name: peripheral.name ?? "WHOOP Strap", connectionState: .connecting)
         }
@@ -325,6 +470,18 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     }
 
     public func disconnect() {
+        // The instruction has to precede the cancel: the delegate callback can arrive on the BLE queue
+        // while this call is still returning, and a callback that runs first sees an involuntary drop
+        // and brings the link straight back.
+        reconnectLock.lock()
+        intentionalDisconnect = true
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        reconnectLock.unlock()
+        // Hopped rather than called directly: the timer and the clocks it reads belong to the BLE
+        // queue. The disconnect callback below stops it too; this is the path that runs before that
+        // callback when the user is the one ending the link.
+        bleQueue.async { [weak self] in self?.stopKeepAlive() }
         if let peripheral = connectedPeripheral {
             centralManager.cancelPeripheralConnection(peripheral)
         }
@@ -356,6 +513,82 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         guard let peripheral = connectedPeripheral, let char = commandCharacteristic else { return }
         let type: CBCharacteristicWriteType = char.properties.contains(.writeWithoutResponse) ? .withoutResponse : .withResponse
         peripheral.writeValue(data, for: char, type: type)
+    }
+
+    /// Writes a command that **must** be acknowledged, and reports whether the write was dispatched.
+    ///
+    /// **This is not `sendCommand` with a different type, and the difference is the whole point of the
+    /// method.** `sendCommand` above picks `.withoutResponse` whenever the characteristic offers it —
+    /// a reasonable default for a command, and a fatal one for the 5.0's first move. CoreBluetooth
+    /// completes a just-works bond **as a confirmed write is acknowledged**, so an unconfirmed write
+    /// of the same bytes over the same characteristic binds nothing and produces no callback to read
+    /// the result from. The 5.0/MG therefore needs a write path that cannot degrade: if the
+    /// characteristic does not carry `.write`, this refuses rather than silently falling back to the
+    /// unconfirmed form, because a fallback would look exactly like a handshake that was sent.
+    ///
+    /// The `Bool` is *dispatched*, not *succeeded*. Success is `didWriteValueFor`'s to report, and
+    /// that callback is the only place the bond's outcome is knowable — see below.
+    ///
+    /// - Returns: `true` when the write went to CoreBluetooth, `false` when there is no command
+    ///   characteristic, no connected peripheral, or no `.write` property to write with.
+    @discardableResult
+    private func sendConfirmedCommand(_ data: Data) -> Bool {
+        guard let peripheral = connectedPeripheral, let char = commandCharacteristic else { return false }
+        guard char.properties.contains(.write) else {
+            AppLogger.ble.warning("""
+                Cannot handshake on \(char.uuid, privacy: .public): the characteristic does not carry \
+                .write, so a confirmed write — and therefore the just-works bond — cannot be triggered \
+                from here.
+                """)
+            return false
+        }
+        peripheral.writeValue(data, for: char, type: .withResponse)
+        return true
+    }
+
+    /// Everything this app sends on a command characteristic once the link is ready to take it.
+    ///
+    /// **Extracted so the handshake can defer it rather than duplicate it.** On a 4.0 these two go out
+    /// the moment the characteristic is discovered, which is unchanged; on a 5.0/MG they are sent when
+    /// the hello is acknowledged instead, because arming a producer on an unauthenticated link is the
+    /// documented no-op — a command written pre-bond is refused by the strap regardless of which one
+    /// it is.
+    private func sendConnectCommands() {
+        guard let profile = currentProfile else { return }
+
+        // Send telemetry start command — under the connected strap's own envelope, and only
+        // if this build has one *and* knows that generation's command opcodes. The 4.0's
+        // `0x05` has no published 5.0 counterpart, so the 5.0 falls to the IMU enable below
+        // rather than getting a frame this builder cannot build.
+        if let frame = WhoopPacketEncoder.enableLiveTelemetry(
+            profile: profile, seq: sequence.next(), enable: true) {
+            sendCommand(frame)
+        }
+
+        // The IMU enable, for the step counter. Sent from here rather than from a screen's
+        // `.task` for the same reason the telemetry enable is: the discovery callback fires
+        // once per connection, and a command sent per screen appearance would toggle the IMU
+        // off and on as the user moved between tabs.
+        //
+        // **Goes through `WhoopCommandFrames`, which is what makes a 5.0 strap produce motion at
+        // all.** It routes by envelope: three frames on the 4.0 (`0x6A`, `0x3F`, `0x6B`) and two on
+        // the 5.0 / MG (`0x51 START_RAW_DATA` then the toggle). This call used to go straight to the
+        // 4.0 builder, whose refusal of the 5.0 envelope was correct and left the 5.0 with no
+        // producer running — the 5.0 leg's whole first step.
+        //
+        // An **empty** array is still the state for an unknown generation rather than an error, so
+        // `TrackStepsUseCase` holds a subscription with nothing arriving, which is the honest state
+        // for a strap this build cannot write to.
+        for frame in WhoopCommandFrames.motionEnableSequence(
+            profile: profile, seq: sequence.next(), enable: true) {
+            sendCommand(frame)
+        }
+
+        // The keep-alive's clock starts here, and only here. A re-send is worth attempting once these
+        // bytes have actually gone out on this link; a 5.0/MG whose handshake was never acknowledged
+        // never reaches this line, which is exactly what stops the watchdog writing pre-bond.
+        hasSentConnectCommands = true
+        lastActivationSentAt = Date()
     }
 
     public func getCurrentDevice() -> WhoopDevice? {
@@ -558,6 +791,321 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         continuation?.resume(returning: finished)
     }
 
+    // MARK: - Reconnection
+
+    /// Issues the call that keeps the link recoverable, now or after a refusal floor.
+    ///
+    /// **This is the whole recovery mechanism, and its shape is the point.** `connect` has no timeout:
+    /// it stays outstanding until the strap answers, survives the app being suspended, and lets iOS
+    /// relaunch the app when the strap re-advertises. A retry loop — `asyncAfter`, a periodic scan, a
+    /// `Task.sleep` in place of the call — does the opposite: at the instant iOS suspends the app it
+    /// leaves *nothing* outstanding, so the strap returning wakes nobody and the reconnect waits for the
+    /// user to open the app instead. The one exception is the refusal floor, where the failure itself is
+    /// proof the app was running when it happened.
+    ///
+    /// `reason` decides between the two answers; `ReconnectPolicy` owns that decision, the numbers,
+    /// and — for a bond-gated generation — when the sequence has gone on long enough to stop.
+    private func issueStandingConnect(for peripheral: CBPeripheral, after reason: ReconnectReason) {
+        guard !isIntentionalDisconnect() else { return }
+
+        let now = Date()
+        reconnectLock.lock()
+        let previous = standingConnectAttemptedAt
+        let priorRefusals = consecutiveRefusals
+        reconnectLock.unlock()
+
+        let generation = resolveGeneration(
+            advertisedName: peripheral.name ?? "WHOOP Strap",
+            deviceId: peripheral.identifier.uuidString)
+        let decision = ReconnectPolicy.decision(
+            for: reason,
+            previousAttemptStartedAt: previous,
+            now: now,
+            priorRefusals: priorRefusals,
+            generation: generation)
+
+        reconnectLock.lock()
+        consecutiveRefusals = decision.consecutiveRefusals
+        reconnectLock.unlock()
+
+        switch decision.step {
+        case .standingConnect:
+            beginStandingConnect(for: peripheral, at: now)
+        case .standingConnectAfter(let seconds):
+            AppLogger.ble.notice("Standing connect refused quickly; retrying in \(Int(seconds)) s")
+            scheduleStandingConnect(after: seconds)
+        case .giveUp:
+            // **The one place this app stops trying, and it names no new claim.** The sentence a
+            // person needs is already on the device page's ADVANCED tab — `DeviceViewModel.protocolCaveat`
+            // says the 5.0/MG's command characteristic needs a bond nothing here has established — so
+            // this line exists for the log rather than for the screen.
+            AppLogger.ble.warning("""
+                Giving up after \(decision.consecutiveRefusals) consecutive refused connection \
+                attempts on a \(generation.rawValue, privacy: .public). No further attempt is made \
+                automatically; opening the app or pairing again gives it one more. The device page's \
+                ADVANCED tab carries the caveat that explains a 5.0/MG which never answers.
+                """)
+        }
+    }
+
+    /// Issues one `connect` and records when it began.
+    private func beginStandingConnect(for peripheral: CBPeripheral, at now: Date) {
+        reconnectLock.lock()
+        standingConnectAttemptedAt = now
+        reconnectLock.unlock()
+
+        // A connect issued before the central is powered on is a no-op, and losing it would leave the
+        // strap with nothing pending at all. `centralManagerDidUpdateState` picks the peripheral up.
+        guard centralManager.state == .poweredOn else {
+            AppLogger.ble.notice("Standing connect deferred: central reported \(String(describing: self.centralManager.state))")
+            return
+        }
+        peripheral.delegate = self
+        AppLogger.ble.notice("Issuing standing connect to \(peripheral.name ?? "Strap") [\(peripheral.identifier.uuidString)]")
+        centralManager.connect(peripheral, options: nil)
+    }
+
+    /// Waits out the refusal floor and issues the next attempt.
+    ///
+    /// A `Task` rather than a dispatch timer so the wait is cancellable by the two instructions that
+    /// supersede it — an explicit `connect` and an explicit `disconnect` — and so a cancelled sleep
+    /// cannot run its body anyway.
+    private func scheduleStandingConnect(after seconds: TimeInterval) {
+        reconnectLock.lock()
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            self?.resumeStandingConnect()
+        }
+        reconnectLock.unlock()
+    }
+
+    private func resumeStandingConnect() {
+        reconnectLock.lock()
+        reconnectTask = nil
+        let peripheral = connectedPeripheral
+        reconnectLock.unlock()
+
+        guard let peripheral, !isIntentionalDisconnect() else { return }
+        beginStandingConnect(for: peripheral, at: Date())
+    }
+
+    private func isIntentionalDisconnect() -> Bool {
+        reconnectLock.lock()
+        defer { reconnectLock.unlock() }
+        return intentionalDisconnect
+    }
+
+    /// Resets everything that belongs to one link, ready for a connection **or a restore**.
+    ///
+    /// `didConnect` and the connected arm of `willRestoreState` both need it. The second is the reason
+    /// it is a method: a peripheral iOS restores *already connected* never fires `didConnect`, so its
+    /// one-shot diagnostics and its bond flag would otherwise be inherited from the process that died.
+    private func prepareForNewLink() {
+        hasLoggedCharacteristicInventory = false
+        hasLoggedHeartRateFrames = false
+        hasLoggedProprietaryFrame = false
+        // A link that has gone away is not a link that is bonded, and iOS exposes no bond state to
+        // ask: CoreBluetooth has no link-encryption property at all, so this flag is the only record
+        // of whether this connection reached the strap. Reset on both transitions.
+        isAwaitingBondHandshakeAck = false
+        // A new connection is a new byte stream. Held bytes would be prepended to its first frame and
+        // move every field in it.
+        reassembler.reset()
+        // The keep-alive clocks describe one link and are meaningless on the next: `lastActivityAt`
+        // is set again by `beginKeepAliveWindow` when the link is actually up, so a fresh link starts
+        // with an empty window rather than inheriting the previous one's silence.
+        batteryCharacteristic = nil
+        lastActivityAt = nil
+        lastActivationSentAt = nil
+        lastBatteryReadAt = nil
+        hasSentConnectCommands = false
+        hasLoggedUnreadableBattery = false
+    }
+
+    // MARK: - Keep-alive
+
+    /// Starts watching a link CoreBluetooth still calls connected.
+    ///
+    /// **This is not the reconnect and must never become one.** The standing `connect` is what
+    /// survives suspension; this timer only runs while the process does, and its job is the failure
+    /// the link state cannot show — a GATT link that is up while the strap's producers are not.
+    private func startKeepAlive() {
+        stopKeepAlive()
+        lastKeepAliveTickAt = Date()
+        let timer = DispatchSource.makeTimerSource(queue: bleQueue)
+        timer.schedule(
+            deadline: .now() + KeepAlivePolicy.tickSeconds,
+            repeating: KeepAlivePolicy.tickSeconds,
+            leeway: .seconds(2))
+        timer.setEventHandler { [weak self] in self?.keepAliveTick() }
+        timer.resume()
+        keepAliveTimer = timer
+    }
+
+    private func stopKeepAlive() {
+        keepAliveTimer?.cancel()
+        keepAliveTimer = nil
+        lastKeepAliveTickAt = nil
+    }
+
+    /// Begins the observation window for a link that has just come up.
+    private func beginKeepAliveWindow() {
+        lastActivityAt = Date()
+        startKeepAlive()
+    }
+
+    /// Restarts the window after the app has been away, without claiming a frame arrived.
+    ///
+    /// Called from `rearmConnection`, which fires on `.active`. The timer's own gap check covers the
+    /// same case; this is the earlier of the two and the one that runs before the first resumed tick
+    /// can judge a link over time the app spent suspended.
+    private func restartKeepAliveWindow() {
+        guard connectedPeripheral?.state == .connected else { return }
+        let now = Date()
+        let gap = lastKeepAliveTickAt.map { now.timeIntervalSince($0) } ?? 0
+        lastActivityAt = now
+        if keepAliveTimer == nil {
+            startKeepAlive()
+        } else {
+            lastKeepAliveTickAt = now
+        }
+        if gap >= KeepAlivePolicy.suspensionGapSeconds {
+            AppLogger.ble.notice("""
+                Keep-alive window restarted after \(Int(gap)) s without a tick; the liveness fuse \
+                does not count time this process could not observe.
+                """)
+        }
+    }
+
+    private func keepAliveTick() {
+        let now = Date()
+        let previousTick = lastKeepAliveTickAt
+        lastKeepAliveTickAt = now
+
+        guard let peripheral = connectedPeripheral, peripheral.state == .connected,
+              !isIntentionalDisconnect() else {
+            stopKeepAlive()
+            return
+        }
+
+        // **A tick this late is not a late tick.** The app was suspended, and the wall time since the
+        // previous one is time in which nothing could have been observed. Advancing the window and
+        // returning is what stops a resume from being read as two minutes of silence.
+        if let previousTick {
+            let gap = now.timeIntervalSince(previousTick)
+            if gap > KeepAlivePolicy.suspensionGapSeconds {
+                lastActivityAt = now
+                AppLogger.ble.notice("""
+                    Keep-alive resumed after \(Int(gap)) s without a tick; the silence window restarts \
+                    rather than counting time this process could not observe.
+                    """)
+                return
+            }
+        }
+
+        guard let lastActivityAt else { return }
+        let generation = connectedGeneration(for: peripheral)
+        let action = KeepAlivePolicy.action(
+            for: generation,
+            lastActivityAt: lastActivityAt,
+            lastActivationSentAt: lastActivationSentAt,
+            lastBatteryReadAt: lastBatteryReadAt,
+            now: now,
+            isDraining: isDraining())
+
+        if action.bounceLink {
+            bounceStalledLink(
+                peripheral,
+                silentFor: now.timeIntervalSince(lastActivityAt),
+                generation: generation)
+            return
+        }
+        if action.readBattery { readBatteryLevel() }
+        if action.resendActivation {
+            resendActivationCommands(silentFor: now.timeIntervalSince(lastActivityAt))
+        }
+    }
+
+    private func connectedGeneration(for peripheral: CBPeripheral) -> WhoopHardwareGeneration {
+        if let generation = currentDeviceState?.hardwareGeneration { return generation }
+        return resolveGeneration(
+            advertisedName: peripheral.name ?? "WHOOP Strap",
+            deviceId: peripheral.identifier.uuidString)
+    }
+
+    private func isDraining() -> Bool {
+        drainLock.lock()
+        defer { drainLock.unlock() }
+        return drainSession != nil
+    }
+
+    /// Ends a link that has been up and silent past its family's fuse.
+    ///
+    /// The recovery is the ordinary one rather than a second mechanism: cancelling the connection is
+    /// an involuntary drop as far as `didDisconnectPeripheral` can tell, so the standing connect goes
+    /// out and discovery re-runs — which is the only thing that re-arms a producer that will not
+    /// answer a write.
+    private func bounceStalledLink(
+        _ peripheral: CBPeripheral,
+        silentFor: TimeInterval,
+        generation: WhoopHardwareGeneration
+    ) {
+        // Stopped first: the disconnect callback re-arms the standing connect, and a tick landing
+        // between the cancel and that callback would judge a link that is already going away.
+        stopKeepAlive()
+        AppLogger.ble.warning("""
+            No data from \(peripheral.name ?? "Strap", privacy: .public) in \(Int(silentFor)) s on a \
+            \(generation.rawValue, privacy: .public) link. Bouncing it so the standing connect can \
+            recover the link and discovery can re-arm the producers.
+            """)
+        centralManager.cancelPeripheralConnection(peripheral)
+    }
+
+    /// Asks the strap for a fresh `0x2A19`, which doubles as the probe the fuse reads.
+    ///
+    /// The floor is applied by the policy before this is called. `lastBatteryReadAt` is stamped at
+    /// dispatch rather than on the answer, so a strap that never answers does not turn the floor into
+    /// a per-tick request.
+    private func readBatteryLevel() {
+        guard let peripheral = connectedPeripheral, let characteristic = batteryCharacteristic else {
+            return
+        }
+        guard characteristic.properties.contains(.read) else {
+            if !hasLoggedUnreadableBattery {
+                hasLoggedUnreadableBattery = true
+                AppLogger.ble.info("""
+                    Battery level characteristic (\(characteristic.uuid, privacy: .public)) carries no \
+                    .read property; the keep-alive cannot use it as a probe on this link.
+                    """)
+            }
+            return
+        }
+        lastBatteryReadAt = Date()
+        peripheral.readValue(for: characteristic)
+    }
+
+    /// Writes the enable sequence again after the stream has been silent.
+    private func resendActivationCommands(silentFor: TimeInterval) {
+        guard hasSentConnectCommands else {
+            // A 5.0/MG whose bond handshake was never acknowledged: writing the enables now is a
+            // pre-bond write the strap refuses. The liveness fuse is the recovery for that link.
+            return
+        }
+        let name = connectedPeripheral?.name ?? "Strap"
+        AppLogger.ble.notice("""
+            No data from \(name, privacy: .public) in \(Int(silentFor)) s; re-sending the activation \
+            commands.
+            """)
+        sendConnectCommands()
+    }
+
+    /// Records that the link produced something. BLE queue only.
+    private func noteLinkActivity() {
+        lastActivityAt = Date()
+    }
+
     private func updateDeviceState(_ transform: () -> WhoopDevice) {
         let updated = transform()
         // The state write and the subscriber snapshot are taken under one lock, so the replay in
@@ -575,8 +1123,84 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
 extension WhoopBLEManager: CBCentralManagerDelegate {
     public func centralManagerDidUpdateState(_ central: CBCentralManager) {
         AppLogger.ble.info("Central manager state changed to \(central.state.rawValue)")
-        if central.state == .poweredOn {
+        guard central.state == .poweredOn else {
+            // Nothing can be heard from the strap while the radio is off, and a tick firing into
+            // that state would read it as silence. The link, if it survives, re-arms below.
+            stopKeepAlive()
+            return
+        }
+
+        // A restore can happen before this callback — `willRestoreState` is documented as the *first*
+        // method invoked after a background relaunch — so a disconnect it handed over waited here.
+        reconnectLock.lock()
+        let restored = pendingRestorePeripheral
+        pendingRestorePeripheral = nil
+        reconnectLock.unlock()
+
+        if let restored {
+            issueStandingConnect(for: restored, after: .disconnected)
+        } else if let peripheral = connectedPeripheral {
+            // A restore that found the link up has already re-armed it; the tick is restarted here
+            // because it was stopped when the radio went away, and the window is restarted with it.
+            guard peripheral.state != .connected else {
+                beginKeepAliveWindow()
+                return
+            }
+            // Bluetooth was cycled, or a connect was refused while it was off. Either way the pending
+            // connection is gone, and only a new one gets the strap back.
+            issueStandingConnect(for: peripheral, after: .failedToConnect)
+        } else {
             startScanning()
+        }
+    }
+
+    /// Adopts the peripheral iOS preserved when it terminated this app.
+    ///
+    /// **A restored, already-connected peripheral never fires `didConnect`**, which is why the device
+    /// state is seeded here rather than left to that callback — without it the app would show
+    /// `Disconnected` over a live link until something else moved the state. Services are re-discovered
+    /// rather than trusted: a restored subscription can report `isNotifying == true` while delivering
+    /// nothing, and `didDiscoverCharacteristicsFor` subscribes every notify characteristic again.
+    /// Re-running that callback also re-sends the telemetry and motion enables, which is the point —
+    /// the process that armed the strap is gone.
+    public func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+        guard let peripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral],
+              let peripheral = peripherals.first
+        else {
+            AppLogger.ble.notice("Bluetooth state restored with no peripheral to adopt")
+            return
+        }
+
+        AppLogger.ble.notice("Restored \(peripheral.name ?? "Strap") [\(peripheral.identifier.uuidString)], state \(peripheral.state.rawValue)")
+        connectedPeripheral = peripheral
+        peripheral.delegate = self
+
+        if peripheral.state == .connected {
+            prepareForNewLink()
+            reconnectLock.lock()
+            consecutiveRefusals = 0
+            reconnectLock.unlock()
+            updateDeviceState {
+                resolvedDevice(for: peripheral, connectionState: .connected, fallback: currentDeviceState)
+            }
+            peripheral.discoverServices(nil)
+            // A restored link is inherited, not observed: start its window now rather than letting a
+            // tick judge time this process spent dead.
+            beginKeepAliveWindow()
+        } else {
+            stopKeepAlive()
+            updateDeviceState {
+                resolvedDevice(for: peripheral, connectionState: .disconnected, fallback: currentDeviceState)
+            }
+            if central.state == .poweredOn {
+                issueStandingConnect(for: peripheral, after: .disconnected)
+            } else {
+                // `centralManagerDidUpdateState` is the first callback allowed to connect; it picks
+                // this up when the central reports powered on.
+                reconnectLock.lock()
+                pendingRestorePeripheral = peripheral
+                reconnectLock.unlock()
+            }
         }
     }
 
@@ -597,17 +1221,27 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
             signalStrengthRssi: RSSI.intValue
         )
         updateDeviceState { device }
+        // **The scan has done its job once a strap is in hand.** Everything after this point is
+        // addressed to a retained peripheral, which a pending `connect` reaches whether or not it is
+        // advertising — so leaving the scan running would only let a second discovery race the
+        // connection this line starts, and would keep the radio listening for no one.
+        stopScanning()
         central.connect(peripheral, options: nil)
     }
 
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         AppLogger.ble.info("Connected to \(peripheral.name ?? "Strap")")
-        hasLoggedCharacteristicInventory = false
-        hasLoggedHeartRateFrames = false
-        hasLoggedProprietaryFrame = false
-        // A new connection is a new byte stream. Held bytes would be prepended to its first frame and
-        // move every field in it.
-        reassembler.reset()
+        // A link is up, so an earlier explicit disconnect has been superseded. A retry waiting on the
+        // refusal floor has nothing left to do.
+        reconnectLock.lock()
+        intentionalDisconnect = false
+        // A link is the one fact that ends a refusal streak, whatever preceded it.
+        consecutiveRefusals = 0
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        reconnectLock.unlock()
+        stopScanning()
+        prepareForNewLink()
         updateDeviceState {
             resolvedDevice(
                 for: peripheral,
@@ -616,16 +1250,34 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
             )
         }
         peripheral.discoverServices(nil)
+        beginKeepAliveWindow()
+    }
+
+    /// The answer to an attempt that did not become a link.
+    ///
+    /// New in the lifecycle, and the missing half of `didDisconnectPeripheral`: a strap that refuses a
+    /// connection previously left the app with nothing outstanding and nothing to try, which is the
+    /// same dead end as an unanswered drop. `ReconnectPolicy` decides whether the retry is immediate or
+    /// waits out the floor — a refusal that arrived in under a second is the strap saying no, and
+    /// retrying it at once is how a transient refusal is made permanent.
+    public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        AppLogger.ble.warning("Failed to connect to \(peripheral.name ?? "Strap"), error: \(String(describing: error))")
+        stopKeepAlive()
+        prepareForNewLink()
+        updateDeviceState {
+            resolvedDevice(
+                for: peripheral,
+                connectionState: .disconnected,
+                fallback: currentDeviceState
+            )
+        }
+        issueStandingConnect(for: peripheral, after: .failedToConnect)
     }
 
     public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        AppLogger.ble.warning("Disconnected peripheral: \(peripheral.name ?? "Strap"), error: String(describing: error))")
-        hasLoggedCharacteristicInventory = false
-        hasLoggedHeartRateFrames = false
-        hasLoggedProprietaryFrame = false
-        // The frame in flight when the link dropped will never be completed: its remaining bytes
-        // belong to a stream that ended.
-        reassembler.reset()
+        AppLogger.ble.warning("Disconnected peripheral: \(peripheral.name ?? "Strap"), error: \(String(describing: error))")
+        stopKeepAlive()
+        prepareForNewLink()
         // A drain cannot outlive its link, and its caller must not be left suspended: no further
         // frame can arrive, so nothing else will ever conclude it. This resumes the continuation with
         // an `.aborted` session — unless the strap had already sent `HISTORY_COMPLETE`, in which case
@@ -637,6 +1289,15 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
                 connectionState: .disconnected,
                 fallback: currentDeviceState
             )
+        }
+        // **The recovery, and the reason the log above is not the last word.** An answer to "why does it
+        // disconnect when I stop watching it?" is not a better log line; it is a `connect` that is
+        // still outstanding when the app is suspended, so the strap coming back is an event iOS wakes
+        // the app for. The user's own disconnect is the one case that is not a fault.
+        if isIntentionalDisconnect() {
+            AppLogger.ble.notice("Not reconnecting: the disconnect was requested")
+        } else {
+            issueStandingConnect(for: peripheral, after: .disconnected)
         }
     }
 
@@ -720,37 +1381,36 @@ extension WhoopBLEManager: CBPeripheralDelegate {
         }
 
         for char in characteristics {
+            // Kept so the keep-alive tick can ask for a fresh reading. It is also subscribed below if
+            // it notifies — the two are independent, and a strap that only notifies still updates
+            // the screen while a strap that only reads is still readable.
+            if char.uuid == WhoopGATTConstants.batteryLevelCharacteristicUUID {
+                self.batteryCharacteristic = char
+            }
+
             if char.uuid == WhoopGATTConstants.whoop4CommandUUID || char.uuid == WhoopGATTConstants.whoop5CommandUUID {
                 self.commandCharacteristic = char
-                // Send telemetry start command — under the connected strap's own envelope, and only
-                // if this build has one *and* knows that generation's command opcodes. The 4.0's
-                // `0x05` has no published 5.0 counterpart, so the 5.0 falls to the IMU enable below
-                // rather than getting a frame this builder cannot build.
-                if let profile = currentProfile,
-                   let frame = WhoopPacketEncoder.enableLiveTelemetry(
-                       profile: profile, seq: sequence.next(), enable: true) {
-                    sendCommand(frame)
-                }
 
-                // The IMU enable, for the step counter. Sent from here rather than from a screen's
-                // `.task` for the same reason the telemetry enable is: this callback fires once per
-                // connection, and a command sent per screen appearance would toggle the IMU off and on
-                // as the user moved between tabs.
+                // **The 5.0/MG handshake goes first, and it goes alone.** Both generations' first
+                // moves used to be sent from here unconfirmed and in one burst, which for a 5.0 is two
+                // mistakes at once: the strap's command characteristic is gated on a just-works bond
+                // this app never asked for, and a command written pre-bond is refused whatever it
+                // carries. So the hello is written, confirmed, and everything else waits for its
+                // acknowledgement — see `didWriteValueFor`.
                 //
-                // **Goes through `WhoopCommandFrames`, which is what makes a 5.0 strap produce motion
-                // at all.** It routes by envelope: three frames on the 4.0 (`0x6A`, `0x3F`, `0x6B`) and
-                // two on the 5.0 / MG (`0x51 START_RAW_DATA` then the toggle). This call used to go
-                // straight to the 4.0 builder, whose refusal of the 5.0 envelope was correct and left
-                // the 5.0 with no producer running — the 5.0 leg's whole first step.
-                //
-                // An **empty** array is still the state for an unknown generation rather than an
-                // error, so `TrackStepsUseCase` holds a subscription with nothing arriving, which is
-                // the honest state for a strap this build cannot write to.
-                if let profile = currentProfile {
-                    for frame in WhoopCommandFrames.motionEnableSequence(
-                        profile: profile, seq: sequence.next(), enable: true) {
-                        sendCommand(frame)
-                    }
+                // `WhoopPacketEncoder5.hello` is the discriminator as well as the frame: it returns
+                // bytes only for a profile with the CRC16 envelope, which is exactly `.whoop5` and
+                // `.whoop5MG`. A 4.0 takes the `else`, and its path is byte-for-byte what it was.
+                if let profile = currentProfile,
+                   let hello = WhoopPacketEncoder5.hello(profile: profile, seq: sequence.next()) {
+                    // A `false` here means the write never reached CoreBluetooth — no `.write`
+                    // property to handshake with. The enables still go out, because a 5.0 that cannot
+                    // be bonded from this app is the state it was in before this change and there is no
+                    // reason to withhold the commands that might still land.
+                    isAwaitingBondHandshakeAck = sendConfirmedCommand(hello)
+                    if !isAwaitingBondHandshakeAck { sendConnectCommands() }
+                } else {
+                    sendConnectCommands()
                 }
             }
 
@@ -760,8 +1420,84 @@ extension WhoopBLEManager: CBPeripheralDelegate {
         }
     }
 
+    /// The acknowledgement of a confirmed write, and **the only place this app can learn whether the
+    /// 5.0/MG bond completed.**
+    ///
+    /// **It logs every write and acts on exactly one.** The log line is most of why this method
+    /// exists: CoreBluetooth publishes no link-encryption or bond state, so a client cannot ask
+    /// whether it is bonded — but a command the strap refuses on an unauthenticated link comes back
+    /// here as `insufficientAuthentication` (or `insufficientEncryption`), and nothing else in the app
+    /// would ever see it. The worse outcome is the one with no error at all: a *refused* hello can
+    /// simply drop the link, which is indistinguishable from the strap going out of range. So
+    /// "connected, then silence" is a result to read as a refusing strap rather than as a stray
+    /// disconnect.
+    ///
+    /// **The handshake runs once per connection and this is the guard.** `didWriteValueFor` re-fires
+    /// on every later confirmed write — the drain's acknowledgements go out `.withResponse` too — and
+    /// re-running the connect sequence mid-drain is the documented cause of a strap refusing to stream
+    /// its type-47 records. The flag is therefore cleared before anything else, and a later
+    /// acknowledgement falls straight through to the log line.
+    ///
+    /// A failed handshake does **not** arm the producers: a command written pre-bond is refused
+    /// whatever it carries, so sending them would be noise over a link that has already said no.
+    public func peripheral(
+        _ peripheral: CBPeripheral,
+        didWriteValueFor characteristic: CBCharacteristic,
+        error: Error?
+    ) {
+        // A successful confirmed write is the strap answering, so it is activity for the fuse even
+        // though it is not a frame. A failed one is not counted: the error can be a timeout delivered
+        // after the link has already gone.
+        if error == nil { noteLinkActivity() }
+
+        if let error {
+            AppLogger.ble.warning("""
+                Confirmed write to \(characteristic.uuid, privacy: .public) failed: \
+                \(String(describing: error), privacy: .public)
+                """)
+        } else {
+            AppLogger.ble.info("""
+                Confirmed write to \(characteristic.uuid, privacy: .public) acknowledged
+                """)
+        }
+
+        guard isAwaitingBondHandshakeAck else { return }
+        isAwaitingBondHandshakeAck = false
+
+        guard error == nil else {
+            let nsError = error! as NSError
+            let refusedForBond = nsError.domain == CBATTErrorDomain
+                && (nsError.code == CBATTError.insufficientAuthentication.rawValue
+                    || nsError.code == CBATTError.insufficientEncryption.rawValue)
+            AppLogger.ble.warning("""
+                5.0/MG handshake not acknowledged — the bond did not complete. \
+                \(refusedForBond
+                    ? "The strap refused the write on an unauthenticated link."
+                    : "The write failed for a reason that is not the bond.", privacy: .public) \
+                The producers are left unarmed, because a command written pre-bond is refused anyway.
+                """)
+            return
+        }
+
+        // `.notice`, not `.info`, and the level is the point rather than the volume. `.info` is
+        // memory-only — it reaches a live stream and is never written to the log store — while the
+        // failure arm above logs at `.warning` and is persisted. At `.info` a log archive collected
+        // after the run would hold this handshake's failure and not its success: an artifact that can
+        // only report one of the two answers. This is the line the whole test is read from.
+        AppLogger.ble.notice("""
+            5.0/MG handshake acknowledged — the link is bonded, so the producers are being armed now.
+            """)
+        sendConnectCommands()
+    }
+
     public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard let data = characteristic.value, !data.isEmpty else { return }
+
+        // Every notification is evidence the link is carrying data — including the battery read,
+        // which is why that one request can double as the keep-alive's probe. Recorded before the
+        // branches so a frame this build cannot decode still counts, since the fuse is about the
+        // link rather than about what was understood.
+        noteLinkActivity()
 
         // 1. Standard Heart Rate characteristic
         if characteristic.uuid == WhoopGATTConstants.heartRateMeasurementCharacteristicUUID {

@@ -130,6 +130,12 @@ public final class WhoopMockBLEManager: @unchecked Sendable {
 
     public func stopScanning() {}
 
+    /// The mock has no link that can drop and no process that can be suspended, so there is nothing
+    /// for a foreground re-arm to do. It stays a no-op rather than `startScanning()`: the mock's
+    /// "scan" is what marks the simulated strap connected, and re-running it on every foreground would
+    /// re-announce a link the user had explicitly disconnected.
+    public func rearmConnection() {}
+
     public func connect(to deviceId: String) {
         startScanning()
     }

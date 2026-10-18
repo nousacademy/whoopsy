@@ -52,25 +52,26 @@ public enum ReceptiveInactivityCatalog {
 
     /// The names the picker offers, in the order it draws them.
     ///
-    /// Ordered as a reader would move through them rather than alphabetically: the sleep-adjacent
-    /// states first, then the seated practices, then the ones that are a place the body is put. The
-    /// order is a decision this type makes, so it is stated here instead of falling out of the first
-    /// letter of each name — `WhoopActivityCatalog`'s `abstentionName` and `fastingName` are prepended
-    /// for the same reason.
+    /// **Alphabetical, on the user's instruction**, where it was previously grouped by practice —
+    /// sleep-adjacent states, then seated practices, then places — with `Cannabis` appended last. The
+    /// list stays written out rather than computed with `.sorted()` at definition, so the vocabulary is
+    /// readable as one and a new name is added where it belongs; §17 asserts the array is in fact
+    /// sorted, which is what fails if one is appended out of place.
     public static let names: [String] = [
+        "Body scan",
+        "Breathwork",
+        "Cannabis",
         "Dream",
+        "Float",
         "Lucid dream",
         "Meditation",
         "Non-sleep, deep rest",
-        "Yoga nidra",
-        "QiGong",
-        "Breathwork",
-        "Body scan",
-        "Stillness",
-        "Sound bath",
-        "Float",
-        "Sauna",
         "Prayer",
+        "QiGong",
+        "Sauna",
+        "Sound bath",
+        "Stillness",
+        "Yoga nidra",
     ]
 
     /// The app's spelling of a producer's own word for what was received.

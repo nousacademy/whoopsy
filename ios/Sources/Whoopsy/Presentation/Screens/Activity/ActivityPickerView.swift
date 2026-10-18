@@ -11,6 +11,13 @@ import SwiftUI
 /// catalogue for that reason rather than merged into one alphabetical run, and this view draws them
 /// apart for the same one.
 ///
+/// **The two sections are a segmented switch rather than one list with the second below the first.**
+/// The one-list form put Recovery Activities under ~150 strain rows, so a reader looking for
+/// `Meditation` or `Sauna` had to scroll the whole catalogue to discover it exists — the user's own
+/// report was that recovery activities should show up in the list for adding an activity. The control
+/// is pinned above the list, both groups are visible before the list is read, and it opens on the
+/// group the current selection belongs to.
+///
 /// **Three names here are not on WHOOP's page, and their presence is deliberate** — see the
 /// catalogue's own comment. Two of them are prepended to their sections rather than sorted in:
 /// `Activity` at the head of the strain list and `Fast` at the head of the recovery one, so each
@@ -42,10 +49,23 @@ public struct ActivityPickerView: View {
     /// The draft's activity name. Writing it goes through the draft's setter — see this type's comment.
     @Binding private var selection: String?
 
+    /// Which of the catalogue's two lists the sheet is drawing.
+    ///
+    /// **The two groups are a control rather than 150 rows followed by 33**, which is what the
+    /// one-list form made the recovery names: reachable only by scrolling past every strain activity,
+    /// so an activity like `Meditation` read as absent from a list that has always contained it. The
+    /// switch is the affordance that makes the second half visible.
+    ///
+    /// It starts on the group the current selection belongs to — a stored `Meditation` opens on
+    /// Recovery with its tick in view, and a fresh add opens on Strain — through
+    /// `SectionGroup.containing(_:)`.
+    @State private var group: SectionGroup
+
     @Environment(\.dismiss) private var dismiss
 
     public init(selection: Binding<String?>) {
         self._selection = selection
+        self._group = State(initialValue: SectionGroup.containing(selection.wrappedValue))
     }
 
     /// The picker's title, and the two section headings. `nonisolated static` for this feature's standing
@@ -57,6 +77,64 @@ public struct ActivityPickerView: View {
     /// What the section holding a stored name the catalogue does not offer is called.
     public nonisolated static let currentSectionTitle = ActivityEditSheet.currentSectionTitle
 
+    /// The segmented control's two short tabs, and its spoken name.
+    ///
+    /// **The short words are the tabs and the long ones the section headings**, deliberately: a
+    /// segmented control splits its width in two, so `Strain Activities`/`Recovery Activities` would
+    /// truncate on a narrow phone, while the heading above the list has the full width to say which
+    /// list is on screen.
+    public nonisolated static let strainGroupTitle = "Strain"
+    public nonisolated static let recoveryGroupTitle = "Recovery"
+    public nonisolated static let groupPickerLabel = "Activity group"
+
+    /// One of the catalogue's two lists, and the names it offers.
+    ///
+    /// A value rather than two branches in `body` for this app's standing reason — the runner has no
+    /// renderer — and because the control, the heading and the rows must all read the same answer.
+    public enum SectionGroup: String, CaseIterable, Identifiable, Sendable {
+        case strain
+        case recovery
+
+        public var id: String { rawValue }
+
+        /// The tab's word.
+        public var tabTitle: String {
+            switch self {
+            case .strain: return ActivityPickerView.strainGroupTitle
+            case .recovery: return ActivityPickerView.recoveryGroupTitle
+            }
+        }
+
+        /// The heading over the list, which keeps WHOOP's own two names.
+        public var sectionTitle: String {
+            switch self {
+            case .strain: return ActivityPickerView.strainSectionTitle
+            case .recovery: return ActivityPickerView.recoverySectionTitle
+            }
+        }
+
+        /// The names, read from the catalogue rather than copied — `allNames` is the concatenation
+        /// of these two in this order, so the switch and a caller walking everything cannot disagree.
+        public var names: [String] {
+            switch self {
+            case .strain: return WhoopActivityCatalog.strainActivities
+            case .recovery: return WhoopActivityCatalog.recoveryActivities
+            }
+        }
+
+        /// The group a selection belongs to, for the control's opening position.
+        ///
+        /// The test is `ActivityName.matches`, the same case- and whitespace-tolerant comparison the
+        /// rows tick with: a stored `"meditation"` is the catalogue's `Meditation` and should open on
+        /// Recovery rather than on a list that cannot show it. An unlisted or absent name opens on
+        /// Strain, which is where a fresh add begins.
+        public static func containing(_ name: String?) -> SectionGroup {
+            guard let name else { return .strain }
+            return WhoopActivityCatalog.recoveryActivities.contains { ActivityName.matches($0, name) }
+                ? .recovery : .strain
+        }
+    }
+
     public var body: some View {
         List {
             if let current = unlistedSelection {
@@ -65,18 +143,15 @@ public struct ActivityPickerView: View {
                 }
             }
 
-            Section(Self.strainSectionTitle) {
-                ForEach(WhoopActivityCatalog.strainActivities, id: \.self) { name in
-                    row(name)
-                }
-            }
-
-            Section(Self.recoverySectionTitle) {
-                ForEach(WhoopActivityCatalog.recoveryActivities, id: \.self) { name in
+            Section(group.sectionTitle) {
+                ForEach(group.names, id: \.self) { name in
                     row(name)
                 }
             }
         }
+        // Pinned above the list rather than made its first row: a control that chooses what the list
+        // contains has to stay reachable after the list is scrolled, and a row would scroll away.
+        .safeAreaInset(edge: .top) { groupControl }
         // A grouped `List` draws its own background, which would put a light slab inside a dark sheet.
         // Hiding it leaves the sheet's own colour showing between the rows.
         .scrollContentBackground(.hidden)
@@ -84,6 +159,24 @@ public struct ActivityPickerView: View {
         .navigationTitle(Self.title)
         .inlineNavigationTitle()
         .preferredColorScheme(.dark)
+    }
+
+    /// The `Strain` / `Recovery` switch.
+    ///
+    /// `.segmented` and not a menu: both groups should be visible before the list is read, which is
+    /// the whole point of the control — a menu would hide the fact that the second list exists behind
+    /// another tap.
+    private var groupControl: some View {
+        Picker(Self.groupPickerLabel, selection: $group) {
+            ForEach(SectionGroup.allCases) { group in
+                Text(group.tabTitle).tag(group)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .background(Theme.backgroundDark)
     }
 
     /// The stored name, when the catalogue does not hold it. See this type's comment.

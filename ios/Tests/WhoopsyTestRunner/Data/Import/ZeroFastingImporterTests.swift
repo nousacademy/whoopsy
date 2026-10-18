@@ -226,6 +226,51 @@ enum ZeroFastingImporterTests {
                 + "export's workout beside it, not one replacing the other, which is the visible form of "
                 + "the fix (\(sharedRows.count) rows on \(sharedDay.map(String.init(describing:)) ?? "nil"))")
 
+        // ── The third measurement-free producer, and the same order-independence ──────────────────────
+        //
+        // The `+` menu's `ADD ACTIVITY` row writes a `workouts` row with a name and a window and no
+        // measurement at all, and `WorkoutSession.measurementFreeSourceValues` is the set the day skip
+        // consults. **This is the case a user actually hits**: add a walk to a day by hand, then import
+        // the file that holds the rest of that day. If the manual row made its day read as already
+        // recorded, the export's rows for it would vanish — silently, and only in that order.
+        //
+        // The day is chosen from the export's own days and **excluded from the fast start days**, so the
+        // only row standing on it before the import is the hand-added one; a shared fast day would prove
+        // the same thing twice over and let a missing `manual` membership hide behind the fast filter.
+        let fastStartDays = Set(rows.map { dayCalendar.startOfDay(for: $0.startedAt) })
+        let manualDay = exportDays.sorted().first { !fastStartDays.contains($0) }
+        let manualDB = LocalDatabaseManager(inMemory: true)
+        let manualRepo = GRDBWorkoutRepository(db: manualDB)
+        if let manualDay {
+            var manualDraft = AddActivityDraft(on: manualDay)
+            manualDraft.setName("Walking")
+            if let manual = manualDraft.applying() {
+                _ = try? await manualRepo.save(manual)
+            }
+        }
+        let beforeExport = (try? await manualRepo.getWorkouts(for: manualDay ?? Date())) ?? []
+        // The importer's day skip runs *inside* the import, so this has to be the importer the rest of
+        // the suite builds — the same `calendar:`, and the same real export file.
+        let exportBesideManual = try? await makeExportImporter(db: manualDB, calendar: dayCalendar)
+            .importWorkouts(at: workoutsURL)
+        let afterExport = (try? await manualRepo.getWorkouts(for: manualDay ?? Date())) ?? []
+        assertTest(
+            beforeExport.count == 1 && beforeExport.first?.source == WorkoutSession.manualSourceLabel,
+            "A hand-added session is the only row on its day before the export is imported "
+                + "(\(beforeExport.map { $0.source ?? "nil" }))")
+        assertTest(
+            exportBesideManual == 673,
+            "**…and the export still writes all 673 of its rows**, so a day holding only a hand-added "
+                + "session is not read as a day this app measured — the manual label is in the same set "
+                + "the fast filter uses (wrote \(exportBesideManual.map(String.init) ?? "nil"))")
+        assertTest(
+            afterExport.count >= 2
+                && afterExport.contains { $0.source == WorkoutSession.manualSourceLabel }
+                && afterExport.contains { $0.source != WorkoutSession.manualSourceLabel },
+            "…and that day draws both rows afterwards — the hand-added walk beside the export's own "
+                + "workout, which is the visible form of the fix (\(afterExport.count) rows on "
+                + "\(manualDay.map(String.init(describing:)) ?? "nil"))")
+
         // An edit survives the other import, and does **not** survive a re-import of its own source. Both
         // halves are recorded rather than left to be discovered: the Settings caption promises the first
         // and warns about the second.

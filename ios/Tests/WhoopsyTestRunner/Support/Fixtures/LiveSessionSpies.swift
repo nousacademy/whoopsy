@@ -106,6 +106,8 @@ final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Se
     func stopScanning() async {}
     func connect(to deviceId: String) async throws {}
     func disconnect() async {}
+    /// Never reached: the foreground re-arm lives on `MainContainerView`, and a session has no scene.
+    func rearmConnection() async {}
     func sendHapticAlert(durationSeconds: Int, pattern: Int) async throws {}
     func getCurrentDevice() async -> WhoopDevice? { nil }
     func refreshStrapModel() async {}

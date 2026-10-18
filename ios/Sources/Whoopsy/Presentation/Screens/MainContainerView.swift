@@ -3,6 +3,10 @@ import SwiftUI
 public struct MainContainerView: View {
     private let container: DIContainer
 
+    /// Whether the app is in front of the user, which is the one moment the link can be re-armed
+    /// cheaply.
+    @Environment(\.scenePhase) private var scenePhase
+
     /// The device page's view model, built here and handed to Home's status badge.
     ///
     /// **It is a stored `let` and not a computed property, and that is a correctness requirement
@@ -224,6 +228,18 @@ public struct MainContainerView: View {
 
             .tabItem { Label("More", systemImage: "ellipsis.circle") }
         }.tint(Theme.livePulseCyan).preferredColorScheme(.dark)
+        // **The foreground half of the link's recovery.** A standing connect survives suspension, so
+        // this is not the mechanism that keeps the strap connected while the app is away — the BLE
+        // layer's is. It covers the two cases that mechanism cannot: a process the system moved out of
+        // memory, whose pending connect went with it, and a strap that was never found in the first
+        // place. See `WhoopBLEManager.rearmConnection` for what it deliberately leaves alone.
+        //
+        // Attached to the root so it exists for the life of the scene, and gated on `.active` rather
+        // than `.background` because a link is only worth re-arming when someone can see the result.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await container.manageBLEConnectionUseCase.rearmConnection() }
+        }
         // The strap's step counter, started once for the life of the app.
         //
         // **Here and nowhere else.** `TrackStepsUseCase` consumes a multicast stream, so a
@@ -239,9 +255,9 @@ public struct MainContainerView: View {
         //
         // The orphan sweep runs **first**, and it has to run somewhere: a Live Activity outlives the
         // process that requested it, so an app killed mid-session leaves a lock-screen card counting up
-        // from a start instant nothing is recording. This build has no BLE state restoration and no
-        // in-flight persistence, so a relaunch cannot adopt one — it can only end it. Ordered ahead of
-        // the step counter because that call never returns.
+        // from a start instant nothing is recording. This build has no in-flight session persistence,
+        // so a relaunch cannot adopt one — it can only end it. Ordered ahead of the step counter
+        // because that call never returns.
         .task {
             await container.liveSessionUseCase.endOrphanedLiveActivities()
             await container.trackStepsUseCase.start()

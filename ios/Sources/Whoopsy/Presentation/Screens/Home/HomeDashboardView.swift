@@ -127,10 +127,23 @@ public struct HomeDashboardView: View {
     /// no new `hidingTabBar` case: a presented sheet covers the tab bar itself.
     @State private var presentedReceptive: ReceptiveInactivityDraft?
 
+    /// The hand-added session the `+` menu's `ADD ACTIVITY` row is entering — the second `.sheet` this
+    /// screen presents, and the only one whose write makes a `workouts` row.
+    ///
+    /// **It is a draft and not a `WorkoutSession`** because the row does not exist until `SAVE`: the
+    /// sheet edits the window and the name in place, and `AddActivityDraft.applying()` is what turns
+    /// that pair into the row. The identity in it is the row's primary key, which is what makes a
+    /// second write replace rather than append.
+    @State private var presentedAddActivity: AddActivityDraft?
+
     /// Whether a receptive write is in flight, so `SAVE` and `DELETE` cannot be pressed twice over one
     /// edit. It lives here rather than on the sheet because the sheet does not own the write — the view
     /// model does — and the sheet is handed the answer as a plain `Bool`.
     @State private var isSavingReceptive = false
+
+    /// Whether a hand-added session's write is in flight — `isSavingReceptive`'s flag for the other
+    /// sheet, and here for the same reason: the sheet does not own the write.
+    @State private var isSavingAddActivity = false
 
     /// The device page, reached from the badge in the top bar.
     ///
@@ -299,7 +312,14 @@ public struct HomeDashboardView: View {
                 // is an overlay applied to the view *below*, outside this stack, and a destination
                 // declared out there cannot push — the link would be inert with no error.
                 .navigationDestination(isPresented: $isPresentingLiveSession) {
-                    LiveSessionView(useCase: liveSessionUseCase)
+                    // **The END button's row comes back here, and that handoff is what puts a just-ended
+                    // session on the card.** Home's `.task` has already run and does not re-fire on a
+                    // pop, so without this the row is stored and drawn nowhere until the day changes —
+                    // which is precisely the "activities never get saved" symptom. `endFast()` below is
+                    // the same pattern, and `updateWorkout(_:on:)` the same merge.
+                    LiveSessionView(useCase: liveSessionUseCase) { workout in
+                        viewModel.updateWorkout(workout, on: selectedDate)
+                    }
                 }
                 // The picker `START ACTIVITY` opens. Declared here for `isPresentingLiveSession`'s own
                 // reason — see that flag — and it must be *inside* the stack even though the menu that
@@ -421,6 +441,37 @@ public struct HomeDashboardView: View {
                 isSaving: isSavingReceptive,
                 onSave: { Task { await saveReceptiveInactivity() } },
                 onDelete: { Task { await deleteReceptiveInactivity() } })
+        }
+        // The hand-added session's sheet, opened from the `+` menu's `ADD ACTIVITY` row. **`item:` and
+        // the same read-back binding** as the receptive sheet above, for its stated reason: the draft
+        // the closure is handed is a snapshot, so writes have to go back through the `@State` or the
+        // sheet saves the value it opened with. `presented` is the fallback for the hand-over frame.
+        .sheet(item: $presentedAddActivity) { presented in
+            AddActivitySheet(
+                draft: Binding(
+                    get: { presentedAddActivity ?? presented },
+                    set: { presentedAddActivity = $0 }),
+                isSaving: isSavingAddActivity,
+                onSave: { Task { await saveAddActivity() } })
+        }
+    }
+
+    /// Saves the hand-added session the sheet is describing onto the day on screen, and dismisses
+    /// **only when the write reported back** — `saveReceptiveInactivity()`'s contract, so a failed write
+    /// leaves the sheet up with the user's entry still in it.
+    ///
+    /// **The day is `selectedDate` and the draft's own window is inside it**, which the draft's clamps
+    /// guarantee: both ends are held within `day`, so the row files under this day and `covers` it.
+    private func saveAddActivity() async {
+        guard let draft = presentedAddActivity,
+              let activity = draft.applying()
+        else { return }
+        isSavingAddActivity = true
+        // `defer` on the reason `saveReceptiveInactivity()` gives: a throw out of the repository must
+        // not leave the flag set for the life of the screen.
+        defer { isSavingAddActivity = false }
+        if await viewModel.saveActivity(activity, on: selectedDate) {
+            presentedAddActivity = nil
         }
     }
 
@@ -597,10 +648,12 @@ public struct HomeDashboardView: View {
         Button {
             dismissActivityMenu()
             switch entry.action {
-            case .none:
-                // `ADD ACTIVITY` — the import path is not built. The tap closes the menu and stops
-                // here; there is no destination to reach.
-                break
+            case .addActivity:
+                // A fresh draft for the day on screen, so the sheet opens with both pickers already
+                // inside that day. **The day is passed here rather than at presentation**, unlike the
+                // receptive sheet: this draft owns its day because both instants are clamped to it, and
+                // a draft built at presentation could outlive a day change underneath it.
+                presentedAddActivity = AddActivityDraft(on: selectedDate)
             case .startSession:
                 presentActivityPicker()
             case .addReceptiveInactivity:

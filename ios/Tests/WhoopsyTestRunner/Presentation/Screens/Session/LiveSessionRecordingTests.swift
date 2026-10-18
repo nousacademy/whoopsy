@@ -649,6 +649,43 @@ enum LiveSessionRecordingTests {
                 homeWorkouts.contains { $0.activityName == "Activity" },
                 "…and the one this app recorded carries the abstention name all the way to the card, not "
                     + "just into the row (\(homeWorkouts.map { $0.activityName ?? "nil" }))")
+
+            // ---- The END button's handoff ----
+            //
+            // `LiveSessionView`'s callback is under a renderer, so what can be asserted here is the
+            // merge it calls. Home's `.task` has already run by the time END is pressed and does not
+            // re-fire on the pop, so `updateWorkout(_:on:)` is the only thing that puts a just-ended
+            // row on the card — and the reason an ordinary session missing this handoff looked like a
+            // session that was never saved.
+            let justEnded = WorkoutSession(
+                startedAt: Date(),
+                endedAt: Date(),
+                strain: 1.0,
+                averageHeartRate: 100,
+                maxHeartRate: 120,
+                route: [],
+                splits: [],
+                activityName: "Running")
+            await MainActor.run { home.updateWorkout(justEnded, on: Date()) }
+            assertTest(
+                await MainActor.run { home.workouts.contains { $0.id == justEnded.id } },
+                "Home folds the row END just wrote into the ACTIVITIES card without a re-read")
+
+            // The drop half, which is why this is the covering rule rather than an unconditional
+            // append: a session on a day this screen is not showing must not leak into the list.
+            let threeDaysAgo = Calendar.current.date(byAdding: .day, value: -3, to: Date())!
+            let elsewhere = WorkoutSession(
+                startedAt: threeDaysAgo,
+                endedAt: threeDaysAgo.addingTimeInterval(600),
+                strain: 1.0,
+                averageHeartRate: 100,
+                maxHeartRate: 120,
+                route: [],
+                splits: [])
+            await MainActor.run { home.updateWorkout(elsewhere, on: Date()) }
+            assertTest(
+                await MainActor.run { !home.workouts.contains { $0.id == elsewhere.id } },
+                "…and a row that does not cover the day on screen is dropped, not appended")
         } catch {
             assertTest(false, "The live session's round trip threw: \(error)")
         }

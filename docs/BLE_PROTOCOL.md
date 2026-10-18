@@ -407,6 +407,39 @@ no feature-flag negotiation, and the clock synchronization and ACK loop exist as
 session rather than as a completed handshake. What *is* built is the motion enable, sent from
 `didDiscoverCharacteristicsFor` on connect, and the drain — §4 carries its status.
 
+**That callback is also how the implemented half is re-sent, and state restoration is why it matters.**
+A peripheral restored already connected never fires `didConnect`, so `willRestoreState` seeds the
+device state and calls `discoverServices(nil)` itself; re-discovery re-runs
+`didDiscoverCharacteristicsFor`, which sends the telemetry enable and the motion enable again.
+**Inheriting the previous process's subscription is not a substitute**: a subscription can report
+`isNotifying == true` while delivering nothing to the new process, which is the failure noop reports
+as #613 — so the subscription is re-issued rather than trusted.
+
+**The implemented half is also re-sent on silence, and the threshold belongs to the generation.**
+`didDiscoverCharacteristicsFor` runs once per connection, so a strap whose producers were disarmed
+without the link dropping would keep a subscription that delivers nothing and never ask again. A 30 s
+`KeepAlivePolicy` tick therefore watches *data* — any non-empty notification, and any successful
+write — and after **15 s** of silence on a 4.0 re-sends its three enable frames. That figure is
+Asherlc's `WhoopBleDataWatchdog`. The 5.0/MG gets **60 s**, because its resting heart rate has
+documented at-rest lulls (noop #580/#1414, Edge #191) and a 15 s rule would re-arm a working producer
+on every quiet minute. Two guards sit around it: the re-send has its own 60 s floor, so noticing is
+not the same as poking, and it is withheld unless the bond handshake was itself acknowledged
+(`hasSentConnectCommands`), because a 5.0/MG refuses writes made before it. **Past 120 s (4.0) or
+600 s (5.0/MG) of total silence the link is not healthy and is bounced** with
+`cancelPeripheralConnection`, whose `didDisconnectPeripheral` treats it as involuntary and answers
+with the standing connect — so discovery re-runs and the enable sequence is sent again. A drain
+suppresses both the re-send and the bounce; a battery read (`0x2A19`, floored at 60 s) stays safe
+throughout and doubles as the probe.
+
+**A 5.0/MG that refuses five consecutive fast connection attempts is left alone.** noop #747 is the
+report the cap comes from, and the handshake being refused is the SMP bond this app cannot complete
+(§7 Q6). Only a *fast* refusal counts — a `didFailToConnect` inside two seconds of the attempt — and
+any drop, slow failure or failure with no previous attempt resets the count, so a strap that dropped
+out of range and came back is never mistaken for one refusing its bond. The cap is 5.0/MG-only: a
+4.0's refusal is more likely range, which a standing connect is supposed to wait out. When it is
+reached no further attempt is made automatically, and the device page's `ADVANCED` tab already
+carries the caveat that explains it.
+
 **The 4.0's live enable is three ordered frames** (`0x6A` `[01]`, then `0x3F` `[01]`, then `0x6B`
 `[01,01]`), all or nothing. **All three carry a body**, and the references' own running clients are
 the basis: noop sends `[0x01]` for the realtime record (documented on-device, "2.1/s → 0/s"), and

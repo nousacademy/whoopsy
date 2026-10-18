@@ -27,6 +27,12 @@ public final class ManageBLEConnectionUseCase: Sendable {
         await bleRepository.disconnect()
     }
 
+    /// Re-arms the link when the root view sees the app come back to the foreground. See
+    /// `WhoopBLEDeviceRepository.rearmConnection` for why this is not a second `startScanning()`.
+    public func rearmConnection() async {
+        await bleRepository.rearmConnection()
+    }
+
     public func triggerHapticAlarm(durationSeconds: Int = 3, pattern: Int = 1) async throws {
         try await bleRepository.sendHapticAlert(durationSeconds: durationSeconds, pattern: pattern)
     }

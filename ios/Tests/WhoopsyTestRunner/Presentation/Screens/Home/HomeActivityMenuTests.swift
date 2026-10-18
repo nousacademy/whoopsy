@@ -45,22 +45,26 @@ enum HomeActivityMenuTests {
         let blank = ActivityMenu.entries.filter(\.symbol.isEmpty).map(\.title)
         assertTest(blank.isEmpty, "…each carrying a non-empty SF Symbol (\(blank) draw an empty chip)")
 
-        // **Exactly one row is a recording path, and it is not the new one.** `START ACTIVITY` is what
-        // carries `.startSession`, and `ADD RECEPTIVE INACTIVITY` carries a case of its own rather than
-        // reusing it — so the count below stays at one and the receptive row cannot become a second way
-        // into a live session. §18 asserts the same count from the session's side; the pair is what keeps
-        // `ADD ACTIVITY` legitimately inert without either neighbour joining it.
+        // **Exactly one row is a recording path, and it is not either new one.** `START ACTIVITY` is what
+        // carries `.startSession`, and the two `ADD` rows carry cases of their own rather than reusing
+        // it — so the count below stays at one and neither can become a second way into a live session.
+        // §18 asserts the same count from the session's side.
         let recordingRows = ActivityMenu.entries.filter { $0.action == .startSession }.map(\.title)
         assertTest(
             recordingRows == ["START ACTIVITY"],
-            "…and exactly one of the three starts a recording, which is the assertion that fails if the "
-                + "receptive row is given `.startSession` instead of its own case (\(recordingRows))")
+            "…and exactly one of the three starts a recording, which is the assertion that fails if an "
+                + "`ADD` row is given `.startSession` instead of its own case (\(recordingRows))")
 
-        let inertRows = ActivityMenu.entries.filter { $0.action == .none }.map(\.title)
+        // **Every row names a destination, and this is the assertion that replaced the inert row.**
+        // `ADD ACTIVITY` used to carry a `.none` and do nothing at all; the case is gone and there is no
+        // default on `Entry.init`, so a row that does nothing is no longer writable. The array pins the
+        // whole row-to-action mapping rather than one row's case, so a swapped or duplicated destination
+        // fails here — which is the half of "the menu works" a renderer-less runner can see.
+        let actions = ActivityMenu.entries.map(\.action)
         assertTest(
-            inertRows == ["ADD ACTIVITY"],
-            "…and exactly one row is inert, so `ADD RECEPTIVE INACTIVITY` opening a sheet rather than "
-                + "nothing is visible here rather than only on the screen (\(inertRows))")
+            actions == [.addActivity, .startSession, .addReceptiveInactivity],
+            "…and every row names its own destination in order, so `ADD ACTIVITY` opens the add sheet "
+                + "rather than being inert (\(actions))")
 
         // ---- Every day is offered the menu; only today is offered a way to record ----
         //
@@ -109,7 +113,7 @@ enum HomeActivityMenuTests {
         // receptive inactivity is filed on the day it happened, so a user paging back to the morning of a
         // dream is exactly who that row is for. The filter is on `Action`, so this falls out of the
         // implementation rather than being spelled in it — which is why it is asserted rather than
-        // assumed, since a filter widened to `action == .none` reads identically on today.
+        // assumed, since a filter narrowed to `.startSession` reads identically on today.
 
         let menuDays = [menuYesterday, menuNow, menuTomorrow]
         let receptiveOnEveryDay = menuDays.map { day in
@@ -158,8 +162,9 @@ enum HomeActivityMenuTests {
         // **The receptive row survives this filter too, and that is the answer rather than an oversight.**
         // What the rule withholds is a second *recording*: entering a meditation starts no clock and
         // writes one row to a different table, so it conflicts with a live session no more than a note
-        // does. Asserted because the tempting repair for the line above — filtering to `action == .none`
-        // — would silently take this row with it on exactly the day a user is most likely to want it.
+        // does. Asserted because the tempting repair for the line above — filtering to `action ==
+        // .addActivity` — would silently take this row with it on exactly the day a user is most likely
+        // to want it.
         assertTest(
             activityRecordingTitles.contains("ADD RECEPTIVE INACTIVITY"),
             "…and the receptive row is *not* withheld while an activity records, since it starts no "

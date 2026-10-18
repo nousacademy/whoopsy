@@ -37,6 +37,23 @@ public struct LiveSessionView: View {
     /// The session, owned by the app. See the type's note on why this is not a `@State`.
     private let useCase: LiveSessionUseCase
 
+    /// What to do with the row END wrote, before this page pops.
+    ///
+    /// **This is the ordinary session's half of the handoff `endFast()` already has.** Home's
+    /// `ACTIVITIES` card draws `viewModel.workouts`, and the only things that refresh it are its
+    /// `.task` (which has already run and does not re-fire on a pop) and `selectedDate` changing — so
+    /// without this the row is in `workouts` and on no screen, which reads as a session that was never
+    /// saved. `updateWorkout(_:on:)` is the merge the fast path uses for the same reason.
+    ///
+    /// **It cannot be an `onChange(of: useCase.isRunning)` on Home instead.** `end()` clears
+    /// `isRunning` *before* its first `await` — deliberately, so the recording bar goes the moment END
+    /// is pressed — so that observer would fire before `saveWorkoutUseCase.execute(workout)` has
+    /// returned, and re-read a day the row is not on yet. The callback fires after the write.
+    ///
+    /// Required rather than defaulted, so a future caller has to decide what happens to the row
+    /// instead of inheriting a silent drop.
+    private let onEnded: (WorkoutSession) -> Void
+
     /// Pops this page after the session has been ended and written.
     @Environment(\.dismiss) private var dismiss
 
@@ -48,8 +65,9 @@ public struct LiveSessionView: View {
     /// row. This flag is what keeps the button from being tappable during that window.
     @State private var isEnding = false
 
-    public init(useCase: LiveSessionUseCase) {
+    public init(useCase: LiveSessionUseCase, onEnded: @escaping (WorkoutSession) -> Void) {
         self.useCase = useCase
+        self.onEnded = onEnded
     }
 
     public var body: some View {
@@ -438,7 +456,11 @@ public struct LiveSessionView: View {
             guard !isEnding else { return }
             isEnding = true
             Task {
-                await useCase.end()
+                // The row is handed to the caller **after** `end()` has awaited the save and
+                // **before** the pop, so the screen behind this one is already drawing it when the
+                // dismissal animation finishes. `nil` is a session that measured nothing — the
+                // documented absence rule, not a save that failed.
+                if let summary = await useCase.end() { onEnded(summary.workout) }
                 dismiss()
             }
         } label: {

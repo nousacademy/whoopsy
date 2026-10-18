@@ -313,7 +313,7 @@ public enum ActivityGlyph {
         // MARK: The receptive catalogue
         //
         // `ReceptiveInactivityCatalog`'s own names, keyed normalised like every entry above. **Three of its
-        // thirteen names are absent here on purpose** — `Meditation`, `QiGong` and `Breathwork` are the
+        // fourteen names are absent here on purpose** — `Meditation`, `QiGong` and `Breathwork` are the
         // catalogue's spelling of the three recovery activities already in the block above, so they
         // resolve to those entries and a second copy would be a second place for one phenomenon's mark to
         // be changed. `ReceptiveInactivityCatalogTests` sweeps the whole list through `mark(for:)`, which is
@@ -346,6 +346,10 @@ public enum ActivityGlyph {
         // than the room.
         "sauna": .single("heat.waves"),
         "prayer": .single("hands.sparkles"),
+        // `leaf` because there is no `cannabis` symbol: the row names a plant, and the outline leaf is
+        // the object itself rather than a state — the one entry in this block that depicts a thing.
+        // Available long before the 17.0 floor, so unlike `heat.waves` it carries no availability note.
+        "cannabis": .single("leaf"),
     ]
 
     /// What `name` draws, or the fallback mark when the table has no entry for it.

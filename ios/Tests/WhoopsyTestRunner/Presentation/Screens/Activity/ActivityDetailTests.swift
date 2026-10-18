@@ -169,6 +169,7 @@ enum ActivityDetailTests {
         try await ActivityZoneRowTests.run()
         try await FastingRecoveryChartTests.run()
         try await ActivityEditDraftTests.run()
+        try await AddActivityDraftTests.run()
         try await ActivityOverflowAndDeleteTests.run()
         try await ActivityRouteAndOfflineMapTests.run()
     }

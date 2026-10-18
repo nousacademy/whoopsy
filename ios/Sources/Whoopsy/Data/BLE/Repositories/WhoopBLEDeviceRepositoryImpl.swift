@@ -78,6 +78,14 @@ public final class WhoopBLEDeviceRepositoryImpl: WhoopBLEDeviceRepository, @unch
         }
     }
 
+    public func rearmConnection() async {
+        if isMockMode {
+            mockBleManager!.rearmConnection()
+        } else {
+            realBleManager!.rearmConnection()
+        }
+    }
+
     /// Both senders take the same three-step shape, and each step is a real refusal rather than a
     /// formality: no manager (mock mode) means no wire, **no profile means this strap's envelope is
     /// not implemented and the frame must not be built at all**, and `nil` from the builder means the

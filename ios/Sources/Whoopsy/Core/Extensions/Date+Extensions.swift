@@ -40,6 +40,26 @@ extension Date {
         Calendar.current.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
     }
 
+    /// This instant's hour and minute, rebuilt onto `day`'s own midnight.
+    ///
+    /// **A `.hourAndMinute` `DatePicker` hands back a whole instant carrying today's year, month and
+    /// day**, whatever day the user is looking at — so every writer of a time-of-day control has to
+    /// rebuild the clock part onto its target day or file today's 8:00 AM on a 2024 entry. The sum is
+    /// elapsed seconds rather than `Calendar.date(bySettingHour:minute:second:of:)` for the reason
+    /// `ReceptiveInactivityDraft` records: `bySettingHour` returns `nil` for a wall time that does not
+    /// exist, which is what 02:30 is on a spring-forward day, and the only fallback available there is
+    /// a fabricated midnight the user never picked. Adding the offset to the day's own midnight is
+    /// total, and it keeps the result inside `day` on both DST days.
+    ///
+    /// **It is here rather than on a draft** because two sheets now edit a time on a day — the
+    /// receptive sheet's optional time and `AddActivitySheet`'s two ends — and the rule is one
+    /// definition, so a second copy is how one of the three call sites drifts.
+    public func clockTime(on day: Date) -> Date {
+        let clock = Calendar.current.dateComponents([.hour, .minute], from: self)
+        let offset = (clock.hour ?? 0) * 3600 + (clock.minute ?? 0) * 60
+        return day.startOfDay.addingTimeInterval(TimeInterval(offset))
+    }
+
     public func formattedTime() -> String {
         let formatter = DateFormatter()
         formatter.timeStyle = .short

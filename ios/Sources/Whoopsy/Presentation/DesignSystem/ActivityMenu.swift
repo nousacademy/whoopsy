@@ -6,12 +6,12 @@ import Foundation
 /// one `ActivityGlyph` and `MonthGrid` are separate types for: the test runner has no renderer, and a
 /// rule written into a `View`'s body is a rule nothing can check. §14 drives every entry.
 ///
-/// **`ADD ACTIVITY` is inert; `START ACTIVITY` launches a live session.**
+/// **Each row opens a different surface, and `Action` records which one.**
 ///
-/// The two rows are no longer the same kind of thing, which is what `Action` records. `ADD ACTIVITY`
-/// opens the import path, which does not exist yet — so its `Action` is `.none` and tapping it only
-/// closes the menu. `START ACTIVITY` carries `.startSession`, and `HomeDashboardView` is the one place
-/// that switches on it.
+/// `ADD ACTIVITY` opens `AddActivitySheet` on a fresh draft and writes a row to `workouts`;
+/// `START ACTIVITY` starts a live session; `ADD RECEPTIVE INACTIVITY` opens
+/// `ReceptiveInactivitySheet` and writes a row to `receptive_inactivities`. Three rows, three cases,
+/// and `HomeDashboardView` is the one place that switches on them.
 ///
 /// **The action is a case and not a closure**, deliberately, and the reason is the one this type's
 /// previous version gave for having no field at all: a `() -> Void` stored in a static list cannot be
@@ -41,14 +41,24 @@ public enum ActivityMenu {
 
         /// What tapping the row does. See the type's note on why this is a case and not a closure.
         ///
-        /// `none` is a real answer and not a placeholder for one: it is the row that opens no screen.
+        /// **There is no `none` case, deliberately.** The previous version had one, and the row that
+        /// held it was the row that did nothing — a defaulted `.none` made *inert* the state a row
+        /// reached by omission. With the case gone and no default on `Entry.init`, a row added later
+        /// has to name a destination to compile.
         ///
         /// An enum with no associated values is `Equatable` without saying so, which is what lets §18
         /// assert that **exactly one** row carries `.startSession` — a claim about which case a value
         /// holds rather than about whether two values differ.
         public enum Action: Sendable {
-            /// Opens nothing. `ADD ACTIVITY`'s import path is not built.
-            case none
+            /// Opens `AddActivitySheet` on a fresh draft and writes a `workouts` row with no
+            /// measurement attached.
+            ///
+            /// **It is a case of its own rather than a second `.startSession`, because nothing
+            /// runs while it is entered.** No clock starts, `LiveSessionUseCase` is not reached, and
+            /// the row is filed on the day being viewed rather than on the present — which is what
+            /// makes it the right row on a past day, the same argument `.addReceptiveInactivity`
+            /// records. It keeps §18's "exactly one row carries `.startSession`" claim true.
+            case addActivity
             /// Starts a live session and pushes `LiveSessionView`.
             case startSession
             /// Opens `ReceptiveInactivitySheet` on an empty draft, and writes a row to
@@ -70,7 +80,7 @@ public enum ActivityMenu {
         /// of them, so a `UUID()` here would be a fresh identity on every render of a static list.
         public var id: String { title }
 
-        public init(symbol: String, title: String, action: Action = .none) {
+        public init(symbol: String, title: String, action: Action) {
             self.symbol = symbol
             self.title = title
             self.action = action
@@ -87,8 +97,8 @@ public enum ActivityMenu {
     /// **`ADD RECEPTIVE INACTIVITY` is appended last rather than placed beside `ADD ACTIVITY`**, and that
     /// is a compatibility decision as much as a drawing one: the first two rows are the menu as it has
     /// always been, and appending keeps every existing position where §14 and §18 already pin it. It is
-    /// also the honest grouping — the two `ADD` rows are not one kind of thing, since one opens an
-    /// import path this build does not have and this one opens a sheet that writes a row.
+    /// also the honest grouping — the two `ADD` rows write to different tables, and only the third
+    /// opens a surface about something that is not a recorded session at all.
     ///
     /// Its symbol is `ActivityGlyph.receptiveMark` and not a `figure.*` mark, because the two rows above
     /// it are about the body doing something and this one is about the mind receiving something — which
@@ -96,7 +106,7 @@ public enum ActivityMenu {
     /// written here**, so the glyph on this row and the glyph the sheet's own NAME row draws while it has
     /// no name yet are one value; two literals would be two places for one mark to be changed.
     public static let entries: [Entry] = [
-        Entry(symbol: "plus", title: "ADD ACTIVITY", action: .none),
+        Entry(symbol: "plus", title: "ADD ACTIVITY", action: .addActivity),
         Entry(symbol: "clock", title: "START ACTIVITY", action: .startSession),
         Entry(
             symbol: ActivityGlyph.receptiveMark,
@@ -111,20 +121,22 @@ public enum ActivityMenu {
     /// whatever day is on screen, and off today it still opens the card and still lists
     /// `ADD ACTIVITY` — the row withheld is `START ACTIVITY`, because a session is something a user
     /// starts *now* and a day that already happened has nothing to start. So the day filters the *rows*
-    /// rather than hiding the button, which is also why `ADD ACTIVITY` does not disappear with it: its
-    /// import path is not bound to a day, so no other day has a reason to withhold it.
+    /// rather than hiding the button, which is also why `ADD ACTIVITY` does not disappear with it: a
+    /// hand-added session is filed on the day being viewed rather than on the present, so paging back
+    /// to the day the walk happened is exactly when the row is wanted.
     ///
     /// **The filter is on the `Action`, not on the title.** What is withheld is a row that *records*,
     /// which is the same property `HomeDashboardView`'s `switch` acts on — so a second recording row
     /// added to `entries` later is withheld here without this body being taught about it, and a row
     /// renamed to something else is not silently admitted.
     ///
-    /// **`ADD RECEPTIVE INACTIVITY` survives both filters, and that is correct on both counts rather than
-    /// an accident of its action.** Off today it survives because a receptive inactivity is not bound to
-    /// the present the way a recording is: a dream is filed on the morning it happened, and a user
-    /// paging back to that day is exactly who the row is for. While an activity is recording it
-    /// survives because there is nothing to conflict with — entering a meditation writes one row and
-    /// starts no clock, so a second one is no more a second recording than a second note is.
+    /// **Both `ADD` rows survive both filters, and that is correct on both counts rather than an
+    /// accident of their actions.** Off today they survive because neither is bound to the present the
+    /// way a recording is: a dream is filed on the morning it happened and a hand-added walk on the day
+    /// it was walked, and a user paging back to that day is exactly who the rows are for. While an
+    /// activity is recording they survive because there is nothing to conflict with — entering a
+    /// meditation or a past session writes one row and starts no clock, so neither is a second
+    /// recording.
     ///
     /// It **forwards** to `DayBarRules.isToday` rather than restating a comparison, so the screen has one
     /// definition of "today" and not two. The choice of `isToday` over the shorter `!isFuture` is

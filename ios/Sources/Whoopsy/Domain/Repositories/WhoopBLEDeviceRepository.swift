@@ -35,6 +35,13 @@ public protocol WhoopBLEDeviceRepository: Sendable {
     /// Disconnect from the current strap
     func disconnect() async
 
+    /// Re-arm the link after the app returns to the foreground.
+    ///
+    /// **Not the same action as `startScanning`.** It leaves a live link alone, re-issues a standing
+    /// connect for one that is down, and scans only when no strap has ever been found in this process.
+    /// It also does nothing after an explicit `disconnect()`, which is the user's own instruction.
+    func rearmConnection() async
+
     /// Send a haptic vibration alert command to the strap
     func sendHapticAlert(durationSeconds: Int, pattern: Int) async throws
 

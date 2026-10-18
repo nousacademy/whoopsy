@@ -39,7 +39,7 @@ public struct ReceptiveInactivityPickerView: View {
     public nonisolated static let title = "Receptive Inactivity"
 
     public var body: some View {
-        // One section and no heading: thirteen names are a list, not a grouping, and a header over the
+        // One section and no heading: fourteen names are a list, not a grouping, and a header over the
         // only section would repeat the title already drawn above it.
         List {
             ForEach(ReceptiveInactivityCatalog.names, id: \.self) { name in

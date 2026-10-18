@@ -303,10 +303,10 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
     /// The read is one query for a set that the loop then consults 673 times, which is the point of
     /// computing it up front rather than asking the repository per row.
     ///
-    /// ## Fasts are excluded, and they have to be
+    /// ## Rows that measure nothing are excluded, and they have to be
     ///
-    /// This asks whether a day already holds *any* workout, and it refuses every export row landing on
-    /// one. A fast is a workout row, so without this filter a fast's start day would read as
+    /// This asks whether a day already holds *any measured* workout, and it refuses every export row
+    /// landing on one. A fast is a workout row, so without this filter a fast's start day would read as
     /// "already recorded" and the export's rows for it would be dropped — **measured: 16 of the file's
     /// 673 rows sit on the 10 days that are also fast start days** (`Walking` 5, `Activity` 4, `Other`
     /// 2, `American Football` 2, `Dance`, `Manual Labor`, `Yoga`). Two imports that erase each other's
@@ -334,6 +334,15 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
     /// here would be a second chance to teach this skip about one producer and not the other, and the
     /// symptom would be a silent 16-row loss on whichever one was missed.
     ///
+    /// **A hand-added session is the set's third member, and its day must accept the export too.** The
+    /// `ADD ACTIVITY` sheet writes a row with a name and a window and no measurement at all, so a day
+    /// holding only that row has not been measured by this app — and it is exactly the kind of day the
+    /// user may add a walk to *before* importing the file that holds the rest of it. Excluding the row
+    /// keeps that order irrelevant, the same property the fast filter exists for, and it is why the set
+    /// is `WorkoutSession.measurementFreeSourceValues` rather than a second literal here: the skip
+    /// asks *did this app measure this day?*, and a session this app recorded live (`nil` source) is
+    /// the one row that answers yes.
+    ///
     /// The disjointness argument that made the single-label filter safe holds for both producers, and
     /// for the same reason: an imported fast's id is Zero's own `FastID` and a recorded fast's is a
     /// fresh `UUID`, so neither can ever collide with an export row's id — which is derived from that
@@ -343,9 +352,10 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
             days: Self.workoutDayLookbackDays, endingOn: Date())
         return Set(
             history
-                // A `nil` source is a session this app recorded live, which is not a fast — so the
-                // sentinel stands for "not in the set" and never for a producer's name.
-                .filter { !ActiveFast.fastSourceValues.contains($0.source ?? "") }
+                // `measurementFreeSourceValues`' complement is exactly "a day this app measured", so a
+                // `nil` source — a live-recorded session — is *in* it, which is what keeps the export
+                // from writing beside a session the strap actually watched.
+                .filter { !WorkoutSession.measurementFreeSourceValues.contains($0.source ?? "") }
                 .map { $0.startedAt.startOfDay })
     }
 

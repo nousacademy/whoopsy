@@ -93,17 +93,45 @@ public struct WorkoutSession: Identifiable, Equatable, Hashable, Sendable {
     /// **`LiveSessionUseCase` is the writer of `nil`.** Its `end()` is the app's own recording path and
     /// stores `nil` for a session this app recorded live, so a `nil` row is that rather than only a
     /// leftover from an older build. The two importers are the other producers and both label
-    /// everything. **One further value exists for one case**: `ActiveFast.sourceLabel`, written by
-    /// `LiveSessionUseCase.endFast()`. A hand-recorded fast is neither a measured live session nor an
-    /// import — it is a row this app recorded that carries no measurement at all — so it is a fourth
-    /// thing and says so. `ActiveFast.fastSourceValues` is the set of values meaning *this row is a
-    /// fast*, and it is the one place that set is written down, because `recordedWorkoutDays()` below
-    /// needs both members and the importer is `Data` while `ActiveFast` is `Domain`.
+    /// everything. **Two further values exist**: `ActiveFast.sourceLabel`, written by
+    /// `LiveSessionUseCase.endFast()`, and ``manualSourceLabel``, written by `AddActivityDraft` when
+    /// the user adds a session by hand from Home's `+` menu. Both are rows this app wrote that carry
+    /// no measurement at all — a fast is time held and a hand-added session is a name and a window —
+    /// so neither is `nil`, which `end()` reserves for a session the strap actually watched.
     ///
-    /// **It is read, not just written.** `WhoopExportImporter.recordedWorkoutDays()` excludes rows
-    /// carrying a fast label, so the export's own day skip does not mistake a fast for a workout this
-    /// app already imported — which is why the label is a compared value rather than a note.
+    /// **It is read, not just written.** `WhoopExportImporter.recordedWorkoutDays()` excludes every
+    /// source in ``measurementFreeSourceValues``, so the export's own day skip does not mistake a fast
+    /// or a hand-added row for a day this app already measured — which is why the label is a compared
+    /// value rather than a note.
     public let source: String?
+
+    /// The `source` a session added by hand through Home's `ADD ACTIVITY` carries.
+    ///
+    /// A fifth producer, and its own label for `ActiveFast.sourceLabel`'s reason: `source` answers
+    /// *which producer wrote this row*, and the user typing a name and a window is neither a live
+    /// recording nor either import. It is not `ActiveFast.sourceLabel` either — this row is not a
+    /// fast, and `ActivityFigure.isFast` reads the *name*, not this column.
+    ///
+    /// **It is read by the export's day skip, and must be.** A hand-added session measures nothing, so
+    /// a day holding only one is not a day this app already recorded — see
+    /// ``measurementFreeSourceValues``.
+    public static let manualSourceLabel = "manual"
+
+    /// Every `source` whose row **measures nothing**, and which therefore does not make its day
+    /// already-recorded for `WhoopExportImporter.recordedWorkoutDays()`.
+    ///
+    /// Two families share this consequence for different reasons: a fast is time held, so it has no
+    /// strain, heart rate or route, and a hand-added session is a name and a window with no sensor
+    /// behind it at all. `nil` is deliberately **not** a member — it means a session this app recorded
+    /// live, which did measure, and the export may not write beside one.
+    ///
+    /// **The set is here rather than in the importer** for `ActiveFast.fastSourceValues`' reason: the
+    /// importer is `Data`, this type is the thing being described, and a second literal there would be
+    /// a second chance to teach the skip about one producer and not the other. It is built from
+    /// `ActiveFast.fastSourceValues` rather than restating its members, so a third fast producer is
+    /// excluded automatically and only a *new kind* of measurement-free row has to be added here.
+    public static let measurementFreeSourceValues: Set<String> =
+        ActiveFast.fastSourceValues.union([manualSourceLabel])
 
     /// WHOOP's own name for the session — `Walking`, `Yoga`, `Activity` — when it came out of
     /// `workouts.csv`.

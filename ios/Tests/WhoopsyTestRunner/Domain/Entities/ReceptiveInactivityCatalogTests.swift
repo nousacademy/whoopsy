@@ -17,8 +17,10 @@ import Whoopsy
 /// whose own symbol catalogue is the newest OS on the machine, so `figure.ice.skating` and its four
 /// iOS 18 siblings all resolve non-empty here and draw nothing on a phone.
 ///
-/// Four claims carry it, and each names a way two lists drift apart silently:
+/// Five claims carry it, and each names a way two lists drift apart silently:
 ///
+/// - **the list is alphabetical**, on the user's instruction, since the picker draws it in the
+///   array's own order and a name appended where it was last thought of is invisible in a long list.
 /// - **every name resolves a mark, and not the fallback.** `ActivityGlyph.mark(for:)` answers
 ///   `figure.run` for a name its table does not hold, so a name added to the catalogue without a
 ///   `marks` entry is not an error and not an empty chip either — it is a running figure beside
@@ -47,6 +49,17 @@ enum ReceptiveInactivityCatalogTests {
             blank.isEmpty,
             "…and none of them is blank, since the picker draws the string it is handed and a blank "
                 + "entry is a row with nothing to read (\(blank))")
+
+        // The picker draws the catalogue in the array's own order, so alphabetical is a property of the
+        // literal rather than of the view. A name appended where it was last thought of instead of where
+        // it belongs is invisible in a screenshot of a long list and moves no count, which is why the
+        // order is asserted here rather than left to whoever edits the list next.
+        assertTest(
+            names == names.sorted(),
+            "**The catalogue is alphabetical**, on the user's instruction, so the picker draws the "
+                + "vocabulary in the order a reader scans for a name — the assertion fails on a list "
+                + "whose new entry was appended rather than placed "
+                + "(\(names))")
 
         // **The assertion that catches a name added without a mark.** The failure it looks for is not
         // an empty chip — that is the *typo* case §14 catches for the menu rows — but a wrong drawing:

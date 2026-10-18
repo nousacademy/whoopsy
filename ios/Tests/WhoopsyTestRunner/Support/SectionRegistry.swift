@@ -170,7 +170,8 @@ func testSections() -> [TestSection] {
         TestSection(
             id: 19,
             title: "Testing the activity window and its band, the five zone rows, the export's zone "
-                + "property, `workout.steps` and the two readers of one motion stream...",
+                + "property, the hand-added session's draft, `workout.steps` and the two readers of one "
+                + "motion stream...",
             body: ActivityDetailTests.run),
         TestSection(
             id: 20,
@@ -187,6 +188,16 @@ func testSections() -> [TestSection] {
             title: "Testing the storage switch, all seven resources' wire names, the decorator's "
                 + "degrade, the run's own arithmetic, and the absence of a delete...",
             body: SyncSectionTests.run),
+        TestSection(
+            id: 23,
+            title: "Testing the reconnect policy: a drop answered at once, a refusal spaced by the "
+                + "floor, and the two boundaries between them...",
+            body: { ReconnectPolicyTests.run() }),
+        TestSection(
+            id: 24,
+            title: "Testing the keep-alive: a 30 s tick, a minute-floored battery read, a silent-"
+                + "stream re-send at each generation's threshold, and a family-sized liveness fuse...",
+            body: { KeepAlivePolicyTests.run() }),
     ]
 }
 
@@ -225,7 +236,7 @@ func runSynchronousSections(_ ids: [Int]) {
     }
 }
 
-/// Runs §6–§22, awaited inside the `Task`, and closes the run.
+/// Runs §6–§24, awaited inside the `Task`, and closes the run.
 ///
 /// `throws` even though no section body currently throws: the `Task` in `main.swift` wraps this in a
 /// `do`/`catch`, and an unobserved throw would otherwise idle out the `RunLoop` and exit **0** over a

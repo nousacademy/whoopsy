@@ -74,6 +74,31 @@ import SwiftUI
         workouts.sort { $0.startedAt < $1.startedAt }
     }
 
+    /// Writes one hand-added session for `day` and folds it into the list Home is drawing, reporting
+    /// whether the write succeeded so the page can dismiss its sheet only when there is something to
+    /// dismiss.
+    ///
+    /// **The merge is `updateWorkout(_:on:)` rather than an append**, for its own reasons and for one
+    /// of this feature's: a new row is inserted-or-appended by that method and the list is re-sorted,
+    /// so the card's order matches what a fresh read of the day would return — and if the write is a
+    /// second presentation of the same draft it replaces rather than duplicates, because the draft's id
+    /// is the row's primary key and `save` is INSERT-or-UPDATE by it.
+    ///
+    /// **A failed write leaves the list untouched and puts the failure on `errorMessage`**, which is
+    /// this screen's banner, so the sheet stays up with the entry still in it — `saveReceptiveInactivity`
+    /// records the same contract for the sheet one row away in the menu.
+    @discardableResult
+    public func saveActivity(_ activity: WorkoutSession, on day: Date) async -> Bool {
+        do {
+            try await workoutRepository.save(activity)
+            updateWorkout(activity, on: day)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     /// The strap's step total for the selected day, or `nil` when it measured no motion for it.
     ///
     /// **Read from `StepRepository` and from nowhere else**, which is the change this property
