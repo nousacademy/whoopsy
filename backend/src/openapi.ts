@@ -25,12 +25,16 @@ import type { Env } from "./env";
  * contract that is not generated from the routes, and a copy of it in the script would be a second
  * source for the same sentences. `shared/openapi.json`'s checked-in description and this one are the
  * same string because the file is written from this config, not because someone kept them in step.
+ * `info.version` is the one field in that block that is not prose: it is `API_VERSION` below.
  *
- * **Nothing here may import from `routes/`.** `routes/health.ts` reads `SERVICE_NAME` from this
- * module, and the route files are what the app under `app.ts` is built from — so an import in this
- * direction (openapi.ts → app.ts → routes/index.ts → openapi.ts) would be a cycle. This module stays
- * a leaf: it knows the document's identity and how to write it down, and it knows nothing about what
- * is in it.
+ * **Nothing here may import from `routes/`.** `routes/health.ts` reads `SERVICE_NAME` and `API_VERSION`
+ * from this module, and the route files are what the app under `app.ts` is built from — so an import in
+ * this direction (openapi.ts → app.ts → routes/index.ts → openapi.ts) would be a cycle. This module
+ * stays a leaf: it knows the document's identity and how to write it down, and it knows nothing about
+ * what is in it. **That is also why `API_PREFIX` is declared here rather than in `routes/index.ts`**,
+ * where the mounts that interpolate it live: the prefix is part of the document's identity — every
+ * published path carries it, as does the servers prose — and `openApiConfig` below needs it, so a
+ * declaration over there would close the cycle through `routes/health.ts`.
  */
 
 /**
@@ -79,6 +83,44 @@ type OpenApiDocumentConfig = Parameters<
 export const RELATIVE_ORIGIN = "/";
 
 /**
+ * The API's implementation version — `package.json`'s `version`, the contract's `info.version`, and
+ * what `GET /health` reports.
+ *
+ * **It is not the number in the URL, and the two are deliberately allowed to differ.** `API_PREFIX`
+ * below is the *contract*: the address every caller uses, frozen at `/v1` because a deployment has been
+ * answering on it since 2026-10-07 and the app reads it. This is the *implementation*, and it moves on
+ * every release. Postman's versioning guide names the split — a change to the Worker that alters no
+ * wire name, type, requiredness, format or bound is not a version event at all, so tying the address to
+ * this number would force a new URL for changes that break nobody.
+ *
+ * `0.1.0` rather than `1.0.0` because pre-1.0 is an explicit non-promise: nothing here is settled, and
+ * the honest reading of `0.x` is that a breaking wire change bumps the **minor**. The consequence is
+ * worth stating rather than hiding — until this reaches `1.0.0`, a breaking change and the address
+ * moving are independent events, and `0.1.0` beside `/v1` is not a contradiction.
+ *
+ * `package.json` carries the same string and the suite fails if the two drift, because nothing else can
+ * keep a manifest and a module in step. See `docs/BACKEND.md` § Versioning for what forces a bump and
+ * for the deprecation procedure.
+ */
+export const API_VERSION = "0.1.0";
+
+/**
+ * The URL prefix every versioned route is mounted under — the contract's address, and not a version
+ * number.
+ *
+ * `routes/index.ts` interpolates it into all eight mounts so the literal exists once in the Worker, and
+ * `servers[0].description` below interpolates it because prose naming a prefix is a second place it can
+ * be wrong. Neither is a string kept in step with the other by hand: `getOpenAPI31Document` reads the
+ * mounted app, so the prefix is in the published paths by construction.
+ *
+ * **It moves when the wire needs a new address, and not when `API_VERSION` moves.** Nothing derives it
+ * from the version — `0.1.0`'s major is `0`, so deriving would name `/v0`, an address no deployment has
+ * ever answered on. A `v2` arrives with a breaking change that `v1` cannot be made to express, and the
+ * old prefix keeps answering until the deprecation procedure has run its course.
+ */
+export const API_PREFIX = "/v1";
+
+/**
  * The document's identity: what it is, and the origin the reading that asked for it answers on.
  *
  * `info` is carried through generation untouched — `OpenApiGeneratorV31.generateDocument` merges its
@@ -109,7 +151,7 @@ export function openApiConfig(origin: string): OpenApiDocumentConfig {
     openapi: "3.1.0",
     info: {
       title: "Whoopsy Sync API",
-      version: "0.0.0",
+      version: API_VERSION,
       description:
         "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold.",
     },
@@ -120,8 +162,11 @@ export function openApiConfig(origin: string): OpenApiDocumentConfig {
         // deployed one naming its own hostname, and the committed one naming `/`. What is true of all
         // of them is the gate.
         url: origin,
-        description:
-          "Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it.",
+        // `API_PREFIX` is interpolated rather than typed, because `/v1` written into a sentence is a
+        // second place the prefix lives — and the one no path-level assertion can see, since it is
+        // prose inside `servers` rather than a key under `paths`. A `v2` that moved the mounts and
+        // missed this line would leave the contract describing URLs it does not have.
+        description: `Every \`${API_PREFIX}\` path requires \`Authorization: Bearer <SYNC_API_TOKEN>\`; \`GET /health\` and \`GET /openapi.json\` are the two that answer without it.`,
       },
     ],
   };

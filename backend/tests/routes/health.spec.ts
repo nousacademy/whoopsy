@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { SERVICE_NAME } from "../../src/openapi";
+import { API_VERSION, SERVICE_NAME } from "../../src/openapi";
 import { authHeaders } from "../Support/auth";
 
 /**
@@ -26,6 +26,7 @@ describe("GET /health", () => {
     expect(await response.json()).toEqual({
       status: "ok",
       service: SERVICE_NAME,
+      version: API_VERSION,
       bindings: { db: true, exports: true },
     });
   });

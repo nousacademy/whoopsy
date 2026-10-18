@@ -1,6 +1,6 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Env } from "../env";
-import { SERVICE_NAME } from "../openapi";
+import { API_VERSION, SERVICE_NAME } from "../openapi";
 import { validationHook } from "./errors";
 
 /**
@@ -24,6 +24,14 @@ import { validationHook } from "./errors";
  * above one turn further: a probe that goes unhealthy over a configuration mistake is a probe that
  * restarts a Worker which is running perfectly well. The response is a diagnostic, and the diagnosis
  * is the reader's to make.
+ *
+ * **The version it reports is the implementation's, and publishing it unauthenticated is a deliberate
+ * trade.** This path answers without a credential, so `version` fingerprints the running build to
+ * anyone who can reach the Worker — which is the point of it: *"which version is deployed?"* becomes
+ * one `curl` instead of a guess from the contract. It is **not** the number in the URL and the two are
+ * allowed to differ; `API_VERSION` in `../openapi` carries that reasoning, and `docs/BACKEND.md`
+ * § Versioning carries the policy. **Nothing about the gate is reported here** — `bindings` is
+ * booleans, and no secret, token or credential is ever echoed.
  */
 
 const healthRoute = createRoute({
@@ -45,6 +53,15 @@ const healthRoute = createRoute({
               service: z.string().openapi({
                 description: "The Worker's name, as `wrangler.toml` declares it.",
                 example: "whoopsy-sync",
+              }),
+              // The example is the constant itself, where `service`'s is a literal that has to agree
+              // with `SERVICE_NAME` by hand — `wrangler.toml` is not importable, so that one cannot be
+              // derived. This one can, and a published example that is always the served value is one
+              // fewer string to keep in step.
+              version: z.string().openapi({
+                description:
+                  "The implementation version this Worker is running, read from `API_VERSION`. It is the API's own semver and is deliberately decoupled from the address in the URL — this deployment answers on `/v1` while reporting `0.1.0`, because the prefix moves only when the wire needs a new address. See `docs/BACKEND.md` § Versioning.",
+                example: API_VERSION,
               }),
               bindings: z
                 .object({
@@ -73,6 +90,7 @@ export const healthRoutes = new OpenAPIHono<{ Bindings: Env }>({
     {
       status: "ok" as const,
       service: SERVICE_NAME,
+      version: API_VERSION,
       bindings: {
         // `?.` on a non-optional property compiles: TypeScript permits it and the runtime lookup is
         // what is being tested, so the optional chaining is the check rather than a redundancy.

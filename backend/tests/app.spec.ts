@@ -1,6 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
+import { API_VERSION } from "../src/openapi";
 import { TEST_API_TOKEN, authHeaders } from "./Support/auth";
 
 /**
@@ -158,9 +159,15 @@ describe("the gate runs before everything else", () => {
     // body is asserted exactly, and it names no token.
     const health = await SELF.fetch(`${BASE}/health`);
     expect(health.status).toBe(200);
+    // `service` is written out where `version` is imported, and the difference is which of the two is
+    // expected to move. A rename is a deliberate act with a manifest behind it, so the literal is the
+    // half that catches a rename reaching `wrangler.toml` and missing `SERVICE_NAME`; a version bumps
+    // on every release, and a literal here would be a per-bump edit that asserts nothing the manifest
+    // check in `openapi.spec.ts` does not already assert against its source.
     expect(await health.json()).toEqual({
       status: "ok",
       service: "whoopsy-sync",
+      version: API_VERSION,
       bindings: { db: true, exports: true },
     });
 

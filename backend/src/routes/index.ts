@@ -1,5 +1,6 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Env } from "../env";
+import { API_PREFIX } from "../openapi";
 import { biometricSampleRoutes } from "./biometricSamples";
 import { validationHook } from "./errors";
 import { healthRoutes } from "./health";
@@ -21,11 +22,17 @@ import { workoutRoutes } from "./workouts";
  * The OpenAPI document in `shared/openapi.json` is generated from these, which is why the schemas are
  * declared as `@hono/zod-openapi` route definitions rather than as hand-written JSON.
  *
- * **This file is the mount table, and the prefix lives here rather than in the route.** Each resource
- * declares its paths relative to itself, and the version segment appears exactly once, below. That is
- * what keeps `/v1` from being spelled into five paths that could drift apart — and because
- * `getOpenAPI31Document` reads the mounted app, the prefix is in the published paths by construction
- * rather than by a second string agreeing with the first.
+ * **This file is the mount table, and the prefix is one constant rather than eight literals.** Each
+ * resource declares its paths relative to itself, and `API_PREFIX` is interpolated into every mount
+ * below. That is what keeps the version segment from being spelled into eight paths that could drift
+ * apart — and because `getOpenAPI31Document` reads the mounted app, the prefix is in the published
+ * paths by construction rather than by a second string agreeing with the first.
+ *
+ * **The constant is declared in `../openapi`, not here, and that is the cycle rule rather than a
+ * filing preference.** `openApiConfig` interpolates it into the document's servers prose, so
+ * `openapi.ts` would have to import this file — which imports `./health`, which imports `../openapi`.
+ * The prefix is part of the document's identity, so it lives with the document's other constants and
+ * this file reads it like any other leaf.
  *
  * **One app, not one per resource.** A sub-app carries its own `defaultHook`, so nesting them would
  * mean remembering to install the hook on each new one; mounting everything onto a single app means a
@@ -45,7 +52,7 @@ export const routes = new OpenAPIHono<{ Bindings: Env }>({
   // correctly as `/v1/biometric-samples` does and names a mount that does not exist — the trap
   // `step-counts` and `receptive-inactivities` already document from the other side, where the
   // resource is plural and the path is not.
-  .route("/v1/biometric-samples", biometricSampleRoutes)
+  .route(`${API_PREFIX}/biometric-samples`, biometricSampleRoutes)
   // **Mounted second, between `biometric-samples` and `receptive-inactivities`, because `p` sorts
   // between `b` and `r`** — and this is the mount that shows why the two orders are different rather
   // than merely worth keeping aligned. Appending this file's router conventionally would have put it
@@ -61,13 +68,13 @@ export const routes = new OpenAPIHono<{ Bindings: Env }>({
   // keep the resource's own name (`userProfiles.ts`, `UserProfile`, `user_profiles`); only the URL
   // deviates, which makes this pair the sharpest instance of the mismatch `step-counts` and
   // `biometric-samples` already document from the other side.
-  .route("/v1/profile", userProfileRoutes)
+  .route(`${API_PREFIX}/profile`, userProfileRoutes)
   // Mounted here rather than after `recoveries` because `receptive-inactivities` sorts before it: the
   // list below is the document's own path order, and an entry out of place is the one thing a reader
   // diffing two mount tables cannot see.
-  .route("/v1/receptive-inactivities", receptiveInactivityRoutes)
-  .route("/v1/recoveries", recoveryRoutes)
-  .route("/v1/sleeps", sleepRoutes)
-  .route("/v1/step-counts", stepCountRoutes)
-  .route("/v1/strains", strainRoutes)
-  .route("/v1/workouts", workoutRoutes);
+  .route(`${API_PREFIX}/receptive-inactivities`, receptiveInactivityRoutes)
+  .route(`${API_PREFIX}/recoveries`, recoveryRoutes)
+  .route(`${API_PREFIX}/sleeps`, sleepRoutes)
+  .route(`${API_PREFIX}/step-counts`, stepCountRoutes)
+  .route(`${API_PREFIX}/strains`, strainRoutes)
+  .route(`${API_PREFIX}/workouts`, workoutRoutes);

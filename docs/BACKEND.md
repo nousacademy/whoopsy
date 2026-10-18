@@ -15,6 +15,61 @@ origin each request arrived on, so a deployed Worker reports its own hostname an
 reports `http://localhost:8787`. That one field is the whole of why the served document and the
 committed one differ in exactly one line.
 
+## Versioning
+
+**There are two numbers here and they are not the same number.** `API_VERSION` is the
+**implementation** version — what `backend/package.json` declares, what the contract publishes as
+`info.version`, and what `GET /health` reports. `API_PREFIX` is the **contract** — the `/v1` segment in
+every URL the app calls — and it moves only when the wire needs a new address. This deployment answers on
+`/v1` while reporting `0.1.0`, and **the `1` in the URL is not that version's major**: `/v1` is a frozen
+address a shipped client already holds, not a claim about how many times compatibility has broken. The two
+axes are decoupled deliberately, and it is the guide's plainest rule: a rewrite that leaves the wire alone
+is a new *implementation* and not a new *contract*, and a prefix bump is the expensive one — it invalidates
+every path in the binary, including the seven in
+`ios/Sources/Whoopsy/Domain/Entities/SyncedResource.swift`. **Pre-1.0 is an explicit non-promise rather
+than an oversight**: until `1.0.0` a wire change that would otherwise take a major bump moves the version's
+**minor** instead, and where the old shape can go on being served at `/v1` the address does not move at
+all.
+
+**Both constants are declared once, in `backend/src/openapi.ts`, and every other site is derived from
+them.** `shared/openapi.json` is **generated** — `npm --prefix backend run openapi` rewrites it from the
+route definitions, and the gate's last step is a `git diff --exit-code` on it — so it is never
+hand-edited, and a version wrong in it is a version wrong in the source. The mount table interpolates the
+prefix into all eight `.route()` calls rather than spelling `/v1` eight times; `info.version` reads
+`API_VERSION`; and `servers[0].description` interpolates the prefix too, which is a `/v1` written in
+prose, in a field no path-level assertion reads — exactly where a stale version segment would otherwise
+survive a sweep. **The manifest is checked rather than trusted**: `tests/openapi.spec.ts` imports
+`package.json` and fails if its `version` is not `API_VERSION`, and fails if any published path but
+`/health` does not begin with the prefix. The constant is declared **without a type annotation**, which is
+load-bearing rather than stylistic: a `: string` would widen the template-literal type of
+`` `${API_PREFIX}/recoveries` `` and change the app's inferred schema type, and therefore the contract.
+
+**The URL path is the one strategy, and that is a decision rather than an omission** — no query parameter,
+no `Accept-Version` header, no per-consumer negotiation. It is the strategy the guide calls the most
+popular and the one this API can actually keep consistent: the app is the only consumer, its addresses are
+compiled into a binary that is sideloaded rather than updated by a store, and a header scheme would have
+to ride on every one of the nineteen `CloudSync` methods while buying nothing a path does not already
+give.
+
+**A change forces a version when it forces a consumer to alter code, and that is the whole test.** It is a
+bump when a property or an endpoint is renamed, when an optional field becomes required, when a field's
+format or type changes, or when a bound such as `maxLength` moves in a way a conforming client could
+exceed. It is **not** a bump when a field is added, when a required field becomes optional, when a bound
+loosens, when a route is added, when a service or a query is rewritten behind an unchanged shape, or when
+a comment moves. **A change that leaves the wire's names, types, requiredness, formats and bounds alone is
+not a version event**, however large it is.
+
+**Deprecation is announced, served, watched, and only then removed.** A change that does force a bump
+leaves the old shape answering for a span written down before the new one ships: the docs say what is
+going and when, both shapes are served, the old one's use is watched for as long as that takes, and it is
+removed once nothing calls it. **The `Deprecation` and `Sunset` response headers are deliberately not
+implemented yet** — the procedure is written and the machinery arrives with the first real deprecation,
+because a header added now would be a branch whose selecting path never runs. That is the same judgement
+`ios/Sources/Whoopsy/Data/Health/HealthStoreClientFactory.swift:5-9` records for its unbuilt
+`UnavailableHealthStoreClient`: a second implementation of an answer nobody asks for is a defect rather
+than insurance. **Nothing is deprecated today** — there is one shape of every route, and `/v1` is the only
+prefix this Worker has ever served.
+
 ## The gate
 
 **Every `/v1` request needs `Authorization: Bearer <SYNC_API_TOKEN>`, and the two paths that do not

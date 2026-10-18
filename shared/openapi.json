@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Whoopsy Sync API",
-    "version": "0.0.0",
+    "version": "0.1.0",
     "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold."
   },
   "servers": [
@@ -28,6 +28,11 @@
             "description": "The Worker's name, as `wrangler.toml` declares it.",
             "example": "whoopsy-sync"
           },
+          "version": {
+            "type": "string",
+            "description": "The implementation version this Worker is running, read from `API_VERSION`. It is the API's own semver and is deliberately decoupled from the address in the URL — this deployment answers on `/v1` while reporting `0.1.0`, because the prefix moves only when the wire needs a new address. See `docs/BACKEND.md` § Versioning.",
+            "example": "0.1.0"
+          },
           "bindings": {
             "type": "object",
             "properties": {
@@ -50,6 +55,7 @@
         "required": [
           "status",
           "service",
+          "version",
           "bindings"
         ],
         "description": "The Worker's liveness and its binding report."

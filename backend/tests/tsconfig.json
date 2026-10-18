@@ -1,7 +1,13 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"]
+    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"],
+    // `openapi.spec.ts` imports `package.json` to assert the manifest's version is `API_VERSION`. A
+    // spec cannot read the filesystem — it runs in `workerd`, which has none — but Vite inlines a JSON
+    // import at transform time, so the manifest arrives as a module. Declared here rather than in
+    // `../tsconfig.json` because the src project imports no JSON, and a flag nothing in it needs is
+    // config that reads as load-bearing and is not.
+    "resolveJsonModule": true
   },
   "include": ["**/*.ts"]
 }

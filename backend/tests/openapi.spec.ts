@@ -1,6 +1,12 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { openApiConfig, serialiseOpenApiDocument } from "../src/openapi";
+// The manifest, imported rather than read. A spec runs in `workerd`, which has no filesystem, so
+// `readFileSync` is not available here — but Vite inlines a JSON import at transform time, so the
+// manifest arrives as a module and the version it declares is checkable in the same breath as the
+// version the contract publishes. That is the whole reason `tests/tsconfig.json` sets
+// `resolveJsonModule`.
+import pkg from "../package.json";
+import { API_PREFIX, API_VERSION, openApiConfig, serialiseOpenApiDocument } from "../src/openapi";
 import { bearerToken } from "../src/utils/tokens";
 
 /**
@@ -487,6 +493,68 @@ describe("GET /openapi.json", () => {
     const second = await SELF.fetch("https://whoopsy.test/openapi.json");
 
     expect(await first.text()).toBe(await second.text());
+  });
+});
+
+/**
+ * The version, and the two things it must not do.
+ *
+ * **It must not disagree with itself.** `API_VERSION` in `src/openapi.ts` is the source, `info.version`
+ * is generated from it, and `package.json` carries a copy that nothing generates — so the manifest is
+ * the one site that can drift, and the only site a reader has to be reminded about. All three are
+ * asserted here so a bump that moved one and missed another fails rather than shipping.
+ *
+ * **And the prefix must not disagree with the paths.** `/v1` is the *contract*, not this version's
+ * major — `0.1.0` would derive `/v0`, an address no deployment has ever answered on — so the two are
+ * independent by design and the assertion is that the *independence holds*: every published path
+ * carries `API_PREFIX` and the eight mounts are the only place it is functional. That is what fails if
+ * a future route is mounted outside the prefix, which would be a resource a client could reach and a
+ * deprecation could never retire.
+ */
+describe("the version", () => {
+  it("publishes the version the source declares", async () => {
+    const document = await served();
+
+    // Read twice, and the sameness is the point: the contract is generated *from* the constant, so a
+    // literal typed back into `openapi.ts` is the defect this catches.
+    expect(document.info.version).toBe(API_VERSION);
+
+    // The shape semver promises. `"0.1"` and `"v1"` both survive every other assertion here, because
+    // nothing else in this file reads the string as a version rather than as a string.
+    expect(API_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it("prefixes every published path but the probe", async () => {
+    const document = await served();
+
+    // `/health` is the one exception *in* the document: it is infrastructure rather than API, which is
+    // why it is also one of the two paths `OPEN_PATHS` exempts from the gate. `/openapi.json` is the
+    // second of those and is not in `paths` at all — asserted in the block above — so the honest
+    // statement of the rule is "the probe, and nothing else".
+    const unprefixed = Object.keys(document.paths).filter(
+      (path) => path !== "/health" && !path.startsWith(`${API_PREFIX}/`),
+    );
+
+    expect(unprefixed).toEqual([]);
+  });
+
+  it("names the same prefix in the servers prose the mounts use", async () => {
+    const document = await served();
+
+    // **This is the half no path-level assertion can see.** `servers[0].description` sits outside
+    // `paths`, so a prefix change that moved all eight mounts and missed this sentence would leave the
+    // contract describing URLs it does not have — and every other assertion in this file, including
+    // the loop in the block below, would stay green.
+    expect(document.servers?.[0]?.description).toContain(`\`${API_PREFIX}\``);
+  });
+
+  it("declares the version its own manifest carries", async () => {
+    // `package.json` is the one site that cannot read `API_VERSION`: npm needs the field for its own
+    // reasons, and a Worker importing its manifest to serve a string would be the wrong mechanism for
+    // a value that is already a constant. So it is the site that drifts, and this is what stops it —
+    // the same shape as `SERVICE_NAME` being checked against `wrangler.toml`'s `name`, which is
+    // likewise unimportable.
+    expect(pkg.version).toBe(API_VERSION);
   });
 });
 
