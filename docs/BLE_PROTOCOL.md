@@ -6,7 +6,7 @@ Reverse-engineered Bluetooth Low Energy protocol for WHOOP hardware. Three strap
 
 ## How to read this document
 
-Most of this has not been captured on this project's own hardware, but **the 5.0 half has now been run, on one strap on 2026-10-20/21** — the bond, `SET_CLOCK`, live heart rate and R-R, `R21` motion and a full flash drain, with the results recorded where each claim is argued (§3's handshake, §4's drain, §5's producers). What that establishes is a 5.0 on one firmware; the 4.0 column is still spec-only, and no claim here should be generalised past the strap it was measured on. Every statement is tagged with where it came from, and the tags are not decoration — most of the disagreements recorded below exist because two sources were silently mixed.
+Most of this has not been captured on this project's own hardware, but **the 5.0 half has now been run, on one strap** — the bond, `SET_CLOCK`, live heart rate and R-R, `R21` motion and a full flash drain, with the results recorded where each claim is argued (§3's handshake, §4's drain, §5's producers). What that establishes is a 5.0 on one firmware; the 4.0 column is still spec-only, and no claim here should be generalised past the strap it was measured on. Every statement is tagged with where it came from, and the tags are not decoration — most of the disagreements recorded below exist because two sources were silently mixed.
 
 | Tag | Meaning |
 | :--- | :--- |
@@ -625,7 +625,7 @@ Two things follow for this document. **The length is not settled across the ecos
 5, 8 and 9 bytes all appear in published clients, and four independent projects corroborate the
 silent-failure mode, which is why noop's belt-and-braces approach is the shape to copy rather than
 picking one. That is what this app does: **`setClockFrames` sends both forms on every generation** — two for the
-4.0 at its drain, and since 2026-10-20 two for the 5.0/MG under its own envelope at command 10.
+4.0 at its drain, and since the link was first run two for the 5.0/MG under its own envelope at command 10.
 **That second length was measured rather than chosen**: on the owner's 5.0 the 8-byte
 `[u32 epoch LE][u32 0]` was written `.withResponse`, acknowledged by the strap, and left the RTC at
 **`2000-01-03 20:25`**; adding the **9-byte legacy form** (`[u32 epoch][5 × 0]`) moved it to a
@@ -860,8 +860,7 @@ plus **two of the 5.0/MG's three type-47 layouts**, selected by the layout byte 
 §6's IMU buffer and `MotionPayloadDecoder` walks it into a `MotionBatch` for the step path. **That walk
 uses the record's own clock only because this is the banked path**: the same decoder takes a *live*
 packet 43 and keys it on the arrival instant instead, because a strap whose RTC was lost stamps every
-live record with a date years in the past — measured on a real 5.0 on 2026-10-20, where a walk's
-22,702 steps were filed under `2000-01-03` and no screen could draw them. A banked record has no
+live record with a date years in the past — measured on a real 5.0, where a whole walk's steps were filed under `2000-01-03` and no screen could draw them. A banked record has no
 arrival-time substitute (it may be hours old), so it keeps the stamp and the RTC question above stays
 open for it. **`R20`,
 the optical engine's raw sample stream, has no reader** — a heart rate assembled from it would be a
@@ -932,7 +931,7 @@ stream's first frame and shift every field in it.
 payload=109 B` — the `R18` walk — and the samples were stored (`LAST SYNC` moved to the drain's own
 instant). The `HISTORY_END` marker's head also decodes to the drain's instant, so the live-edge rule
 is reading the field it thinks it is. What that drain did **not** establish is a multi-batch
-archive: on this strap the buffer holds two bursts of ~60 records stamped `2026-08-24` and nothing
+archive: on this strap the buffer holds two bursts of ~60 records stamped months earlier and nothing
 later, so every drain returns those and ends at the live edge. The `R18` walk is therefore proven on
 real records; a strap that keeps writing is not.
 
@@ -1279,7 +1278,7 @@ set (§3), `motionEnableSequence` sends them in that order from `didDiscoverChar
 connect, `MotionPayloadDecoder` walks the R10 layout into a `MotionBatch`, and `TrackStepsUseCase`
 accumulates it into a day-keyed row. **The 4.0 half of that is still uncaptured** — it says the command bytes match the references and
 the walk matches §6's table, not that a 4.0 accepts the enable or answers with a record. The **5.0**
-half has run: packet 43 carries `R21` and the step path consumes it (106 steps for a 100-step walk,
+half has run: packet 43 carries `R21` and the step path consumes it (a counted walk read within a few percent,
 and a day counter that keys on the arrival instant — see `MotionBatch.strapTimestamp`). What it also does not change: **R10 is streamed and
 never banked**, so a 4.0 fills only the time the app was running with the strap connected.
 

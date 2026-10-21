@@ -640,8 +640,7 @@ sets `setNotifyValue(true, for:)` on every `.notify` characteristic
 covers `0x2A37`; `didUpdateValueFor` decodes it and yields a sample
 ([:763](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L763), [:787](../ios/Sources/Whoopsy/Data/BLE/Manager/WhoopBLEManager.swift#L787));
 `StreamBiometricsUseCase` persists it and `LiveSessionUseCase` feeds it to the session screen. Nothing
-in that chain is a stub. **A strap has since been on the other end of it** — on 2026-10-21 the owner's
-5.0 delivered `0x2A37` live samples with R-R intervals, so `biometric_samples` stopped being empty and
+in that chain is a stub. **A strap has since been on the other end of it** — the owner's 5.0 has since delivered `0x2A37` live samples with R-R intervals, so `biometric_samples` stopped being empty and
 both questions below are answered for that one unit: yes, it exposes the characteristic, and yes, its
 frames decode.
 

@@ -83,7 +83,7 @@ enum StepCountPersistenceTests {
         // ---- v24: a row a lost RTC mislabelled is moved onto the day being repaired ----
         //
         // **This block is the postmortem of a real bug, not a hypothetical.** A 5.0 whose clock was
-        // reset stamped every live motion record with 2000-01-03, and the day counter filed 22,702
+        // reset stamped every live motion record with `2000-01-03`, and the day counter filed 22,702
         // real steps under it; no screen draws that day, so Home's tile read `—` while the counter
         // worked. `MotionPayloadDecoder` now keys a live record on its arrival instant, which fixes
         // every row *after* the change — and this repair is what recovers the rows already on disk.
@@ -99,7 +99,7 @@ enum StepCountPersistenceTests {
             // A real walk filed on the wrong day, and a real row already on the right one — the
             // merge case, which is the one that could silently delete steps.
             try await repository.saveStepCount(
-                StepCount(date: mislabelled, stepCount: 22_702, measuredSeconds: 900))
+                StepCount(date: mislabelled, stepCount: 12_345, measuredSeconds: 900))
             try await repository.saveStepCount(
                 StepCount(date: today, stepCount: 100, measuredSeconds: 60))
 
@@ -108,9 +108,9 @@ enum StepCountPersistenceTests {
 
             assertTest(moved == 1, "One mislabelled row is found and moved (\(moved))")
             assertTest(
-                repaired?.stepCount == 22_802 && repaired?.measuredSeconds == 960,
+                repaired?.stepCount == 12_445 && repaired?.measuredSeconds == 960,
                 "…and it is **summed onto** the day being repaired rather than overwriting it: both "
-                    + "rows are real motion, so 22,702 + 100 steps and 900 + 60 measured seconds "
+                    + "rows are real motion, so the counts and the measured spans add "
                     + "(\(String(describing: repaired)))")
             assertTest(
                 try await repository.getStepCount(for: mislabelled) == nil,

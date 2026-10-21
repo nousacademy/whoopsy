@@ -125,7 +125,7 @@ enum MotionPayloadDecoderTests {
         //
         // **This block exists because a real strap's clock was wrong and the tile went blank.** A 5.0
         // whose RTC was lost stamped every live record with `2000-01-03`, and `TrackStepsUseCase`
-        // faithfully filed 22,702 steps under that day — a key no screen asks for, so Home drew `—`
+        // faithfully filed a whole walk's steps under that day — a key no screen asks for, so Home drew `—`
         // through the whole walk. A banked record must keep its stamp (it is the only way to place an
         // overnight drain on the right day), but a live one arrives as it is measured, so the arrival
         // instant is both available and unspoofable by a bad RTC.
@@ -153,7 +153,7 @@ enum MotionPayloadDecoderTests {
             live21?.start == receivedAt && live21?.timestampIsFromStrap == false,
             "A **live** R21 record takes the arrival instant, not its own field — the frame here carries "
                 + "2000-01-03, which is what a strap with a lost RTC stamps, and trusting it is what filed "
-                + "a real walk's 22,702 steps under a day nothing draws "
+                + "a real walk's steps under a day nothing draws "
                 + "(decoded \(String(describing: live21?.start)))")
         assertTest(
             banked?.start != receivedAt && live21?.start == receivedAt,

@@ -321,7 +321,7 @@ enum HistoricalDrainSessionTests {
             // **The seek, which the drain was missing entirely.** The request carries no window, so the
             // read cursor is the only thing that says where a drain starts — and without moving it a
             // strap that has been streaming answers from the live edge. Measured across five drains on
-            // 2026-10-20/21: ~58 records, one batch, about a minute, every time.
+            // five drains over two days: ~58 records, one batch, about a minute, every time.
             let fourRewind = WhoopCommandFrames.rewindReadPointer(profile: .whoop4, seq: 2)
             let fiveRewind = WhoopCommandFrames.rewindReadPointer(profile: .whoop5, seq: 2)
             assertTest(

@@ -59,13 +59,13 @@ feature: no switch, no SDK, no request. See [§ Optional: the offline map](#opti
 
 ## Status — please read before you build
 
-This is a working app with real engineering behind it, and it is **not yet usable on a physical
-strap.** Being specific about that is more useful than a feature list:
+This is a working app with real engineering behind it. It has been **run against a physical strap**,
+on one unit, and being specific about what that proved is more useful than a feature list:
 
-- **The app has run against real hardware, on one strap.** A WHOOP 5.0 on iOS, on 2026-10-20/21: the
+- **The app has run against real hardware, on one strap.** A WHOOP 5.0 on iOS: the
   just-works bond completed, live heart rate and R-R intervals arrived on the standard `0x2A37`
-  characteristic, 100 Hz motion arrived on packet 43, steps counted at a plausible rate (106 for a
-  100-step walk), a full night of biometrics was stored and staged into a sleep session, and
+  characteristic, 100 Hz motion arrived on packet 43, steps counted at a plausible rate on a
+  counted walk, a full night of biometrics was stored and staged into a sleep session, and
   `SYNC HISTORY` drained the flash end to end. What that does **not** cover: the 4.0 (spec-only, no
   hardware), a second unit, or a second firmware.
 - **Signing is not configured.** `DEVELOPMENT_TEAM` is empty and there is no certificate, so the
@@ -76,7 +76,7 @@ strap.** Being specific about that is more useful than a feature list:
   on `HISTORY_COMPLETE`/the live edge/an idle window, and walks both generations' heart-rate records
   (`R18` and the 4.0's type 24) plus `R21` motion. It runs automatically on connect and filters
   records it already holds. Measured on one 5.0: the archive contains two bursts of ~60 records
-  stamped `2026-08-24` and nothing later, so every drain returns those and reports the live edge.
+  stamped months earlier and nothing later, so every drain returns those and reports the live edge.
   That strap is not writing history — a hardware finding, established by draining with the clock
   set, the bond made, a `REBOOT_STRAP` sent and Bluetooth off for a full window. Treat "the strap
   banks 14 days" as the documented design rather than a measured property. See

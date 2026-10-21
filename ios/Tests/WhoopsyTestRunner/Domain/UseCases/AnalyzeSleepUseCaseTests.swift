@@ -10,8 +10,8 @@ import Whoopsy
 /// **It is asserted here because it was wrong for the entire life of the strap path and nothing saw
 /// it**: the code computed `startOfDay − 11 h`, which is **1 PM the previous day**, while its own
 /// comment, `SleepOnsetMath`'s documentation and every other reference in this repo say 9 PM. A
-/// 21-hour window accepted an afternoon as the start of a night, and on a real strap on 2026-10-20 the
-/// consequence was a night reported from **3:33 PM to 8:38 AM**.
+/// 21-hour window accepted an afternoon as the start of a night, and on a real strap the
+/// consequence was a night reported from an afternoon hour to the following morning.
 ///
 /// The rule is not "13 hours" — it is **the clock times**, which is why the fix builds both ends from
 /// calendar components rather than adding hours to midnight: hour arithmetic lands on the wrong wall
@@ -45,13 +45,13 @@ enum AnalyzeSleepUseCaseTests {
                 + "fails if either end drifts again "
                 + "(\(Int(window.to.timeIntervalSince(window.from) / 3600)) h)")
 
-        // The exact instant the bug admitted. 3:33 PM is inside a 1 PM → 10 AM window and outside a
+        // The instant the bug admitted. An afternoon hour is inside a 1 PM → 10 AM window and outside a
         // 9 PM → 10 AM one, so this is the byte-level difference the fix makes.
         let afternoon = calendar.date(
             from: DateComponents(year: 2026, month: 10, day: 19, hour: 15, minute: 33))!
         assertTest(
             afternoon < window.from,
-            "A 3:33 PM session is **outside** the window — the onset the user saw reported as the start "
+            "An afternoon session is **outside** the window — the kind of onset the old window admitted as the start "
                 + "of the night. Nothing in the read can begin before 9 PM once the window is right")
 
         // A midnight morning date and a raw afternoon one must answer identically, because the two
