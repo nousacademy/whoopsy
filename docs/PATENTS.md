@@ -50,7 +50,7 @@ it — and the disclosed **anchors are physiological measurements this app canno
 | Model | WHOOP's disclosed shape | The anchor it needs | What this app substitutes |
 | :--- | :--- | :--- | :--- |
 | **Strain** | Full: HRR → piecewise weight → integrate → normalise → arctan → ×21 | The user's **anaerobic threshold** and **creatine-phosphate threshold** | a fixed 50/60/70/80/90 %HRR grid |
-| **Recovery HRV** | HRV over a short window inside the **last slow-wave-sleep episode before waking** | sleep staging | a whole-night RMSSD |
+| **Recovery HRV** | HRV over a short window inside the **last slow-wave-sleep episode before waking** | sleep staging | RMSSD over the last classified deep-sleep run — the same anchor, on this app's own stage labels; a night with no deep stage falls back to the whole session and says so |
 | **Sleep staging** | nothing — deferred to a trained classifier | the classifier | actigraphy + heart-rate dip, and a sustained-run rule for where the night starts and ends |
 | **Sleep need** | `Baseline + f1(strain) + f2(debt) − Naps` | the baseline and the debt term | a fitted linear coefficient |
 | **Stress** | `α·f(motion)·[w·HR + (1−w)·HRV]` or an HRRR quantile | a trained distribution and a motion-conditioned context | z-scores against a flat baseline |

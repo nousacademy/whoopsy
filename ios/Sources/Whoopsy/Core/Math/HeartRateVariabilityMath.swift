@@ -9,28 +9,40 @@ public enum HeartRateVariabilityMath {
     /// Max allowable delta percentage for ectopic beat rejection (20%)
     public static let maxEctopicVariationRatio: Double = 0.20
 
-    /// Cleans and filters raw R-R intervals using physiological limits and moving median filter.
-    public static func filterRRIntervals(_ rawIntervals: [Double]) -> [Double] {
-        guard rawIntervals.count >= 3 else {
-            return rawIntervals.filter { $0 >= minValidRRMs && $0 <= maxValidRRMs }
-        }
+    /// Cleans and filters raw R-R intervals using physiological limits and a neighbour rule.
+    ///
+    /// **Every interval is judged, including the first and the last of a run — and that is the fix a
+    /// real strap night forced.** The rule used to check only the *middle* of a run of three or more
+    /// and exempt both ends, so a run of two was pure ends and passed untouched, and a run of three
+    /// judged one interval while admitting two. A BLE notification carries at most four intervals and
+    /// at rest usually one, which makes short runs the ordinary case rather than the edge: measured on
+    /// a real 5.0, an overnight RMSSD came out at **301 ms** from 195 differences, because the pairs
+    /// the filter never inspected were exactly the pairs RMSSD is built from. A pair of adjacent beats
+    /// differing by more than `maxEctopicVariationRatio` is an ectopic pair, not a measurement, so both
+    /// are dropped and a run of two that disagrees contributes nothing.
+    ///
+    /// A single interval has no neighbour to disagree with and is kept once it is inside the
+    /// physiological bounds; it contributes no successive difference either way, so keeping it is
+    /// harmless and dropping it would make a run of one indistinguishable from no run.
+    public static func filterRRIntervals(
+        _ rawIntervals: [Double], ratio: Double = maxEctopicVariationRatio
+    ) -> [Double] {
+        let bounded = rawIntervals.filter { $0 >= minValidRRMs && $0 <= maxValidRRMs }
+        guard bounded.count >= 2 else { return bounded }
 
         var cleaned: [Double] = []
-        for i in 0..<rawIntervals.count {
-            let current = rawIntervals[i]
-            // 1. Boundary check
-            guard current >= minValidRRMs && current <= maxValidRRMs else { continue }
+        for index in bounded.indices {
+            let current = bounded[index]
+            // The local comparison set: every immediate neighbour the run actually has, so an end is
+            // judged against its one neighbour rather than exempted.
+            var neighbours: [Double] = []
+            if index > 0 { neighbours.append(bounded[index - 1]) }
+            if index < bounded.count - 1 { neighbours.append(bounded[index + 1]) }
 
-            // 2. Relative check with neighbors
-            if i > 0 && i < rawIntervals.count - 1 {
-                let prev = rawIntervals[i - 1]
-                let next = rawIntervals[i + 1]
-                let localMedian = [prev, current, next].sorted()[1]
-                let diffRatio = abs(current - localMedian) / localMedian
-                if diffRatio <= maxEctopicVariationRatio {
-                    cleaned.append(current)
-                }
-            } else {
+            let localMedian = (neighbours + [current]).sorted()[
+                (neighbours.count + 1) / 2]
+            let diffRatio = abs(current - localMedian) / localMedian
+            if diffRatio <= ratio {
                 cleaned.append(current)
             }
         }
@@ -80,12 +92,14 @@ public enum HeartRateVariabilityMath {
     /// - Returns: RMSSD in milliseconds, or `0.0` when fewer than two intervals survive cleaning in
     ///   total — which callers must guard, because a zero here is a perfectly metronomic heart rather
     ///   than an absent reading. See `StressMath.minimumRRIntervals`.
-    public static func calculateRMSSD(fromRuns runs: [[Double]]) -> Double {
+    public static func calculateRMSSD(
+        fromRuns runs: [[Double]], ratio: Double = maxEctopicVariationRatio
+    ) -> Double {
         var sumSquaredDiffs = 0.0
         var differenceCount = 0
 
         for run in runs {
-            let cleaned = filterRRIntervals(run)
+            let cleaned = filterRRIntervals(run, ratio: ratio)
             guard cleaned.count >= 2 else { continue }
             for i in 0..<(cleaned.count - 1) {
                 let diff = cleaned[i + 1] - cleaned[i]
@@ -99,6 +113,30 @@ public enum HeartRateVariabilityMath {
     }
 
     /// Standard Deviation of NN intervals (SDNN) in milliseconds.
+    /// How many successive differences the runs actually supply after cleaning.
+    ///
+    /// **RMSSD's denominator, returned rather than inferred, because it is the number that separates a
+    /// measurement from an accident.** A strap notification carries at most four intervals, and at rest
+    /// most carry one — a run of length 1 yields no difference at all, and a run of 2 yields exactly
+    /// one, which the ectopic rule cannot judge because its relative check needs both neighbours. So an
+    /// RMSSD built from a handful of pairs is one bad pair away from any value at all, and a
+    /// physiologically impossible figure can reach a score. Callers gate on this before using the
+    /// result; see `minimumRMSSDDifferences`.
+    public static func differenceCount(fromRuns runs: [[Double]]) -> Int {
+        runs.reduce(0) { total, run in
+            let cleaned = filterRRIntervals(run)
+            return total + max(0, cleaned.count - 1)
+        }
+    }
+
+    /// The fewest successive differences an RMSSD may be computed from.
+    ///
+    /// **A calibration, not a published constant**, in the same bargain `StressMath` documents: 30
+    /// seconds of beats at a resting 60 bpm is 30 intervals and 29 differences, so 20 is two-thirds of
+    /// a conventional short-term HRV strip. Below it the estimator is not reporting the heart's
+    /// variability, it is reporting how many beats happened to share a notification.
+    public static let minimumRMSSDDifferences = 20
+
     public static func calculateSDNN(from rrIntervalsMs: [Double]) -> Double {
         let cleaned = filterRRIntervals(rrIntervalsMs)
         guard cleaned.count >= 2 else { return 0.0 }

@@ -31,10 +31,33 @@ public final class CalculateRecoveryUseCase: Sendable {
         let profile = try await userProfileRepository.getUserProfile()
         let sleepSession = try await sleepRepository.getSleepSession(for: date)
 
-        // Fetch sleep samples if session exists, else use last night (10 PM to 7 AM)
+        // Fetch sleep samples if session exists, else use last night (10 PM to 7 AM). These are the
+        // **whole night's** samples, and they are what resting heart rate is read from.
         let sleepStart = sleepSession?.startTime ?? Calendar.current.date(byAdding: .hour, value: -8, to: date)!
         let sleepEnd = sleepSession?.endTime ?? date
         let overnightSamples = try await biometricRepository.getSamples(from: sleepStart, to: sleepEnd)
+
+        // **HRV is read from the last deep-sleep run, not from the whole night.** WHOOP's Recovery HRV
+        // is measured inside the last slow-wave episode before waking (`docs/PATENTS.md` §1), and this
+        // app used to substitute a whole-night RMSSD — which is a *different quantity*: REM and brief
+        // awakenings carry far more beat-to-beat variation, so a whole-night figure runs high, and the
+        // imported rows store WHOOP's slow-wave number, so a 30-day baseline was mixing two
+        // distributions under one metric. Measured on a real strap night: whole-night 105 ms against a
+        // 910-night recorded median of 53.
+        //
+        // A night with no classified deep stage falls back to the whole session and says so in the log,
+        // rather than reporting nothing: a night the stager could not resolve still has beats, and the
+        // fallback is the previous behaviour stated rather than hidden.
+        let hrvWindow = Self.deepestLastRun(in: sleepSession)
+            ?? DateInterval(start: sleepStart, end: sleepEnd)
+        let hrvSamples = if hrvWindow.start == sleepStart && hrvWindow.end == sleepEnd {
+            overnightSamples
+        } else {
+            try await biometricRepository.getSamples(from: hrvWindow.start, to: hrvWindow.end)
+        }
+        AppLogger.algorithms.notice("""
+            Recovery HRV window: \(hrvWindow.start.description, privacy: .public) →             \(hrvWindow.end.description, privacy: .public)             (\(Int(hrvWindow.duration), privacy: .public) s, \(hrvSamples.count, privacy: .public) samples)            \(Self.deepestLastRun(in: sleepSession) == nil ? " [no deep run — whole session]" : "")
+            """)
 
         // Extract RR intervals and resting HR. Each notification's interval list is one contiguous
         // run of adjacent beats; `calculateRMSSD(fromRuns:)` differences **within** each run and pools
@@ -43,7 +66,7 @@ public final class CalculateRecoveryUseCase: Sendable {
         // `rrIntervalsMs.first` — and handing that to `calculateRMSSD(from:)` is the defect that
         // inflated every strap-computed HRV (measured ~288 ms where the same night's WHOOP figure is
         // ~50 ms), because it differences beats a whole notification apart.
-        let rrRuns = overnightSamples.compactMap { $0.rrIntervalsMs }
+        let rrRuns = hrvSamples.compactMap { $0.rrIntervalsMs }
 
         // The guard is the *measurement* test, not the interval count, and the difference is load
         // bearing. `calculateRMSSD(fromRuns:)` returns exactly `0.0` when no run survives cleaning
@@ -58,6 +81,46 @@ public final class CalculateRecoveryUseCase: Sendable {
         // has to be made against the value that is actually stored, or the writer and the readers
         // disagree again by one rounding step.
         let hrvValueMs = HeartRateVariabilityMath.calculateRMSSD(fromRuns: rrRuns).rounded(toPlaces: 1)
+
+        // **A second gate, and the one a real strap night made necessary.** `hrvValueMs > 0` asks
+        // whether the estimator produced a number; it does not ask whether the beats behind it could
+        // support one. A notification carries at most four intervals and at rest usually one, so most
+        // runs contribute no successive difference and the few that do are dominated by single pairs
+        // the ectopic rule cannot judge. Measured on a real 5.0: an overnight HRV came out at a value
+        // no resting heart produces, from a night whose runs were almost all length 1.
+        let differences = HeartRateVariabilityMath.differenceCount(fromRuns: rrRuns)
+        // **The interval distribution, because a value can be wrong for two different reasons.** A
+        // figure above the wearer's own historical maximum is either an ectopic pair the 20% rule
+        // admits, or intervals that are not what the decoder thinks they are. Logging the raw
+        // distribution and the same estimator at two stricter ratios separates those in one run:
+        // if a 10% filter lands in the recorded range, the threshold was too loose; if it does not
+        // move, the intervals themselves are the problem.
+        let allIntervals = rrRuns.flatMap { $0 }.sorted()
+        if !allIntervals.isEmpty {
+            func pct(_ p: Double) -> Double {
+                allIntervals[Int(p * Double(allIntervals.count - 1))]
+            }
+            AppLogger.algorithms.notice("""
+                Recovery HRV intervals: n=\(allIntervals.count, privacy: .public) \
+                p5=\(pct(0.05), privacy: .public) median=\(pct(0.5), privacy: .public) \
+                p95=\(pct(0.95), privacy: .public) min=\(allIntervals[0], privacy: .public) \
+                max=\(allIntervals[allIntervals.count - 1], privacy: .public) \
+                rmssd@10%=\(HeartRateVariabilityMath.calculateRMSSD(fromRuns: rrRuns, ratio: 0.10).rounded(toPlaces: 1), privacy: .public) \
+                rmssd@15%=\(HeartRateVariabilityMath.calculateRMSSD(fromRuns: rrRuns, ratio: 0.15).rounded(toPlaces: 1), privacy: .public) \
+                rmssd@20%=\(HeartRateVariabilityMath.calculateRMSSD(fromRuns: rrRuns, ratio: 0.20).rounded(toPlaces: 1), privacy: .public)
+                """)
+        }
+        AppLogger.algorithms.notice("""
+            Recovery HRV: \(hrvValueMs, privacy: .public) ms from \(differences, privacy: .public) \
+            successive difference(s) across \(rrRuns.count, privacy: .public) run(s)
+            """)
+        guard differences >= HeartRateVariabilityMath.minimumRMSSDDifferences else {
+            AppLogger.algorithms.notice("""
+                Recovery absent: \(differences, privacy: .public) differences is below the \
+                \(HeartRateVariabilityMath.minimumRMSSDDifferences, privacy: .public) an RMSSD needs
+                """)
+            return nil
+        }
         guard hrvValueMs > 0 else { return nil }
 
         let heartRates = overnightSamples.map { $0.heartRate }
@@ -107,5 +170,38 @@ public final class CalculateRecoveryUseCase: Sendable {
 
         try await recoveryRepository.saveRecovery(recovery)
         return recovery
+    }
+
+    /// The **last contiguous run of deep sleep** in a night, or `nil` when the night holds none.
+    ///
+    /// Adjacent deep segments are merged into one run — `AnalyzeSleepUseCase` writes one segment per
+    /// 30-second epoch, so an unmerged read would return the final epoch and nothing else. The run is
+    /// the window WHOOP measures Recovery HRV in (`docs/PATENTS.md` §1: "a short window inside the last
+    /// slow-wave-sleep episode before waking"), and the whole run is used rather than a sub-window
+    /// because the episode is already the shortest stable stretch the stager produces.
+    ///
+    /// A pure function of the session so §14 can assert the choice without a database — the runner has
+    /// no strap, and a selection rule written into `execute` would be a rule nothing can check.
+    public static func deepestLastRun(in session: SleepSession?) -> DateInterval? {
+        guard let session else { return nil }
+        let deep = session.sleepStages
+            .filter { $0.stage == .deep }
+            .sorted { $0.startTime < $1.startTime }
+        guard let first = deep.first else { return nil }
+
+        // Track the latest run as we go, so the return is the **last** one rather than the first: a
+        // night has several deep episodes and WHOOP's window is the one nearest waking.
+        var runStart = first.startTime
+        var runEnd = first.endTime
+        for segment in deep.dropFirst() {
+            // A gap wider than one epoch (30 s, with a minute of slack) separates two runs.
+            if segment.startTime.timeIntervalSince(runEnd) <= 60 {
+                runEnd = max(runEnd, segment.endTime)
+            } else {
+                runStart = segment.startTime
+                runEnd = segment.endTime
+            }
+        }
+        return DateInterval(start: runStart, end: runEnd)
     }
 }

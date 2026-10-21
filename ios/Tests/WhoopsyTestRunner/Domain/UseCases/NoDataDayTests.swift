@@ -222,5 +222,54 @@ enum NoDataDayTests {
         } catch {
             assertTest(false, "No-data-day handling threw: \(error)")
         }
+
+        // ---- The HRV window: the last deep-sleep run, not the whole night ----
+        //
+        // WHOOP measures Recovery HRV inside the last slow-wave episode before waking, and this app
+        // used to substitute a whole-night RMSSD — a different quantity, because REM and brief
+        // awakenings carry far more beat-to-beat variation. Measured on a real strap night: 105 ms
+        // whole-night against a 910-night recorded median of 53. The selection is a pure function so
+        // it can be asserted without a database.
+        do {
+            let base = Date(timeIntervalSince1970: 1_700_000_000)
+            func segment(_ start: TimeInterval, _ end: TimeInterval, _ stage: SleepStageType)
+                -> SleepStageSegment
+            {
+                SleepStageSegment(
+                    startTime: base.addingTimeInterval(start),
+                    endTime: base.addingTimeInterval(end),
+                    stage: stage)
+            }
+            // Two deep episodes, separated by light sleep: the window must be the **second** one.
+            let night = SleepSession(
+                date: base,
+                startTime: base,
+                endTime: base.addingTimeInterval(30_000),
+                sleepStages: [
+                    segment(600, 900, .deep),
+                    segment(900, 1200, .deep),
+                    segment(1200, 9_000, .light),
+                    segment(9_000, 9_600, .rem),
+                    segment(9_600, 10_200, .deep),
+                    segment(10_200, 10_500, .deep),
+                    segment(10_500, 30_000, .light),
+                ])
+            let window = CalculateRecoveryUseCase.deepestLastRun(in: night)
+            assertTest(
+                window == DateInterval(
+                    start: base.addingTimeInterval(9_600), end: base.addingTimeInterval(10_500)),
+                "The HRV window is the **last** deep run — its two adjacent segments merged into one "
+                    + "episode, not the final epoch and not the first episode "
+                    + "(got \(String(describing: window)))")
+            assertTest(
+                CalculateRecoveryUseCase.deepestLastRun(in: nil) == nil
+                && CalculateRecoveryUseCase.deepestLastRun(
+                    in: SleepSession(
+                        date: base, startTime: base, endTime: base.addingTimeInterval(3_600),
+                        sleepStages: [segment(0, 600, .light), segment(600, 900, .rem)])
+                ) == nil,
+                "…and a night with no classified deep stage has no window, which is what makes the "
+                    + "whole-session fallback an explicit choice rather than a silent one")
+        }
     }
 }

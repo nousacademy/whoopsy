@@ -817,6 +817,41 @@ public actor LocalDatabaseManager {
                 .deleteAll(db)
         }
 
+        // **`v29` clears today's recovery for one reason: a stored HRV is not corrected by fixing the
+        // estimator that wrote it.** `CalculateRecoveryUseCase` now refuses an RMSSD built from fewer
+        // successive differences than a short-term strip needs — measured on a real strap night, the
+        // stored figure was physiologically impossible — but a screen reading a stored row never runs
+        // the estimator again. Deleting today's row lets the next load recompute it under the gate:
+        // the day either gets an HRV with support behind it, or it is honestly absent. Safe on a fresh
+        // install for `v27`'s reason (migrations run before any writer can produce a row), and the
+        // cloud-resurrection caveat is the same: clear it with the destination on `DEVICE STORAGE`.
+        migrator.registerMigration("v29_clear_recovery_day") { db in
+            try RecoveryRecord
+                .filter(Column("date") == Date().startOfDay)
+                .deleteAll(db)
+        }
+
+        // **`v30` is here for the same reason and by the same rule: a stored figure is not corrected
+        // by fixing the filter that produced it.** `filterRRIntervals` now judges every interval
+        // including a run's ends, so the two-beat notifications the old rule exempted no longer feed
+        // RMSSD — and the stored 301 ms row predates that. One more one-shot clear, and this is the
+        // last of them that should exist: these repairs are diagnostic scaffolding, and a permanent
+        // answer is a screen that can recompute on demand rather than a migration per hypothesis.
+        migrator.registerMigration("v30_clear_recovery_day_again") { db in
+            try RecoveryRecord
+                .filter(Column("date") == Date().startOfDay)
+                .deleteAll(db)
+        }
+
+        // `v31` clears today's recovery once more so the interval-distribution diagnostic runs. It is
+        // the last of these: the diagnostic is the point at which further migrations stop being worth
+        // their cost, and the next change is made from the numbers rather than from a hypothesis.
+        migrator.registerMigration("v31_clear_recovery_day_for_diagnostic") { db in
+            try RecoveryRecord
+                .filter(Column("date") == Date().startOfDay)
+                .deleteAll(db)
+        }
+
         try migrator.migrate(queue)
     }
 

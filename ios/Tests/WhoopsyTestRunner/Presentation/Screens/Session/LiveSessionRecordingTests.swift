@@ -440,6 +440,15 @@ enum LiveSessionRecordingTests {
             _ = await MainActor.run {
                 gps.yield(latitude: 40.7420, longitude: -73.9888, timestamp: t0.addingTimeInterval(5))
             }
+            // **The barrier the sentinel assertions need, and its absence was a flake.** The two
+            // streams are independent: yielding the heart rate immediately after the fixes does not
+            // order them, so the route consumer could read the second fix after the sample landed and
+            // stamp it `150` instead of the `0` this block pins. Waiting for both points makes the
+            // arrival order the assertion's premise rather than a race it usually wins.
+            assertTest(
+                await waitUntil { await MainActor.run { routeSession.routePoints.count } == 2 },
+                "…and both fixes are in the route before the strap has said anything, so the sentinel "
+                    + "they carry is a fact about arrival order rather than about timing")
 
             routeTelemetry.yield(BiometricSample(timestamp: t0.addingTimeInterval(10), heartRate: 150))
             assertTest(
