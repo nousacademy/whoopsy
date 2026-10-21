@@ -31,7 +31,7 @@ make test                        # build + run the suite; SECTIONS=13,15 to narr
 make ios                         # the real iOS build path (iOS 17+, target WhoopsyApp)
 make ipa                         # build + package tmp/whoopsy.ipa for Sideloadly (overwrites the fixed name)
 make verify                      # all three — a green iOS build is not a green host build, so run both
-swift build 2>&1 | grep warning  # build emits known resource warnings — see Gotchas
+swift build --package-path ios 2>&1 | grep warning  # known resource warnings — see Gotchas
 xed ios/Whoopsy.xcodeproj        # open the project in Xcode
 ```
 
@@ -136,7 +136,7 @@ For the decisive check that the running binary holds a specific edit — indepen
 make test                        # build + run all 24 sections
 make test SECTIONS=13,15         # just those two
 ./scripts/test.sh 13 15          # same thing
-swift test                       # FAILS: "no tests found" — Package.swift declares no test target
+swift test --package-path ios    # FAILS: "no tests found" — Package.swift declares no test target
 ```
 
 The real suite lives under `ios/Tests/WhoopsyTestRunner/` (a hand-rolled assert runner, not XCTest), and `scripts/test.sh` is the only supported way to build and run it. It builds into a **scratch path** (`tmp/build/verify`, override with `WHOOPSY_SCRATCH`) rather than `.build`: a build directory that has accumulated object files from since-deleted sources fails to link with `symbol(s) not found`. It also supplies the `-fmodule-map-file` flag that the build needs to find `CSQLite`, and reads the platform triple instead of hardcoding `arm64-apple-macosx`.
@@ -152,7 +152,7 @@ The real suite lives under `ios/Tests/WhoopsyTestRunner/` (a hand-rolled assert 
 **Read the summary line, not the scrollback:**
 
 ```
-SUITE sections=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24 assertions=2820 failed=0 exit=0
+SUITE sections=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24 assertions=2867 failed=0 exit=0
 ```
 
 `sections=` is the field that catches a dropped section, `assertions=` the field that catches a section that ran but stopped asserting, and the exit code is trustworthy. Sections live in `Support/SectionRegistry.swift`'s `testSections()`, which `runSections(_:)` iterates and the `Task` awaits inside a `do`/`catch`, and `finishSuite` is the single exit path for every outcome — an unobserved throw, or a hang at the 30 s timeout, would otherwise idle out the `RunLoop` and exit **0**. A `WHOOPSY_SECTIONS` value naming a section that does not exist exits 1 rather than running nothing and reporting success.
@@ -161,7 +161,7 @@ SUITE sections=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24 as
 
 The runner has 24 sections and all 24 now execute. Keep it that way. A new section is one entry appended to `testSections()` in `Support/SectionRegistry.swift` — its own `id`, its title and its body — and **nothing existing moves**: the banner's denominator is the registry's own count and its numerator is the entry's own id.
 
-**What each section asserts is not here — it is `docs/TESTING.md`, one entry per section** (§1–§13 and §16–§18 in one long entry, then §11–§15, §19–§20 and §22–§24 after it). This file keeps the mechanics of running the suite and the rules for adding to it. Read that file's entry for a section before you edit that section, because a block described there that stops running is a deleted guarantee rather than a refactor.
+**What each section asserts is not here — it is `docs/TESTING.md`.** That file describes all 24: §1–§10 and §16–§18 in one long entry, §21 in its own, then §11–§15 with a heading per block, and §19–§20 and §22–§24 after them. This file keeps the mechanics of running the suite and the rules for adding to it. Read that file's entry for a section before you edit that section, because a block described there that stops running is a deleted guarantee rather than a refactor.
 
 There is no test discovery, so a section that stops running looks exactly like one that passed — read the `sections=` and `assertions=` fields of the summary line, record them before you edit, and treat a drop in either as a deleted guarantee.
 
@@ -237,7 +237,7 @@ Data          (BLE, GRDB persistence, HealthKit adapter, exporters, HTTP client 
 Core          (HRV/Strain/Stress math, logging, extensions)
 ```
 
-- **`Domain/Repositories/*`** are protocols only. Concrete implementations live in `Data/Persistence/Repositories/` — and the cloud sync adds **eleven** more protocols to that same directory, none of them a repository over a day: `CloudSync` (the port to a server, **nineteen methods covering all seven resources**), the seven `*SyncStore`s — `RecoverySyncStore`, `WorkoutSyncStore`, `StrainSyncStore`, `SleepSyncStore`, `StepCountSyncStore`, `ReceptiveInactivitySyncStore`, `UserProfileSyncStore` (record-shaped doors into the seven tables, implemented by `LocalDatabaseManager` as bare extensions) — plus `SyncSettingsRepository`, `SyncKeyStore` and `SyncStatus`.
+- **`Domain/Repositories/*`** are protocols only. Concrete implementations live in `Data/Persistence/Repositories/` — and the cloud sync adds **eleven** more protocols to that same directory, none of them a repository over a day: `CloudSync` (the port to a server, **twenty-five methods covering all seven resources**), the seven `*SyncStore`s — `RecoverySyncStore`, `WorkoutSyncStore`, `StrainSyncStore`, `SleepSyncStore`, `StepCountSyncStore`, `ReceptiveInactivitySyncStore`, `UserProfileSyncStore` (record-shaped doors into the seven tables, implemented by `LocalDatabaseManager` as bare extensions) — plus `SyncSettingsRepository`, `SyncKeyStore` and `SyncStatus`.
 - **`ios/Sources/Whoopsy/App/DependencyInjection/DIContainer.swift`** is the single wiring point. `DIContainer.shared` uses real BLE; `DIContainer.preview` uses `WhoopMockBLEManager`. `ios/App/iOS/WhoopsyApp.swift` picks `preview` when `XCODE_RUNNING_FOR_PREVIEWS=1`. Use cases are constructor-injected; there are no singletons below the container except `LocalDatabaseManager.shared`.
 - **Data flow**: `WhoopBLEManager` → `WhoopPacketDecoder` (0xAA framing) → `BiometricRepository` → `LocalDatabaseManager` (GRDB) → `StreamBiometricsUseCase` / `Calculate*UseCase` → `@Observable` ViewModel → SwiftUI. Two further inputs write into the same tables through the same repositories: `HealthKitStoreClient` → `HealthKitImporter`, and `WhoopExportParser` → `WhoopExportImporter` for a bundled WHOOP data export.
 - **`Data/Import/*` is the only WHOOP-export seam**, and it is not a sync. It reads a CSV that shipped inside the app bundle, it runs only when the user taps the button on the profile page's `LOGS` pane (it was `More → Settings` until that surface moved), and it exists so a fresh install can show history that predates it. `WhoopExportParser` produces a plain `Sendable` row of optionals and decides nothing; `WhoopExportImporter` does the day-keying and the scoring. Unlike the other two inputs, it does not compute Strain — see the gotcha below.
@@ -307,7 +307,7 @@ Core          (HRV/Strain/Stress math, logging, extensions)
 - **The Mapbox credential is two tokens with two different homes, and neither is in this tree.**
 - **The remote diagnostics path is one seam and it is metadata-only; the Sentry edge lives in the app target, not the package.**
 - **An activity's zone percentages divide by measured time, not by a sample count, and the five bands must not be made to sum to 100.**
-- **`UserProfile` carries eleven fields and `user_profiles` stores seven of them, so every unbacked one is a number this app invented — and a body metric is the dangerous kind.**
+- **`UserProfile` carries eleven fields and `user_profiles` stores eight of them, so every unbacked one is a number this app invented — and a body metric is the dangerous kind.**
 - **`Text` prints Markdown asterisks literally unless it is handed a `LocalizedStringKey`.**
 - **Home's calendar is an overlay, not a `.sheet`, and the difference is load-bearing.**
 - **`SleepSession`'s `Equatable` cannot compare two reads of the same night.**

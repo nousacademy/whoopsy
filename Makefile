@@ -1,6 +1,6 @@
 # The commands this repo actually needs, so nobody re-derives them from CLAUDE.md.
 #
-#   make test                 # build + run all 20 sections
+#   make test                 # build + run all 24 sections
 #   make test SECTIONS=13,15  # just those two
 #   make ios                  # the real iOS build path
 #   make ipa                  # build + package tmp/whoopsy.ipa for Sideloadly (overwrites)

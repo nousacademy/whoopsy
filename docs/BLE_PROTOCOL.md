@@ -73,13 +73,15 @@ the standard `180D`, so all three straps are at least discoverable.
 ## 2. Packet Framing & Wire Format
 
 **This is the largest single difference between the generations, and this codebase implements both
-envelopes — and only one of them on the write side.** Which one it uses for a given strap is a stored
+envelopes on both the read and the write side.** Which one it uses for a given strap is a stored
 choice rather than a guess: the device screen
 (`Presentation/Screens/Device/DeviceSettingsView.swift`) records the model per peripheral identifier,
 and `WhoopProtocolProfile.profile(for:)` turns that into an envelope — or into `nil` for the standard
 strap and the simulator, which every command writer refuses. The 5.0 and MG profiles *are* built, and
-a frame arriving under either validates in `WhoopPacketDecoder` exactly as a 4.0 one does; what they
-do not carry is a command opcode set, so no builder produces a frame for them. §3's implementation status has the reasoning.
+a frame arriving under either validates in `WhoopPacketDecoder` exactly as a 4.0 one does, and
+`WhoopPacketEncoder5` builds one. Their write side is carried by `syncOpcodes` rather than the 4.0's
+`commandOpcodes`, which is a shorter table because several of the 4.0's roles have no published 5.0
+byte. §3's implementation status has the reasoning.
 
 Both generations share a start-of-frame byte `0xAA`, an inner record of the shape
 `[type][seq][cmd][payload…]`, and the same zlib CRC-32 as the payload check (reflected, poly
@@ -260,10 +262,10 @@ It does more than tabulate the hello, too: §1 of the suite pushes those sixteen
 `seq` 1, `cmd` 0x91, the one-byte payload — so the 5.0 envelope is asserted against a reference's
 bytes rather than against this app's own arithmetic. That is deliberate and is the same rule the
 paragraph below states: a frame the repo's own encoder built would round-trip through a decoder
-sharing its mistake. It cannot do that here, because **no builder in this app can construct a 5.0
-frame at all** — see §3's implementation status. The toggle frame's two checksums are currently
-verified against those utilities by hand rather than by assertion, and are the obvious next pair to
-pin.
+sharing its mistake. The same rule now covers the write side: §1 of the suite asserts that
+`WhoopPacketEncoder5.buildPacket` reproduces §2.1's published command frame **byte-for-byte**,
+checksums included, and that the decoder reads those bytes back as the fields the builder was asked
+for. Both halves are therefore pinned to a third party's bytes rather than to each other.
 
 **The 4.0 format specifies CRC8 over the two length bytes only** (`raw[3] == crc8(raw[1:3])`), so
 `buildPacket` feeds it `Data([lengthLow, lengthHigh])`: ping declares length **7** and writes
@@ -737,7 +739,7 @@ acknowledged `sendConnectCommands()` writes `0x03 TOGGLE_REALTIME_HR` with the o
 `[01]`, and the packet-40 notifications that follow are decoded by
 `HeartRatePayloadDecoder.decodeLive` — heart rate at payload `[5]`, R-R count at `[6]`, intervals at
 `[7 + 2i]` in 1/1024 s. **The builder is enable-only**, because nothing establishes what a disarm
-body would be. `0x6B` is sent by neither generation.
+body would be. `0x6B` belongs to the 4.0's motion-enable group and is not sent to a 5.0.
 
 Records stream as `0x2F` punctuated by `0x31` metadata markers with a sub-type at `inner[2]`:
 
@@ -912,8 +914,9 @@ plausible garbage.
 
 **Length-based reassembly is implemented**, in `WhoopFrameReassembler`. A notification carries at
 most `MTU − 3` bytes while the 5.0/MG type-47 record runs to 2140 and the 4.0 live IMU stream to
-roughly 1.9 KB, so `decodeProprietaryFrame` — handed one notification and requiring `data.count >=
-declaredLength + 4` — cannot complete a frame that spans a second one, and without the reassembler
+roughly 1.9 KB, so `decodeProprietaryFrame` — handed one notification and requiring
+`data.count >= frameByteCount(declaredLength:)`, which is `innerOrigin + declaredLength` and so `+ 4`
+under 4.0 and `+ 8` under 5.0 — cannot complete a frame that spans a second one, and without the reassembler
 that `nil` is all the manager has. The reassembler owns **boundaries, not validity**: it finds a
 start of frame, reads the declared length **at the profile's own `lengthFieldOffset`** — byte 1
 under 4.0, byte 2 under 5.0 — holds bytes until that many have arrived, and hands the candidate to
@@ -1265,13 +1268,13 @@ whose records this app cannot walk gets no motion decoding, because a 4.0-framed
 type-47 buffer would parse a length-selected payload as a fixed 96-byte record and produce numbers
 from the wrong bytes.
 
-**The 5.0 and MG profiles now exist, and that changes what this rule is guarding.** They exist so a
-5.0 strap's traffic is *legible* — `decodeProprietaryFrame` validates a frame under either envelope,
-which is what makes a capture worth taking — and for nothing else. The 5.0 profiles carry **no command
-opcodes**, so a 5.0/MG motion path cannot negotiate the offload burst into existence either.
+**The 5.0 and MG profiles now exist, and they write as well as read.** A 5.0 strap's traffic is
+*legible* — `decodeProprietaryFrame` validates a frame under either envelope — and the same profile
+makes it *askable*: `WhoopPacketEncoder5` builds the frame and `syncOpcodes` carries the bytes, so a
+5.0/MG motion path can negotiate the offload burst into existence.
 
-**Motion now has a reader and a walk on this side of the wire, and on the 5.0 family it still has no
-way to be asked for.** The two halves have moved in opposite directions, so read them separately.
+**Motion has a reader, a walk, and on the 5.0 family a way to be asked for.** The two generations
+arrived there by different routes, so read them separately.
 
 **The 4.0's live path is implemented end to end.** `0x6A` / `0x3F` / `0x6B` are in the transmitted
 set (§3), `motionEnableSequence` sends them in that order from `didDiscoverCharacteristicsFor` on

@@ -49,7 +49,7 @@ Apple Watch data; revise it once the import has run on a device for a few weeks.
 
 ### Artifact Rejection & Filtering
 * **Physiological Range**: R-R intervals outside 300 ms (200 BPM) to 2000 ms (30 BPM) are rejected.
-* **Ectopic Beat Filter**: Any $RR_{i+1}$ differing by more than 20% from the local median ($5$-beat window) is flagged as an ectopic/errant beat and filtered out. Clustered anomalies trigger linear interpolation using surrounding valid intervals.
+* **Ectopic Beat Filter**: Each interval is compared against the median of itself and its immediate neighbours **within the same run** — one neighbour at either end, two in the middle — and dropped when it differs from that local median by more than 20%. Failed intervals are **dropped, never interpolated**: there is no interpolation anywhere in the HRV path. Judging the ends as well is deliberate, because the pairs RMSSD is built from are exactly the adjacent beats an end-exempt rule would never inspect.
 
 Both apply only to strap R-R intervals, in `Core/Math/HeartRateVariabilityMath.swift`
 (`filterRRIntervals`, `calculateRMSSD`, `calculateSDNN`, `calculatePNN50`).
@@ -1201,16 +1201,17 @@ with them: the series and its axis are `HoursOfSleepChart*` because they are dra
 **A strap does have a producer — two of them.** The live `0x2A37` path is implemented end to end
 (`WhoopBLEManager` → `BiometricSample` → `StreamBiometricsUseCase`) and needs no sampling rate at
 all: the intervals are their own time base, so beat times come from their cumulative sum and
-instantaneous heart rate is `60000 / rr` at each beat. It exists only for nights the app was running
-and connected, and `biometric_samples` is empty in every database on this machine because nothing
-here has ever been connected to a strap — an untested producer, not an absent one. The second is
-stronger and is *not* implemented: the 4.0 flash record is one type-24 record per second of wear
-carrying an absolute unix time of its own at `[7:11]`, so a drained night is placeable on a timeline
-and **needs no app at all** (`docs/BLE_PROTOCOL.md` §5, which calls this "the finding that changes the
-feasibility question"). So the chart is a **strap-sync deliverable rather than a chart
-deliverable**, blocked where that path is blocked — a 16-byte walk through a 96-byte header, no
-ACK/token loop, and the `RTC_LOST` trap that files a night under a *wrong* day rather than under no
-day. `docs/TODO.md` §5 carries the gap.
+instantaneous heart rate is `60000 / rr` at each beat. It runs only for nights the app was running
+and connected; the 5.0 strap path has stored such a night, while the 4.0's live half is implemented and
+has no captured record. The second producer is the flash record itself, and **both generations' walks
+are implemented**: the 4.0's is one type-24 record per second of wear
+carrying an absolute unix time of its own at `[7:11]`, and the 5.0/MG's is `R18`. Both are decoded by
+`HeartRatePayloadDecoder` and driven by `HistoricalDrainSession`'s ACK loop, so a drained night is
+placeable on a timeline and **needs no app at all** (`docs/BLE_PROTOCOL.md` §5, which calls this "the
+finding that changes the feasibility question"). The 5.0 `R18` walk has run against real drained
+records; the 4.0 type-24 walk has not. What remains between the strap's cache and this chart is
+therefore a 4.0 capture rather than a decoder, plus the `RTC_LOST` trap that files a night under a
+*wrong* day rather than under no day. `docs/TODO.md` §5 carries the gap.
 
 ### Respiratory Rate (RSA)
 

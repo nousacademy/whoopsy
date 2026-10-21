@@ -308,15 +308,17 @@ The rationale, `[0266]`:
 
 | | this app [app] | WHOOP |
 | :--- | :--- | :--- |
-| what is measured | whole-night RMSSD from the strap's R-R series | HRV in a short window inside the last SWS episode |
-| window duration | the night | **[not disclosed]** — "a predetermined duration", no seconds, minutes or beat counts anywhere |
+| what is measured | RMSSD over the last classified deep-sleep run, from the strap's R-R series | HRV in a short window inside the last SWS episode |
+| window duration | the last contiguous deep-sleep run; the whole session when no deep stage exists | **[not disclosed]** — "a predetermined duration", no seconds, minutes or beat counts anywhere |
 | window selection | n/a | highest **heart-rate data quality** |
 | whether it is claimed | — | **yes**, in two granted patents |
 
-**This is the sharpest divergence in the document.** It is not that the app computes WHOOP's HRV less
-precisely; it computes a **different measurement**, and on WHOOP's own stated rationale a less stable
-one. The app cannot do otherwise — it has no slow-wave detector (§3.1) — but the README-level claim
-that the app reproduces WHOOP's recovery must not be read as covering this.
+**The window now matches; the measurement behind it does not.** The app selects the same anchor WHOOP
+discloses — the last classified deep-sleep run before waking — but the stage labels come from this
+app's own actigraphy-and-heart-rate stager rather than WHOOP's trained classifier (§3.1), and a night
+with no deep stage falls back to the whole session. So the selection is aligned while the input to it
+is not, and the README-level claim that the app reproduces WHOOP's recovery must not be read as
+covering this.
 
 ### 2.4 What the patents do corroborate
 
@@ -787,14 +789,11 @@ in rough order of how well-sourced they are:
 2. **Label Strain §2's constants as this app's own**, alongside the labels `SleepNeedMath` and
    `StressMath` already carry. The architecture is disclosed; the five zones, the %HRR boundaries, the
    1.0–16.0 weights and `k` are not, and the boundaries are a **forced substitute** for AT and CPT.
-3. **State the HRV divergence in §3.** The app computes whole-night RMSSD where WHOOP claims a
-   slow-wave-anchored window. This is a different measurement, and the doc should say so rather than
-   leaving it to be read as a less precise version of the same one.
-4. **The sleep-need sigmoid is the one constant worth testing.** It is disclosed, it has a different
+3. **The sleep-need sigmoid is the one constant worth testing.** It is disclosed, it has a different
    functional form from the shipped linear term, and the export does not adjudicate between them — so
    the honest position is that both are available and the app ships the one it fitted. §4 should say
    that rather than implying the fitted form is the only candidate.
-5. **Update the §4 note on the omitted debt term** to record that the two-term version is granted.
+4. **Update the §4 note on the omitted debt term** to record that the two-term version is granted.
 
 **What should *not* change.** The app should not adopt disclosed numbers it cannot honour. `docs/ALGORITHMS.md`
 §2's zone table is not wrong because WHOOP's is AT/CPT-based — it is the best available substitute for a

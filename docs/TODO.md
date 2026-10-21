@@ -325,11 +325,11 @@ not a technical dependency — the strap feeds the screens, so building the sync
 writing interfaces around a data shape that was still moving. Nothing below should be picked up
 while UI work is open, however urgent the list reads.
 
-Unlike every other section in this file, **this one has never run against its source.** Signing is
-not functional (`CLAUDE.md` §Building for iOS) and the app has never executed against a strap, so
-`biometric_samples` is empty in the dev database and in both simulator containers. Every claim below
-is read off the code and the spec; none is a measurement of a device. Read it as a list of what is
-wrong on paper, not as a list of observed failures.
+Unlike every other section in this file, **this one has not been fully exercised against hardware.**
+A 5.0 has run the chain end to end — bond, enable, drain, decode and store — so those parts are
+observations rather than readings; the 4.0 half remains read off the code and the spec, and the
+strap's own archive stopped growing (see below). Read the unmeasured lines as what is wrong on paper,
+not as a list of observed failures.
 
 **The table has a reader, and the gaps below are what stand between the strap's cache and it.**
 The sleep detail screen's `HOURS OF SLEEP` card draws the night's heart rate out of
@@ -342,7 +342,7 @@ a screenshot of that chart knows the absence is this section's, not a chart bug.
 
 ### The chain that exists
 
-More → Device → `DeviceViewModel.syncNow()` ([DeviceViewModel.swift:22](../ios/Sources/Whoopsy/Presentation/Screens/Device/DeviceViewModel.swift#L22)) →
+Home's status badge → `DeviceSettingsView` → `DeviceViewModel.syncNow()` ([DeviceViewModel.swift:22](../ios/Sources/Whoopsy/Presentation/Screens/Device/DeviceViewModel.swift#L22)) →
 `SyncHistoricalDataUseCase.execute()` ([SyncHistoricalDataUseCase.swift:23](../ios/Sources/Whoopsy/Domain/UseCases/SyncHistoricalDataUseCase.swift#L23)), which returns a `HistoricalSyncOutcome` →
 `WhoopBLEDeviceRepositoryImpl.requestHistoricalSync` ([line 107](../ios/Sources/Whoopsy/Data/BLE/Repositories/WhoopBLEDeviceRepositoryImpl.swift#L107)) →
 `WhoopCommandFrames.historicalSyncRequest` ([line 43](../ios/Sources/Whoopsy/Data/BLE/Parser/WhoopCommandFrames.swift#L43)) →
@@ -683,7 +683,7 @@ Two figures stay dashed on a first run even with a strap working perfectly, and 
 
 | Figure | Why it can stay `—` with a strap streaming |
 | :--- | :--- |
-| `CALORIES` | `estimateCalories` returns `nil` with no weight on file, deliberately. The route to a figure is the **Profile** page (More → Profile), which is where `weightKg` is supplied; until then the tile has no body to compute against, and a number there would be a 75 kg default the user never described |
+| `CALORIES` | `estimateCalories` returns `nil` with no weight on file, deliberately. The route to a figure is the **Profile** page (Home's day-bar profile control), which is where `weightKg` is supplied; until then the tile has no body to compute against, and a number there would be a 75 kg default the user never described |
 | the five zone bands / `ACTIVITY STRAIN` | `strain` is `nil` until a sample arrives and `0.0` once one arrives that never reached zone 1 — `StrainScore.hasMeasurement`'s own distinction. So a short or easy session legitimately reads `0.0` with no zone time, which is a measurement and not an absence |
 
 Everything else — `HEART RATE`, `AVG HR`, `MAX HR`, the running timer — should populate within a

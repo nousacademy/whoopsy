@@ -90,7 +90,7 @@ on one unit, and being specific about what that proved is more useful than a fea
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-a 2858-assertion test runner that pins the behaviour of all of them.
+a 2867-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -166,7 +166,7 @@ whoopsy/
 ├── ios/              the app — one SwiftPM package plus Whoopsy.xcodeproj
 │   ├── Sources/      Whoopsy/ (the four layers) and WhoopsyLiveActivityKit/
 │   ├── App/          Xcode-only sources: iOS/, Map/, LiveActivity/, Config/
-│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 2858-assertion suite,
+│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 2867-assertion suite,
 │                     mirroring Sources/Whoopsy/ file for file
 ├── backend/          a Cloudflare Worker (Hono · D1 · R2) — eight resources end to end
 ├── shared/           openapi.json, generated from the Worker's routes
@@ -475,8 +475,9 @@ behind `#if canImport(Sentry)`, so `swift build` and the test runner never compi
 ### Then build
 
 ```bash
-# Fast edit/compile loop (builds the library and a macOS executable)
-swift build
+# Fast edit/compile loop (builds the library and a macOS executable).
+# From the repo root, the package path is required: Package.swift lives in ios/.
+swift build --package-path ios
 
 # The iOS app
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
@@ -519,7 +520,7 @@ and compare its size and timestamp against the built one.
 
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 24 sections, 2858 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 24 sections, 2867 assertions, and no
 test discovery:
 
 ```bash
@@ -532,7 +533,7 @@ deleted sources and the link fails) and hands the runner an absolute `#filePath`
 longer cares which directory you run it from. It ends with one machine-readable line:
 
 ```
-SUITE sections=1,2,...,22 assertions=2339 failed=0 exit=0
+SUITE sections=1,2,...,24 assertions=2867 failed=0 exit=0
 ```
 
 Read that line rather than the scrollback — the suite has no test discovery, so a section that
