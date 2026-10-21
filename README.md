@@ -62,28 +62,35 @@ feature: no switch, no SDK, no request. See [§ Optional: the offline map](#opti
 This is a working app with real engineering behind it, and it is **not yet usable on a physical
 strap.** Being specific about that is more useful than a feature list:
 
-- **The app has never run against real hardware.** The BLE protocol here is reverse-engineered from
-  [`BLE_PROTOCOL.md`](docs/BLE_PROTOCOL.md). No strap has been connected, so nothing in the packet layer
-  has been checked against a device.
+- **The app has run against real hardware, on one strap.** A WHOOP 5.0 on iOS, on 2026-10-20/21: the
+  just-works bond completed, live heart rate and R-R intervals arrived on the standard `0x2A37`
+  characteristic, 100 Hz motion arrived on packet 43, steps counted at a plausible rate (106 for a
+  100-step walk), a full night of biometrics was stored and staged into a sleep session, and
+  `SYNC HISTORY` drained the flash end to end. What that does **not** cover: the 4.0 (spec-only, no
+  hardware), a second unit, or a second firmware.
 - **Signing is not configured.** `DEVELOPMENT_TEAM` is empty and there is no certificate, so the
   Xcode project will not build to a device without you setting a team. The library and the simulator
   build fine.
-- **Historical sync is implemented and has never run against a strap.** Both envelopes are built,
-  inbound frames are checksum-verified, a frame split across several notifications is reassembled,
-  and the drain now has its request (`0x16` on both generations), its per-batch ACK loop and a
-  termination rule on `HISTORY_COMPLETE`, an idle window off the profile, or the live edge. What is
-  still missing is a walk for the type-24 heart-rate record's own header — the *motion* layouts are
-  walked, which is why a drained record reaches the step count and not a heart rate. See
-  [`TODO.md` §5](docs/TODO.md).
-- **A 5.0 can be written to, and what is unproven is whether it answers.** All three WHOOP models
-  carry a transmitted opcode table now. The 5.0's command characteristic needs an authenticated SMP
-  bond that nothing in this project establishes a third-party iOS app can create, so the device
-  screen says that in as many words rather than calling the generation unsupported.
+- **Historical sync runs, and on the strap it was tested against it has almost nothing to fetch.**
+  The drain has its request (`0x16` on both generations), its per-batch ACK loop, a termination rule
+  on `HISTORY_COMPLETE`/the live edge/an idle window, and walks both generations' heart-rate records
+  (`R18` and the 4.0's type 24) plus `R21` motion. It runs automatically on connect and filters
+  records it already holds. Measured on one 5.0: the archive contains two bursts of ~60 records
+  stamped `2026-08-24` and nothing later, so every drain returns those and reports the live edge.
+  That strap is not writing history — a hardware finding, established by draining with the clock
+  set, the bond made, a `REBOOT_STRAP` sent and Bluetooth off for a full window. Treat "the strap
+  banks 14 days" as the documented design rather than a measured property. See
+  [`BLE_PROTOCOL.md` §4](docs/BLE_PROTOCOL.md).
+- **A 5.0 can be written to, and it answers.** The command characteristic refuses writes until the
+  link is encrypted; the just-works bond is established by writing `CLIENT_HELLO` confirmed, and
+  that completed on the strap this was tested against. What remains true is the *silent* failure
+  mode — an unanswered hello drops the link with no error — and that Apple exposes no bond state,
+  so a client cannot ask whether it is already bonded. The device screen says both.
 - **The import path is the well-exercised one.** Recovery, Strain and Sleep can all be computed from
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-a 2339-assertion test runner that pins the behaviour of all of them.
+a 2858-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -159,7 +166,7 @@ whoopsy/
 ├── ios/              the app — one SwiftPM package plus Whoopsy.xcodeproj
 │   ├── Sources/      Whoopsy/ (the four layers) and WhoopsyLiveActivityKit/
 │   ├── App/          Xcode-only sources: iOS/, Map/, LiveActivity/, Config/
-│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 2339-assertion suite,
+│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 2858-assertion suite,
 │                     mirroring Sources/Whoopsy/ file for file
 ├── backend/          a Cloudflare Worker (Hono · D1 · R2) — eight resources end to end
 ├── shared/           openapi.json, generated from the Worker's routes
@@ -512,11 +519,11 @@ and compare its size and timestamp against the built one.
 
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 22 sections, 2339 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 24 sections, 2858 assertions, and no
 test discovery:
 
 ```bash
-make test                 # build + run all 22 sections
+make test                 # build + run all 24 sections
 make test SECTIONS=13,15  # just those two
 ```
 

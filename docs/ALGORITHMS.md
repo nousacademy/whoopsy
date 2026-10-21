@@ -1124,9 +1124,12 @@ quantity at all. Its own source notes that the daytime baselines are kept separa
 ones because "awake-resting HR ≠ sleeping RHR".
 
 WHOOP's real quantity is a within-night measure, and this app has never captured a beat-to-beat
-series to build one from: `biometric_samples.rrIntervalsMs` exists as of `v8` and is empty in every
-database on this machine, because the app has never run against a strap. This is the second
-WHOOP-named quantity this app declines to reconstruct, beside §6's VO₂ max.
+series to build one from: `biometric_samples.rrIntervalsMs` exists as of `v8`; until 2026-10-21 it was empty in every database
+here because the app had never run against a strap, and on the owner's 5.0 it has now been filled by
+both producers (live `0x2A37` and a drained `R18` record). **This paragraph's warning still stands**:
+one strap's beats are not a validation corpus, and nothing here has been checked against a
+within-night ground truth. This is the second WHOOP-named quantity this app declines to reconstruct,
+beside §6's VO₂ max.
 
 ### The typical range, and why the chart above it is deferred rather than impossible
 
@@ -1319,9 +1322,9 @@ dominant period.
 
 **What this cannot do, and what it cannot be validated against.**
 
-The export carries **no R-R series at all** — `biometric_samples.rrIntervalsMs` is empty in every
-database on this machine, because the app has never run against a strap — so this estimator **cannot
-be validated against any ground truth for this user's data**. It is a calibration in the same bargain
+The export carries **no R-R series at all**, and the live stream filled that column for the first
+time on 2026-10-21 — one night, one strap, no simultaneous reference — so this estimator **cannot be
+validated against any ground truth for this user's data**. It is a calibration in the same bargain
 §5's stress model and `SleepNeedMath` document. Charlton's published ±4.7 bpm 95% limits of agreement
 apply *if* the implementation is faithful, and one older-adult cohort saw 6 of 10 subjects err by
 6–17 bpm; the suite's assertions validate the plumbing (a known modulation is recovered, a gapped
@@ -1632,9 +1635,10 @@ baseline instead would produce a plausible-looking number that means nothing. `b
 is printed in words at the foot of the card instead, so a reader can see how much history the figure
 rests on.
 
-**This card is unreachable on every night this machine can show**, for the same reason the Stress
-Monitor's tile is a dash: `biometric_samples` holds no rows in any database here and the export
-carries no R-R series at all, so all 910 imported nights have none permanently. It is also unreachable
+**This card is unreachable on every imported night**, for the same reason the Stress Monitor's tile
+is a dash: the export carries no R-R series at all, so all 910 imported nights have none permanently.
+A strap night now can reach it — the first one did on 2026-10-21 — and a score still needs the
+three-night floor, which that one night did not have. It is also unreachable
 for a *new* user with a strap, because a score is a z-score and a z-score needs the three-night floor —
 unlike §4's typical-range card, which still draws shares on a thin window, there is nothing here to
 draw below it. `ios/Tests/WhoopsyTestRunner` §15 drives the use case against synthetic tachograms for
@@ -2004,11 +2008,12 @@ does not prove about them is the paragraph below.
 ### What this model cannot do
 
 It counts **steps**, and nothing else — there is no stride length, no distance and no cadence
-estimate. It is also **unexercised against hardware**: no strap has been connected to this machine,
-`biometric_samples` holds 0 rows in every database here, and the export carries no motion at all. The
-suite asserts the arithmetic against synthetic waveforms with known counts and both layouts against
-hand-built frames; **a passing run is not evidence that a real wrist's motion produces a count that
-matches a pedometer**, and no screenshot should be offered as such.
+estimate. It has been exercised against hardware **once**: on 2026-10-21 a 100-step walk read 106 steps and a
+resting wrist read 0 for two minutes, which is the first evidence this detector is in the right
+place — and it is one walk on one wrist, not a calibration. The export carries no motion at all, the
+suite still asserts the arithmetic against synthetic waveforms with known counts, and **a passing run
+is still not evidence that a real wrist's motion matches a pedometer**, so no screenshot should be
+offered as such.
 
 ## 8. The activity detail page: an activity's own history, and its five zone rows
 
@@ -2115,8 +2120,8 @@ than the profile assumes.
 The comparison is absent on most of what this app can show. The band and both badges need ten prior
 sessions of that activity, and a fresh install has one session; `workouts.steps` is live-only, so the
 step row is a dash on **all 673 imported sessions**; and the heart-rate trace is drawn from
-`biometric_samples`, which holds 0 rows in every database on this machine while the export carries no
-heart-rate series at all. A passing suite here asserts the window, the percentile, the divisions, the
+`biometric_samples`, which holds rows only for a strap night — the export carries no heart-rate
+series at all, so every imported night's trace is permanently empty. A passing suite here asserts the window, the percentile, the divisions, the
 storage round trip and the page's own strings — **not** that a strap produces any of them.
 
 ---

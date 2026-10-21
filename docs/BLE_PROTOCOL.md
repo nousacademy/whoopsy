@@ -6,7 +6,7 @@ Reverse-engineered Bluetooth Low Energy protocol for WHOOP hardware. Three strap
 
 ## How to read this document
 
-Almost nothing here has been captured on this project's own hardware yet — the one exception is a recorded 5.0 live-heart-rate session, and §5's implementation status says exactly what it established and what it did not. Every statement is tagged with where it came from, and the tags are not decoration — most of the disagreements recorded below exist because two sources were silently mixed.
+Most of this has not been captured on this project's own hardware, but **the 5.0 half has now been run, on one strap on 2026-10-20/21** — the bond, `SET_CLOCK`, live heart rate and R-R, `R21` motion and a full flash drain, with the results recorded where each claim is argued (§3's handshake, §4's drain, §5's producers). What that establishes is a 5.0 on one firmware; the 4.0 column is still spec-only, and no claim here should be generalised past the strap it was measured on. Every statement is tagged with where it came from, and the tags are not decoration — most of the disagreements recorded below exist because two sources were silently mixed.
 
 | Tag | Meaning |
 | :--- | :--- |
@@ -570,9 +570,9 @@ above are the 4.0 reference's own and are left as they were, because a second pa
 corroboration rather than a new source; and **none of it is a capture on this project's hardware**.
 The record walk is therefore a design against a layout a running client has decoded a hundred
 thousand times, rather than against a table. The R-R intervals are the field worth noting for this
-app in particular: they are what `biometric_samples.rrIntervalsMs` holds and what no strap has ever
-filled (§5), so a drain is the only path by which a stored R-R series — and with it a real HRV,
-respiratory rate and within-sleep stress figure — could exist at all.
+app in particular: they are what `biometric_samples.rrIntervalsMs` holds, and on the owner's 5.0 they
+have now been stored by both producers — live on `0x2A37`, and from a drained `R18` record — so a
+real HRV, respiratory rate and within-sleep stress figure has data behind it for the first time.
 
 **The `[52:64]` "mirror" is resolved, and it is not a gyroscope.** The 4.0 reference reports those
 twelve bytes as byte-identical to `[36:48]`, with the parenthetical "(not an extra sensor)", validated
@@ -927,12 +927,14 @@ which is what bounds the buffer without a trim rule; and the buffer is **per-con
 both connect and disconnect, since bytes held across a reconnect would be prepended to the new
 stream's first frame and shift every field in it.
 
-**There is still no local evidence for the historical half.** The development database holds zero
-sample rows, so nothing in it was ever written by the drain, and no historical record — split or
-whole — has been captured on this project's own hardware. The live half is now captured: the
-reassembler produced a whole packet-40 frame on a 5.0 and `HeartRatePayloadDecoder.decodeLive` read a
-heart rate out of it (§5). Correcting the framing makes the frames agree with both references; it
-does not make a strap answer a drain request.
+**The historical half has now been run too, on one 5.0.** A flash drain completed end to end
+(`caught up to now, 59 record(s) in 1 batch(es)`), every record logged as `type=0x2F layout=18
+payload=109 B` — the `R18` walk — and the samples were stored (`LAST SYNC` moved to the drain's own
+instant). The `HISTORY_END` marker's head also decodes to the drain's instant, so the live-edge rule
+is reading the field it thinks it is. What that drain did **not** establish is a multi-batch
+archive: on this strap the buffer holds two bursts of ~60 records stamped `2026-08-24` and nothing
+later, so every drain returns those and ends at the live edge. The `R18` walk is therefore proven on
+real records; a strap that keeps writing is not.
 
 ---
 
@@ -1275,9 +1277,10 @@ way to be asked for.** The two halves have moved in opposite directions, so read
 **The 4.0's live path is implemented end to end.** `0x6A` / `0x3F` / `0x6B` are in the transmitted
 set (§3), `motionEnableSequence` sends them in that order from `didDiscoverCharacteristicsFor` on
 connect, `MotionPayloadDecoder` walks the R10 layout into a `MotionBatch`, and `TrackStepsUseCase`
-accumulates it into a day-keyed row. **None of it has been captured on this project's own hardware**,
-so this says the command bytes match the references and the walk matches §6's table — not that a
-strap accepts the enable or answers with a record. What it also does not change: **R10 is streamed and
+accumulates it into a day-keyed row. **The 4.0 half of that is still uncaptured** — it says the command bytes match the references and
+the walk matches §6's table, not that a 4.0 accepts the enable or answers with a record. The **5.0**
+half has run: packet 43 carries `R21` and the step path consumes it (106 steps for a 100-step walk,
+and a day counter that keys on the arrival instant — see `MotionBatch.strapTimestamp`). What it also does not change: **R10 is streamed and
 never banked**, so a 4.0 fills only the time the app was running with the strap connected.
 
 **The 5.0/MG has a way to ask.** Its profile carries `syncOpcodes` and `WhoopPacketEncoder5` writes
@@ -1287,8 +1290,10 @@ its envelope, so `motionEnableSequence` produces a real two-frame sequence (`0x5
 banked record reaches `MotionBatch` and `stepCounts` through the same code the 4.0's live path uses
 — which is the whole reason the shared core is shared, and §7 Q9 is answered. **Both drained
 heart-rate records are walked** — the 5.0/MG's `R18` and the 4.0's type 24, each through
-`HeartRatePayloadDecoder` (§4) — and what remains absent on all three straps is hardware: neither walk
-has been captured on this project's own strap.
+`HeartRatePayloadDecoder` (§4) — and the `R18` walk has since run against real records: a drain on
+the owner's 5.0 returned 59 of them, `type=0x2F layout=18 payload=109 B`, and they decoded and
+stored. The 4.0's type-24 walk remains unexercised on hardware, as does `R21` from a **banked**
+record — the motion captured so far has all been live.
 
 That is also why **the payoff of the two routes still runs the way it does**: the 4.0 route is
 reachable now and cannot cover an hour the app slept through, and the 5.0/MG route costs more to
