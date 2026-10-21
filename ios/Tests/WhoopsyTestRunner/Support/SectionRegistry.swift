@@ -143,7 +143,7 @@ func testSections() -> [TestSection] {
         TestSection(
             id: 14,
             title: "Testing the `+` menu's three rows, recorded workouts, the receptive inactivities "
-                + "card, HealthKit steps, the Stress Monitor, the recovery ring tiers and the "
+                + "card, the STEPS tile's live feed, the Stress Monitor, the recovery ring tiers and the "
                 + "seven-day MetricWeek join...",
             body: HomeSourceTests.run),
         TestSection(
@@ -154,8 +154,8 @@ func testSections() -> [TestSection] {
             body: TypicalRangeTests.run),
         TestSection(
             id: 16,
-            title: "Testing the pedometer, both motion layouts, the step accumulator and the strap's "
-                + "step storage...",
+            title: "Testing the pedometer, both motion layouts, the step accumulator, the strap's "
+                + "step storage and the writer's hand-off to a screen that is already open...",
             body: StepTests.run),
         TestSection(
             id: 17,

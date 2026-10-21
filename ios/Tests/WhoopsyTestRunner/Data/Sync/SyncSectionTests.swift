@@ -49,6 +49,7 @@ enum SyncSectionTests {
         // 22.3 — the decorator: which store answers a day, and what a screen is told when the cloud
         // could not.
         try await CloudRecoveryRepositoryTests.run()
+        try await CloudSyncRepositoriesTests.run()
 
         // 22.4 — the phone's own door into the two resources. A real `LocalDatabaseManager(inMemory:)`,
         // which is the only place the SQLite column names and the day snap are asserted.

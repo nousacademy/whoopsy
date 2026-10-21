@@ -74,4 +74,34 @@ public struct UserProfileSyncRow: Equatable, Sendable {
         self.gender = gender
         self.heightCm = heightCm
     }
+
+    /// The row the profile would be stored as. The id is the record's `"primary"` key, not the entity's
+    /// `UUID`, because `user_profiles` holds one row keyed `"primary"` and `GRDBUserProfileRepository`
+    /// is the writer that decides that — a sync that minted an id would file a second profile beside the
+    /// one the phone reads.
+    public init(_ profile: UserProfile) {
+        self.init(
+            maxHeartRate: profile.maxHeartRate,
+            restingHeartRate: profile.restingHeartRate,
+            weightKg: profile.weightKg,
+            name: profile.name,
+            birthDate: profile.birthDate,
+            gender: profile.gender?.rawValue,
+            heightCm: profile.heightCm
+        )
+    }
+
+    /// The entity a screen would draw, rebuilt from the stored fields. The two baselines and the
+    /// sleep-hours target are the entity's own defaults, since a synced profile carries none of them.
+    public var profile: UserProfile {
+        UserProfile(
+            name: name,
+            birthDate: birthDate,
+            maxHeartRate: maxHeartRate,
+            restingHeartRate: restingHeartRate,
+            weightKg: weightKg,
+            heightCm: heightCm,
+            gender: gender.flatMap(UserProfile.Gender.init(rawValue:))
+        )
+    }
 }

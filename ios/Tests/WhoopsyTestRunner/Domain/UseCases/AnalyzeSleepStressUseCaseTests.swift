@@ -415,5 +415,58 @@ enum AnalyzeSleepStressUseCaseTests {
                     + "which is stated anyway so the sentence is right at every input")
 
         }
+
+        // ── The trailing partial window is not a bucket ─────────────────────────────────────────────
+        //
+        // **This block is a crash report, not a hypothesis.** On 2026-10-20 the first real strap night
+        // this app ever produced crashed the sleep page with `EXC_BREAKPOINT` in
+        // `Array._checkSubscript_mutating`, two frames under `eligibleWindows`. The cause is a floor:
+        // `bucketCount = floor(length / windowSeconds)`, so a span that is not a whole number of
+        // windows leaves a trailing remainder whose offsets divide to exactly `bucketCount` — one past
+        // the array — and `offset < length` does not exclude them. A real night's span comes from
+        // sample timestamps, so it is never integral; a synthetic fixture with a span of exactly
+        // `n × windowSeconds` is the one shape that cannot show the bug, which is why every fixture
+        // above missed it.
+        do {
+            let window = StressMath.windowSeconds
+            let origin = Date(timeIntervalSinceReferenceDate: 0)
+            // Two full windows plus a two-minute remainder: `bucketCount` is 2, and a sample at
+            // 11 minutes is inside the span and divides to index 2.
+            let span = origin..<origin.addingTimeInterval(2 * window + 120)
+
+            func windowSample(at offset: TimeInterval) -> BiometricSample {
+                BiometricSample(
+                    timestamp: origin.addingTimeInterval(offset),
+                    heartRate: 52,
+                    rrIntervalsMs: (0..<30).map { $0.isMultiple(of: 2) ? 1000 : 1040 },
+                    accelerometerX: 0, accelerometerY: 0, accelerometerZ: 1.0)
+            }
+
+            let samples = [
+                windowSample(at: 60),        // bucket 0
+                windowSample(at: window + 60),   // bucket 1
+                windowSample(at: 2 * window + 60),   // the trailing remainder — must be dropped
+            ]
+            let windows = AnalyzeSleepStressUseCase.eligibleWindows(in: samples, span: span)
+            assertTest(
+                windows.count == 2,
+                "A span of two windows plus a remainder yields exactly **two** scored windows and does "
+                    + "not trap — the sample in the trailing two minutes is dropped rather than read "
+                    + "into a bucket one past the end (\(windows.count) windows)")
+            assertTest(
+                windows.map(\.start) == [origin, origin.addingTimeInterval(window)],
+                "…and the two anchors are the windows themselves, so the dropped remainder does not "
+                    + "shift a later bucket's start")
+
+            // The control: a span that *is* a whole number of windows must be unaffected, because
+            // that is the shape the model was written against and the only one the fixtures used.
+            let whole = AnalyzeSleepStressUseCase.eligibleWindows(
+                in: [windowSample(at: 60), windowSample(at: window + 60)],
+                span: origin..<origin.addingTimeInterval(2 * window))
+            assertTest(
+                whole.count == 2,
+                "…and an integral span still scores both windows, so the guard is not masking the "
+                    + "ordinary case")
+        }
     }
 }

@@ -20,6 +20,20 @@ public enum WhoopGATTConstants: Sendable {
     public static var modelNumberUUID: CBUUID { CBUUID(string: "2A24") }
     public static var firmwareRevisionUUID: CBUUID { CBUUID(string: "2A26") }
     public static var serialNumberUUID: CBUUID { CBUUID(string: "2A25") }
+    /// Hardware Revision String — read and logged, with no `WhoopDevice` field behind it.
+    public static var hardwareRevisionUUID: CBUUID { CBUUID(string: "2A27") }
+
+    /// Every DIS characteristic this app reads, in the order it issues the reads. Keeping the list here
+    /// means discovery, the read pass and `DeviceInformationField` all consult one spelling of the set.
+    public static var deviceInformationCharacteristicUUIDs: [CBUUID] {
+        [
+            modelNumberUUID,
+            serialNumberUUID,
+            firmwareRevisionUUID,
+            hardwareRevisionUUID,
+            manufacturerNameUUID
+        ]
+    }
 
     // MARK: - Proprietary WHOOP 4.0 Service & Characteristics
     //

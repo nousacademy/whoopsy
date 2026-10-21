@@ -13,6 +13,7 @@ public final class WhoopMockBLEManager: @unchecked Sendable {
     private var deviceContinuations: [UUID: AsyncStream<WhoopDevice>.Continuation] = [:]
     private var telemetryContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
     private var motionContinuations: [UUID: AsyncStream<MotionBatch>.Continuation] = [:]
+    private var historicalTelemetryContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
 
     private var currentDevice: WhoopDevice
 
@@ -78,6 +79,32 @@ public final class WhoopMockBLEManager: @unchecked Sendable {
                 self?.removeMotionContinuation(id)
             }
         }
+    }
+
+    /// Empty, deliberately — the mock has no flash to drain.
+    ///
+    /// `WhoopBLEDeviceRepositoryImpl.requestHistoricalSync` refuses in mock mode with
+    /// `noCommandPath`, and nothing here ever yields into this stream, so a consumer attached to it
+    /// during a simulated sync waits for a signal that never comes. `SyncHistoricalDataUseCase` is
+    /// written so that is harmless: the drain call throws first and the consumer is cancelled — but a
+    /// mock that fabricated drained records would be inventing history, which is the fabrication class
+    /// this app forbids outright.
+    public var historicalTelemetryStream: AsyncStream<BiometricSample> {
+        AsyncStream { continuation in
+            let id = UUID()
+            continuationLock.lock()
+            historicalTelemetryContinuations[id] = continuation
+            continuationLock.unlock()
+            continuation.onTermination = { [weak self] _ in
+                self?.removeHistoricalTelemetryContinuation(id)
+            }
+        }
+    }
+
+    private func removeHistoricalTelemetryContinuation(_ id: UUID) {
+        continuationLock.lock()
+        historicalTelemetryContinuations[id] = nil
+        continuationLock.unlock()
     }
 
     private func removeMotionContinuation(_ id: UUID) {
@@ -152,6 +179,12 @@ public final class WhoopMockBLEManager: @unchecked Sendable {
 
     public func getCurrentDevice() -> WhoopDevice? {
         currentDevice
+    }
+
+    /// No wire, so nothing to reboot — and it **fails rather than pretending**, on the same rule the
+    /// real implementation follows: a command that was never sent must never read as one that was.
+    public func rebootStrap() async throws {
+        throw WhoopSyncError.noCommandPath(generation: "simulator")
     }
 
     public func startGeneratingMockTelemetry() {

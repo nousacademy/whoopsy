@@ -10,8 +10,8 @@
 //
 // which is the optional include, so the file is picked up as soon as it exists and its absence is
 // not a build error. **Leave a line empty and that feature stays off** — an empty `MBX_ACCESS_TOKEN`
-// draws `MapKit` instead of the offline map, and an empty pair of sync settings means the app never
-// opens a socket.
+// draws `MapKit` instead of the offline map, an empty pair of sync settings means the app never
+// opens a socket, and an empty `WHOOPSY_SENTRY_DSN` installs no diagnostics sink at all.
 //
 // ## `MBX_ACCESS_TOKEN` — the public Mapbox token
 //
@@ -66,6 +66,32 @@
 // of the repository: the same string is the deployment's credential, and a leaked one is a
 // deployment anyone can read.
 //
+// ## `WHOOPSY_SENTRY_DSN` — remote protocol diagnostics, or nothing
+//
+// Optional and independent of the sync pair above: this turns on telemetry about the **strap's
+// protocol** (connect passes, drain refusals, what a drained record looked like), not cloud storage.
+// An empty value installs no sink and starts no SDK. Setting it still sends nothing until the
+// **Anonymous diagnostics toggle** on `More → Settings` is turned on, and that toggle is off by
+// default.
+//
+// The value is a **client key (DSN)**, not the `org-slug#code` string Sentry's onboarding page shows
+// for an AI assistant — that one installs an editor plugin and cannot be used here. Take the DSN
+// from the project's **Settings → Client Keys (DSN)**; it looks like
+//
+//     https://0123456789abcdef@o123456.ingest.sentry.io/7654321
+//
+// **Write it with `$()` standing in for the second slash**, for the same reason as the Worker origin
+// above: `//` starts a comment in an xcconfig value, so the plain spelling is read as `https:` and
+// the build succeeds with a DSN that installs nothing. In a DSN a truncated value is worse than an
+// empty one, because it looks configured:
+//
+//     https:/$()/0123456789abcdef@o123456.ingest.sentry.io/7654321
+//
+// What this path may send is metadata by construction — counts, frame types, sequence numbers,
+// payload lengths and outcome names. No heart rate, R-R interval, oxygen candidate or sample
+// timestamp is ever placed in an attribute; the oxygen probe's raw values stay in
+// `Documents/spo2-candidate.txt` on the phone.
+//
 // ## The lines to edit
 //
 // Uncomment and fill in — an `=` with nothing after it is what the committed base file already
@@ -75,3 +101,5 @@
 
 # WHOOPSY_API_BASE_URL = https:/$()/whoopsy-sync.your-account-subdomain.workers.dev
 # WHOOPSY_API_TOKEN = paste_the_output_of_openssl_rand_base64_32_here
+
+# WHOOPSY_SENTRY_DSN = https:/$()/0123456789abcdef@o123456.ingest.sentry.io/7654321

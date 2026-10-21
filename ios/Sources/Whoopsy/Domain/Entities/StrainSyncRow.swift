@@ -82,4 +82,38 @@ public struct StrainSyncRow: Equatable, Sendable {
         self.hasMeasurement = hasMeasurement
         self.source = source
     }
+
+    /// The row a day would be stored as, with its provenance supplied by the caller.
+    ///
+    /// `kilojoules` is `StrainScore.activeCalories` converted kcal → kJ, which is the same
+    /// `× 4.184` `GRDBStrainRepository` applies when it stores the entity — the entity carries the
+    /// calorie figure a screen reads and the record/wire carry the kilojoule figure the sync moves.
+    public init(_ strain: StrainScore, source: String?) {
+        self.init(
+            date: strain.date,
+            strainScore: strain.score,
+            kilojoules: strain.activeCalories * 4.184,
+            averageHeartRate: strain.averageHeartRate,
+            maxHeartRate: strain.maxHeartRate,
+            hasMeasurement: strain.hasMeasurement,
+            source: source
+        )
+    }
+
+    /// The entity a screen would draw, rebuilt from the stored fields.
+    ///
+    /// `rawAccumulatedLoad` and `zones` have no columns and never did, so they come back at their
+    /// defaults — the same shape `GRDBStrainRepository.makeScore` produces when it reads a record, and
+    /// for the same reason: a strain read from disk or from the wire knows nothing about heart-rate
+    /// zones.
+    public var score: StrainScore {
+        StrainScore(
+            date: date,
+            score: strainScore,
+            hasMeasurement: hasMeasurement,
+            activeCalories: kilojoules / 4.184,
+            averageHeartRate: averageHeartRate,
+            maxHeartRate: maxHeartRate
+        )
+    }
 }

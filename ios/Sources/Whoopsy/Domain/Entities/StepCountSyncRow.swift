@@ -33,4 +33,15 @@ public struct StepCountSyncRow: Equatable, Sendable {
         self.stepCount = stepCount
         self.measuredSeconds = measuredSeconds
     }
+
+    /// The row a day would be stored as. `stepCounts` has no `source` column, so there is nothing to
+    /// supply; the entity's own fields are the whole of the row.
+    public init(_ count: StepCount) {
+        self.init(date: count.date, stepCount: count.stepCount, measuredSeconds: count.measuredSeconds)
+    }
+
+    /// The entity a screen would draw, rebuilt from the stored fields.
+    public var count: StepCount {
+        StepCount(date: date, stepCount: stepCount, measuredSeconds: measuredSeconds)
+    }
 }

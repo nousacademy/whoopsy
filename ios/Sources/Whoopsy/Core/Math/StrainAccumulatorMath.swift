@@ -2,8 +2,35 @@ import Foundation
 
 /// Non-linear Borg-scale cardiovascular Strain integrator (0.0 to 21.0 scale).
 public enum StrainAccumulatorMath {
-    /// Calibrated scaling constant for the 21.0 exponential curve
-    public static let strainScalingFactor: Double = 0.000045
+    /// Scaling constant for the **day** strain curve, `21·(1 − e^(−k_day·L))`.
+    ///
+    /// Calibrated so a 16-hour quiet day — every waking minute above resting but under zone 1, i.e.
+    /// `57,600` weighted seconds — scores `≈ 9.8`, which is WHOOP's no-workout `Day Strain` mean over
+    /// the bundled export (`≈ 9.76`, `docs/PATENTS.md` §1.5). Before the weight-1 low-intensity band
+    /// existed, this constant was `0.000045` and a quiet day under the five zones integrated to zero;
+    /// re-fitting it is what keeps quiet days from saturating once every minute above resting earns
+    /// credit.
+    public static let dayStrainScalingFactor: Double = 0.00001085
+
+    /// Scaling constant and power for the **session** strain curve, `21·(1 − e^(−k_session·L^p))`.
+    ///
+    /// A session and a quiet day are different timescales — a 20-minute walk and a 16-hour day are a
+    /// 1:48 ratio — so one `k` cannot score both sensibly: the `k` that puts a quiet day near 10 forces
+    /// a 20-minute session to `≈ 0.3`, and the `k` that puts a 20-minute session near 3 forces the
+    /// quiet day past 18. The pair `p = 0.55`, `k_session = 0.005` is a grid fit to the 673 workouts in
+    /// the bundled export using the app's zone weights, the day's resting/max heart rate and a
+    /// constant average heart rate (RMSE ≈ 2.17), and `LiveSessionAccumulator` is the only caller.
+    public static let sessionStrainScalingFactor: Double = 0.005
+    public static let sessionStrainExponent: Double = 0.55
+
+    /// Weight for the low-intensity band — a heart rate above resting but below zone 1's floor.
+    ///
+    /// **This is WHOOP's disclosed weight-1 floor**, not an extra zone: `docs/PATENTS.md` §1 records
+    /// that WHOOP's weight function gives weight **1 to every minute above zero heart-rate reserve**,
+    /// while this app's five-band table previously integrated a day spent entirely under 50 %HRR to
+    /// zero. The band adds load but no zone time (`zone: nil`), so the five zone percentages still sum
+    /// to at most 100 and nothing below zone 1 becomes a sixth band.
+    public static let lowIntensityBandWeight: Double = 1.0
 
     /// The heart-rate-**reserve** fraction each zone spans, in `HeartRateZoneIndex` order.
     ///
@@ -91,15 +118,45 @@ public enum StrainAccumulatorMath {
         }
     }
 
-    /// Converts accumulated weighted seconds load into a 0.0 - 21.0 strain score.
+    /// Converts a **day's** accumulated weighted-seconds load into a 0.0 - 21.0 strain score.
+    ///
+    /// `CalculateStrainUseCase` is the only caller: it scores a whole calendar day, where the low band
+    /// dominates (16 waking hours at weight 1) and `dayStrainScalingFactor` is the constant that keeps
+    /// a quiet day near WHOOP's no-workout mean rather than at zero. See `calculateSessionStrainScore`
+    /// for the session-scale curve `LiveSessionAccumulator` uses.
     public static func calculateStrainScore(from accumulatedLoad: Double) -> Double {
         guard accumulatedLoad > 0 else { return 0.0 }
-        let rawScore = 21.0 * (1.0 - exp(-strainScalingFactor * accumulatedLoad))
+        let rawScore = 21.0 * (1.0 - exp(-dayStrainScalingFactor * accumulatedLoad))
+        return (rawScore * 10.0).rounded() / 10.0
+    }
+
+    /// Converts a **session's** accumulated weighted-seconds load into a 0.0 - 21.0 strain score.
+    ///
+    /// A session spans minutes where a day spans hours, so the two are fitted separately — see the
+    /// `sessionStrainScalingFactor`/`sessionStrainExponent` doc for why one `k` cannot serve both. The
+    /// sub-linear power `L^0.55` is what keeps a 20-minute light walk (load ≈ 1,200) scoring `≈ 4.6`
+    /// rather than the `≈ 0.3` the day's `k` would give it.
+    public static func calculateSessionStrainScore(from accumulatedLoad: Double) -> Double {
+        guard accumulatedLoad > 0 else { return 0.0 }
+        let rawScore = 21.0
+            * (1.0 - exp(-sessionStrainScalingFactor * pow(accumulatedLoad, sessionStrainExponent)))
         return (rawScore * 10.0).rounded() / 10.0
     }
 
     /// Calculates load addition for a given heart rate sustained for `durationSeconds`.
-    public static func loadDelta(for bpm: Int, zones: [HeartRateZone], durationSeconds: TimeInterval) -> (zone: HeartRateZoneIndex?, load: Double) {
+    ///
+    /// The `zone` in the result is the five-band zone the rate falls in, or `nil` in two cases that
+    /// must not be conflated: a rate **above resting but below zone 1's floor** still adds load
+    /// (`lowIntensityBandWeight × durationSeconds`) with no zone, because it is real cardiovascular
+    /// time that belongs to no band; a rate **at or below resting** adds nothing, because the body was
+    /// not working above baseline. Both return `zone: nil`, and both leave the five zone percentages
+    /// summing to at most 100.
+    public static func loadDelta(
+        for bpm: Int,
+        zones: [HeartRateZone],
+        restingHeartRate: Int,
+        durationSeconds: TimeInterval
+    ) -> (zone: HeartRateZoneIndex?, load: Double) {
         for zone in zones {
             if bpm >= zone.lowerBpm && bpm <= zone.upperBpm {
                 let load = zone.index.strainWeight * durationSeconds
@@ -108,6 +165,9 @@ public enum StrainAccumulatorMath {
         }
         if let maxZone = zones.last, bpm > maxZone.upperBpm {
             return (.zone5, HeartRateZoneIndex.zone5.strainWeight * durationSeconds)
+        }
+        if let firstZone = zones.first, bpm > restingHeartRate, bpm < firstZone.lowerBpm {
+            return (nil, lowIntensityBandWeight * durationSeconds)
         }
         return (nil, 0.0)
     }

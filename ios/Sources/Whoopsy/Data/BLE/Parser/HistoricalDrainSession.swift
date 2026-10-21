@@ -118,6 +118,36 @@ public struct HistoricalDrainSession: Sendable {
         if frame.type == types.historicalData {
             recordCount += 1
             lastActivity = now
+            // **The drain's only per-record line, and it is rate-limited to the first five.** A
+            // completed sync reports a count and nothing else, so "59 records" cannot say whether the
+            // strap handed back heart rate, motion, or fifty-nine records of an unmapped type — the
+            // three outcomes that need three different next steps. The layout selector at `inner[1]`
+            // is what chooses the walk, so it and the payload length are the two fields worth seeing.
+            if recordCount <= 5 {
+                let index = recordCount
+                let payloadBytes = frame.payload.count
+                let layout = frame.seq
+                let type = String(frame.type, radix: 16, uppercase: true)
+                // **The record's own clock, and it is the question a count cannot answer.** A drain
+                // that keeps returning ~60 records could be reading the live edge (records stamped
+                // now) or a backlog (records stamped hours ago) — the two need opposite next steps.
+                // `R18`'s unix is a u32 little-endian at payload `[4]`, the field its decoder files the
+                // sample by; anything else is left as `-`.
+                var stamp = "-"
+                if frame.payload.count >= 8 {
+                    let p = [UInt8](frame.payload.prefix(8))
+                    let seconds = UInt32(p[4]) | (UInt32(p[5]) << 8)
+                        | (UInt32(p[6]) << 16) | (UInt32(p[7]) << 24)
+                    if seconds > 1_000_000_000 {
+                        stamp = Date(timeIntervalSince1970: TimeInterval(seconds)).description
+                    }
+                }
+                AppLogger.ble.notice("""
+                    Drain record #\(index, privacy: .public): type=0x\(type, privacy: .public) \
+                    layout=\(layout, privacy: .public) payload=\(payloadBytes, privacy: .public) B \
+                    stamp=\(stamp, privacy: .public)
+                    """)
+            }
             return .none
         }
 
@@ -131,8 +161,25 @@ public struct HistoricalDrainSession: Sendable {
 
         case 2:  // HISTORY_END — ack it and keep listening
             batchCount += 1
+            // **The marker's own contents, because "caught up to now" has been claimed over
+            // two-month-old records.** The live-edge test reads a u32 at the payload's head and
+            // compares it with the wall clock inside a 5 s window; if that field is not the marker's
+            // unix time, a drain ends after one batch and the rest of the buffer is never read. Logged
+            // rather than changed first: the decision is only wrong if the field is not what the test
+            // assumes, and one run answers that.
+            let payloadHex = [UInt8](frame.payload.prefix(16))
+                .map { String(format: "%02X", $0) }
+                .joined(separator: " ")
+            let markerUnix = WhoopPacketDecoder.littleEndianUInt32(in: frame.payload)
+            let atEdge = isAtLiveEdge(frame, now: now)
+            let seen = recordCount
+            AppLogger.ble.notice("""
+                HISTORY_END: payload=\(payloadHex, privacy: .public) \
+                headAsUnix=\(markerUnix, privacy: .public) liveEdge=\(atEdge, privacy: .public) \
+                recordsSoFar=\(seen, privacy: .public)
+                """)
             guard let token = continuationToken(from: frame) else { return .none }
-            if isAtLiveEdge(frame, now: now) {
+            if atEdge {
                 finishReason = .liveEdge
                 return .acknowledgeAndFinish(token: token)
             }

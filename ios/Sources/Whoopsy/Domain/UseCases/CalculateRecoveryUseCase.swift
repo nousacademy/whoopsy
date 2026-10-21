@@ -36,13 +36,19 @@ public final class CalculateRecoveryUseCase: Sendable {
         let sleepEnd = sleepSession?.endTime ?? date
         let overnightSamples = try await biometricRepository.getSamples(from: sleepStart, to: sleepEnd)
 
-        // Extract RR intervals and resting HR
-        let rrIntervals = overnightSamples.compactMap { $0.rrIntervalMs }
+        // Extract RR intervals and resting HR. Each notification's interval list is one contiguous
+        // run of adjacent beats; `calculateRMSSD(fromRuns:)` differences **within** each run and pools
+        // the squared differences, so two beats that were never adjacent (across two notifications)
+        // are never differenced. Flattening one interval per sample — `$0.rrIntervalMs`, which is
+        // `rrIntervalsMs.first` — and handing that to `calculateRMSSD(from:)` is the defect that
+        // inflated every strap-computed HRV (measured ~288 ms where the same night's WHOOP figure is
+        // ~50 ms), because it differences beats a whole notification apart.
+        let rrRuns = overnightSamples.compactMap { $0.rrIntervalsMs }
 
         // The guard is the *measurement* test, not the interval count, and the difference is load
-        // bearing. `calculateRMSSD` returns exactly `0.0` when `filterRRIntervals` leaves fewer than
-        // two beats — the 300–2000 ms boundary check and the 20% ectopic rule both drop intervals —
-        // while `RecoveryMetric.hasMeasurement` is `hrvValueMs > 0`. Guarding on `!rrIntervals.isEmpty`
+        // bearing. `calculateRMSSD(fromRuns:)` returns exactly `0.0` when no run survives cleaning
+        // with two beats — the 300–2000 ms boundary check and the 20% ectopic rule both drop intervals —
+        // while `RecoveryMetric.hasMeasurement` is `hrvValueMs > 0`. Guarding on `!rrRuns.isEmpty`
         // let one raw interval through to a row that this type's own readers call unmeasured, and
         // `RecoveryViewModel.shouldCompute` then re-scored and rewrote it on every load.
         //
@@ -51,7 +57,7 @@ public final class CalculateRecoveryUseCase: Sendable {
         // below 0.05 ms pass here and still be written as `0.0` — unmeasured to every reader. The test
         // has to be made against the value that is actually stored, or the writer and the readers
         // disagree again by one rounding step.
-        let hrvValueMs = HeartRateVariabilityMath.calculateRMSSD(from: rrIntervals).rounded(toPlaces: 1)
+        let hrvValueMs = HeartRateVariabilityMath.calculateRMSSD(fromRuns: rrRuns).rounded(toPlaces: 1)
         guard hrvValueMs > 0 else { return nil }
 
         let heartRates = overnightSamples.map { $0.heartRate }

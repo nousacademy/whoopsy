@@ -142,11 +142,11 @@ public final class AnalyzeSleepStressUseCase: Sendable {
     // MARK: - Windowing
 
     /// One window's features — the third, motion, has already done its job by qualifying it.
-    struct WindowFeatures {
+    public struct WindowFeatures {
         /// The bucket's anchor, carried through to `StressWindow.start` so the series can be plotted.
-        let start: Date
-        let meanRmssdMs: Double
-        let meanHeartRate: Double
+        public let start: Date
+        public let meanRmssdMs: Double
+        public let meanHeartRate: Double
     }
 
     /// One baseline night, collapsed.
@@ -185,7 +185,12 @@ public final class AnalyzeSleepStressUseCase: Sendable {
     /// and fixing it here would move the Stress Monitor's existing numbers, which is a change with its
     /// own justification and its own evidence. The shared parts are referenced by name from
     /// `StressMath`, so the constants cannot drift even though the loop is not shared.
-    static func eligibleWindows(in samples: [BiometricSample], span: Range<Date>) -> [WindowFeatures] {
+    /// `public` so §15 can drive the bucketing directly, which is the only way to assert the trailing
+    /// partial window: `execute` reaches it through a night whose span a fixture cannot make
+    /// non-integral without also moving the scores. Same reason `AnalyzeSleepUseCase.readWindow` is.
+    public static func eligibleWindows(
+        in samples: [BiometricSample], span: Range<Date>
+    ) -> [WindowFeatures] {
         let length = span.upperBound.timeIntervalSince(span.lowerBound)
         let bucketCount = Int(length / StressMath.windowSeconds)
         guard bucketCount > 0 else { return [] }
@@ -194,7 +199,17 @@ public final class AnalyzeSleepStressUseCase: Sendable {
         for sample in samples {
             let offset = sample.timestamp.timeIntervalSince(span.lowerBound)
             guard offset >= 0, offset < length else { continue }
-            buckets[Int(offset / StressMath.windowSeconds)].append(sample)
+            // **`bucketCount` is a *floor*, so the last partial window is not a bucket.** A span that
+            // is not a whole number of windows — every real night, since it comes from sample
+            // timestamps — leaves `bucketCount = floor(length / window)`, and an offset inside the
+            // trailing remainder divides to exactly `bucketCount`. Indexing with it is an
+            // out-of-bounds crash, and it is the one this model's first real night produced:
+            // `Array._checkSubscript_mutating` under `eligibleWindows`, from `SleepViewModel.load`.
+            // The trailing remnant is dropped rather than padded into an extra bucket, because a
+            // partial window has no complete `windowSeconds` of stillness to score.
+            let bucket = Int(offset / StressMath.windowSeconds)
+            guard bucket < bucketCount else { continue }
+            buckets[bucket].append(sample)
         }
 
         return buckets.enumerated().compactMap { index, bucket in

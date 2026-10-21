@@ -93,18 +93,10 @@ struct MapboxRouteMapView: View {
             }
         }
         .mapStyle(.outdoors)
-        .gestureOptions(
-            GestureOptions(
-                panEnabled: false,
-                pinchEnabled: false,
-                rotateEnabled: false,
-                simultaneousRotateAndPinchZoomEnabled: false,
-                pinchZoomEnabled: false,
-                pinchPanEnabled: false,
-                pitchEnabled: false,
-                doubleTapToZoomInEnabled: false,
-                doubleTouchToZoomOutEnabled: false,
-                quickZoomEnabled: false))
+        // Shared with the area surface rather than stated here: both cards are the same map, and a
+        // gesture left enabled for one is a map that pans inside a page that scrolls. See
+        // `MapboxSetup.cardGestures`.
+        .gestureOptions(MapboxSetup.cardGestures)
     }
 
     // MARK: - Construction

@@ -441,7 +441,10 @@ enum WorkoutZoneTests {
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
                     streamUseCase: StreamBiometricsUseCase(
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                        biometricRepository: GRDBBiometricRepository(db: homeDB)))
+                        biometricRepository: GRDBBiometricRepository(db: homeDB)),
+                    trackSteps: TrackStepsUseCase(
+                        bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
+                        stepRepository: GRDBStepRepository(db: homeDB)))
             }
             await home.load(for: stepDay)
             let steps = await MainActor.run { home.steps }

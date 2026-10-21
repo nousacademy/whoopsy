@@ -15,38 +15,42 @@ import Foundation
 ///
 /// ### The two conventions inherited from the day model
 ///
-/// Both are choices rather than measurements, and both exist so that the figure on this screen and the
-/// figure `CalculateStrainUseCase` later writes for the same span agree:
+/// Both are choices rather than measurements, and both are copied so that the two accumulators agree
+/// on *what a sample means* even though they score the result on different curves (below):
 
 /// 1. **The first sample's duration is exactly `1.0` second.** `CalculateStrainUseCase` writes
 ///    `(i > 0) ? min(5.0, Δt) : 1.0`, because the first sample in its array has no predecessor to
 ///    difference against. Differencing the first sample against the session's own start instant
-///    instead would be *more* defensible in isolation and would make the live figure disagree with the
-///    stored day figure by that one term — so the convention is copied, not improved on.
+///    instead would be *more* defensible in isolation — so the convention is copied, not improved on.
 /// 2. **A gap longer than five seconds counts as five.** A strap that stopped notifying has not been
 ///    measuring, but the body it was on did not stop existing; five seconds is the day model's answer
 ///    and is not re-derived here.
 ///
 /// ### What this figure will *not* equal
 ///
-/// It converges exactly with `CalculateStrainUseCase` over the same span of samples, but it will not
-/// equal the day's stored `strains.score`, for three reasons that are not defects: the day's read
-/// includes samples from before the session started, a session crossing midnight belongs to two day
-/// rows, and the day's first sample differences against the previous *stored* sample while this one's
-/// takes the `1.0` above.
+/// It accumulates the **same load** as `CalculateStrainUseCase` over the same span of samples, but it
+/// scores that load on a different curve — `calculateSessionStrainScore` here, `calculateStrainScore`
+/// in the day model — because a session and a day are different timescales (see
+/// `StrainAccumulatorMath.sessionStrainScalingFactor`). So even a session that spans the day's exact
+/// sample window will not equal the day's stored `strains.score`, for four reasons that are not
+/// defects: the two curves, the day's read includes samples from before the session started, a session
+/// crossing midnight belongs to two day rows, and the day's first sample differences against the
+/// previous *stored* sample while this one's takes the `1.0` above.
 ///
 /// ### Absence
 ///
-/// `strain` is `nil` until a sample arrives and exactly `0.0` once one arrives that never reached
-/// zone 1 — the same distinction `StrainScore.hasMeasurement` draws and the same one the day model
-/// makes. `calories` is `nil` whenever no body weight is on file, because the calorie estimate refuses
-/// to substitute one (`UserProfile.weightKg`); a `0.0` there is a real reading of a session that never
-/// rose above resting.
+/// `strain` is `nil` until a sample arrives and exactly `0.0` once one arrives at or below resting;
+/// a session that stays above resting but under zone 1 scores a small positive figure, because the
+/// low-intensity band credits that time at weight 1 — the same distinction `StrainScore.hasMeasurement`
+/// draws and the same one the day model makes. `calories` is `nil` whenever no body weight is on file,
+/// because the calorie estimate refuses to substitute one (`UserProfile.weightKg`); a `0.0` there is a
+/// real reading of a session that never rose above resting.
 public struct LiveSessionAccumulator: Sendable {
 
     /// Everything a session screen draws, resolved once from the accumulated state.
     public struct Snapshot: Sendable, Equatable {
-        /// `nil` before any sample; `0.0` once a sample has been accepted that never reached zone 1.
+        /// `nil` before any sample; `0.0` once a sample has been accepted at or below resting, and a
+        /// small positive figure for one that stayed above resting but under zone 1 (low-intensity band).
         public let strain: Double?
         /// The most recent accepted reading — what the `HEART RATE` figure shows.
         public let latestHeartRate: Int?
@@ -157,10 +161,13 @@ public struct LiveSessionAccumulator: Sendable {
             .map { min(5.0, timestamp.timeIntervalSince($0)) } ?? 1.0
 
         let (zoneIndex, load) = StrainAccumulatorMath.loadDelta(
-            for: heartRate, zones: zones, durationSeconds: duration)
+            for: heartRate, zones: zones, restingHeartRate: restingHeartRate, durationSeconds: duration)
 
+        // Load is added even when no zone matched: a rate above resting but below zone 1's floor is
+        // real cardiovascular time with `load > 0` and `zoneIndex == nil`. Zone *duration* is added only
+        // when a zone matched, so the five percentages still sum to at most 100.
+        accumulatedLoad += load
         if let zoneIndex {
-            accumulatedLoad += load
             zoneDurations[zoneIndex, default: 0] += duration
         }
 
@@ -184,11 +191,13 @@ public struct LiveSessionAccumulator: Sendable {
         let average = sampleCount > 0 ? heartRateSum / sampleCount : nil
 
         return Snapshot(
-            // `nil` before any sample, then a real `0.0` for a measured session that never left zone 1
-            // — `calculateStrainScore` returns `0.0` for a zero load and that is the correct answer
-            // here, because a sample was taken.
+            // `nil` before any sample, then a real `0.0` for a measured session that never rose above
+            // resting — `calculateSessionStrainScore` returns `0.0` for a zero load and that is the
+            // correct answer here, because a sample was taken. A session that stays under zone 1 but
+            // above resting scores a small positive figure, since the low-intensity band credits that
+            // time at weight 1.
             strain: sampleCount > 0
-                ? StrainAccumulatorMath.calculateStrainScore(from: accumulatedLoad)
+                ? StrainAccumulatorMath.calculateSessionStrainScore(from: accumulatedLoad)
                 : nil,
             latestHeartRate: latestHeartRate,
             averageHeartRate: average,

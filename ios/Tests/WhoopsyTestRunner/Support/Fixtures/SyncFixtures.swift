@@ -90,12 +90,18 @@ actor SpyCloudSync: CloudSync {
         case workouts(from: Date, to: Date)
         case writeWorkout(WorkoutSyncRow)
         case writeWorkouts([WorkoutSyncRow])
+        case sleep(day: Date)
+        case sleeps(from: Date, to: Date)
         case writeSleep(SleepSyncRow)
         case writeSleeps([SleepSyncRow])
+        case stepCount(day: Date)
+        case stepCounts(from: Date, to: Date)
         case writeStepCount(StepCountSyncRow)
         case writeStepCounts([StepCountSyncRow])
+        case receptiveInactivities(from: Date, to: Date)
         case writeReceptiveInactivity(ReceptiveInactivitySyncRow)
         case writeReceptiveInactivities([ReceptiveInactivitySyncRow])
+        case profile
         case writeProfile(UserProfileSyncRow)
     }
 
@@ -253,6 +259,7 @@ actor SpyCloudSync: CloudSync {
             case .writeRecoveries(let rows): return rows
             case .recovery, .recoveries, .strain, .strains, .writeStrain, .writeStrains,
                  .workout, .workouts, .writeWorkout, .writeWorkouts,
+                 .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeSleep, .writeSleeps, .writeStepCount, .writeStepCounts,
                  .writeReceptiveInactivity, .writeReceptiveInactivities, .writeProfile: return []
             }
@@ -268,6 +275,7 @@ actor SpyCloudSync: CloudSync {
             case .recovery, .recoveries, .strain, .strains,
                  .writeRecovery, .writeRecoveries,
                  .workout, .workouts, .writeWorkout, .writeWorkouts,
+                 .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeSleep, .writeSleeps, .writeStepCount, .writeStepCounts,
                  .writeReceptiveInactivity, .writeReceptiveInactivities, .writeProfile: return []
             }
@@ -282,6 +290,7 @@ actor SpyCloudSync: CloudSync {
             case .writeWorkouts(let rows): return rows
             case .recovery, .recoveries, .strain, .strains, .writeStrain, .writeStrains,
                  .workout, .workouts, .writeRecovery, .writeRecoveries,
+                 .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeSleep, .writeSleeps, .writeStepCount, .writeStepCounts,
                  .writeReceptiveInactivity, .writeReceptiveInactivities, .writeProfile: return []
             }
@@ -373,6 +382,7 @@ actor SpyCloudSync: CloudSync {
             case .recovery, .recoveries, .writeRecovery, .writeRecoveries,
                  .strain, .strains, .writeStrain, .writeStrains,
                  .workout, .workouts, .writeWorkout, .writeWorkouts,
+                 .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeStepCount, .writeStepCounts,
                  .writeReceptiveInactivity, .writeReceptiveInactivities,
                  .writeProfile: return []
@@ -395,6 +405,7 @@ actor SpyCloudSync: CloudSync {
             case .recovery, .recoveries, .writeRecovery, .writeRecoveries,
                  .strain, .strains, .writeStrain, .writeStrains,
                  .workout, .workouts, .writeWorkout, .writeWorkouts,
+                 .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeSleep, .writeSleeps,
                  .writeReceptiveInactivity, .writeReceptiveInactivities,
                  .writeProfile: return []
@@ -418,6 +429,7 @@ actor SpyCloudSync: CloudSync {
             case .recovery, .recoveries, .writeRecovery, .writeRecoveries,
                  .strain, .strains, .writeStrain, .writeStrains,
                  .workout, .workouts, .writeWorkout, .writeWorkouts,
+                 .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeSleep, .writeSleeps,
                  .writeStepCount, .writeStepCounts,
                  .writeProfile: return []
@@ -435,6 +447,54 @@ actor SpyCloudSync: CloudSync {
             guard case let .writeProfile(row) = call else { return nil }
             return row
         }
+    }
+
+    /// The days `sleep(on:)` was asked for, in order.
+    var readSleepDays: [Date] {
+        calls.compactMap { call in
+            guard case let .sleep(day) = call else { return nil }
+            return day
+        }
+    }
+
+    /// The ranges `sleeps(from:to:)` was asked for, in order.
+    var readSleepRanges: [(from: Date, to: Date)] {
+        calls.compactMap { call in
+            guard case let .sleeps(from, to) = call else { return nil }
+            return (from, to)
+        }
+    }
+
+    /// The days `stepCount(on:)` was asked for, in order.
+    var readStepCountDays: [Date] {
+        calls.compactMap { call in
+            guard case let .stepCount(day) = call else { return nil }
+            return day
+        }
+    }
+
+    /// The ranges `stepCounts(from:to:)` was asked for, in order.
+    var readStepCountRanges: [(from: Date, to: Date)] {
+        calls.compactMap { call in
+            guard case let .stepCounts(from, to) = call else { return nil }
+            return (from, to)
+        }
+    }
+
+    /// The ranges `receptiveInactivities(from:to:)` was asked for, in order.
+    var readInactivityRanges: [(from: Date, to: Date)] {
+        calls.compactMap { call in
+            guard case let .receptiveInactivities(from, to) = call else { return nil }
+            return (from, to)
+        }
+    }
+
+    /// How many times `profile()` was asked.
+    var readProfileCount: Int {
+        calls.filter { call in
+            if case .profile = call { return true }
+            return false
+        }.count
     }
 
     // MARK: - CloudSync
@@ -615,6 +675,56 @@ actor SpyCloudSync: CloudSync {
         calls.append(.writeProfile(row))
         try refuseIfArmed()
         storedProfile = row
+    }
+
+    // MARK: - CloudSync, the reads the write-only resources grew
+
+    func sleep(on day: Date) async throws -> SleepSyncRow? {
+        calls.append(.sleep(day: day.startOfDay))
+        try refuseIfArmed()
+        return storedSleeps[day.startOfDay]
+    }
+
+    func sleeps(from: Date, to: Date) async throws -> [SleepSyncRow] {
+        calls.append(.sleeps(from: from, to: to))
+        try refuseIfArmed()
+        let lower = from.startOfDay
+        let upper = to.startOfDay
+        return storedSleeps.values
+            .filter { $0.date.startOfDay >= lower && $0.date.startOfDay < upper }
+            .sorted { $0.date < $1.date }
+    }
+
+    func stepCount(on day: Date) async throws -> StepCountSyncRow? {
+        calls.append(.stepCount(day: day.startOfDay))
+        try refuseIfArmed()
+        return storedStepCounts[day.startOfDay]
+    }
+
+    func stepCounts(from: Date, to: Date) async throws -> [StepCountSyncRow] {
+        calls.append(.stepCounts(from: from, to: to))
+        try refuseIfArmed()
+        let lower = from.startOfDay
+        let upper = to.startOfDay
+        return storedStepCounts.values
+            .filter { $0.date.startOfDay >= lower && $0.date.startOfDay < upper }
+            .sorted { $0.date < $1.date }
+    }
+
+    func receptiveInactivities(from: Date, to: Date) async throws -> [ReceptiveInactivitySyncRow] {
+        calls.append(.receptiveInactivities(from: from, to: to))
+        try refuseIfArmed()
+        let lower = from.startOfDay
+        let upper = to.startOfDay
+        return storedInactivities.values
+            .filter { $0.date.startOfDay >= lower && $0.date.startOfDay < upper }
+            .sorted { $0.date < $1.date }
+    }
+
+    func profile() async throws -> UserProfileSyncRow? {
+        calls.append(.profile)
+        try refuseIfArmed()
+        return storedProfile
     }
 
     /// `date`, then the session's own start, then its id — ascending, on the protocol's own rule.

@@ -75,7 +75,7 @@ Apply this skill **in the same turn** as the code change, not as a follow-up.
 
    | Constant | Code site | Doc site |
    | :--- | :--- | :--- |
-   | `k = 0.000045`, 21.0 ceiling | `Core/Math/StrainAccumulatorMath.swift` (`strainScalingFactor`) | `docs/ALGORITHMS.md` §2 |
+   | Two strain curves, 21.0 ceiling | `Core/Math/StrainAccumulatorMath.swift` (`dayStrainScalingFactor` / `sessionStrainScalingFactor` / `sessionStrainExponent`) | `docs/ALGORITHMS.md` §2 |
    | Zone weights 1.0/2.0/4.5/9.0/16.0 | `Domain/Entities/HeartRateZone.swift` (`HeartRateZoneIndex.strainWeight`) — **not** `Core/Math/` | `docs/ALGORITHMS.md` §2 zone table |
    | Zone HRR boundaries 50–60…90–100% | `Core/Math/StrainAccumulatorMath.computeZones` | `docs/ALGORITHMS.md` §2 zone table |
    | R-R range 300–2000 ms, 20% ectopic threshold | `Core/Math/HeartRateVariabilityMath.filterRRIntervals` | `docs/ALGORITHMS.md` §1 |

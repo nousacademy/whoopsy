@@ -18,8 +18,14 @@ enum WhoopProtocolProfileTests {
         /// prevent: a destructive opcode added to `SyncOpcodes` and never checked.
         ///
         /// The keys are prefixed because the two tables share field *names* while holding different bytes —
-        /// `requestHistoricalSync` is `0x16` in both, `setClock` is `0x0A` against `0x92` — so an unprefixed
-        /// merge would silently drop one of a colliding pair.
+        /// `requestHistoricalSync` is `0x16` in both, and `setClock`/`getClock` are `0x0A`/`0x0B` in both
+        /// under two envelopes — so an unprefixed merge would silently drop one of a colliding pair.
+        ///
+        /// **The 5.0 enumeration used to be one short and the count did not notice.** `toggleRealtimeHR`
+        /// was absent from this function while the assertion below pinned twelve, and the type held
+        /// thirteen — so a sweep that reads as complete was running over a table missing the one byte that
+        /// makes a 5.0 stream live heart rate. The count is now asserted against the field list, not
+        /// against a remembered number, and every field is listed.
         func transmittedOpcodes(_ profile: WhoopProtocolProfile) -> [String: UInt8] {
             var table: [String: UInt8] = [:]
             if let four = profile.commandOpcodes {
@@ -28,9 +34,11 @@ enum WhoopProtocolProfileTests {
                 table["4.0.ping"] = four.ping
                 table["4.0.requestHistoricalSync"] = four.requestHistoricalSync
                 table["4.0.toggleIMUMode"] = four.toggleIMUMode
+                table["4.0.runHapticsPattern"] = four.runHapticsPattern
                 table["4.0.sendRealtimeMotion"] = four.sendRealtimeMotion
                 table["4.0.enableOpticalData"] = four.enableOpticalData
                 table["4.0.setClock"] = four.setClock
+                table["4.0.getClock"] = four.getClock
                 table["4.0.abortHistoricalTransmits"] = four.abortHistoricalTransmits
                 table["4.0.setReadPointer"] = four.setReadPointer
                 table["4.0.getDataRange"] = four.getDataRange
@@ -45,8 +53,10 @@ enum WhoopProtocolProfileTests {
                 table["5.0.startRawData"] = five.startRawData
                 table["5.0.toggleIMUModeLive"] = five.toggleIMUModeLive
                 table["5.0.toggleIMUModeHistorical"] = five.toggleIMUModeHistorical
+                table["5.0.toggleRealtimeHR"] = five.toggleRealtimeHR
                 table["5.0.setClock"] = five.setClock
                 table["5.0.getClock"] = five.getClock
+                table["5.0.notifyHaptics"] = five.notifyHaptics
                 table["5.0.abortHistoricalTransmits"] = five.abortHistoricalTransmits
                 table["5.0.setReadPointer"] = five.setReadPointer
             }
@@ -54,23 +64,25 @@ enum WhoopProtocolProfileTests {
         }
 
         assertTest(
-            transmittedOpcodes(.whoop4).count == 12,
+            transmittedOpcodes(.whoop4).count == 14,
             "The 4.0's table is enumerated and non-empty, so the two assertions below are not passing on "
-                + "an empty dictionary. Twelve is the count of `CommandOpcodes`' fields; a field added to "
+                + "an empty dictionary. Fourteen is the count of `CommandOpcodes`' fields — twelve "
+                + "transmitted commands plus `getClock` and `runHapticsPattern` — and a field added to "
                 + "the type and not to `transmittedOpcodes` fails here")
         // The counterpart, and it is the assertion that would have caught the hole above rather than the
-        // one that was already covered: a 5.0 profile must hand back a full table too. **Twelve is the
-        // count of `SyncOpcodes`' fields, and it is twelve rather than the ten this type landed with** —
-        // see the block below, which is where the two it was missing came from. A field added to that type
-        // and not listed here fails.
+        // one that was already covered: a 5.0 profile must hand back a full table too. **Fourteen is the
+        // count of `SyncOpcodes`' fields**, and the number is load-bearing in a way it was not before:
+        // this pin read twelve while the type held thirteen, because `toggleRealtimeHR` was missing from
+        // the enumeration. A count that is read off the type is what makes the next omitted field fail.
         assertTest(
-            transmittedOpcodes(.whoop5).count == 12
-                && transmittedOpcodes(.whoop5MG).count == 12,
-            "A 5.0 profile hands back its own twelve opcodes — the `SyncOpcodes` fields — and not the "
-                + "empty dictionary it used to hand back before that table existed. **It does not hand "
-                + "back the 4.0's twelve beside them**, because `commandOpcodes` is `nil` for both 5.0 "
-                + "profiles: the two tables are for different envelopes and are not interchangeable, "
-                + "which is why this is twelve and not twenty-four")
+            transmittedOpcodes(.whoop5).count == 14
+                && transmittedOpcodes(.whoop5MG).count == 14,
+            "A 5.0 profile hands back its own fourteen opcodes — the `SyncOpcodes` fields, "
+                + "`toggleRealtimeHR` included — and not the empty dictionary it used to hand back "
+                + "before that table existed. **It does not hand back the 4.0's fourteen beside them**, "
+                + "because `commandOpcodes` is `nil` for both 5.0 profiles: the two tables are for "
+                + "different envelopes and are not interchangeable, which is why this is fourteen and "
+                + "not twenty-eight")
         // **The two opcodes the 5.0 table was missing, and the reason they are asserted by number rather
         // than only counted.** The table landed at ten entries on the stated basis that this generation
         // publishes no byte for the 4.0's `abortHistoricalTransmits` or its `setReadPointer`. Both are
@@ -131,13 +143,31 @@ enum WhoopProtocolProfileTests {
                     + "0x6B ENABLE_OPTICAL_DATA, from docs/BLE_PROTOCOL.md §6 — got "
                     + "\(opcodes.map { "\($0.toggleIMUMode)/\($0.sendRealtimeMotion)/\($0.enableOpticalData)" } ?? "no table")")
             assertTest(
-                opcodes?.setClock == 0x0A && opcodes?.abortHistoricalTransmits == 0x14
+                opcodes?.setClock == 0x0A && opcodes?.getClock == 0x0B
+                    && opcodes?.abortHistoricalTransmits == 0x14
                     && opcodes?.setReadPointer == 0x21 && opcodes?.getDataRange == 0x22
                     && opcodes?.historicalDataResult == 0x17,
-                "The 4.0's drain group is 0x0A SET_CLOCK, 0x14 ABORT_HISTORICAL_TRANSMITS, 0x21 "
-                    + "SET_READ_POINTER, 0x22 GET_DATA_RANGE and 0x17 HISTORICAL_DATA_RESULT, from "
-                    + "docs/BLE_PROTOCOL.md §4 — these are the bytes the ACK loop and the clock set are built "
-                    + "from, and a transposed pair among them is a command that does something else")
+                "The 4.0's drain group is 0x0A SET_CLOCK, 0x0B GET_CLOCK, 0x14 "
+                    + "ABORT_HISTORICAL_TRANSMITS, 0x21 SET_READ_POINTER, 0x22 GET_DATA_RANGE and 0x17 "
+                    + "HISTORICAL_DATA_RESULT, from docs/BLE_PROTOCOL.md §4 — these are the bytes the ACK "
+                    + "loop and the clock pair are built from, and a transposed pair among them is a "
+                    + "command that does something else")
+            assertTest(
+                opcodes?.runHapticsPattern == 0x4F && opcodes?.hapticAlarm == 0x10,
+                "The 4.0's two haptic verbs are distinct: `0x10` is the alarm trigger and **79 `0x4F` "
+                    + "RUN_HAPTICS_PATTERN** plays a catalog pattern with a caller-chosen loop count. "
+                    + "One field standing for both would make the buzz an alarm — got "
+                    + "\(opcodes.map { "\($0.runHapticsPattern)/\($0.hapticAlarm)" } ?? "no table")")
+            let fiveHaptics = WhoopProtocolProfile.whoop5.syncOpcodes
+            assertTest(
+                fiveHaptics?.notifyHaptics == 0x13 && fiveHaptics?.toggleRealtimeHR == 0x03
+                    && fiveHaptics?.setClock == 0x0A && fiveHaptics?.getClock == 0x0B,
+                "The 5.0's haptics byte is **0x13**, a remap of catalog pattern 79 rather than that "
+                    + "number itself — an MG capture rejects 79 with result `0x03` — and its real-time "
+                    + "heart-rate enable is `0x03 TOGGLE_REALTIME_HR`, the byte a bonded 5.0 needs before "
+                    + "it streams. Its clock pair is 10/11, the same numbers the 4.0 uses under the other "
+                    + "envelope: a transposed or 4.0-borrowed clock here leaves the strap un-clocked, and "
+                    + "an un-clocked 5.0 banks no sensor data at all")
 
             // The enable sequence, as the manager sends it: three frames on enable, one on stop, in order.
             let enableFrames = WhoopPacketEncoder.motionEnableSequence(

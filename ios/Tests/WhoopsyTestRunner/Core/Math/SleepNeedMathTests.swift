@@ -23,6 +23,8 @@ enum SleepNeedTests {
         try await SleepExportProvenanceTests.run()
         try await RespiratoryRateMathTests.run()
         try await SleepDebtMathTests.run()
+        // Appended: this one is new rather than moved out of this section's original body.
+        try await AnalyzeSleepUseCaseTests.run()
     }
 
     // MARK: The synthetic tachogram, shared between the respiratory and the debt files

@@ -122,11 +122,28 @@ ambiguous. Revisit only after the never-mix rule is replaced.
 
 Strain is a continuous, non-linear metric reflecting both cardiovascular and muscular load. Whoopsy uses a modified **Borg-scale exponential integration model**, over the cardiovascular term alone:
 
-$$\text{Total Load} = \sum_{z=1}^5 w_z \Delta t_z$$
+$$\text{Total Load} = \underbrace{\sum_{z=1}^5 w_z \Delta t_z}_{\text{five zones}} \;+\; \underbrace{w_0 \, \Delta t_{\text{above rest, below zone 1}}}_{\text{low-intensity band, } w_0 = 1}$$
 
-$$\text{Daily Strain} = 21 \times \left(1 - e^{-k \cdot \text{Total Load}}\right)$$
+The low-intensity band is **not a sixth zone**: it credits a heart rate above resting but below zone 1's
+floor at weight 1.0 — WHOOP's disclosed weight-1 floor (`docs/PATENTS.md` §1) — while adding no zone
+time, so the five band percentages still sum to at most 100. Time at or below resting adds nothing.
 
-**There is no second term.** WHOOP's muscular load lives in a separate granted patent family (`docs/PATENTS.md` §1.4) and nothing here computes it: no `V_normalized`, no `w_muscular`, and no `w_cardio` either, since a single summed term needs no weight. Total Load is the zone integral and nothing else.
+**There is no muscular second term.** WHOOP's muscular load lives in a separate granted patent family (`docs/PATENTS.md` §1.4) and nothing here computes it: no `V_normalized`, no `w_muscular`, and no `w_cardio` either, since a single summed term needs no weight. Total Load is the cardiovascular integral and nothing else.
+
+**Load is scored through two curves, one per timescale.** A day spans ~16 waking hours and a session
+spans minutes, so one scaling constant cannot put both a quiet day near WHOOP's no-workout mean and a
+short light session at a sensible figure (a 1:48 time ratio). The two are fitted separately over the
+same weights:
+
+$$\text{Daily Strain} = 21 \times \left(1 - e^{-k_{\text{day}} \cdot L}\right), \quad k_{\text{day}} \approx 1.085 \times 10^{-5}$$
+
+$$\text{Session Strain} = 21 \times \left(1 - e^{-k_{\text{session}} \cdot L^{\,p}}\right), \quad k_{\text{session}} = 0.005,\; p = 0.55$$
+
+`CalculateStrainUseCase` scores a day with the first; `LiveSessionAccumulator` scores a session with the
+second. `k_day` is calibrated so a 16-hour quiet day (`57,600` weighted seconds) scores `≈ 9.8`, WHOOP's
+no-workout `Day Strain` mean; `k_session` and `p` are a grid fit to the 673 workouts in the bundled
+export (RMSE ≈ 2.17), and the sub-linear power `L^0.55` is what keeps a 20-minute light walk (load
+`≈ 1,200`) scoring `≈ 4.6` rather than the `≈ 0.3` the day's `k` would give it.
 
 ### Zone Weights ($w_z$)
 Heart rate is classified into 5 personalized zones based on Heart Rate Reserve ($\text{HRR} = \text{Max HR} - \text{Resting HR}$):
@@ -139,7 +156,9 @@ Heart rate is classified into 5 personalized zones based on Heart Rate Reserve (
 | **Zone 4** | 80% – 90% | $9.0$ | Anaerobic Capacity |
 | **Zone 5** | 90% – 100% | $16.0$ | Maximal Effort |
 
-Scaling constant $k \approx 0.000045$ is calibrated to bind the asymptotic ceiling cleanly to 21.0.
+Both curves asymptote to 21.0. `21` is WHOOP's disclosed display-scale multiplier; the two scaling
+constants and the `0.55` power are this app's own fitted values — `docs/PATENTS.md` §1.2 records the
+divergence, and §1.5 the `k_day` anchor against WHOOP's no-workout mean.
 
 **The table above is one of three readers of a single array, and the array is the definition.**
 `StrainAccumulatorMath.zoneReserveFractions` holds the five pairs; `computeZones` builds each zone's
@@ -1954,8 +1973,8 @@ accumulator and the detector have one input and no per-strap branch:
 | Frame | Generation | Layout | Transport |
 | :--- | :--- | :--- | :--- |
 | `0x2B` / 43 | 4.0 | R10, 1910 bytes | **live only** |
-| 43 | 5.0 / MG | R21, 1244 bytes | live |
-| 47 | 5.0 / MG | R21, 1244 bytes | **banked** (drained from flash) |
+| 43 | 5.0 / MG | R21, payload 1229 (frame 1244) | live |
+| 47 | 5.0 / MG | R21, payload 1229 (frame 1244) | **banked** (drained from flash) |
 
 The layouts are in `docs/BLE_PROTOCOL.md` §6 and are **frame-absolute**; the decoder subtracts the
 profile's payload origin. Only R21 carries the strap's own clock, which `MotionBatch.timestampIsFromStrap`

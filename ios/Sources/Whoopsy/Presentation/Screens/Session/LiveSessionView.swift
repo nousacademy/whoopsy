@@ -54,6 +54,13 @@ public struct LiveSessionView: View {
     /// instead of inheriting a silent drop.
     private let onEnded: (WorkoutSession) -> Void
 
+    /// The map surface the live map above END draws through, when the offline region is `.ready`.
+    ///
+    /// **Injected rather than defaulted**, on `ActivityDetailViewModel.offlineMaps`' rule: a defaulted
+    /// `UnavailableOfflineMaps` would let a real screen ship with the fallback and say so nowhere.
+    /// Threaded from `DIContainer` through `HomeDashboardView`, exactly as the detail page's copy is.
+    private let offlineMaps: any OfflineMapRendering
+
     /// Pops this page after the session has been ended and written.
     @Environment(\.dismiss) private var dismiss
 
@@ -65,8 +72,13 @@ public struct LiveSessionView: View {
     /// row. This flag is what keeps the button from being tappable during that window.
     @State private var isEnding = false
 
-    public init(useCase: LiveSessionUseCase, onEnded: @escaping (WorkoutSession) -> Void) {
+    public init(
+        useCase: LiveSessionUseCase,
+        offlineMaps: any OfflineMapRendering,
+        onEnded: @escaping (WorkoutSession) -> Void
+    ) {
         self.useCase = useCase
+        self.offlineMaps = offlineMaps
         self.onEnded = onEnded
     }
 
@@ -81,6 +93,7 @@ public struct LiveSessionView: View {
                 routeNote
                 offlineMapCard
                 offlineMapNote
+                liveMap
                 endButton
                 liveActivityNote
             }
@@ -540,11 +553,12 @@ public struct LiveSessionView: View {
 
     /// The second switch, and the one that exists because of a hike rather than a run.
     ///
-    /// **Independent of `RECORD ROUTE` and drawn as its own card**, which is the user's own ruling
-    /// rather than a layout choice. Either can be on without the other: a route with no offline map is
-    /// the ordinary case on a short run in a city, and an offline map with no route is a hiker who wants
-    /// the area cached but is not tracking the walk. Neither switch gates or moves the other, so this
-    /// one is not nested under `routeCard` and does not read its state.
+    /// **Mutually exclusive with `RECORD ROUTE`, and drawn as its own card** — the user's own ruling
+    /// rather than a layout choice. Either can be on, but never both: turning one on turns the other off,
+    /// so a route with no offline map is the ordinary case on a short run in a city, and an offline map
+    /// with no route is a hiker who wants the area cached but is not tracking the walk. The exclusivity is
+    /// the use case's rule (`setOfflineMap` and `setRouteRecording` stop the other before proceeding), so
+    /// this one is not nested under `routeCard` and does not read its state.
     ///
     /// **It is thrown before the signal goes, never in response to it.** There is no connectivity
     /// detection anywhere in this feature — the app has no networking code at all — so the decision is
@@ -640,6 +654,31 @@ public struct LiveSessionView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// The active map, drawn above END and only while one of the two switches has produced something to
+    /// show.
+    ///
+    /// **Route on draws the live path** — MapKit always, because exclusivity means the offline region is
+    /// never on at the same time. `ActivityRoute(points:)` is failable, so fewer than two plausible fixes
+    /// draw nothing rather than a map with a dot, which is the same "absence, not a dash" rule the other
+    /// cards follow.
+    ///
+    /// **Offline map on draws the downloaded area**, and only once the region is `.ready` — the seam's
+    /// contract is that `map(area:regionID:)` draws a region that is already on disk, so a `.downloading`
+    /// state must not reach it; the switch's own subtitle already reports the progress. Both halves carry
+    /// their own `SectionLabel`, so this view adds no chrome of its own.
+    @ViewBuilder
+    private var liveMap: some View {
+        if useCase.isRecordingRoute, let route = ActivityRoute(points: useCase.routePoints) {
+            ActivityRouteMapView(route: route)
+        } else if useCase.isOfflineMapRequested,
+                  useCase.offlineMapState == .ready,
+                  let regionID = useCase.offlineRegionID,
+                  let center = useCase.offlineRegionCenter,
+                  let area = ActivityOfflineArea(center: center) {
+            offlineMaps.map(area: area, regionID: regionID)
         }
     }
 

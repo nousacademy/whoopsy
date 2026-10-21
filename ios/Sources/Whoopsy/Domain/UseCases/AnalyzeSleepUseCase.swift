@@ -22,6 +22,29 @@ public final class AnalyzeSleepUseCase: Sendable {
     /// there is nothing to average, so the night is reported as absent rather than guessed at.
     static let minimumEpochSamples = 30
 
+    /// The span a night is read out of: **9 PM the previous evening to 10 AM**, which is *when the
+    /// strap might have been worn* rather than the night itself — `SleepOnsetMath` is what trims it to
+    /// the night inside that span.
+    ///
+    /// A pure function of its two arguments, and on the type for this repo's standing reason: the
+    /// runner has no renderer and the window is a rule, so it is asserted rather than trusted.
+    /// **Both ends are built from calendar components, never by adding hours to midnight.** Adding
+    /// `-11 h` to `startOfDay` lands at 1 PM the previous day, which is what this used to do — a
+    /// 21-hour window whose comment claimed 13, and the measured consequence was a real strap
+    /// reporting a night from **3:33 PM to 8:38 AM**. Hour arithmetic is wrong across a DST boundary
+    /// for the same reason it was wrong here: the clock time is the intent, so the clock time is what
+    /// is set.
+    public static func readWindow(
+        for morningDate: Date, calendar: Calendar = .current
+    ) -> (from: Date, to: Date) {
+        let morning = calendar.startOfDay(for: morningDate)
+        let previousEvening = calendar.date(byAdding: .day, value: -1, to: morning) ?? morning
+        let ninePM = calendar.date(bySettingHour: 21, minute: 0, second: 0, of: previousEvening)
+            ?? previousEvening
+        let tenAM = calendar.date(bySettingHour: 10, minute: 0, second: 0, of: morning) ?? morning
+        return (ninePM, tenAM)
+    }
+
     /// A night with too few samples is `nil` — no session is invented and **nothing is written**.
     ///
     /// The previous behaviour built an eight-hour night out of literals and saved it, so a strap
@@ -31,14 +54,39 @@ public final class AnalyzeSleepUseCase: Sendable {
     public func execute(for morningDate: Date = Date()) async throws -> SleepSession? {
         let profile = try await userProfileRepository.getUserProfile()
 
-        // Window: 9:00 PM previous evening to 10:00 AM current day
+        // Window: 9:00 PM previous evening to 10:00 AM current day — see `readWindow`, which is where
+        // the arithmetic lives because this line used to be `startOfDay − 11 h`, i.e. **1 PM the
+        // previous day**, and nothing but a user's own afternoon could see it. A strap worn at 3:33 PM
+        // on a quiet afternoon produced a night that began there, so the card read `3:33 PM → 8:38 AM`;
+        // the window was 21 hours wide while its own comment claimed 13.
         let calendar = Calendar.current
-        let prevEvening = calendar.date(byAdding: .hour, value: -11, to: morningDate.startOfDay) ?? morningDate
-        let morningEnd = calendar.date(byAdding: .hour, value: 10, to: morningDate.startOfDay) ?? morningDate
+        let window = Self.readWindow(for: morningDate, calendar: calendar)
+        let prevEvening = window.from
+        let morningEnd = window.to
 
         let samples = try await biometricRepository.getSamples(from: prevEvening, to: morningEnd)
 
-        guard samples.count >= Self.minimumEpochSamples else { return nil }
+        // **The two numbers that decide whether a night exists at all**, at `.notice` so they survive
+        // into a log archive: how many samples the window holds and where the first and last of them
+        // sit. A dash on the sleep card has three possible causes that look identical on the glass —
+        // no samples in the window, fewer than an epoch, or no sustained run — and only this line
+        // separates them.
+        let firstSample = samples.first?.timestamp.description ?? "none"
+        let lastSample = samples.last?.timestamp.description ?? "none"
+        AppLogger.algorithms.notice("""
+            Sleep analysis: window \(prevEvening.description, privacy: .public) → \
+            \(morningEnd.description, privacy: .public), samples=\(samples.count, privacy: .public), \
+            first=\(firstSample, privacy: .public), last=\(lastSample, privacy: .public)
+            """)
+
+        guard samples.count >= Self.minimumEpochSamples else {
+            let minimum = Self.minimumEpochSamples
+            AppLogger.algorithms.notice("""
+                Sleep analysis: absent — \(samples.count, privacy: .public) samples in the window, below \
+                the \(minimum, privacy: .public) an epoch needs.
+                """)
+            return nil
+        }
 
         // Classify 30-second epochs. Stages are assigned here and **nothing is summed**: the sums are
         // taken below, over the epochs the night actually holds, so a trim cannot leave a duration
@@ -48,6 +96,16 @@ public final class AnalyzeSleepUseCase: Sendable {
         let restHR = Double(profile.restingHeartRate)
 
         var epochs: [(start: Date, end: Date, stage: SleepStageType)] = []
+
+        // **One line an hour, and it is the instrument this model has never had.** Live samples from
+        // the standard heart-rate characteristic carry no accelerometer, so staging here is heart rate
+        // alone — and the one parameter deciding where a night starts is how far above resting an
+        // epoch's rate may sit before it counts as awake. That number has never been checked against a
+        // real wrist: on 2026-10-20 a strap reported a night beginning at **9:06 PM** for a wearer who
+        // went to sleep at **1 AM**, and nothing could say whether the 9 PM epochs sat 2 bpm above
+        // resting or 20. The curve is what the threshold gets chosen from.
+        var hourlyRates: [Int: [Int]] = [:]
+        var hourlyAccels: [Int: [Double]] = [:]
 
         for i in stride(from: 0, to: samples.count, by: strideSize) {
             let epochSamples = Array(samples[i..<min(i + strideSize, samples.count)])
@@ -86,6 +144,27 @@ public final class AnalyzeSleepUseCase: Sendable {
 
             epochs.append(
                 (start: firstEpochSample.timestamp, end: lastEpochSample.timestamp, stage: stage))
+
+            let hour = calendar.component(.hour, from: firstEpochSample.timestamp)
+            hourlyRates[hour, default: []].append(Int(avgEpochHR.rounded()))
+            if let avgAccel { hourlyAccels[hour, default: []].append(avgAccel) }
+        }
+
+        // The curve, one line an hour. `.notice` so it survives into a log archive read after the run;
+        // the ratio against the profile's resting rate is the number the onset threshold is expressed
+        // in, so it is printed beside the raw mean rather than left to be recomputed.
+        for hour in hourlyRates.keys.sorted() {
+            let rates = hourlyRates[hour]!.filter { $0 > 0 }
+            guard !rates.isEmpty else { continue }
+            let mean = rates.reduce(0, +) / rates.count
+            let ratio = String(format: "%.2f", Double(mean) / max(1, Double(profile.restingHeartRate)))
+            let accel = hourlyAccels[hour].map {
+                String(format: "%.3f", $0.reduce(0, +) / Double($0.count))
+            } ?? "none"
+            AppLogger.algorithms.notice("""
+                Sleep HR curve: \(hour, privacy: .public):00 mean=\(mean, privacy: .public) bpm \
+                (\(ratio, privacy: .public)×resting), accel=\(accel, privacy: .public)
+                """)
         }
 
         // ── Where the night begins and ends ──────────────────────────────────────────────────────
@@ -102,7 +181,15 @@ public final class AnalyzeSleepUseCase: Sendable {
         // enough to average, this one whether there is a night here at all.
         guard let period = SleepOnsetMath.sleepPeriod(of: epochs.map {
             SleepOnsetMath.Epoch(start: $0.start, end: $0.end, isAsleep: $0.stage != .awake)
-        }) else { return nil }
+        }) else {
+            let asleep = epochs.filter { $0.stage != .awake }.count
+            AppLogger.algorithms.notice("""
+                Sleep analysis: absent — \(epochs.count, privacy: .public) epochs, \
+                \(asleep, privacy: .public) not awake, and no run reaching \
+                \(Int(SleepOnsetMath.minimumSleepRunSeconds), privacy: .public) s.
+                """)
+            return nil
+        }
 
         // The epochs the detected span contains. Awake epochs **between** the two ends are kept — that
         // is wake inside the sleep period, not edge time — and only what falls outside the span goes.

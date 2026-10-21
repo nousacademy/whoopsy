@@ -6,6 +6,20 @@ import Whoopsy
 /// A file of §13's body, cut at the section's own `── Title` boundary and moved verbatim.
 /// `SleepNeedTests.run()` calls it, in the order the section ran it in.
 enum SleepOnsetMathTests {
+    /// The anchor every fixture in this file starts from: **9 PM the previous evening**, the onset of
+    /// the read window `AnalyzeSleepUseCase` reads a night out of.
+    ///
+    /// **It used to be `morning − 10 h` — 2 PM — because the window itself was `startOfDay − 11 h`,
+    /// which is 1 PM.** The fixtures were written to fit the bug, so correcting the window turned
+    /// every one of them into samples the read never returned and the use case answered `nil`. A
+    /// fixture that only fits a window whose own comment says something else is not evidence about
+    /// the window; anchoring on the stated clock time is what makes it evidence.
+    private static func nightBase(morning: Date, calendar: Calendar) -> Date {
+        let previousEvening = calendar.date(byAdding: .day, value: -1, to: morning) ?? morning
+        return calendar.date(bySettingHour: 21, minute: 0, second: 0, of: previousEvening)
+            ?? previousEvening
+    }
+
     static func run() async throws {
         // ── Where a strap night begins and ends ──────────────────────────────────────────────────────
         //
@@ -145,11 +159,19 @@ enum SleepOnsetMathTests {
                 let db = LocalDatabaseManager(inMemory: true)
                 let sleepRepository = GRDBSleepRepository(db: db)
 
-                // Ten awake epochs, four asleep, ten awake — one minute apart, so the window is twelve
-                // hours and the night inside it is two. Epoch k spans samples [30k, 30k+29], which puts
-                // the first asleep epoch's start at +18,000 s and the last one's end at +25,140 s; the
-                // untrimmed span would have been 0 → +43,140.
-                let base = morning.addingTimeInterval(-10 * 3600)
+                // Ten awake epochs, four asleep, ten awake — one minute apart, so the fixture spans
+                // twelve hours and the night inside it is two. Epoch k spans samples [30k, 30k+29],
+                // which puts the first asleep epoch's start at +18,000 s and the last one's end at
+                // +25,140 s; the untrimmed span would have been 0 → +43,140.
+                //
+                // **`base` is 9 PM the previous evening, and that is not arbitrary.** It used to be
+                // `morning − 10 h` — 2 PM — because the read window was `startOfDay − 11 h`, which is
+                // 1 PM: the fixture was written to fit the bug. With the window corrected to the
+                // 9 PM → 10 AM its own comment always claimed, a 2 PM fixture is outside the read and
+                // the use case returns `nil`, which is exactly the failure this block's first
+                // assertion reports. Twelve hours from 21:00 ends at 09:00, inside the window's 10 AM
+                // close, so every offset below is unchanged.
+                let base = Self.nightBase(morning: morning, calendar: calendar)
                 let samples = night(
                     Array(repeating: awake, count: 10)
                         + Array(repeating: deep, count: 4)
@@ -210,7 +232,7 @@ enum SleepOnsetMathTests {
                 let calendar = Calendar.current
                 let morning = calendar.startOfDay(for: Date())
                 let db = LocalDatabaseManager(inMemory: true)
-                let base = morning.addingTimeInterval(-10 * 3600)
+                let base = Self.nightBase(morning: morning, calendar: calendar)
 
                 // The same ten/four/ten shape, built with no `accelerometer*` argument at all.
                 let withoutMotion: [BiometricSample] = [awake, awake, awake, awake, awake, awake, awake,
@@ -264,7 +286,7 @@ enum SleepOnsetMathTests {
             do {
                 let calendar = Calendar.current
                 let morning = calendar.startOfDay(for: Date())
-                let base = morning.addingTimeInterval(-10 * 3600)
+                let base = Self.nightBase(morning: morning, calendar: calendar)
 
                 func store(_ samples: [BiometricSample]) async throws -> SleepSession? {
                     let db = LocalDatabaseManager(inMemory: true)

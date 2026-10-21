@@ -50,11 +50,17 @@ public enum OfflineMapState: Equatable, Sendable {
     case failed(String)
 }
 
-/// Which renderer a session's route card draws with.
+/// Which renderer a session's map card draws with — the route card when it has a route, and the area
+/// card when it downloaded a region and recorded none.
 ///
 /// **A decision, and the only place it is made.** The view model resolves one of these once and the view
 /// switches on it, so the rule cannot be restated — and mis-stated — inside a `body`, which is this
 /// repo's standing arrangement for anything the runner is supposed to be able to check.
+///
+/// **Both cards read the same decision, and must.** The question is *are this session's tiles drawable
+/// offline*, and it does not become a different question when the session happens to have a path — so a
+/// `.ready` region draws Mapbox for either card and every other state draws MapKit for either. Two
+/// resolutions would be two chances for one page to draw tiles and the other to draw a blank frame.
 public enum RouteMapRenderer: Equatable, Sendable {
 
     /// The iOS map — `ActivityRouteMapView`, exactly as this page has always drawn it.
@@ -101,9 +107,10 @@ public enum RouteMapRenderer: Equatable, Sendable {
 ///
 /// So the seam is split along the line that was already there. Everything here is expressible in
 /// `Foundation`: a `Bool`, a value type, two `Double`s and a `String`. `OfflineMapRendering` in
-/// `Presentation` refines it with the one method that needs `SwiftUI` — `map(route:unit:regionID:)`,
-/// returning `AnyView` and taking `ActivityRoute`. The use case never sees that half, and the view
-/// never sees this one without it.
+/// `Presentation` refines it with the two methods that need `SwiftUI` — `map(route:unit:regionID:)` and
+/// `map(area:regionID:)`, both returning `AnyView` — because `ActivityRoute` and `ActivityOfflineArea`
+/// are `Presentation` types. The use case never sees that half, and the view never sees this one without
+/// it.
 ///
 /// `@MainActor` for `CoreLocationTrackingService`'s reason: this is a stateful capability service whose
 /// callbacks land on the main actor, and `@Observable` view models call it from there.
@@ -121,6 +128,11 @@ public protocol OfflineMapServing: AnyObject, Sendable {
     func state(for regionID: String) -> OfflineMapState
 
     /// Downloads a tile region covering a radius around a point, while the user still has signal.
+    ///
+    /// **The radius is ``OfflineMapCoverage/radiusMeters`` and the card's frame is fitted inside it.**
+    /// `ActivityOfflineArea` sizes the area card's box against the same number, so a downloaded region
+    /// and the ground its card draws cannot disagree — the downloader's implementation builds its
+    /// polygon from it rather than keeping a literal of its own.
     ///
     /// The centre is a plain coordinate pair rather than a value type, because the caller is
     /// `LiveSessionUseCase` holding a first GPS fix and this protocol must not drag `ActivityRoute` —

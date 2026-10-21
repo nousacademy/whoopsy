@@ -79,5 +79,49 @@ enum StepCountPersistenceTests {
         } catch {
             assertTest(false, "The step store threw: \(error)")
         }
+
+        // ---- v24: a row a lost RTC mislabelled is moved onto the day being repaired ----
+        //
+        // **This block is the postmortem of a real bug, not a hypothetical.** A 5.0 whose clock was
+        // reset stamped every live motion record with 2000-01-03, and the day counter filed 22,702
+        // real steps under it; no screen draws that day, so Home's tile read `—` while the counter
+        // worked. `MotionPayloadDecoder` now keys a live record on its arrival instant, which fixes
+        // every row *after* the change — and this repair is what recovers the rows already on disk.
+        //
+        // The migration cannot assert itself (it runs before any row exists), so the rule is driven
+        // through the public seam the migration calls.
+        do {
+            let db = LocalDatabaseManager(inMemory: true)
+            let repository = GRDBStepRepository(db: db)
+            let today = Calendar.current.startOfDay(for: Date())
+            let mislabelled = Calendar.current.date(from: DateComponents(year: 2000, month: 1, day: 3))!
+
+            // A real walk filed on the wrong day, and a real row already on the right one — the
+            // merge case, which is the one that could silently delete steps.
+            try await repository.saveStepCount(
+                StepCount(date: mislabelled, stepCount: 22_702, measuredSeconds: 900))
+            try await repository.saveStepCount(
+                StepCount(date: today, stepCount: 100, measuredSeconds: 60))
+
+            let moved = try db.rekeyMislabelledStepDays(onto: today)
+            let repaired = try await repository.getStepCount(for: today)
+
+            assertTest(moved == 1, "One mislabelled row is found and moved (\(moved))")
+            assertTest(
+                repaired?.stepCount == 22_802 && repaired?.measuredSeconds == 960,
+                "…and it is **summed onto** the day being repaired rather than overwriting it: both "
+                    + "rows are real motion, so 22,702 + 100 steps and 900 + 60 measured seconds "
+                    + "(\(String(describing: repaired)))")
+            assertTest(
+                try await repository.getStepCount(for: mislabelled) == nil,
+                "…and the 2000 row is gone, so a later scan of the table cannot find it again — this "
+                    + "repair is a move, not a copy")
+            assertTest(
+                try db.rekeyMislabelledStepDays(onto: today) == 0,
+                "A second run finds nothing and moves nothing, which is what makes the migration safe "
+                    + "to be the caller: a database with no pre-2020 row is left alone")
+        } catch {
+            assertTest(false, "The v24 step repair threw: \(error)")
+        }
     }
 }

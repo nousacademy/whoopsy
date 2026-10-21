@@ -27,6 +27,7 @@ final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Se
     private let lock = NSLock()
     private var continuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
     private var motionContinuations: [UUID: AsyncStream<MotionBatch>.Continuation] = [:]
+    private var historicalContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
 
     /// Registers one telemetry continuation under a fresh `UUID` and arranges for its removal.
     ///
@@ -70,6 +71,32 @@ final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Se
         AsyncStream { continuation in register(continuation) }
     }
 
+    /// The drain's stream, registered like the other two and **finished by `requestHistoricalSync`** —
+    /// that is the contract `SyncHistoricalDataUseCase` relies on: the consumer it starts is joined
+    /// with `await`, so a fixture whose stream never ended would hang the sync rather than test it.
+    var historicalTelemetryStream: AsyncStream<BiometricSample> {
+        AsyncStream { continuation in
+            let id = UUID()
+            lock.lock()
+            historicalContinuations[id] = continuation
+            lock.unlock()
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                self.lock.lock()
+                self.historicalContinuations[id] = nil
+                self.lock.unlock()
+            }
+        }
+    }
+
+    /// Delivers one sample to every attached drain reader.
+    func yieldHistorical(_ sample: BiometricSample) {
+        lock.lock()
+        let readers = Array(historicalContinuations.values)
+        lock.unlock()
+        for reader in readers { reader.yield(sample) }
+    }
+
     /// How many readers are attached. `0` after a session ends is the assertion; `1` before the first
     /// sample is the barrier.
     var subscriberCount: Int {
@@ -109,6 +136,8 @@ final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Se
     /// Never reached: the foreground re-arm lives on `MainContainerView`, and a session has no scene.
     func rearmConnection() async {}
     func sendHapticAlert(durationSeconds: Int, pattern: Int) async throws {}
+    /// Never reached: a reboot is a device-page action and this fixture has no strap to restart.
+    func rebootStrap() async throws {}
     func getCurrentDevice() async -> WhoopDevice? { nil }
     func refreshStrapModel() async {}
 
@@ -118,7 +147,14 @@ final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Se
     func requestHistoricalSync(from startDate: Date, to endDate: Date) async throws
         -> HistoricalSyncOutcome
     {
-        HistoricalSyncOutcome(recordCount: 0, batchCount: 0, ending: .aborted)
+        // Ends the drain's stream, exactly as `WhoopBLEManager.concludeDrain` does. Without this a
+        // caller that joins its consumer would wait forever on a signal no real manager withholds.
+        lock.lock()
+        let readers = Array(historicalContinuations.values)
+        historicalContinuations.removeAll()
+        lock.unlock()
+        for reader in readers { reader.finish() }
+        return HistoricalSyncOutcome(recordCount: 0, batchCount: 0, ending: .aborted)
     }
 }
 
@@ -352,6 +388,11 @@ final class SpyOfflineMaps: OfflineMapRendering {
     /// `EmptyView` keeps the spy honest about what the branch it stands for draws.
     func map(route: ActivityRoute, unit: ActivityRoute.Unit, regionID: String) -> AnyView {
         AnyView(ActivityRouteMapView(route: route, unit: unit))
+    }
+
+    /// The area card's MapKit fallback, on the same honest-stand-in rule. Also never evaluated here.
+    func map(area: ActivityOfflineArea, regionID: String) -> AnyView {
+        AnyView(ActivityOfflineAreaMapView(area: area))
     }
 }
 

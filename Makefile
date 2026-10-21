@@ -3,6 +3,7 @@
 #   make test                 # build + run all 20 sections
 #   make test SECTIONS=13,15  # just those two
 #   make ios                  # the real iOS build path
+#   make ipa                  # build + package tmp/whoopsy.ipa for Sideloadly (overwrites)
 #   make verify               # build + test + ios — the pair CLAUDE.md insists on
 #   make backend-check        # the Worker's own gate — NOT part of `verify`
 #
@@ -10,7 +11,7 @@
 # a different compiler invocation entirely: a green iOS build is not a green host build, and vice
 # versa, which is why `verify` runs both.
 
-.PHONY: build test ios verify backend-check clean
+.PHONY: build test ios ipa verify backend-check clean
 
 SECTIONS ?=
 
@@ -33,6 +34,19 @@ ios:
 	  -destination 'generic/platform=iOS' \
 	  -derivedDataPath $(CURDIR)/tmp/build/whoopsy-dd \
 	  CODE_SIGNING_ALLOWED=NO build
+
+# Packages the unsigned device build as `tmp/whoopsy.ipa` for Sideloadly, overwriting whatever is
+# already there. The name is fixed on purpose: a stable path is what Sideloadly re-signs without the
+# user re-picking the file each time, and `xattr -cr` stops zip from writing `__MACOSX`/`._` AppleDouble
+# entries that a strict unzip chokes on. The bundle stays unsigned — Sideloadly signs it with the
+# owner's free Apple ID, so nothing here raises signing or a DEVELOPMENT_TEAM.
+ipa: ios
+	rm -rf $(CURDIR)/tmp/build/ipa-payload
+	mkdir -p $(CURDIR)/tmp/build/ipa-payload/Payload
+	cp -R $(CURDIR)/tmp/build/whoopsy-dd/Build/Products/Debug-iphoneos/WhoopsyApp.app $(CURDIR)/tmp/build/ipa-payload/Payload/
+	xattr -cr $(CURDIR)/tmp/build/ipa-payload/Payload/WhoopsyApp.app
+	rm -f $(CURDIR)/tmp/whoopsy.ipa
+	cd $(CURDIR)/tmp/build/ipa-payload && zip -qr $(CURDIR)/tmp/whoopsy.ipa Payload
 
 verify: build test ios
 

@@ -1,5 +1,6 @@
 import Foundation
 import MapboxMaps
+import Whoopsy
 
 /// The one place Mapbox is configured, and the only place its three settings are stated.
 ///
@@ -94,7 +95,37 @@ enum MapboxSetup {
     /// The user's own number — *"can we download 10 mile radius for offline version"* — kept as a radius
     /// around a point rather than a bounding box because that is the shape `Polygon(center:radius:)`
     /// takes and the shape the request was made in.
-    static let radiusMeters: Double = 16_093
+    ///
+    /// **Forwarded from `OfflineMapCoverage.radiusMeters` rather than written down a second time.** The
+    /// card with no route frames a box *inside* the circle this number describes (`ActivityOfflineArea`),
+    /// and `Presentation` cannot name this file — so the one value lives in `Domain` and this is the SDK
+    /// half reading it. Two literals here would let a card frame ground the download never covered.
+    static var radiusMeters: Double { OfflineMapCoverage.radiusMeters }
+
+    /// The card's whole gesture set, turned off by name.
+    ///
+    /// **`GestureOptions` and not `.allowsHitTesting(false)`**, because Mapbox draws its logo and its
+    /// attribution button *inside* the map view and the licence requires that link to be reachable;
+    /// disabling hit testing would leave the attribution drawn but dead. The reasoning in full is on
+    /// `MapboxRouteMapView`.
+    ///
+    /// **One value for both cards**: the route surface and the area surface are the same map with and
+    /// without a path on it, and a gesture switched off for one must be off for the other — a map that
+    /// pans inside a card inside a page is the conflict this exists to prevent, and it would not stop
+    /// being one because the session happened to record no route.
+    static var cardGestures: GestureOptions {
+        GestureOptions(
+            panEnabled: false,
+            pinchEnabled: false,
+            rotateEnabled: false,
+            simultaneousRotateAndPinchZoomEnabled: false,
+            pinchZoomEnabled: false,
+            pinchPanEnabled: false,
+            pitchEnabled: false,
+            doubleTapToZoomInEnabled: false,
+            doubleTouchToZoomOutEnabled: false,
+            quickZoomEnabled: false)
+    }
 
     /// The keys Mapbox stores alongside a region and a style pack. Metadata is Mapbox's own field and
     /// this app writes exactly one pair into it.

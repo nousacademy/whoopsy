@@ -16,26 +16,26 @@ import SwiftUI
 ///
 /// ## What it will not draw
 ///
-/// Three figures the reference carries have **no producer in this app**, and each renders the dash
-/// instead — `ActivityFigure.dash`, the app's one `—` literal:
+/// One figure the reference carries has **no producer in this app**, and it renders the dash instead —
+/// `ActivityFigure.dash`, the app's one `—` literal:
 ///
-/// - **Firmware** is a permanent dash. `WhoopDevice.firmwareVersion` is defaulted to the constant
-///   `"41.14.2.0"` and `WhoopBLEManager.resolvedDevice` only ever propagates it, so a real strap's
-///   device carries the default and printing it would print a number this app wrote down. Both of the
-///   screens this page replaced printed exactly that. Making it a dash is the point rather than a
-///   regression: the firmware version is load-bearing here, because `SET_CLOCK`'s payload length is
-///   firmware-specific and a wrong-length set is acknowledged but never latched
-///   (`docs/BLE_PROTOCOL.md` §5) — so "unknown" is the informative answer.
 /// - **The reference's red cloud-X** depicts *sync failed*, which nothing on this page can detect.
 ///   What the page can say is *nothing has ever arrived from the strap*, so the mark is drawn exactly
 ///   when `lastSync == nil` and it means that.
 ///
+/// **Firmware is a reading now, not a permanent dash.** The strap's Device Information Service carries
+/// it in `2A26`, `WhoopBLEManager` reads that post-bond, and `WhoopDevice.firmwareVersion` is what the
+/// read fills. The entity's former default — the literal `"41.14.2.0"` — is gone, so an unread value is
+/// `nil` and the dash means *not read yet* rather than *a number this app wrote down*. It still matters
+/// that the answer is honest: `SET_CLOCK`'s payload length is firmware-specific and a wrong-length set
+/// is acknowledged but never latched (`docs/BLE_PROTOCOL.md` §5), so "unknown" is informative.
+///
 /// The two facts beside it are **not** dashes, and the difference is a producer rather than a
 /// preference. `DEVICE ID` is `WhoopDevice.id` — the CoreBluetooth peripheral identifier, written at
 /// discovery and the key the model choice is stored against, so it names the strap this app is
-/// actually looking at. `SIGNAL` is the advertisement's RSSI. **`serialNumber`, which the reference's
-/// rows imply, is the one that stays absent**: it is `String?`, no code path assigns it, and
-/// `DEVICE ID` is drawn from the identifier this app has rather than from the one it does not.
+/// actually looking at. `SIGNAL` is the advertisement's RSSI. **`serialNumber` now has a producer** —
+/// DIS `2A25`, stored on the device and logged — but the facts row is deliberately three columns, and
+/// a fourth would squeeze the 36-character identifier, so it is not drawn here.
 ///
 /// ## The ADVANCED tab
 ///
@@ -45,11 +45,12 @@ import SwiftUI
 /// pairing control **moved down from STATUS**, which is the reference's own placement — and it moved
 /// rather than being copied, so there is still one definition of it and one place the reader can be.
 ///
-/// **The row carries three facts where the reference carries two**, and `SIGNAL` is the addition. It
-/// is the only item in the row whose value this app actually reads: firmware is permanently absent and
-/// the device identifier is absent until a strap is discovered, so a row built to the reference's two
-/// would be two dashes with the app's one live diagnostic deleted from the page it belongs on. The
-/// reference's row is the shape and this is the same shape with the strap facts this app has.
+/// **The row carries three facts where the reference carries two**, and `SIGNAL` is the addition. All
+/// three now have a producer — the identifier at discovery, firmware from the strap's Device
+/// Information Service, RSSI from the advertisement — but `SIGNAL` remains the only one that is a
+/// *live* diagnostic rather than a stored fact, and deleting it for the reference's two would leave
+/// the page with no reading of the link at all. The reference's row is the shape and this is the same
+/// shape with the strap facts this app has.
 ///
 /// **`UNPAIR DEVICE` is a disconnect and not a forget, and its caption says so.** There is no forget
 /// path anywhere in this app — `WhoopBLEManager.didDiscover` links to the first matching peripheral
@@ -96,6 +97,9 @@ public struct DeviceSettingsView: View {
     /// Which tab is showing. A `@State` because it is the screen's own, and a `Tab` value rather than
     /// an `Int` so the two cases are the only two there are.
     @State private var tab: Tab = .status
+
+    /// Whether the reboot confirmation is up. See `rebootSection`.
+    @State private var isConfirmingReboot = false
 
     public init(viewModel: DeviceViewModel) {
         _viewModel = State(initialValue: viewModel)
@@ -235,6 +239,35 @@ public struct DeviceSettingsView: View {
         return "\(instant.formattedShortDate()) · \(instant.formattedHourMinute())"
     }
 
+    /// How long a live reading stays on this page as a reading.
+    ///
+    /// **A heart rate is a claim about *now*, and the page must stop making it when the strap stops
+    /// talking.** The last notification is all this app knows: holding "62 bpm" on screen after the
+    /// stream fell silent would show a pulse that may have ended — the same fabrication class as a
+    /// defaulted battery percentage, in the one figure where it could alarm someone. Thirty seconds
+    /// is longer than any plausible gap between the two known producers (the 4.0's `0x2A37` and the
+    /// 5.0's packet 40, both roughly one notification a second) and short enough that a strap taken
+    /// off the wrist stops drawing a heartbeat promptly.
+    public static let liveHeartRateFreshness: TimeInterval = 30
+
+    /// What the LIVE HEART RATE row reads — the pulse, or the dash.
+    ///
+    /// `nil` rate, `nil` instant, and a rate older than `liveHeartRateFreshness` all draw the dash.
+    /// A static over plain values so §14 can assert the arms with no view model, a clock, or a strap,
+    /// the same shape `lastSyncText(_:)` and `batteryText(for:)` take.
+    public nonisolated static func liveHeartRateText(
+        _ heartRate: Int?,
+        at instant: Date?,
+        now: Date
+    ) -> String {
+        guard let heartRate, let instant,
+              now.timeIntervalSince(instant) <= liveHeartRateFreshness
+        else {
+            return ActivityFigure.dash
+        }
+        return "\(heartRate) bpm"
+    }
+
     /// The facts the ADVANCED tab draws as one row of marks.
     ///
     /// A `CaseIterable` enum rather than three literals in a `body`, following `Tab` above and
@@ -242,15 +275,14 @@ public struct DeviceSettingsView: View {
     /// the labels' words and their order are the drawing and nothing else can check them.
     ///
     /// **The row carries three where the reference carries two, and `SIGNAL` is the third.** The
-    /// reference's two are a device identifier and a firmware version; firmware has no producer in this
-    /// app at all (see [`factValue`]) and the identifier only appears once a strap is discovered, so a
-    /// row built to the reference's two would be two dashes on a fresh install with the app's one live
-    /// diagnostic deleted from the page it belongs on. `SIGNAL` is that diagnostic — a real reading off
-    /// the advertisement — so it stays, and it is a one-line deletion if the reference is preferred.
+    /// reference's two are a device identifier and a firmware version; both have producers now (see
+    /// [`factValue`]), but each is a fact the strap told this app once, while `SIGNAL` is the one live
+    /// diagnostic — a reading off the advertisement — and deleting it for the reference's two would
+    /// leave the page with no reading of the link at all.
     ///
     /// **`FRAMEWORK`, `SERIAL` and the rest of the reference's rows are absent rather than dashed
-    /// here**, which is a different thing from how they would be drawn: adding a case for a figure with
-    /// no producer would put a fourth permanent `—` in a row that already has one.
+    /// here.** `SERIAL` now has a producer — DIS `2A25` — but the row is deliberately three columns and
+    /// a fourth would squeeze the 36-character identifier, so it is stored and logged rather than drawn.
     public enum DeviceFact: String, CaseIterable, Identifiable, Sendable {
         case deviceId = "DEVICE ID"
         case firmware = "FIRMWARE"
@@ -308,12 +340,15 @@ public struct DeviceSettingsView: View {
             // choice is stored against, so it names the strap rather than describing it.
             return named(device)?.id ?? ActivityFigure.dash
         case .firmware:
-            // **Always the dash, on every device, connected or not.** `WhoopDevice.firmwareVersion` is
-            // `String?` defaulted to the constant `"41.14.2.0"`, and `resolvedDevice` only ever
-            // propagates it — so the field holds that literal on a real strap and returning it would
-            // print a number this app wrote down. Reading nothing is the honest answer, and it is
-            // informative rather than apologetic because the clock-set payload is firmware-specific.
-            return ActivityFigure.dash
+            // **The strap's own `2A26`, or the dash until it has been read.** `WhoopDevice` no longer
+            // defaults the field to a literal, so an absent version is `nil` and the dash means *not
+            // read yet* rather than a number this app wrote down. An empty string is treated the same
+            // way: `DeviceInformationPayload` refuses one, but the guard keeps a hand-built device from
+            // printing a blank where the row's dash belongs.
+            guard let version = named(device)?.firmwareVersion, !version.isEmpty else {
+                return ActivityFigure.dash
+            }
+            return version
         case .signal:
             guard let rssi = named(device)?.signalStrengthRssi else { return ActivityFigure.dash }
             return "\(rssi) dBm"
@@ -329,8 +364,9 @@ public struct DeviceSettingsView: View {
     ///
     /// **The comment here used to claim this was "the same three-way split
     /// `HomeDashboardView.connectionColor` makes", and no such property exists.** Home's badge is a dot
-    /// on a strap glyph and it answers a two-way question — `WhoopConnectionState.linkColor`, which is
-    /// right for a 7 pt dot and wrong for a title, since it paints `.scanning` and `.connecting` red.
+    /// on a strap glyph and it answers a three-way question — `WhoopConnectionState.linkColor`, which is
+    /// right for a 7 pt dot and wrong for a title, since it paints `.scanning` and `.connecting` red and
+    /// `.disconnected` yellow, where the title below draws those three states differently.
     /// The two are deliberately different rules over the same state and neither should be described as
     /// the other.
     private var stateInk: Color {
@@ -490,6 +526,16 @@ public struct DeviceSettingsView: View {
     private var statusSections: some View {
         captionSection
 
+        // **The page's one live measurement.** Everything else here describes the link or reports a
+        // past action; this is the strap's current pulse, and it is the surface that shows the two
+        // heart-rate producers working — `0x2A37` on a 4.0, packet 40 on a 5.0/MG once
+        // `0x03 TOGGLE_REALTIME_HR` has been armed.
+        Section {
+            liveHeartRateRow
+        } footer: {
+            Text("A figure appears while the strap is sending live data and clears after 30 seconds without one. History recovered in the flash sync is not a pulse and never appears here.")
+        }
+
         Section {
             Button {
                 Task { await viewModel.syncNow() }
@@ -511,6 +557,35 @@ public struct DeviceSettingsView: View {
                     .foregroundStyle(Theme.textSecondary)
             }
         }
+    }
+
+    /// The live pulse, or the dash.
+    ///
+    /// **A `TimelineView` rather than a plain read of `Date()`**, because the freshness rule has to
+    /// expire on its own: SwiftUI re-evaluates this body when the view model changes, and a stream
+    /// that simply stops produces no change — so a figure drawn once would stay on screen forever,
+    /// past the exact moment its honesty ended. The five-second cadence is coarser than the thirty
+    /// the gate allows, so the dash can arrive up to five seconds late, which is the right direction
+    /// to be wrong in.
+    private var liveHeartRateRow: some View {
+        HStack {
+            Text("LIVE HEART RATE")
+                .font(.caption2.weight(.semibold))
+                .tracking(0.9)
+                .foregroundStyle(Theme.textMuted)
+            Spacer()
+            TimelineView(.periodic(from: Date(), by: 5)) { context in
+                let text = Self.liveHeartRateText(
+                    viewModel.liveHeartRate, at: viewModel.liveHeartRateAt, now: context.date)
+                Text(text)
+                    .font(.footnote.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(text == ActivityFigure.dash ? Theme.textMuted : Theme.textPrimary)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(
+            "Live heart rate \(Self.liveHeartRateText(viewModel.liveHeartRate, at: viewModel.liveHeartRateAt, now: Date()))"))
     }
 
     /// The strap, a dashed line to where it leads, and the state in words.
@@ -673,14 +748,62 @@ public struct DeviceSettingsView: View {
     /// **`DIAGNOSTICS` is now `deviceFactsSection`, and the row replaced the section rather than joining
     /// it.** Both drew `FIRMWARE` and `SIGNAL`, and two renderings of one reading on one screen is the
     /// drift `DeviceFact` exists to prevent — so the labelled rows went and the marks are what is left.
-    /// `SERIAL` went with them: it was a third permanent dash in a section that already had two, and the
-    /// reference's row has no serial in it.
+    /// `SERIAL` went with them: the reference's row has no serial in it, and the row here is three
+    /// columns. Serial is now read off DIS `2A25` and logged; nothing draws it.
+    /// **`REBOOT STRAP` — the recovery for a strap that stopped recording.** It exists because of a
+    /// measured state rather than as a nicety: the owner's 5.0 held a flash recording from
+    /// `2026-08-24` and nothing later, and a strap whose RTC was lost is documented to stop writing
+    /// history entirely. A reboot is the documented way to re-initialise that path and it erases
+    /// nothing, so it sits here beside the pairing controls as the other thing that acts on the
+    /// hardware rather than on this app's opinion of it.
+    ///
+    /// It is **gated on a live link**, like `UNPAIR DEVICE`: a command needs somewhere to go. The
+    /// confirmation is a dialog rather than a second tap, because the link visibly drops when it
+    /// lands.
+    private var rebootSection: some View {
+        Section {
+            Button {
+                isConfirmingReboot = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("REBOOT STRAP")
+                        .font(.subheadline.weight(.bold))
+                        .tracking(0.7)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(Theme.textPrimary)
+                .opacity(viewModel.isConnected ? 1 : 0.55)
+                .frame(maxWidth: .infinity)
+                .glassCard(cornerRadius: 14, padding: 16)
+            }
+            .buttonStyle(.plain)
+            .disabled(!viewModel.isConnected)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
+        } footer: {
+            Text("Restarts the strap's firmware. The Bluetooth link drops and reconnects on its own. Nothing is erased — this is the documented recovery when a strap stops recording history.")
+        }
+        .confirmationDialog(
+            "Restart the strap?",
+            isPresented: $isConfirmingReboot,
+            titleVisibility: .visible
+        ) {
+            Button("Reboot strap") { Task { await viewModel.rebootStrap() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The link drops while the strap restarts, then reconnects.")
+        }
+    }
+
     @ViewBuilder
     private var advancedSections: some View {
         deviceFactsSection
 
         pairSection
         unpairSection
+        rebootSection
 
         modelSection
         protocolSection
@@ -716,7 +839,7 @@ public struct DeviceSettingsView: View {
             .listRowInsets(EdgeInsets(top: 18, leading: 16, bottom: 14, trailing: 16))
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Firmware comes from the strap's Device Information Service, which this app does not read yet — so it is a dash rather than the defaulted constant the entity carries. That is not a cosmetic gap: the clock-set payload is firmware-specific, and a wrong-length set is accepted but never latched.")
+                Text("Firmware is read from the strap's Device Information Service (2A26) once the link is bonded. It is a dash until the strap answers, and it is worth having: the clock-set payload is firmware-specific, and a wrong-length set is accepted but never latched.")
                 Text("Signal is the advertisement's RSSI as read when the strap was found. Nothing refreshes it while connected, so it describes discovery rather than the link's quality now.")
             }
         }

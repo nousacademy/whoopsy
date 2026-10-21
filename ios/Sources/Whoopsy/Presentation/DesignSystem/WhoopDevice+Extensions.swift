@@ -38,7 +38,10 @@ import Foundation
 extension WhoopDevice {
     /// The strap's battery as this app is allowed to print it, or `nil` when no figure may be drawn.
     public var batteryReading: String? {
-        guard connectionState == .connected else { return nil }
+        // **Two gates, and the second is the one that was missing.** `batteryIsMeasured` is what
+        // separates a `0x2A19` answer from the literal `100` every `WhoopDevice` starts with; without
+        // it a connected strap that had never answered a battery read drew a confident `100%`.
+        guard connectionState == .connected, batteryIsMeasured else { return nil }
         return "\(batteryPercentage)%"
     }
 }

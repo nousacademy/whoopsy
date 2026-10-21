@@ -36,5 +36,14 @@ import SwiftUI
 
     public func load() async { preferences = await repository.load() }
 
-    public func save() async { await repository.save(preferences) }
+    /// Saves, then tells the diagnostics sink where the toggle now stands.
+    ///
+    /// **The ordering is the point.** A sink is installed at launch with the toggle's *last saved*
+    /// value; flipping the switch is the only way it changes during a run, and the forward has to
+    /// happen after the write so a crash between the two cannot leave the switch drawn on while the
+    /// sink stayed off.
+    public func save() async {
+        await repository.save(preferences)
+        Diagnostics.setEnabled(preferences.analyticsEnabled)
+    }
 }

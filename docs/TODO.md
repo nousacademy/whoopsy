@@ -222,8 +222,8 @@ do **not** sum to the day's workout duration. **45 rows are all-zero in every ba
 this app recorded itself carries no block at all, which is `nil` and draws a dash — the user's rule,
 applied per row. The zone figures are **WHOOP's own measurement read out of a column**, not this app's
 computation from a heart rate it measured: the export has no HR series for `StrainAccumulatorMath` to
-integrate, `biometric_samples` holds no rows on any database here, and the drain's type-24 record has
-no reader (§5). `docs/ALGORITHMS.md` §2 carries the conversion.
+integrate, `biometric_samples` holds no rows on any database here, and the drain's type-24 record now
+has a reader (§5) but no row has ever been drained. `docs/ALGORITHMS.md` §2 carries the conversion.
 
 - [ ] **`GPS enabled`** — 673 (**`false` on all 673**) — not parsed, and **nothing to parse**: the export carries no route for any workout, so `workout_route_points` can never be filled from this file
 
@@ -315,7 +315,7 @@ measurements above so the next reader does not try `endTime − startTime` again
 **This section is not part of the per-column inventory.** Every `[ ]` above is a CSV column; every
 `[ ]` here is a work item, and all of them are **work** — none is a decision and none is a
 redundancy. The section exists because the strap holds **a backlog of cached data** that this app is
-supposed to pull down on sync, and it currently cannot. **How far back that backlog reaches is
+supposed to pull down on sync, and it has never done so on a strap. **How far back that backlog reaches is
 unmeasured and the sources disagree by a factor of five** — two reverse-engineering projects say ~14
 days and neither measured it, while WHOOP's own user-facing guidance says ~72 hours — so plan for a
 drain that does not assume a depth. `docs/BLE_PROTOCOL.md` §4 carries the disagreement.
@@ -331,13 +331,13 @@ not functional (`CLAUDE.md` §Building for iOS) and the app has never executed a
 is read off the code and the spec; none is a measurement of a device. Read it as a list of what is
 wrong on paper, not as a list of observed failures.
 
-**The table has a reader, and the four gaps below are what stand between the strap's cache and it.**
+**The table has a reader, and the gaps below are what stand between the strap's cache and it.**
 The sleep detail screen's `HOURS OF SLEEP` card draws the night's heart rate out of
 `biometric_samples` (`HoursOfSleepChartSeries`, read in
 `SleepViewModel.resolveHoursOfSleepSeries`), so an empty table is not latent — it is the `No
 Data` state on a screen a user can open, on every night the export can show. Nothing below changes
-because of it: a read path does not drain anything, and the four gaps in this section are exactly what
-still stands between the strap's cache and that chart. It is recorded here so the next person to read
+because of it: a read path does not drain anything, and the gaps in this section are exactly what
+still stand between the strap's cache and that chart. It is recorded here so the next person to read
 a screenshot of that chart knows the absence is this section's, not a chart bug.
 
 ### The chain that exists
@@ -352,32 +352,40 @@ the profile's own builder (`WhoopPacketEncoder` or `WhoopPacketEncoder5`) → `W
 ([WhoopPacketDecoder.swift:147](../ios/Sources/Whoopsy/Data/BLE/Parser/WhoopPacketDecoder.swift#L147)) and
 comes back a `WhoopRawFrame`, which is where the decoder stops; the manager then routes by what the
 frame *is* — metadata to the drain session, a motion record to `MotionPayloadDecoder` and on to
-`StepAccumulator` → `stepCounts`. `yieldTelemetry` → `StreamBiometricsUseCase` →
-`biometric_samples` is the **live** path and not this one, and the drain's own heart-rate records
-have no walk at all. So a drain's result is what `HistoricalSyncOutcome` says it is, and the rows it
-writes arrive through the motion path or not at all.
+`StepAccumulator` → `stepCounts`, a heart-rate record to `HeartRatePayloadDecoder` →
+`historicalTelemetryStream` → `biometric_samples` (the 5.0/MG's `R18` or the 4.0's type 24), and a
+packet-48 (5.0) or `0x30` (4.0) event to `StrapEventDecoder`, whose wrist and charging pairs update
+`WhoopDevice.isOnBody` / `isCharging`. `yieldTelemetry` → `StreamBiometricsUseCase` →
+`biometric_samples` is the **live** path and not this one. **Both generations' heart-rate records are
+walked now**, though on offsets no hardware here has confirmed — see the record-walk item below.
 
-**The pipe is connected end to end, and it stops one step short of a heart rate — on purpose.** The
-decoder validates the envelope and hands up a `WhoopRawFrame`: start-of-frame, declared length,
-header checksum and payload checksum are all checked. **No payload decoder for the drain's records
-exists**, and one must not be restored from the deleted shape — see the record-walk item below.
+**The pipe is connected end to end, and on both generations it now reaches a heart rate.** The
+decoder validates the envelope and hands up a `WhoopRawFrame`: start-of-frame, declared length, header
+checksum and payload checksum are all checked. `HeartRatePayloadDecoder` walks the 5.0/MG's `R18`
+layout into a `BiometricSample` — heart rate at payload `[11]`, R-R at `[13 + 2i]` in 1/1024 s, the
+strap's own unix at `[4]` — and the 4.0's type-24 record at heart rate `[14]`, R-R at `[16 + 2i]` in
+**signed milliseconds**, the strap's own unix at `[4]` — and `SyncHistoricalDataUseCase` persists
+those samples as the drain runs. The deleted `decodeHistoricalSyncPayload` and
+`decodeLiveTelemetryPayload` must not be restored: they were the 16-byte-chunk walk this pass replaced.
 
-**There is one decoded record type, and it is not this chain's.** `MotionPayloadDecoder` reads the
+**There are two decoded record types, the heart-rate one now has a walk on both generations, and a
+third frame class feeds the device page rather than the database.** `MotionPayloadDecoder` reads the
 strap's accelerometer out of the two motion layouts (R21 for the 5.0/MG, R10 for the 4.0, dispatched
 by **generation** rather than by trying one and falling back) and `TrackStepsUseCase` accumulates a
-day's steps from it into `stepCounts`. So the drain's *transport* gap and its *record walk* gap are
-not the same gap: steps have a walk, heart rate does not, and the item below is about the second.
-That decode changes nothing here — motion and heart rate are different record types on the same
-envelope, and a step count is not a beat.
+day's steps from it into `stepCounts`. `StrapEventDecoder` reads the event number off the inner `cmd`
+byte — which is what makes one decoder serve both envelopes — and `DeviceInformationPayload` turns the
+standard DIS strings into firmware and serial. Motion, heart rate, events and DIS are four different
+things on one link, and a step count is not a beat.
 
 Both the encoder and the decoder take a `WhoopProtocolProfile`, and both refuse rather than guess when
 handed a generation this build cannot frame. **All three WHOOP models now carry a transmitted opcode
 table** — the 4.0's `commandOpcodes` and the 5.0/MG's `syncOpcodes`, which are separate types because
 the two generations share only part of their numbering — so a 5.0 or 5.0 MG is not refused a
 command on the grounds that this build cannot frame one. **What is unproven on that generation is
-whether it will answer**: its command characteristic needs an authenticated SMP bond that no project
-here establishes a third-party iOS app can create (`docs/BLE_PROTOCOL.md` §7 Q6), and the strap page says
-so in as many words rather than in a generic sentence. What remains below is what stops the drain
+whether it will answer**: its command characteristic refuses writes until the link is **encrypted**
+(`CBATTError.insufficientAuthentication` / `.insufficientEncryption`), a bond a third-party app
+establishes by just-works pairing but whose failure is silent (`docs/BLE_PROTOCOL.md` §7 Q6), and the
+strap page says so in as many words rather than in a generic sentence. What remains below is what stops the drain
 producing a heart rate.
 
 ### The shape of the protocol, from the open-source references
@@ -410,15 +418,20 @@ packet-type numberings.
 
 ### Blocked on hardware — do not guess twice
 
-- [ ] **No handshake is implemented at all, and the 5.0's hello is built and never sent.**
-  `docs/BLE_PROTOCOL.md` §3 specifies a strict eight-step sequence a freshly bonded strap must be walked
-  through before it will serve a historical sync, and it is 4.0-only and unverified. The one part of
-  it that exists is the 5.0's static `CLIENT_HELLO`, constructed by `WhoopPacketEncoder5.hello`
-  ([WhoopPacketEncoder5.swift:130](../ios/Sources/Whoopsy/Data/BLE/Parser/WhoopPacketEncoder5.swift#L130))
-  — whose only callers anywhere are §16's byte-for-byte assertions against the published frame. The
-  one seam the manager actually sends through, `WhoopCommandFrames`, carries six builders (motion
-  enable, history request, data ACK, abort, set clock, clock read-back) and **no hello**. So the
-  command is still sent cold to a strap that has not been opened
+- [ ] **The 4.0's eight-step handshake is unimplemented; the 5.0/MG's hello is sent and confirmed.**
+  `docs/BLE_PROTOCOL.md` §3 specifies a strict eight-step sequence a freshly bonded 4.0 must be walked
+  through before it will serve a historical sync, and it is 4.0-only and unverified. What does exist
+  is the 5.0's static `CLIENT_HELLO`, constructed by `WhoopPacketEncoder5.hello`
+  ([WhoopPacketEncoder5.swift:130](../ios/Sources/Whoopsy/Data/BLE/Parser/WhoopPacketEncoder5.swift#L130)),
+  written by `WhoopBLEManager.didDiscoverCharacteristicsFor` as a **confirmed** command, and waited on
+  before any proprietary subscription or producer is armed — a pre-bond notification subscription is
+  refused with "Authentication is insufficient" and wedges the bond. (A command characteristic with
+  no `.write` property is the one fallback: no confirmation can arrive, so the arms go out anyway.)
+  `WhoopCommandFrames` carries the live-HR arm (`realtimeHeartRate`) beside its other builders (motion
+  enable, history request, data ACK, abort, set clock, clock read-back). **On a 5.0/MG the connect pass
+  now opens with command 10 `SET_CLOCK` and 11 `GET_CLOCK`, before any producer is armed** — an
+  un-clocked 5.0 banks no sensor data, which is the empty-drain failure this app had been chasing. What
+  remains is the 4.0's eight-step sequence.
 - [x] **The ACK loop.**
   `HistoricalDrainSession` replies `0x17` with the eight-byte token each `HISTORY_END` carries, keeps
   listening, and stops on `HISTORY_COMPLETE` without acknowledging it. Termination is that, an idle
@@ -429,63 +442,74 @@ packet-type numberings.
 - [x] **The request opcode is `0x16` on both generations, and it lives in the opcode tables rather than
   in the builders.** §2 assigns `0x30` to **Asynchronous Event / Heartbeat**, so an outbound `0x30`
   asks for an event rather than a drain — a command a strap ignores
-- [ ] **No *heart-rate* record walk exists.**
-  The record header is **96 bytes** (§4), so a walk at 16-byte chunks through the *live* offsets reads
-  the wrong bytes at the wrong stride — on a real drain it would read a byte of the record counter as a
-  heart rate and write it to `biometric_samples`. `decodeHistoricalSyncPayload` and
-  `decodeLiveTelemetryPayload` are **deleted** and must not be restored. What replaces them for the
-  type-24 record is
-  `WhoopRawFrame`: a validated envelope and its bytes, undecoded. The record parser is written against
-  a capture, which is the order §7 sets out — and the frame this hands up is the evidence that capture
-  needs. **The motion layouts are the exception and they are the proof the shape works**: `MotionPayloadDecoder`
-  reads R21 and R10 at their frame-absolute offsets, requires an exact payload length for each, and
-  keys a batch on the strap's own clock where the record carries one — so what is missing here is
-  neither a technique nor a field map: **the map exists above and a running parser has confirmed it
-  across 127,971 records**, and what is absent is the decoder itself and the drain that would deliver
-  a record to walk.
+- [x] **Both heart-rate records are walked, and the 4.0's type 24 is read at published offsets rather
+  than at the live ones.** `HeartRatePayloadDecoder.decodeHistorical` dispatches on `frame.generation`.
+  The 5.0/MG's `R18` reads payload `[11]` (heart rate), `[12]` (interval count, capped at four) and
+  `[13 + 2i]` (1/1024 s ticks), stamped from its own unix at `[4]` and guarded by the exact 109-byte
+  payload. The 4.0's type-24 record reads `[14]` (heart rate), `[15]` (count, capped at four),
+  `[16 + 2i]` (**signed** `i16` milliseconds, dropped at `<= 0`) and unix at `[4]`, behind an exact
+  type-`0x2F` / seq-24 test and a minimum 86-byte payload — the record's 89-byte minimum inner length
+  less the three prefix bytes. Both refuse a zero unix and a zero heart rate, so a record cannot be
+  filed on day zero or at a zero beat. **The 4.0's record header is 96 bytes** (§4), so the 16-byte
+  chunk walk through the *live* offsets remains the mistake it was: `decodeHistoricalSyncPayload` and
+  `decodeLiveTelemetryPayload` stay **deleted**. **None of this is a capture.** The type-24 map has two
+  published sources, one having confirmed it across 127,971 records, but every offset here is
+  exercised only by hand-built frames — §7's cheapest-first capture order still stands, and the log
+  lines this pass adds are what a sideloaded drain will read.
+- [x] **Events decode into wrist and charging state, and battery stays log-only.** `StrapEventDecoder`
+  takes the event number from the inner `cmd` byte — frame 10 on 5.0, 6 on 4.0, the same field in
+  either envelope — with the timestamp as a u32 LE at payload offset 1. IDs 7/8 flip
+  `isCharging`, 9/10 flip `isOnBody`, and 13 `RTC_LOST` is logged at `.warning` without changing the
+  device, because the consequence is on the day key rather than on the page. Battery (3), boot (15),
+  set-RTC (16) and anything unknown are `.other`: logged with the full payload and acted on by nothing,
+  since no published body exists to read. `0x2A19` stays the battery source.
+- [x] **The Device Information Service is read, and the fabricated firmware default is gone.**
+  `2A26` firmware and `2A25` serial are read once per link after the connect pass — post-bond on a
+  5.0/MG, where a pre-bond read is refused — trimmed of NULs and whitespace, and written through
+  `WhoopDevice.updating` so neither displaces battery, RSSI or the wrist flags. `WhoopDevice.firmwareVersion`
+  now defaults to `nil` and the device page draws a dash until the strap answers. Serial is stored and
+  logged but not drawn: the facts row is three columns, and a fourth would squeeze the peripheral
+  identifier.
 ### Not blocked — true whatever the strap turns out to say
 
-- [ ] **A drained batch will be filed under today unless the record parser reads the record's own
-  time, and the field is the deliverable rather than a nicety.** Nothing writes a wrong instant, and
-  nothing writes a right one either, because there is no walk for this record type. **The motion path
-  is where that rule is already implemented, and it is the shape to copy**: an R21 batch carries its
-  own instant
-  (`seconds + fraction / 32768`, frame-absolute) and `TrackStepsUseCase` keys the day on that rather
-  than on arrival, refusing a record whose own stamp falls outside the window it asked for — which is
-  what turns the `RTC_LOST` caveat below from a silent wrong day into no row. When there is a walk for
-  the type-24 record the per-record time is **not missing from the strap**: 4.0 carries a u32 unix time
-  at `[7:11]` of the 96-byte header, so the parser reads
-  the field rather than reconstructing one. This matters beyond this section: `recoveries`, `sleeps`
-  and `strains` are all keyed on `startOfDay`, and the app's whole day model cannot represent a batch
-  that spans fourteen of them, so a batch collapsed onto one instant would corrupt three screens at
-  once. That is true for 4.0; 5.0 may need a session-clock correlation instead, which is an open
-  question for that strap (see below). **One caveat sits on top of it and it is a real one**: an
-  absolute timestamp is only as good as the clock that stamped it. The strap's RTC is set by
-  `0x0A SET_CLOCK`, and the reference's event enum has **type 13 `RTC_LOST`, "battery fully died
-  (clock reset)"**. So on a strap that has been flat, every drained record is wrong by an unknown
-  offset with nothing in the record to show it, and the failure is *silent*: it files history onto a
-  **wrong day** rather than onto no day, which is exactly the class of fabrication the day-key rule
-  exists to prevent. **This app now sends the clock set** — `WhoopCommandFrames.setClockFrames`, both
-  of the 4.0's firmware lengths and the 5.0's single `0x92`, because a wrong-length set is
-  acknowledged but not latched — **and sending it is not the same as its having latched.** The 5.0's
-  `0x93 GET_CLOCK` is the only read-back either generation offers, it is sent, and nothing in this app
-  decodes the reply. So check a drained record's `[7:11]` against wall time on each of the three
-  straps before trusting it, and do not treat a clock set having been written as evidence about it
+- [x] **A drained record carries its own instant on both generations, so a batch cannot collapse onto
+  today.** The R18 walk reads payload `[4]`, the type-24 walk reads payload `[4]` (record `[7:11]` of
+  the 96-byte header), and an R21 motion batch carries `seconds + fraction / 32768`; each refuses a
+  stamp of zero, and the motion path additionally refuses one outside the window it asked for — which
+  is what turns the `RTC_LOST` caveat below from a silent wrong day into no row. This matters beyond
+  this section: `recoveries`, `sleeps` and `strains` are all keyed on `startOfDay`, and the app's whole
+  day model cannot represent a batch spanning fourteen of them, so a batch collapsed onto one instant
+  would corrupt three screens at once. That the 5.0 lays its unix at the 4.0's record-relative offset
+  is still §7 Q3's unconfirmed shift: the decoder reads the published field, and a capture is what
+  would confirm it.
+- [ ] **The clock that stamps those records is still unverified, and a strap that has been flat gives
+  every record a silent offset — this is a hardware check, not a code change.** The strap's RTC is set
+  by `0x0A SET_CLOCK`, and the reference's event enum has **type 13 `RTC_LOST`, "battery fully died
+  (clock reset)"**, so on a strap that has been flat every drained record is wrong by an unknown
+  offset with nothing in the record to show it, and the failure files history onto a **wrong day**
+  rather than onto no day. **This app sends the clock set as a prerequisite** —
+  `WhoopCommandFrames.setClockFrames`, both of the 4.0's firmware lengths and the 5.0/MG's single
+  command-10 form, because a wrong-length set is acknowledged but not latched — every drain on both
+  generations, and the 5.0/MG's connect pass opens with it. **Sending it is not the same as its having
+  latched.** The read-back is command 11 on both generations, it is sent, and nothing here decodes the
+  reply (the reference parses none either); the reply is logged raw. So check a drained record's unix
+  field against wall time on each of the three straps before trusting it — `[4]` of either heart-rate
+  record's payload — and do not treat a clock set having been written as evidence about it
 - [ ] **The window asked for is one day, not fourteen.** `SyncHistoricalDataUseCase` starts from
   `getLatestSample()`, which is `nil` on an empty `biometric_samples`, so it falls back to
   `now − 1 day` ([SyncHistoricalDataUseCase.swift:25](../ios/Sources/Whoopsy/Domain/UseCases/SyncHistoricalDataUseCase.swift#L25)).
   The stated goal — the band's full retained cache — is not what the code requests. `GET_DATA_RANGE`
   is the command that would answer "what does the strap actually hold", and it is unimplemented
-- [ ] **Nothing owns the persistence.** `StreamBiometricsUseCase` is the **only** writer to
-  `biometric_samples` ([line 35](../ios/Sources/Whoopsy/Domain/UseCases/StreamBiometricsUseCase.swift#L35))
-  and its writer *is* its stream consumer. `syncNow()` sends the command and returns; if no screen
-  holds `liveTelemetryStream` open, a decoded batch is yielded to zero continuations and dropped with
-  no error. The sync must persist on its own rather than depend on a screen being on
-- [ ] **`syncNow()` reports the send, not the result.** It sets `"History sync complete."` whenever
-  `execute()` does not throw ([DeviceViewModel.swift:22](../ios/Sources/Whoopsy/Presentation/Screens/Device/DeviceViewModel.swift#L22)) —
-  and in mock mode `requestHistoricalSync` is a `guard !isMockMode`
-  ([WhoopBLEDeviceRepositoryImpl.swift:108](../ios/Sources/Whoopsy/Data/BLE/Repositories/WhoopBLEDeviceRepositoryImpl.swift#L108)),
-  a silent no-op under the same banner. "Complete" should mean rows written
+- [x] **The drain owns its persistence.** `SyncHistoricalDataUseCase` subscribes to
+  `historicalTelemetryStream` *before* it asks for the drain, consumes it in a concurrent task, and
+  batch-saves every 50 samples (or every 5 s) — awaiting that writer before it returns or rethrows, so
+  a decoded sample is persisted whether or not a screen is open. `StreamBiometricsUseCase` remains the
+  live path's only writer, and that path still needs a subscriber; the drain no longer does
+- [x] **`syncNow()` reports the drain's outcome.** It awaits `execute()`, which now runs the drain to
+  a conclusion, and prints the record and batch counts. One wording caveat remains: "History sync
+  complete" is set for every non-throwing ending, so an idle timeout says it too —
+  `HistoricalSyncOutcome.Ending.isStrapConfirmed` is the distinction to draw if that sentence is
+  tightened
 - [ ] **`biometric_samples` has no retention.** No pruning exists anywhere in `ios/Sources/` —
   `grep -rn "deleteOlderThan\|prune\|retention\|purge"` returns nothing. Fourteen days of beat-to-beat
   R-R is a large number of rows, so the retention policy is a decision to take *before* the first
@@ -494,14 +518,16 @@ packet-type numberings.
 ### Capture first, decode second
 
 The findings above come from public references, and the two disagree on record numbering and on
-whether 5.0 times its records. **They are a reason to go and capture, not a reason to start
-coding.** The first task is to drain each of the three straps once and record the raw frames; the
-parser is then written against the recording. Decoding a live drain with a parser built from these
-notes is the specific mistake to avoid — the `0xAA`-in-payload trap above makes a wrong parser look
-like a working one, and its bugs would be tuned to the source's errors rather than to the strap's
-behaviour. `docs/BLE_PROTOCOL.md` §7 orders the questions cheapest-first. The 4.0 base UUID sat first
-while it was open; it was settled from the references rather than from a scan and the constant now
-carries it, so the first capture is the envelope question.
+whether 5.0 times its records. **They are a reason to go and capture, and the heart-rate decoders have
+been written without one — which is said here rather than papered over.** The walks are gated on an
+exact type, an exact or minimum payload length and a nonzero record stamp, and both generations' walks
+refuse rather than fabricate, so a wrong offset should produce no row instead of a plausible wrong one.
+That is the design and not a measurement: **the first drain's output is evidence about the parser, and
+not data to trust until it has been checked against a recording.** The `0xAA`-in-payload trap above is
+what makes a wrong parser look like a working one, and its bugs would be tuned to the source's errors
+rather than to the strap's behaviour. `docs/BLE_PROTOCOL.md` §7 orders the questions cheapest-first.
+The 4.0 base UUID sat first while it was open; it was settled from the references rather than from a
+scan and the constant now carries it, so the first capture is the envelope question.
 
 ### The capture has to be legible, and as the code stands it would not be
 
@@ -550,14 +576,27 @@ or to a file rather than to `.info`.
   payloadLength)` shape seen **for the first time**, so the file opens with the strap's real record
   inventory; each refusal, with the guard named; each enable sequence sent; and each drain sub-type
   (`HISTORY_START` / `HISTORY_END` / `HISTORY_COMPLETE`). Capped and rotating (≈64 KB) so a long walk
-  cannot grow it without bound, and written at `.notice` for the retention reason above
-- [ ] **The two `Info.plist` keys, which are what remove the cable.** `UIFileSharingEnabled` and
+  cannot grow it without bound, and written at `.notice` for the retention reason above.
+  **The sink exists (2026-10-18)** — `Core/Logging/CaptureLog.swift`, ~64 KB, rotating to
+  `<name>.1`, used today only by the oxygen probe below — **but none of the four capture moments is
+  wired to it yet**, so `capture.txt` is still empty on a real walk
+- [x] **The two `Info.plist` keys, which are what remove the cable.** `UIFileSharingEnabled` and
   `LSSupportsOpeningDocumentsInPlace` expose the app's Documents directory in the Files app under
   *On My iPhone → Whoopsy*, so the recording is read on the phone and shared from there rather than
-  pulled off it. **Neither key is in `ios/App/iOS/Info.plist` today**, and no such mechanism exists
-  without them. There is **no API for a third-party app to write into Apple's Notes app** — the share
-  sheet with Notes as its destination is the only route to that, and it is a user action rather than
-  something this code can perform
+  pulled off it. Both are in `ios/App/iOS/Info.plist` since 2026-10-18, beside a comment naming the
+  capture log they exist for. There is **no API for a third-party app to write into Apple's Notes
+  app** — the share sheet with Notes as its destination is the only route to that, and it is a user
+  action rather than something this code can perform
+- [x] **The oxygen candidate probe, which is instrumentation and not a metric.** `R18` carries a
+  candidate SpO₂ percentage at payload `[71]` (frame 82), decompile-sourced from the official app's
+  `spo2_pct` and documented in `docs/BLE_PROTOCOL.md` §4. `Spo2CandidateProbe` classifies every
+  drained record into 70–100 / bit-7 sentinel / sub-70 diagnostic / absent, and
+  `Spo2CandidateAccumulator` emits at most three raw lines and one summary per drain to `.notice`
+  and `Documents/spo2-candidate.txt`. **It writes no row and no screen value**, because the
+  validation contradicts itself: +0.99 against the app over eight nights on one strap, the opposite
+  direction on another. Promotion needs **≥2 devices × ≥5 paired nights, r ≥ 0.7, MAE ≤ 1.0**, with
+  byte 82 still winning the 74–92 offset scan. The 4.0 has no path: raw red/IR scalars, no waveform,
+  no calibration
 - [ ] **Still zero network, and this does not change that.** The file is written into the app's own
   sandbox and read by whoever is holding the phone. The repository's guarantee — no `URLSession`, no
   HTTP client, no third-party SDK — is untouched by any of it

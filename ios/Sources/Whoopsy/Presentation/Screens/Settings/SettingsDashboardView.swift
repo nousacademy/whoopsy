@@ -28,7 +28,16 @@ public struct SettingsDashboardView: View {
                 Toggle("Anonymous diagnostics", isOn: Binding(
                     get: { viewModel.preferences.analyticsEnabled },
                     set: { viewModel.preferences.analyticsEnabled = $0; Task { await viewModel.save() } }))
-                Text("Whoopsy is local-first; this preference never enables cloud biometric uploads.")
+                // **The second sentence is the one that has to stay true.** The toggle starts the
+                // diagnostics sink, and the sink forwards what `Diagnostics.record` gives it —
+                // counts, frame types, sequence numbers and payload lengths. A caption that only
+                // said what the switch does not do would be accurate and still misleading once it
+                // does something, so both halves are stated.
+                Text(
+                    "Whoopsy is local-first; this preference never enables cloud biometric "
+                    + "uploads. With a diagnostics key configured it sends anonymous strap "
+                    + "metadata — frame types, counts and payload sizes — and never heart rate, "
+                    + "R-R or oxygen readings.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

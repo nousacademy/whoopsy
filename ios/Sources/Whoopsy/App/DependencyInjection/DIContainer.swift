@@ -290,14 +290,35 @@ public final class DIContainer: @unchecked Sendable {
                 strainStore: db,
                 workoutStore: db),
             settingsStore: syncSettings)
-        self.strainRepository = GRDBStrainRepository(db: db)
-        self.sleepRepository = GRDBSleepRepository(db: db)
+        // The other six resources get the same local-first treatment as recovery: a decorator on the
+        // configured branch, the bare GRDB repository otherwise. Strains and workouts add the read-back
+        // half — the only three resources (recoveries included) whose `CloudSync` port has a read — and
+        // the other four are write-through only, because the port has no read method for them. Naps are
+        // not one of the seven synced resources, so `napRepository` stays bare.
+        let configured = self.missingCloudKey == nil
+        self.strainRepository = configured
+            ? CloudStrainRepository(
+                local: GRDBStrainRepository(db: db), cloud: cloud, settingsStore: syncSettings, status: syncStatus)
+            : GRDBStrainRepository(db: db)
+        self.sleepRepository = configured
+            ? CloudSleepRepository(
+                local: GRDBSleepRepository(db: db), cloud: cloud, settingsStore: syncSettings, status: syncStatus)
+            : GRDBSleepRepository(db: db)
         self.napRepository = GRDBNapRepository(db: db)
-        self.userProfileRepository = GRDBUserProfileRepository(db: db)
-        self.workoutRepository = GRDBWorkoutRepository(db: db)
-        self.receptiveInactivityRepository = GRDBReceptiveInactivityRepository(db: db)
-        self.stepRepository = GRDBStepRepository(db: db)
-
+        self.userProfileRepository = configured
+            ? CloudUserProfileRepository(local: GRDBUserProfileRepository(db: db), cloud: cloud, settingsStore: syncSettings)
+            : GRDBUserProfileRepository(db: db)
+        self.workoutRepository = configured
+            ? CloudWorkoutRepository(local: GRDBWorkoutRepository(db: db), cloud: cloud, settingsStore: syncSettings)
+            : GRDBWorkoutRepository(db: db)
+        self.receptiveInactivityRepository = configured
+            ? CloudReceptiveInactivityRepository(
+                local: GRDBReceptiveInactivityRepository(db: db), cloud: cloud, settingsStore: syncSettings)
+            : GRDBReceptiveInactivityRepository(db: db)
+        self.stepRepository = configured
+            ? CloudStepRepository(
+                local: GRDBStepRepository(db: db), cloud: cloud, settingsStore: syncSettings, status: syncStatus)
+            : GRDBStepRepository(db: db)
         self.streamBiometricsUseCase = StreamBiometricsUseCase(
             bleRepository: bleRepository,
             biometricRepository: biometricRepository

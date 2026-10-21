@@ -19,6 +19,26 @@
             "target": "WhoopsyApp",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release WhoopsyApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:whoopsy}/ios",
+            "name": "Debug WhoopsyApp (ios)",
+            "target": "WhoopsyApp",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug WhoopsyApp (ios)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:whoopsy}/ios",
+            "name": "Release WhoopsyApp (ios)",
+            "target": "WhoopsyApp",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release WhoopsyApp (ios)"
         }
     ]
 }

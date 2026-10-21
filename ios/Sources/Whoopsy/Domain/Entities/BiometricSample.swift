@@ -29,10 +29,10 @@ public struct BiometricSample: Identifiable, Equatable, Sendable {
     /// behave exactly as before, while the invariant `rrIntervalMs == rrIntervalsMs?.first` becomes
     /// structural instead of something a writer has to remember.
     ///
-    /// **It is not a substitute for the series, and the two RMSSD consumers currently treat it as
-    /// one** — `CalculateRecoveryUseCase` and `AnalyzeStressUseCase` each flatten one interval per
-    /// notification, so they difference beats that were never adjacent. That defect predates this
-    /// field and is not fixed here; see the note in `docs/ALGORITHMS.md` §1.
+    /// **It is not a substitute for the series, and one RMSSD consumer still treats it as one** —
+    /// `AnalyzeStressUseCase` flattens one interval per notification, so it differences beats that were
+    /// never adjacent. `CalculateRecoveryUseCase` fixed that defect (it pools the runs through
+    /// `calculateRMSSD(fromRuns:)`); see the note in `docs/ALGORITHMS.md` §1.
     public var rrIntervalMs: Double? { rrIntervalsMs?.first }
 
     /// The strap's three accelerometer axes in Gs, or `nil` when the notification carried no motion.

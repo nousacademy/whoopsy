@@ -692,7 +692,178 @@ public actor LocalDatabaseManager {
                 in: db)
         }
 
+        // The point a workout's offline map region was downloaded around, in plain degrees.
+        //
+        // `v19` added the region id and that is a join key into Mapbox's tile store — enough to
+        // find the tiles and not enough to frame them, because `TileRegion` exposes no geometry.
+        // A session with a route draws the route, so the id sufficed until a session downloaded a
+        // map with `RECORD ROUTE` off: its detail page then held tiles on disk and nothing to
+        // point the camera at. These two columns are where that missing centre lives — see
+        // `OfflineMapCenter` for the full argument.
+        //
+        // **Two nullable columns rather than one JSON blob**, because the pair is a coordinate and
+        // splitting it would buy nothing but a decode step: a row carrying one and not the other
+        // has no centre, and `GRDBWorkoutRepository` rebuilds the value only when both are non-nil.
+        // `addMissingColumns` is what makes that half-applied case a no-op rather than a crash, and
+        // it is legal here only because both are nullable and undefaulted — the same rule `v17`
+        // and `v19` followed for this table.
+        //
+        // **They are deliberately not on the wire.** The sync's `workouts` resource carries the
+        // region id and has no field for these, because a tile download is per-phone; see
+        // `WorkoutRecord+SyncRow`.
+        migrator.registerMigration("v23_workout_offline_region_center") { db in
+            try Self.addMissingColumns(
+                to: WorkoutRecord.databaseTableName,
+                columns: [
+                    ("offline_region_center_latitude", .double),
+                    ("offline_region_center_longitude", .double),
+                ],
+                in: db)
+        }
+
+        // **A data repair, not a schema change, and a migration is the only vehicle that runs it
+        // exactly once.** A 5.0 whose RTC was lost stamped every live motion record with a date in
+        // 2000, and the decoder trusted it until `MotionPayloadDecoder` learned to key a live record
+        // on its arrival instant. The rows that bug already wrote are still on disk under a day no
+        // screen draws — measured on a real strap, 22,702 steps under `2000-01-03` — and nothing in
+        // the app can find them again once the decoder is fixed, so this is the one moment the app
+        // knows they are the mislabelled ones.
+        //
+        // **The cutoff is 2020-01-01, chosen to be impossible rather than tight.** This app's own
+        // history begins with the bundled export on 2023-07-23 and its first release is later still,
+        // so no genuine row can precede 2020; a tighter bound would be a guess about which lost-RTC
+        // epoch a particular strap produced, and the three plausible ones (unix 0, a 2000-01-01 epoch,
+        // a boot-relative counter) all land decades early.
+        //
+        // **The destination is the day the repair runs**, because that is the only day the app can
+        // name and the walk it is recovering happened on the day the user installed the build that
+        // repairs it. A day that already holds a row is **summed onto rather than overwritten**:
+        // both rows are real motion, and dropping either would delete steps that were measured.
+        // `stepCount` and `measuredSeconds` move together, so the merged row still satisfies
+        // `asleep + awake == duration`'s equivalent here — `measuredSeconds > 0` stays a measurement.
+        migrator.registerMigration("v24_rekey_mislabelled_step_days") { db in
+            try Self.rekeyMislabelledStepDays(in: db, onto: Date().startOfDay)
+        }
+
+        // **A one-off, and it exists only because `v24` overshot.** That repair summed every
+        // mislabelled row onto the day it ran, and a strap whose clock had been wrong for a while had
+        // accumulated several bogus days — so the merged row held a whole period's worth of counted
+        // movement under one date. Measured on the owner's strap on 2026-10-20: 47,376 steps on a day
+        // whose live rate was 77/min during a walk and 0 at rest, i.e. an internally consistent row
+        // that is nonetheless not one day's walking. **There is no test that can separate it from a
+        // real one** — the merge preserved the steps-per-measured-second ratio that a corrupt row
+        // would otherwise break — so the only honest correction is to drop the day and let the
+        // counter start it again.
+        //
+        // **It is safe on a fresh install by construction**: migrations run in `init`, before any
+        // writer can produce a row, so a database that has never recorded anything has nothing for
+        // this to delete. On an existing one it costs at most the steps taken earlier on the day the
+        // build is installed, once, which is what the user asked for. `v25` is frozen like every
+        // other shipped migration — a later correction is `v26`, never an edit here.
+        migrator.registerMigration("v25_clear_inflated_step_day") { db in
+            try StepCountRecord
+                .filter(Column("date") == Date().startOfDay)
+                .deleteAll(db)
+        }
+
+        // **`v25` was not enough, and the reason is the sync's own read-through.** Deleting the
+        // phone's row made the next `getStepCount(for:)` a **local miss**, which under the `.cloud`
+        // destination asks D1 — where the inflated row still lives — and `TrackStepsUseCase` seeds its
+        // accumulator from whatever that answers. So the counter resumed at 47k on the very launch
+        // that cleared it, and every later launch would do the same. A local delete is not a fix while
+        // the destination is the API; it is a cache eviction.
+        //
+        // **This one runs with the destination switched to `DEVICE STORAGE`**, which is what the user
+        // is being asked to do before installing: with `.device` the decorator's `storesInCloud()` is
+        // `false`, the local miss answers `nil`, and the day genuinely starts empty. The cloud copy is
+        // left alone deliberately — it is corrected by the next write-through when the destination
+        // goes back to `.cloud`, because a write is a mirror and the phone's row wins.
+        migrator.registerMigration("v26_clear_inflated_step_day_again") { db in
+            try StepCountRecord
+                .filter(Column("date") == Date().startOfDay)
+                .deleteAll(db)
+        }
+
+        // **`v27` is the sleep equivalent of `v25`/`v26`, and it exists for the same reason: a row
+        // computed by a bug is not corrected by fixing the bug.** `AnalyzeSleepUseCase` read a night
+        // out of a 21-hour window (`startOfDay − 11 h`, i.e. 1 PM the previous day) while every
+        // comment said 9 PM, so a quiet afternoon became the onset — measured on a real strap on
+        // 2026-10-20, a night reported **3:33 PM → 8:38 AM**. The window is fixed, but
+        // `SleepViewModel.load` answers from the stored row for a day that already holds one, so the
+        // night will not be recomputed unless the row goes.
+        //
+        // Deleting it is safe in the ordinary case: the next load of a day with no measurement falls
+        // through to `AnalyzeSleepUseCase`, which rebuilds the night from `biometric_samples`. A night
+        // whose samples are gone is genuinely absent afterwards rather than fabricated, which is the
+        // absence rule rather than a loss. **Clear it with the destination on `DEVICE STORAGE`** for
+        // the reason the step repairs carry: under `.cloud` a local miss asks the database, and the
+        // decorator would hand the bad row straight back on the launch that cleared it.
+        migrator.registerMigration("v27_clear_miswindowed_sleep_day") { db in
+            try SleepRecord
+                .filter(Column("date") == Date().startOfDay)
+                .deleteAll(db)
+        }
+
+        // **A second clear, and it is diagnostic rather than corrective.** With the window fixed, the
+        // night computed is `9:06 PM → 8:38 AM` for a wearer who slept `1:00 AM → 7:10 AM`, because
+        // live samples carry no accelerometer and the only remaining awake test is a heart rate 25%
+        // above resting. `AnalyzeSleepUseCase` now logs an hourly heart-rate curve, and the row has to
+        // be absent for the analysis to run again and produce it. Delete and let the next load
+        // recompute — same shape and same caveat as `v27`: clear it with the destination on
+        // `DEVICE STORAGE`, or the decorator's local-miss fallback hands the stored row back.
+        migrator.registerMigration("v28_recompute_sleep_day") { db in
+            try SleepRecord
+                .filter(Column("date") == Date().startOfDay)
+                .deleteAll(db)
+        }
+
         try migrator.migrate(queue)
+    }
+
+    /// `v24`'s repair, callable on an already-migrated database.
+    ///
+    /// **Public for exactly two callers.** The migration above runs it once at launch, and the suite
+    /// runs it directly because a migration cannot test itself: `runMigrations` completes before any
+    /// row exists, so there is no moment at which a test could insert a mislabelled row and then let
+    /// the migrator see it. It is **idempotent** — the `guard` returns on a database with no
+    /// pre-2020 row — so a second call is a no-op rather than a second move.
+    ///
+    /// Returns how many rows it moved, which is what makes the suite's assertion a count rather than
+    /// a pair of reads that a no-op would also satisfy.
+    ///
+    /// `nonisolated` because it touches only `dbQueue`, which is `Sendable` — the same reason the
+    /// actor's other read helpers are reachable from a caller that has not awaited it. It takes no
+    /// actor state, so isolating it would serialise a one-shot repair behind the mailbox for nothing.
+    @discardableResult
+    public nonisolated func rekeyMislabelledStepDays(
+        onto destination: Date = Date().startOfDay
+    ) throws -> Int {
+        try dbQueue.write { db in
+            try Self.rekeyMislabelledStepDays(in: db, onto: destination)
+        }
+    }
+
+    private static func rekeyMislabelledStepDays(in db: Database, onto destination: Date) throws -> Int {
+        let cutoff = Date(timeIntervalSince1970: 1_577_836_800)   // 2020-01-01T00:00:00Z
+        let orphans = try StepCountRecord
+            .filter(Column("date") < cutoff)
+            .fetchAll(db)
+        guard !orphans.isEmpty else { return 0 }
+
+        let steps = orphans.reduce(0) { $0 + $1.stepCount }
+        let measured = orphans.reduce(0) { $0 + $1.measuredSeconds }
+
+        if var existing = try StepCountRecord.fetchOne(db, key: ["date": destination.startOfDay]) {
+            existing.stepCount += steps
+            existing.measuredSeconds += measured
+            try existing.update(db)
+        } else {
+            try StepCountRecord(
+                date: destination.startOfDay, stepCount: steps, measuredSeconds: measured
+            ).insert(db)
+        }
+        try StepCountRecord.filter(Column("date") < cutoff).deleteAll(db)
+        return orphans.count
     }
 
     /// Adds only the columns `table` is missing. `Database.alter` cannot check for itself, and a

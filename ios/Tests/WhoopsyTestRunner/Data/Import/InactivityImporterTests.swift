@@ -247,7 +247,12 @@ enum InactivityImporterTests {
                 manage: ManageBLEConnectionUseCase(bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
                 streamUseCase: StreamBiometricsUseCase(
                     bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                    biometricRepository: GRDBBiometricRepository(db: db)))
+                    biometricRepository: GRDBBiometricRepository(db: db)),
+                // Inert in this section: the screen is loaded and never subscribed, so the writer is
+                // here only because the initialiser requires it. §14 is where the live tile is driven.
+                trackSteps: TrackStepsUseCase(
+                    bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
+                    stepRepository: GRDBStepRepository(db: db)))
         }
         await viewModel.load(for: proseDay)
         let card = await MainActor.run { viewModel.receptiveInactivities }

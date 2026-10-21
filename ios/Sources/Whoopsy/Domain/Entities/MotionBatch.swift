@@ -72,13 +72,25 @@ public struct MotionBatch: Sendable, Equatable {
     /// pedometer needs it.
     public let gyroscopeDps: MotionAxes?
 
+    /// The strap's own clock as the record carries it, **whatever `start` was set to**.
+    ///
+    /// `start` answers *which day does this belong to* and a live record answers that with the arrival
+    /// instant. This answers the different question *what did the strap think the time was*, which is
+    /// the drain's prerequisite: every banked record is filed by an RTC this app cannot yet set, so
+    /// reading it off the live stream is the only way to see whether a clock set latched without
+    /// waiting for a drain. `nil` for a layout that carries no clock at all (the 4.0's live record).
+    ///
+    /// Nothing keys a day on this. It exists to be observed.
+    public let strapTimestamp: Date?
+
     public init(
         generation: WhoopHardwareGeneration,
         start: Date,
         timestampIsFromStrap: Bool,
         sampleIntervalSeconds: Double,
         accelerometerG: MotionAxes,
-        gyroscopeDps: MotionAxes?
+        gyroscopeDps: MotionAxes?,
+        strapTimestamp: Date? = nil
     ) {
         self.generation = generation
         self.start = start
@@ -86,5 +98,6 @@ public struct MotionBatch: Sendable, Equatable {
         self.sampleIntervalSeconds = sampleIntervalSeconds
         self.accelerometerG = accelerometerG
         self.gyroscopeDps = gyroscopeDps
+        self.strapTimestamp = strapTimestamp
     }
 }

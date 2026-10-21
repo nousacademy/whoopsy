@@ -43,6 +43,15 @@ import SwiftUI
     /// `DeviceSettingsView.lastSyncText`.
     public private(set) var lastSync: Date?
 
+    /// The most recent live heart rate this app received, and the instant it arrived.
+    ///
+    /// **Both fields or neither**: a rate with no arrival instant cannot be aged, and
+    /// `DeviceSettingsView.liveHeartRateText` refuses to draw one. The pair is written by the live
+    /// telemetry subscription in `load()` — the standard `0x2A37` notification on a 4.0 and packet 40
+    /// on a 5.0/MG — and never by a drained record, which is history rather than a pulse.
+    public private(set) var liveHeartRate: Int?
+    public private(set) var liveHeartRateAt: Date?
+
     private let manage: ManageBLEConnectionUseCase
     private let sync: SyncHistoricalDataUseCase
     private let preferencesRepository: any AppPreferencesRepository
@@ -50,6 +59,7 @@ import SwiftUI
     private let protocols: any WhoopProtocolProviding
     private let biometrics: any BiometricRepository
     private var task: Task<Void, Never>?
+    private var telemetryTask: Task<Void, Never>?
 
     public init(
         manage: ManageBLEConnectionUseCase,
@@ -144,6 +154,18 @@ import SwiftUI
                 await self?.refreshModelState()
             }
         }
+
+        // The pulse subscription, guarded the same way and for the same reason. A second `for await`
+        // on one instance would orphan the first continuation in the multicast registry, and the
+        // symptom — a figure that stops updating — is indistinguishable from a strap that went quiet.
+        guard telemetryTask == nil else { return }
+        telemetryTask = Task { [weak self, manage] in
+            for await sample in manage.liveTelemetryStream {
+                guard !Task.isCancelled else { return }
+                self?.liveHeartRate = sample.heartRate
+                self?.liveHeartRateAt = sample.timestamp
+            }
+        }
     }
 
     /// Runs a drain and says what happened, in three states rather than one.
@@ -180,6 +202,19 @@ import SwiftUI
     /// matching peripheral immediately, so a "Pair a Device" button and a "Scan" button are the same
     /// action and there is nothing else this could offer. A device picker in the style of the reference
     /// would need a discovery stream the BLE layer does not have.
+    /// Restarts the strap's firmware and reports what happened, on `syncNow()`'s shape.
+    ///
+    /// **The link drops when the strap restarts**, and the standing connect re-establishes it — so the
+    /// message says that rather than reporting a failure when the disconnect arrives.
+    public func rebootStrap() async {
+        status = "Restarting the strap… the link will drop and come back."
+        do {
+            try await manage.rebootStrap()
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
     public func scan() async {
         isScanning = true
         defer { isScanning = false }

@@ -22,7 +22,7 @@
 //        xcconfig assignment is last-one-wins, the include coming last is what lets it override the
 //        empty defaults above it.
 //
-// **So a fresh clone builds, and the built `Info.plist` gets empty strings for all three.**
+// **So a fresh clone builds, and the built `Info.plist` gets empty strings for all four.**
 //
 //   - `MBX_ACCESS_TOKEN` empty: `MapboxSetup.configure()` returns `false`, `UnavailableOfflineMaps`
 //     is handed to the session, the `USE OFFLINE MAP` switch is never offered and the route card
@@ -31,6 +31,9 @@
 //     and publishes `missingCloudKey`, naming whichever of the two is absent, so the STORAGE pane draws
 //     its sentence and **no socket is ever opened**. The app is exactly as it was before the sync
 //     existed.
+//   - `WHOOPSY_SENTRY_DSN` empty: `SentryDiagnostics.install` returns without installing a sink, every
+//     `Diagnostics.record` in the data layer returns immediately, and the SDK is never started. The
+//     Anonymous diagnostics toggle then has nothing behind it, which is what a clone gets.
 //
 // To turn either on, copy `Whoopsy.local.xcconfig.example` to `Whoopsy.local.xcconfig` in this
 // directory and fill in what you have. That file is gitignored — see `.gitignore` — so it stays out
@@ -47,4 +50,7 @@
 MBX_ACCESS_TOKEN =
 WHOOPSY_API_BASE_URL =
 WHOOPSY_API_TOKEN =
+// The remote diagnostics DSN, and it is independent of the sync pair above: it turns on protocol
+// telemetry, not cloud storage, and the Anonymous diagnostics toggle is its own switch on top.
+WHOOPSY_SENTRY_DSN =
 #include? "Whoopsy.local.xcconfig"

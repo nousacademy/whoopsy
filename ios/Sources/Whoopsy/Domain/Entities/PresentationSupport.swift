@@ -31,6 +31,16 @@ public struct WorkoutRoutePoint: Identifiable, Equatable, Hashable, Sendable {
     /// is not valid" signal; that one stays in the service, because it is a fact about a `CLLocation`
     /// and cannot be stated on a value type here.
     public var isPlausible: Bool {
+        Self.isPlausibleCoordinate(latitude: latitude, longitude: longitude)
+    }
+
+    /// The two tests above, as a pair of numbers — so a stored coordinate that is not a route point can
+    /// be judged by the same rule rather than by a second copy of it.
+    ///
+    /// `OfflineMapCenter` is the reader this was extracted for: it is read off two nullable columns with
+    /// no constraint behind them, and a region id alone cannot say whether the point beside it is usable.
+    /// One definition is what keeps a `(0, 0)` refused in both places rather than only in the route's.
+    public static func isPlausibleCoordinate(latitude: Double, longitude: Double) -> Bool {
         guard latitude >= -90, latitude <= 90, longitude >= -180, longitude <= 180 else { return false }
         return !(latitude == 0 && longitude == 0)
     }
@@ -189,6 +199,18 @@ public struct WorkoutSession: Identifiable, Equatable, Hashable, Sendable {
     /// MapKit card rather than to a blank one.
     public let offlineRegionID: String?
 
+    /// The point the offline region was downloaded around, or `nil` when this session asked for none —
+    /// or when its download never got as far as a position fix.
+    ///
+    /// **Defaulted for `offlineRegionID`'s reason and it is not a measurement.** Mapbox publishes no
+    /// geometry for a tile region, so the id says *which* tiles and this says *where*, and the detail
+    /// page needs the second to draw the map on a session that recorded no route. Written from
+    /// `LiveSessionUseCase` at the moment the download is centred, so the two travel together: a region
+    /// id with no centre is a download that never started, and a centre with no id cannot happen.
+    ///
+    /// `nil` on every session recorded with the switch off and on every row written before `v23`.
+    public let offlineRegionCenter: OfflineMapCenter?
+
     public init(
         id: UUID = UUID(),
         startedAt: Date,
@@ -202,7 +224,8 @@ public struct WorkoutSession: Identifiable, Equatable, Hashable, Sendable {
         activityName: String? = nil,
         hrZonePercents: [Double]? = nil,
         steps: Int? = nil,
-        offlineRegionID: String? = nil
+        offlineRegionID: String? = nil,
+        offlineRegionCenter: OfflineMapCenter? = nil
     ) {
         self.id = id; self.startedAt = startedAt; self.endedAt = endedAt; self.strain = strain
         self.averageHeartRate = averageHeartRate; self.maxHeartRate = maxHeartRate
@@ -210,6 +233,7 @@ public struct WorkoutSession: Identifiable, Equatable, Hashable, Sendable {
         self.source = source; self.activityName = activityName; self.hrZonePercents = hrZonePercents
         self.steps = steps
         self.offlineRegionID = offlineRegionID
+        self.offlineRegionCenter = offlineRegionCenter
     }
 
     /// The workout's own length, in seconds — the scale every zone figure is a share of.

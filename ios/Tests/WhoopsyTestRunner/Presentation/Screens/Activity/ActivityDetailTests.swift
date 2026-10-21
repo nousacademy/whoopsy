@@ -72,7 +72,8 @@ enum ActivityDetailTests {
         strain: Double? = 5,
         steps: Int? = nil,
         zones: [Double]? = nil,
-        region: String? = nil
+        region: String? = nil,
+        center: OfflineMapCenter? = nil
     ) -> WorkoutSession {
         WorkoutSession(
             startedAt: anchor.addingTimeInterval(startOffset),
@@ -85,7 +86,8 @@ enum ActivityDetailTests {
             activityName: name,
             hrZonePercents: zones,
             steps: steps,
-            offlineRegionID: region)
+            offlineRegionID: region,
+            offlineRegionCenter: center)
     }
 
     // The profile's table, off the cold-start 190/60 pair `GRDBUserProfileRepository` answers a fresh

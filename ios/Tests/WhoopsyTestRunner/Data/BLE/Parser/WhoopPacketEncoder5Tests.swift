@@ -149,5 +149,57 @@ enum WhoopPacketEncoder5Tests {
                     + "generation-specific difference between them here would be a difference nobody "
                     + "documented")
         }
+
+        // MARK: Haptics — the 4.0's pattern 79 and the 5.0's remapped 0x13
+
+        let fourHaptics = WhoopCommandFrames.hapticsPattern(
+            profile: .whoop4, seq: 0x30, pattern: 2, loops: 3)
+        assertTest(
+            fourHaptics?[6] == 0x4F
+                && fourHaptics.map { Array($0[7..<12]) } == [0x02, 0x03, 0x00, 0x00, 0x00],
+            "The 4.0's buzz is command **79 `0x4F`** with `[pattern, loops, 0, 0, 0]` — five body bytes, "
+                + "the two trailing zeroes included because the observed body carries them rather than "
+                + "because this builder pads — got \(fourHaptics.map { "0x" + String($0[6], radix: 16) } ?? "nil") "
+                + "with \(fourHaptics.map { Array($0.dropFirst(7)) } ?? [])")
+        assertTest(
+            WhoopCommandFrames.hapticsPattern(
+                profile: .whoop4, seq: 0x30, pattern: 2, loops: 3) != nil
+                && WhoopCommandFrames.hapticsPattern(
+                    profile: .whoop5, seq: 0x30, pattern: 2, loops: 3) != nil,
+            "…and the façade builds one on both generations, which is the whole point of the remap: a "
+                + "caller asks for a buzz without knowing which envelope will carry it")
+        assertTest(
+            WhoopPacketEncoder.runHapticsPattern(profile: .whoop5, seq: 0x30, pattern: 2, loops: 3) == nil
+                && WhoopPacketEncoder5.hapticsNotification(profile: .whoop4, seq: 0x30, loops: 3) == nil,
+            "**Neither builder frames the other generation**, and the refusal is not symmetry for its "
+                + "own sake: `0x4F` under the CRC16 envelope and `0x13` under the CRC8 one are different "
+                + "commands rather than one command in a different container")
+
+        let fiveHaptics = WhoopCommandFrames.hapticsPattern(
+            profile: .whoop5, seq: 0x30, pattern: 2, loops: 3)
+        assertTest(
+            fiveHaptics?[10] == 0x13,
+            "The 5.0's buzz is **opcode 0x13**, a remap of catalog pattern 79 rather than 79 itself: a "
+                + "real MG answers 79 with result `0x03` (unsupported). A build that sent 79 under this "
+                + "envelope would look correct and never vibrate — got "
+                + "\(fiveHaptics.map { "0x" + String($0[10], radix: 16) } ?? "nil")")
+        assertTest(
+            fiveHaptics.map { Array($0[11..<23]) }
+                == [0x01, 0x2F, 0x98, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02],
+            "…and its twelve-byte notification preset is exactly `[01] + [2F 98 00×6] + [00 00] + "
+                + "[loops − 1]`: the effects are the captured body's own and `overallLoop` is 2 for "
+                + "three plays, which is the reference's one-shot convention rather than a repeat count "
+                + "this app chose — got \(fiveHaptics.map { Array($0.dropFirst(11)) } ?? [])")
+        assertTest(
+            WhoopCommandFrames.hapticsPattern(profile: .whoop5, seq: 0x30, pattern: 1, loops: 3)
+                == WhoopCommandFrames.hapticsPattern(profile: .whoop5, seq: 0x30, pattern: 9, loops: 3),
+            "…and a 5.0 ignores the `pattern` argument entirely, because the captured body names its "
+                + "effects itself and a caller-chosen catalog id has nowhere to go — this is why the "
+                + "façade documents `pattern` as 4.0-only rather than silently dropping it")
+        assertTest(
+            WhoopCommandFrames.hapticsPattern(profile: .whoop4, seq: 0x30, pattern: 2, loops: 0) == nil
+                && WhoopCommandFrames.hapticsPattern(profile: .whoop5, seq: 0x30, pattern: 2, loops: 0) == nil,
+            "A zero loop count is refused on both: `overallLoop = loops − 1` would underflow to 255 and "
+                + "ask for 256 plays where the caller asked for none")
     }
 }

@@ -146,6 +146,18 @@ public struct HTTPCloudSync: CloudSync {
 
     // MARK: - Sleeps
 
+    public func sleep(on day: Date) async throws -> SleepSyncRow? {
+        let key = SleepWireMapper.dayKey(for: day, in: calendar)
+        guard let dto = try await client.sleep(onDay: key) else { return nil }
+        return try SleepWireMapper.row(for: dto, in: calendar)
+    }
+
+    public func sleeps(from: Date, to: Date) async throws -> [SleepSyncRow] {
+        guard let window = RecoveryWindow(from: from, to: to, calendar: calendar) else { return [] }
+        let dtos = try await client.sleeps(in: window)
+        return try dtos.map { try SleepWireMapper.row(for: $0, in: calendar) }
+    }
+
     public func writeSleep(_ row: SleepSyncRow) async throws {
         // **The one write in this file whose DTO conversion throws**, and that is the stage timeline's
         // rather than a property of this method: `SleepWireMapper.dto(for:in:)` serialises a
@@ -164,6 +176,18 @@ public struct HTTPCloudSync: CloudSync {
 
     // MARK: - Step counts
 
+    public func stepCount(on day: Date) async throws -> StepCountSyncRow? {
+        let key = StepCountWireMapper.dayKey(for: day, in: calendar)
+        guard let dto = try await client.stepCount(onDay: key) else { return nil }
+        return try StepCountWireMapper.row(for: dto, in: calendar)
+    }
+
+    public func stepCounts(from: Date, to: Date) async throws -> [StepCountSyncRow] {
+        guard let window = RecoveryWindow(from: from, to: to, calendar: calendar) else { return [] }
+        let dtos = try await client.stepCounts(in: window)
+        return try dtos.map { try StepCountWireMapper.row(for: $0, in: calendar) }
+    }
+
     public func writeStepCount(_ row: StepCountSyncRow) async throws {
         // Total, and unlike the sleeps above there is nothing here that can fail before the socket: this
         // mapper converts three scalars.
@@ -175,6 +199,12 @@ public struct HTTPCloudSync: CloudSync {
     }
 
     // MARK: - Receptive inactivities
+
+    public func receptiveInactivities(from: Date, to: Date) async throws -> [ReceptiveInactivitySyncRow] {
+        guard let window = RecoveryWindow(from: from, to: to, calendar: calendar) else { return [] }
+        let dtos = try await client.receptiveInactivities(in: window)
+        return try dtos.map { try ReceptiveInactivityWireMapper.row(for: $0, in: calendar) }
+    }
 
     public func writeReceptiveInactivity(_ row: ReceptiveInactivitySyncRow) async throws {
         // The entry's id becomes the path's own spelling, exactly as a session's does in `writeWorkout`:
@@ -189,6 +219,11 @@ public struct HTTPCloudSync: CloudSync {
     }
 
     // MARK: - The profile
+
+    public func profile() async throws -> UserProfileSyncRow? {
+        guard let dto = try await client.profile() else { return nil }
+        return UserProfileWireMapper.row(for: dto, in: calendar)
+    }
 
     public func writeProfile(_ row: UserProfileSyncRow) async throws {
         // **The echo is the one this file cannot discard, and it is not read here either.** `PUT

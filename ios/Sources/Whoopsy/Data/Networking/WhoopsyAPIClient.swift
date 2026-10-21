@@ -390,7 +390,34 @@ public struct WhoopsyAPIClient: Sendable {
         return try decode(WorkoutBatchResult.self, from: data).written
     }
 
-    // MARK: - The four sleeps calls
+    // MARK: - The six sleeps calls
+
+    /// One night, or `nil` when the database holds no row for its wake day.
+    public func sleep(onDay day: String) async throws -> SleepDTO? {
+        let (data, response) = try await perform(try await makeRequest(method: "GET", path: "v1/sleeps/\(day)"))
+
+        if response.statusCode == 404, let refusal = try? decodeRefusal(from: data),
+           refusal.error.code == "no_measurement_for_day" {
+            return nil
+        }
+        try check(response, data)
+        return try decode(SleepDTO.self, from: data)
+    }
+
+    /// Every night the database holds in the window, ascending.
+    public func sleeps(in window: RecoveryWindow) async throws -> [SleepDTO] {
+        let request = try await makeRequest(
+            method: "GET",
+            path: "v1/sleeps",
+            query: [
+                URLQueryItem(name: "days", value: String(window.days)),
+                URLQueryItem(name: "endingOn", value: window.endingOn),
+            ]
+        )
+        let (data, response) = try await perform(request)
+        try check(response, data)
+        return try decode([SleepDTO].self, from: data)
+    }
 
     /// Write one night, replacing whatever the database holds for its day.
     ///
@@ -439,7 +466,34 @@ public struct WhoopsyAPIClient: Sendable {
         return try decode(SleepBatchResult.self, from: data).written
     }
 
-    // MARK: - The four step-count calls
+    // MARK: - The six step-count calls
+
+    /// One day, or `nil` when the database holds no row for it.
+    public func stepCount(onDay day: String) async throws -> StepCountDTO? {
+        let (data, response) = try await perform(try await makeRequest(method: "GET", path: "v1/step-counts/\(day)"))
+
+        if response.statusCode == 404, let refusal = try? decodeRefusal(from: data),
+           refusal.error.code == "no_measurement_for_day" {
+            return nil
+        }
+        try check(response, data)
+        return try decode(StepCountDTO.self, from: data)
+    }
+
+    /// Every day the database holds a step count for in the window, ascending.
+    public func stepCounts(in window: RecoveryWindow) async throws -> [StepCountDTO] {
+        let request = try await makeRequest(
+            method: "GET",
+            path: "v1/step-counts",
+            query: [
+                URLQueryItem(name: "days", value: String(window.days)),
+                URLQueryItem(name: "endingOn", value: window.endingOn),
+            ]
+        )
+        let (data, response) = try await perform(request)
+        try check(response, data)
+        return try decode([StepCountDTO].self, from: data)
+    }
 
     /// Write one day, replacing whatever the database holds for it.
     ///
@@ -478,7 +532,22 @@ public struct WhoopsyAPIClient: Sendable {
         return try decode(StepCountBatchResult.self, from: data).written
     }
 
-    // MARK: - The four receptive-inactivity calls
+    // MARK: - The five receptive-inactivity calls
+
+    /// Every entry the database holds in the window, ascending.
+    public func receptiveInactivities(in window: RecoveryWindow) async throws -> [ReceptiveInactivityDTO] {
+        let request = try await makeRequest(
+            method: "GET",
+            path: "v1/receptive-inactivities",
+            query: [
+                URLQueryItem(name: "days", value: String(window.days)),
+                URLQueryItem(name: "endingOn", value: window.endingOn),
+            ]
+        )
+        let (data, response) = try await perform(request)
+        try check(response, data)
+        return try decode([ReceptiveInactivityDTO].self, from: data)
+    }
 
     /// Write one entry, replacing whatever the database holds under its id.
     ///
@@ -521,7 +590,19 @@ public struct WhoopsyAPIClient: Sendable {
         return try decode(ReceptiveInactivityBatchResult.self, from: data).written
     }
 
-    // MARK: - The profile, which has one call
+    // MARK: - The profile, which has two calls
+
+    /// The one profile the caller owns, or `nil` when the partition holds none.
+    public func profile() async throws -> UserProfileDTO? {
+        let (data, response) = try await perform(try await makeRequest(method: "GET", path: "v1/profile"))
+
+        if response.statusCode == 404, let refusal = try? decodeRefusal(from: data),
+           refusal.error.code == "not_found" {
+            return nil
+        }
+        try check(response, data)
+        return try decode(UserProfileDTO.self, from: data)
+    }
 
     /// Write the caller's profile, replacing the whole row, and answer with the row read back.
     ///

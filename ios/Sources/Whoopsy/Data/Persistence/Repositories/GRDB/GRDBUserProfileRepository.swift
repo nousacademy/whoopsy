@@ -54,6 +54,21 @@ public final class GRDBUserProfileRepository: UserProfileRepository, Sendable {
         )
     }
 
+    /// The stored profile or `nil` — the read `getUserProfile()` sits on top of, minus the cold-start
+    /// fallback. A cloud decorator uses it to know whether the local copy is a row or a stand-in.
+    public func getLocalUserProfile() async throws -> UserProfile? {
+        guard let record = try await db.getProfile() else { return nil }
+        return UserProfile(
+            name: record.name,
+            birthDate: record.birthDate,
+            maxHeartRate: record.maxHeartRate,
+            restingHeartRate: record.restingHeartRate,
+            weightKg: record.weightKg,
+            heightCm: record.heightCm,
+            gender: record.gender.flatMap(UserProfile.Gender.init(rawValue:))
+        )
+    }
+
     /// Writes the profile back, carrying every field through **unchanged when it is `nil`**.
     ///
     /// `nil` is a real value here rather than "leave it alone": the profile page clears a field by

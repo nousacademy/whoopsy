@@ -27,5 +27,8 @@ enum HomeSourceTests {
         try await HomeRingsAndCalendarTests.run()
         try await HomeMetricWeekTests.run()
         try await HomeReceptiveInactivitiesTests.run()
+        // Appended rather than slotted in: the calls above are this section's original body, cut into
+        // files in the order it ran, and this one is new.
+        try await HomeStepTileTests.run()
     }
 }

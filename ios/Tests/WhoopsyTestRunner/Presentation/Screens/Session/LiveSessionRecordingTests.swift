@@ -156,9 +156,9 @@ enum LiveSessionRecordingTests {
                 hardSnapshot?.measuredSeconds == 301.0,
                 "…spanning 301 measured seconds (\(hardSnapshot.map { $0.measuredSeconds } ?? -1.0))")
             assertTest(
-                hardSnapshot?.strain == 2.4,
-                "…for a strain of `2.4`: 9.0 × 301.0 of weighted load through "
-                    + "`21 × (1 − e^(−0.000045 × load))`, rounded to one decimal "
+                hardSnapshot?.strain == 6.7,
+                "…for a strain of `6.7`: 9.0 × 301.0 of weighted load through the session curve "
+                    + "`21 × (1 − e^(−0.005 × load^0.55))`, rounded to one decimal "
                     + "(\(hardSnapshot.map { snap in snap.strain.map { "\($0)" } ?? "nil" } ?? "no snapshot"))")
             assertTest(
                 hardSnapshot?.maxHeartRate == 170 && hardSnapshot?.averageHeartRate == 170,
@@ -265,7 +265,7 @@ enum LiveSessionRecordingTests {
                 "Both sessions are on the day they were recorded, found by the same read Home's "
                     + "`ACTIVITIES` row uses (\(today.count) held)")
             assertTest(
-                today.contains { $0.strain == 2.4 },
+                today.contains { $0.strain == 6.7 },
                 "…including the one that scored, read back with its strain intact")
 
             let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
@@ -637,7 +637,10 @@ enum LiveSessionRecordingTests {
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
                     streamUseCase: StreamBiometricsUseCase(
                         bleRepository: ScriptedTelemetryRepository(),
-                        biometricRepository: EmptyBiometricStore()))
+                        biometricRepository: EmptyBiometricStore()),
+                    trackSteps: TrackStepsUseCase(
+                        bleRepository: ScriptedTelemetryRepository(),
+                        stepRepository: GRDBStepRepository(db: db)))
             }
             await home.load(for: Date())
             let homeWorkouts = await MainActor.run { home.workouts }

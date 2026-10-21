@@ -370,11 +370,11 @@ default cannot: a secret `sk.…` token pasted into the wrong file, or a placeho
 instead of their own token. Either way the SDK is skipped rather than half-configured, so no secret
 can be shipped inside a built app by accident.
 
-Note that `ios/App/Map/` — the three files behind this feature — is compiled **only** by the Xcode target.
+Note that `ios/App/Map/` — the four files behind this feature — is compiled **only** by the Xcode target.
 It cannot be a dependency of `Package.swift`, which also declares `.macOS(.v14)` for the host binary
-and the test runner, so `swift build` and `make test` never see it. That is why the card's design keeps
-the drawing in `Presentation` and hands the unverifiable module a single `AnyView` to draw inside a
-frame the card has already fixed; the reasoning is in [`CLAUDE.md`](CLAUDE.md)'s gotchas.
+and the test runner, so `swift build` and `make test` never see it. That is why the cards' design keeps
+the drawing in `Presentation` and hands the unverifiable module an `AnyView` to draw inside a
+frame each card has already fixed; the reasoning is in [`CLAUDE.md`](CLAUDE.md)'s gotchas.
 
 ### Optional: the sync database
 
@@ -433,6 +433,37 @@ requests against a discoverable `*.workers.dev` hostname. It is **not** authenti
 compiled into the app and extractable from the binary, so anyone holding the string has the same access
 you do. There is no `accounts` table, no registration and no revocation, and `X-Whoopsy-User-Id` is a
 partition name rather than a credential. Real per-install identity is a design that is not built.
+
+### Optional: remote protocol diagnostics
+
+`More → Settings` carries one switch, **Anonymous diagnostics**, and until a DSN is supplied it has
+nothing behind it. With one, the app forwards metadata about the **strap's protocol** — connect
+passes, drain start/refusal/conclusion counts, the first frame of each kind, sequence numbers and
+payload lengths — to a Sentry project. **No heart rate, R-R interval, oxygen candidate or sample
+timestamp is ever sent**: the payloads are counts and names by construction, because the caption on
+that screen promises the switch never uploads a biometric, and the oxygen probe's raw values stay in
+`Documents/spo2-candidate.txt` on the phone. The switch itself is off by default and is what starts
+the SDK; a supplied DSN alone sends nothing.
+
+| Setting | Where it goes | Why |
+| :--- | :--- | :--- |
+| `WHOOPSY_SENTRY_DSN` | `ios/App/Config/Whoopsy.local.xcconfig` — **gitignored** | The project's client key, from Sentry's **Settings → Client Keys (DSN)**. Expands into `WHOOPSYSentryDSN` in `Info.plist` at build time. A clone with this empty installs no sink and opens no socket |
+
+**The onboarding code is not the DSN.** Sentry's setup page offers an AI assistant a string of the
+form `your-org#your-code`; that installs an editor plugin and cannot configure an app. The DSN is the
+`https://<key>@o<org>.ingest.sentry.io/<project>` value under Client Keys.
+
+It hits the same xcconfig rule as the base URL above, for the same reason, so it has to be written
+with an empty `$()` standing in for the second slash:
+
+```
+WHOOPSY_SENTRY_DSN = https:/$()/0123456789abcdef@o123456.ingest.sentry.io/7654321
+```
+
+The plain spelling truncates at `https:` and is worse than an empty value, because the build stays
+green and the setting looks configured. The SDK itself is linked only by the Xcode target and sits
+behind `#if canImport(Sentry)`, so `swift build` and the test runner never compile it — see
+[`CLAUDE.md`](CLAUDE.md)'s gotchas.
 
 ### Then build
 

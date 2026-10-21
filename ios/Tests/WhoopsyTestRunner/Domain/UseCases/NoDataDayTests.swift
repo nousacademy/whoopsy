@@ -67,11 +67,14 @@ enum NoDataDayTests {
             // a measured row inside it would be counted into `daysAlreadyRecorded` and break that check's
             // premise rather than this one's.
             let measuredDay = calendar.date(byAdding: .day, value: -10, to: today)!
+            // Each notification carries several adjacent beats (800/850 alternating); the run is what
+            // `calculateRMSSD(fromRuns:)` differences within. The old flattened form — one interval
+            // per sample — differenced beats a whole notification apart and inflated the HRV.
             let nightWithRR = OvernightBiometricStore(samples: (0..<12).map { index in
                 BiometricSample(
                     timestamp: measuredDay.addingTimeInterval(-3600 + Double(index) * 60),
                     heartRate: 52,
-                    rrIntervalMs: index.isMultiple(of: 2) ? 800.0 : 850.0)
+                    rrIntervalsMs: [800.0, 850.0, 800.0, 850.0])
             })
             let measuredResult = try await CalculateRecoveryUseCase(
                 biometricRepository: nightWithRR,
@@ -81,6 +84,10 @@ enum NoDataDayTests {
             ).execute(for: measuredDay)
             assertTest(
                 measuredResult != nil, "…while a night with real R-R intervals still produces a recovery")
+            assertTest(
+                measuredResult?.hrvValueMs == 50.0,
+                "…scored at the within-run RMSSD — 50 ms over runs alternating 800/850 — rather than an "
+                    + "inflated across-notification figure (\(measuredResult.map { $0.hrvValueMs } ?? -1))")
             assertTest(
                 measuredResult?.hasMeasurement == true,
                 "…which reads back measured, so the flag still separates a reading from an absence")

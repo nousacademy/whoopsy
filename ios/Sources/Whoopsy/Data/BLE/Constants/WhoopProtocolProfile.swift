@@ -77,6 +77,18 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
         /// carry their own set rather than forwarding to this one.
         public let toggleIMUMode: UInt8
 
+        /// `0x4F` / 79 `RUN_HAPTICS_PATTERN` — the buzz, with the pattern id in byte 0 and the loop
+        /// count in byte 1.
+        ///
+        /// **`0x4F` is the 4.0's byte and the 5.0's is not.** A real-MG capture shows the 5.0 rejecting
+        /// 79 with command-result `0x03`, which is why `SyncOpcodes.notifyHaptics` carries a different
+        /// number for the same catalog ID. This field and that one are not interchangeable, and neither
+        /// builder falls back to the other table.
+        ///
+        /// **It is not `0x10 hapticAlarm` above.** That is the alarm-class trigger, a different command;
+        /// this one plays an arbitrary pattern with a caller-chosen repeat count.
+        public let runHapticsPattern: UInt8
+
         /// `0x3F SEND_R10_R11_REALTIME` — starts the live 100 Hz motion record (type `0x2B`).
         ///
         /// **This is the 4.0's answer to the 5.0's `0x51 START_RAW_DATA`, and it is the opcode the
@@ -101,6 +113,15 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
         /// exists to prevent. §7 Q7 records that the payload is **firmware-specific**: a wrong-length
         /// set is acknowledged but not latched, and published clients use 4, 5, 8 and 9 bytes.
         public let setClock: UInt8
+
+        /// `0x0B` SET_CLOCK's read-back, `GET_CLOCK` — **the command this table used to claim did not
+        /// exist on this generation, and it does.**
+        ///
+        /// noop's command index carries IDs 10/11 for the pair under this envelope, and its connect
+        /// sequence sends both; the earlier claim that no reference publishes a 4.0 read-back was a
+        /// gap in what this repo had read rather than a fact about the protocol. The reply's layout is
+        /// still undocumented, so the frame is sent and its answer is logged raw — nothing decodes it.
+        public let getClock: UInt8
 
         /// `0x14 ABORT_HISTORICAL_TRANSMITS`. The drain's own stop. Named because a drain that can be
         /// started and not stopped is the one state a stuck strap cannot be talked out of.
@@ -128,6 +149,8 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
             sendRealtimeMotion: UInt8,
             enableOpticalData: UInt8,
             setClock: UInt8,
+            getClock: UInt8,
+            runHapticsPattern: UInt8,
             abortHistoricalTransmits: UInt8,
             setReadPointer: UInt8,
             getDataRange: UInt8,
@@ -141,6 +164,8 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
             self.sendRealtimeMotion = sendRealtimeMotion
             self.enableOpticalData = enableOpticalData
             self.setClock = setClock
+            self.getClock = getClock
+            self.runHapticsPattern = runHapticsPattern
             self.abortHistoricalTransmits = abortHistoricalTransmits
             self.setReadPointer = setReadPointer
             self.getDataRange = getDataRange
@@ -151,7 +176,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
     /// The command opcodes this build transmits under the **5.0 / MG** envelope.
     ///
     /// **A second type rather than the same fields with different numbers, because the two sets do not
-    /// have the same shape.** `CommandOpcodes` carries twelve roles; the references name nine for
+    /// have the same shape.** `CommandOpcodes` carries fourteen roles; the references name nine for
     /// MAVERICK, and the other six — live telemetry, the haptic alarm, ping, abort, the read pointer
     /// and the optical enable — have **no published 5.0 byte at all**. Forcing them into that struct
     /// would mean six invented literals sitting in a table whose entire purpose is to be the place a
@@ -162,7 +187,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
     /// So this type carries the roles the 5.0 references actually establish, and it is **not a subset of
     /// `CommandOpcodes`** — the numbering crosses over in both directions. `0x6A`'s IMU toggle and the
     /// drain group (`22`/`23`/`34`) are shared numbering written in different radixes; the hello
-    /// (`0x91`), the clock pair (`0x92`/`0x93`), the config writes (`0x77`/`0x78`) and raw data's start
+    /// (`0x91`), the clock pair (`0x0A`/`0x0B`), the haptics remap (`0x13`) and raw data's start
     /// and stop (`0x51`/`0x52`) exist on this generation and not on the 4.0's table. **The numbers are
     /// decimal in the noop catalog the 5.0 set comes from and hex everywhere in this build**, which is
     /// how `docs/BLE_PROTOCOL.md` §2's eight correspondences are recorded; the fields below are written in
@@ -211,16 +236,40 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
         /// need asking for separately.
         public let toggleIMUModeHistorical: UInt8
 
-        /// `0x92` / 146 `SET_CLOCK`. **A prerequisite for trusting a drained record's timestamp**, for
-        /// §7 Q7's reason carried on the 4.0's `setClock`: a wrong-length set is acknowledged but not
-        /// latched, and a strap with an invalid RTC stops banking sensor data to flash entirely — a
-        /// strap that looks connected and healthy while writing nothing.
+        /// `0x0A` / 10 `SET_CLOCK` — **and this field carried `0x92` until it was corrected against
+        /// noop, which sends command 10 under this same envelope.** `0x92`/146 appears nowhere in the
+        /// reference client and was this repo's invention; it is recorded here because an opcode table
+        /// whose history is not written down is a table someone restores the wrong byte to.
+        ///
+        /// **It is MANDATORY before history rather than merely prudent.** noop sends SET_CLOCK and then
+        /// GET_CLOCK as the first two commands of its connect sequence, and its comment states the
+        /// reason the drain path was chasing: a 5.0 whose clock is unset **stops banking sensor data to
+        /// flash entirely**, so an offload "completes" with zero body frames — a strap that looks
+        /// connected and healthy while carrying nothing. This is the same fact recorded on the 4.0's
+        /// `setClock`, and it is why the clock now goes out on the connect pass and not only before a
+        /// drain.
+        ///
+        /// **`0x0A` is also the 4.0's SET_CLOCK, and the collision is real rather than an error.**
+        /// Both tables carry it and the envelope is what tells the two apart — the 4.0's rides CRC8,
+        /// this one CRC16. Tests distinguish the pair by envelope, never by byte.
         public let setClock: UInt8
 
-        /// `0x93` / 147 `GET_CLOCK`. The read-back, which §7 Q7 notes is cheap and needs no drain — so
-        /// the clock is read after being set rather than assumed to have latched. There is no 4.0
-        /// counterpart in either reference, so this is the only generation whose clock can be checked.
+        /// `0x0B` / 11 `GET_CLOCK` — the read-back, in the same puffin framing. §7 Q7 notes it is
+        /// cheap and needs no drain, so the clock is read after being set rather than assumed latched.
+        ///
+        /// **The reply's layout is undocumented and this build does not parse it.** The frame is sent,
+        /// its answer arrives as an ordinary inbound command response, and the manager logs it raw —
+        /// nothing claims the RTC moved. A successful SET_CLOCK write is not evidence it did.
         public let getClock: UInt8
+
+        /// `0x13` / 19 — the **puffin wire opcode** for `RUN_HAPTICS_PATTERN`, whose catalog ID is 79.
+        ///
+        /// **This is a remap, not a second command.** A real-MG capture in noop shows the strap
+        /// rejecting 79 under this envelope with command-result `0x03` (unsupported), and the working
+        /// body instead arrives as opcode `0x13` with a 12-byte notification preset. The catalog ID and
+        /// the transmitted byte are two different numbers on this generation, which is exactly the kind
+        /// of drift that makes a literal in a builder dangerous — so the byte lives in the table.
+        public let notifyHaptics: UInt8
 
         /// `0x14` / 20 `ABORT_HISTORICAL_TRANSMITS` — ends a drain, and **shared numbering with the
         /// 4.0**, which is the correction that put this field here. The table used to omit it on the
@@ -246,6 +295,19 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
         /// which is this drain's own rule stated from the other side.
         public let setReadPointer: UInt8
 
+        /// `0x03` / 3 `TOGGLE_REALTIME_HR` — **the command that makes a bonded 5.0 stream live heart
+        /// rate, and the one this app was not sending.**
+        ///
+        /// The opcode comes from noop's command index, where ID 3 carries this name, and its verified
+        /// sequence arms it *after* the bond, with a one-byte payload of `[0x01]`. The strap answers by
+        /// notifying packet 40 (`REALTIME_DATA`), which `HeartRatePayloadDecoder.decodeLive` walks.
+        ///
+        /// **It is a 5.0/MG byte and not a 4.0 one.** The 4.0's equivalent is the separate
+        /// `0x05` live-telemetry enable already sent from `sendConnectCommands`, so the dispatcher
+        /// (`WhoopCommandFrames.realtimeHeartRate`) answers `nil` for the CRC8 envelope rather than
+        /// transmitting this number under it. `0x03` is not a 4.0 opcode in either reference.
+        public let toggleRealtimeHR: UInt8
+
         public init(
             hello: UInt8,
             requestHistoricalSync: UInt8,
@@ -257,8 +319,10 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
             toggleIMUModeHistorical: UInt8,
             setClock: UInt8,
             getClock: UInt8,
+            notifyHaptics: UInt8,
             abortHistoricalTransmits: UInt8,
-            setReadPointer: UInt8
+            setReadPointer: UInt8,
+            toggleRealtimeHR: UInt8
         ) {
             self.hello = hello
             self.requestHistoricalSync = requestHistoricalSync
@@ -270,8 +334,10 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
             self.toggleIMUModeHistorical = toggleIMUModeHistorical
             self.setClock = setClock
             self.getClock = getClock
+            self.notifyHaptics = notifyHaptics
             self.abortHistoricalTransmits = abortHistoricalTransmits
             self.setReadPointer = setReadPointer
+            self.toggleRealtimeHR = toggleRealtimeHR
         }
     }
 
@@ -292,6 +358,16 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
         public let event: UInt8
         public let metadata: UInt8
 
+        /// `40` `REALTIME_DATA` — the 5.0/MG's live heart-rate record, and **`nil` on the 4.0 because
+        /// that generation has no such packet.**
+        ///
+        /// This is where `HeartRatePayloadDecoder.decodeLive` looks for the type it walks. It is an
+        /// optional field rather than a shared literal because the two generations do not share this
+        /// one: folding it into a required field would put a 4.0 type number in a table whose own doc
+        /// records that the numbering is shared only where it has been shown to be. A `nil` here is
+        /// the refusal, and the decoder returns no sample rather than inventing a type to compare.
+        public let realtimeHeartRate: UInt8?
+
         /// **`realtimeRawData` is `0x2B` on the 4.0 and `43` on the 5.0 / MG, and those are the same
         /// byte.** It was the one role this table did not carry, so the 100 Hz motion record had no
         /// name anywhere in the codebase and `docs/BLE_PROTOCOL.md` §6's two layouts had nothing to be
@@ -299,7 +375,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
         /// generations to their own layout rather than each generation needing its own type check.
         public init(
             command: UInt8, commandResponse: UInt8, realtimeRawData: UInt8, historicalData: UInt8,
-            event: UInt8, metadata: UInt8
+            event: UInt8, metadata: UInt8, realtimeHeartRate: UInt8? = nil
         ) {
             self.command = command
             self.commandResponse = commandResponse
@@ -307,6 +383,7 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
             self.historicalData = historicalData
             self.event = event
             self.metadata = metadata
+            self.realtimeHeartRate = realtimeHeartRate
         }
     }
 
@@ -440,6 +517,8 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
             sendRealtimeMotion: 0x3F,
             enableOpticalData: 0x6B,
             setClock: 0x0A,
+            getClock: 0x0B,
+            runHapticsPattern: 0x4F,
             abortHistoricalTransmits: 0x14,
             setReadPointer: 0x21,
             getDataRange: 0x22,
@@ -476,8 +555,9 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
     ///   them: `WhoopPacketEncoder5` pins `00 01` as literals copied from the one published frame, and
     ///   says so where it does it. That is a claim about a two-byte field whose meaning the reference
     ///   does not give, and a capture is what would settle it.
-    /// * The command characteristic still needs **an authenticated SMP bond**, which §7 Q6 records noop
-    ///   reporting that macOS CoreBluetooth cannot complete and which nothing establishes that iOS can.
+    /// * The command characteristic still refuses writes until the link is **encrypted** — §7 Q6
+    ///   records the strap's own `CBATTError.insufficientAuthentication` / `.insufficientEncryption`
+    ///   refusal, and that the bond is made by just-works pairing, which noop ships on macOS and iOS.
     ///   Carrying opcodes does not answer that question; it is what makes the question askable, because
     ///   before this there was no frame to send either way.
     ///
@@ -502,10 +582,12 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
                 startRawData: 0x51,
                 toggleIMUModeLive: 0x6A,
                 toggleIMUModeHistorical: 0x69,
-                setClock: 0x92,
-                getClock: 0x93,
+                setClock: 0x0A,
+                getClock: 0x0B,
+                notifyHaptics: 0x13,
                 abortHistoricalTransmits: 0x14,
-                setReadPointer: 0x21
+                setReadPointer: 0x21,
+                toggleRealtimeHR: 0x03
             ),
             packetTypes: PacketTypes(
                 command: 35,
@@ -513,7 +595,8 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
                 realtimeRawData: 43,
                 historicalData: 47,
                 event: 48,
-                metadata: 49
+                metadata: 49,
+                realtimeHeartRate: 40
             )
         )
     }
@@ -564,10 +647,10 @@ public struct WhoopProtocolCatalog: WhoopProtocolProviding {
     /// two that are not WHOOP straps at all.
     ///
     /// **`true` here is a statement about this build, not about the user's strap.** A 5.0's command
-    /// characteristic still needs an authenticated SMP bond that nothing in this project establishes is
-    /// completable from a third-party iOS app (§7 Q6), so the screen's caption for a 5.0 says sync is
-    /// implemented and the bond is the open question — rather than the earlier caption's "no sync can
-    /// happen", which was true when there was no 5.0 frame to send and is now wrong.
+    /// characteristic still refuses writes until the link is encrypted (§7 Q6), so the screen's caption
+    /// for a 5.0 says sync is implemented and the bond is the open question — rather than the earlier
+    /// caption's "no sync can happen", which was true when there was no 5.0 frame to send and is now
+    /// wrong.
     public func supportsProprietarySync(_ generation: WhoopHardwareGeneration) -> Bool {
         WhoopProtocolProfile.profile(for: generation)?.canTransmitCommands == true
     }

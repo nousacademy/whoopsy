@@ -16,7 +16,8 @@ import Foundation
 ///
 /// `strainText` returns the dash for `nil` and `"0.0"` for a measured `0.0`, and the second is a real
 /// reading rather than a placeholder: `LiveSessionAccumulator` produces exactly `0.0` for a session it
-/// watched that never left zone 1. Collapsing the two — the way a defaulted `strain: 0` would — puts a
+/// watched that never rose above resting, and a small positive figure for one that stayed above resting
+/// but under zone 1. Collapsing the two — the way a defaulted `strain: 0` would — puts a
 /// confident *no strain at all* on a fasting window nothing measured, which is the fabrication every
 /// absence rule in this app exists to prevent.
 ///

@@ -5,14 +5,20 @@ import Foundation
 // It is `GRDBWorkoutRepository` now. Nothing in this file is workout-related.
 
 public final class UserDefaultsAppPreferencesRepository: AppPreferencesRepository, @unchecked Sendable {
+    /// The key the Anonymous diagnostics toggle persists under, exposed because the app target reads
+    /// it **before** the container exists: the diagnostics sink is installed from `WhoopsyApp.init`,
+    /// which runs a frame ahead of the first view, and it needs the toggle's last saved value then.
+    /// A second spelling of the string in the app target is the drift this constant prevents.
+    public static let analyticsDefaultsKey = "org.whoopsy.presentation.preferences.analytics"
+
     private let defaults: UserDefaults
     private let key = "org.whoopsy.presentation.preferences"
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
     public func load() async -> AppPreferences {
-        AppPreferences(analyticsEnabled: defaults.bool(forKey: key + ".analytics"), healthKitSyncEnabled: defaults.bool(forKey: key + ".health"), liveHeartRateBroadcastEnabled: defaults.bool(forKey: key + ".broadcast"), usesMetricUnits: defaults.object(forKey: key + ".metricUnits") as? Bool)
+        AppPreferences(analyticsEnabled: defaults.bool(forKey: Self.analyticsDefaultsKey), healthKitSyncEnabled: defaults.bool(forKey: key + ".health"), liveHeartRateBroadcastEnabled: defaults.bool(forKey: key + ".broadcast"), usesMetricUnits: defaults.object(forKey: key + ".metricUnits") as? Bool)
     }
     public func save(_ preferences: AppPreferences) async {
-        defaults.set(preferences.analyticsEnabled, forKey: key + ".analytics")
+        defaults.set(preferences.analyticsEnabled, forKey: Self.analyticsDefaultsKey)
         defaults.set(preferences.healthKitSyncEnabled, forKey: key + ".health")
         defaults.set(preferences.liveHeartRateBroadcastEnabled, forKey: key + ".broadcast")
         // **Written only when it is non-`nil`, and removed when it goes back to `nil`.** Storing a

@@ -335,9 +335,9 @@ enum LocalDatabaseManagerWorkoutSyncTests {
 
         // `WorkoutRecord.CodingKeys` and its two siblings are internal to the module and cannot be read
         // from here, so the schema is pinned through the door that exists for it. The whole set rather
-        // than a `contains` sweep, because a thirteenth column is a column no record declares and its
+        // than a `contains` sweep, because a fifteenth column is a column no record declares and its
         // values would be read by nothing — and because `workouts` is the one table here whose columns
-        // arrived across six migrations, so a set is the only shape that can see one go missing.
+        // arrived across seven migrations, so a set is the only shape that can see one go missing.
         do {
             let db = LocalDatabaseManager(inMemory: true)
 
@@ -345,8 +345,9 @@ enum LocalDatabaseManagerWorkoutSyncTests {
             assertTest(Set(columns) == [
                 "id", "date", "started_at", "ended_at", "strain", "average_heart_rate",
                 "max_heart_rate", "source", "activity_name", "hr_zone_percents", "steps",
-                "offline_region_id"
-            ], "The parent's columns are the record's own twelve, spelled in snake case")
+                "offline_region_id",
+                "offline_region_center_latitude", "offline_region_center_longitude"
+            ], "The parent's columns are the record's own fourteen, spelled in snake case")
 
             // The names the record spells differently from its properties are named here, because a
             // camelCase column would mean the record's mapping and the table had drifted and every read
@@ -358,6 +359,12 @@ enum LocalDatabaseManagerWorkoutSyncTests {
                        "…and so is the zone block's")
             assertTest(columns.contains("offline_region_id") && !columns.contains("offlineRegionID"),
                        "…and the tile region's")
+            assertTest(
+                columns.contains("offline_region_center_latitude")
+                    && columns.contains("offline_region_center_longitude")
+                    && !columns.contains("offlineRegionCenterLatitude"),
+                "…and `v23`'s pair, which is local-only but still a record property and so still"
+                    + " snake case in the table")
 
             // The two child tables, which is the half of the aggregate a parent-level assertion cannot
             // see. `workout_id` is the join and is the one column whose absence would orphan every child

@@ -135,8 +135,11 @@ enum PacketFramingTests {
         // rather than building a frame a strap would accept and act on.
         let fiveOpcodes = WhoopProtocolProfile.whoop5.syncOpcodes
         assertTest(
-            fiveOpcodes?.hello == 0x91 && fiveOpcodes?.setClock == 0x92 && fiveOpcodes?.getClock == 0x93,
-            "The 5.0 hello and clock pair read 0x91/0x92/0x93 rather than 4.0's bytes")
+            fiveOpcodes?.hello == 0x91 && fiveOpcodes?.setClock == 0x0A && fiveOpcodes?.getClock == 0x0B,
+            "The 5.0 hello is 0x91, and its clock pair is **10/11** — the command IDs the reference "
+                + "client actually sends under puffin framing. 0x92/0x93 appear nowhere in it, and a "
+                + "clock set built from those bytes leaves a 5.0 un-clocked, which is the state in which "
+                + "it banks no sensor data at all")
         assertTest(
             fiveOpcodes?.requestHistoricalSync == 0x16 && fiveOpcodes?.historicalDataResult == 0x17,
             "The 5.0 drain pair is 0x16/0x17 — the same numbering as the 4.0's, in the other envelope")
@@ -320,6 +323,28 @@ enum PacketFramingTests {
             WhoopBLEManager.resolvedGeneration(stored: nil, advertisedName: "WHOOP Strap") == .whoop4,
             "An unnamed strap falls back to 4.0 — the heuristic cannot read a name it was never given")
 
+        // The rung between the choice and the guess: the service list.
+        //
+        // The strap on this machine advertises as "Alex WHOOP" — a name its owner set, with no `5` in
+        // it — so the heuristic called a 5.0 a 4.0 and the hello was never built. `FD4B0001` is the
+        // hardware's own answer.
+        assertTest(
+            WhoopBLEManager.resolvedGeneration(
+                stored: nil, observed: .whoop5, advertisedName: "Alex WHOOP") == .whoop5,
+            "The 5.0 service beats a name with no digit in it")
+        assertTest(
+            WhoopBLEManager.resolvedGeneration(
+                stored: .whoop4, observed: .whoop5, advertisedName: "Alex WHOOP") == .whoop5,
+            "The 5.0 service corrects a stored 4.0 — that choice cannot be true for this hardware")
+        assertTest(
+            WhoopBLEManager.resolvedGeneration(
+                stored: .whoop5MG, observed: .whoop5, advertisedName: "WHOOP 5.0") == .whoop5MG,
+            "A stored 5.0 MG choice survives: the service cannot tell 5.0 from MG")
+        assertTest(
+            WhoopBLEManager.resolvedGeneration(
+                stored: .whoop5, observed: nil, advertisedName: "WHOOP Strap") == .whoop5,
+            "A stored 5.0 choice survives a name that says nothing")
+
         // MARK: Length-driven reassembly across notifications
         //
         // `docs/BLE_PROTOCOL.md` §4 named this as the remaining half of the framing problem, and it is the gate
@@ -499,29 +524,30 @@ enum PacketFramingTests {
             ])
             return Data(frame)
         }
-        let imuInner = [UInt8(47), 0, 0x2F] + (0..<1244).map { UInt8($0 % 251) }
+        let imuInner = [UInt8(47), 0, 0x2F] + (0..<1229).map { UInt8($0 % 251) }
         let imuFrame = fiveFrame(inner: imuInner)
         assertTest(
-            imuFrame.count == 1259,
-            "The 5.0 IMU frame is 1259 bytes: 8 header + (3 prefix + 1244 payload) + 4 trailer")
+            imuFrame.count == 1244,
+            "The 5.0 IMU frame is 1244 bytes: 8 header + (3 prefix + 1229 payload) + 4 trailer")
         assertTest(
-            imuFrame[2] == 0xE3 && imuFrame[3] == 0x04,
-            "Its declared length sits at bytes 2 and 3 — 1251, where 4.0's offset would read byte 1's `01`")
+            imuFrame[2] == 0xD4 && imuFrame[3] == 0x04,
+            "Its declared length sits at bytes 2 and 3 — 1236, the 1,232-byte inner record plus its "
+                + "trailer, where 4.0's offset would read byte 1's `01`")
         assertTest(
-            WhoopProtocolProfile.whoop5.frameByteCount(declaredLength: 1251) == imuFrame.count,
+            WhoopProtocolProfile.whoop5.frameByteCount(declaredLength: 1236) == imuFrame.count,
             "The frame-sizing rule agrees with the hand-built frame, which is a different construction")
         do {
             let decoded = decoder.decodeProprietaryFrame(data: imuFrame, profile: .whoop5)
             assertTest(
-                decoded?.type == 47 && decoded?.payload.count == 1244,
-                "The hand-built frame decodes as a type-47 record carrying its 1244-byte payload")
+                decoded?.type == 47 && decoded?.payload.count == 1229,
+                "The hand-built frame decodes as a type-47 record carrying its 1229-byte payload")
         }
         var fiveSplitFailures: [String] = []
         for split in 1..<imuFrame.count {
             var subject = WhoopFrameReassembler()
             var got = subject.append(fragment(imuFrame, 0..<split), profile: .whoop5)
             got += subject.append(fragment(imuFrame, split..<imuFrame.count), profile: .whoop5)
-            if got.count != 1 || got[0].payload.count != 1244 {
+            if got.count != 1 || got[0].payload.count != 1229 {
                 fiveSplitFailures.append("\(split)")
             }
         }

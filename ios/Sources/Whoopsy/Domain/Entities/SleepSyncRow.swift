@@ -111,4 +111,55 @@ public struct SleepSyncRow: Equatable, Sendable {
         self.sleepStages = sleepStages
         self.source = source
     }
+
+    /// The row a night would be stored as, with its provenance supplied by the caller.
+    ///
+    /// `sleepPerformance` is `SleepSession.sleepPerformancePercentage` widened to the `Double` the
+    /// record stores. `sleepConsistency` is WHOOP's own figure, which the entity never carries on a
+    /// strap night, so it rides through as whatever the entity holds — `nil` for a night this app
+    /// classified, exactly as `GRDBSleepRepository` stores.
+    public init(_ session: SleepSession, source: String?) {
+        self.init(
+            date: session.date,
+            startTime: session.startTime,
+            endTime: session.endTime,
+            sleepPerformance: Double(session.sleepPerformancePercentage),
+            totalSleepNeeded: session.targetSleepNeedSeconds,
+            lightSleep: session.lightSleepSeconds,
+            deepSleep: session.deepSleepSeconds,
+            remSleep: session.remSleepSeconds,
+            awakeTime: session.awakeSeconds,
+            respiratoryRate: session.respiratoryRate,
+            disturbanceCount: session.disturbanceCount,
+            sleepConsistency: session.sleepConsistency,
+            sleepDebt: session.sleepDebtSeconds,
+            sleepStages: session.sleepStages,
+            source: source
+        )
+    }
+
+    /// The entity a screen would draw, rebuilt from the stored fields.
+    ///
+    /// `hasWhoopSleepNeed` is derived from `source`, the only marker separating WHOOP's own need from
+    /// this app's — the same comparison `GRDBSleepRepository.makeSession` makes. The `"whoop_export"`
+    /// literal is `WhoopExportImporter.sourceLabel`; Domain cannot name that type, so the string is
+    /// spelled here with the cross-reference rather than with a second constant that could drift.
+    public var session: SleepSession {
+        SleepSession(
+            date: date,
+            startTime: startTime,
+            endTime: endTime,
+            targetSleepNeedSeconds: totalSleepNeeded,
+            lightSleepSeconds: lightSleep,
+            deepSleepSeconds: deepSleep,
+            remSleepSeconds: remSleep,
+            awakeSeconds: awakeTime,
+            disturbanceCount: disturbanceCount,
+            respiratoryRate: respiratoryRate,
+            sleepConsistency: sleepConsistency,
+            sleepDebtSeconds: sleepDebt,
+            hasWhoopSleepNeed: source == "whoop_export",
+            sleepStages: sleepStages ?? []
+        )
+    }
 }

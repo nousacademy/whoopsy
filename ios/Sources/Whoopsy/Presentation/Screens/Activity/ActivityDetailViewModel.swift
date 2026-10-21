@@ -467,6 +467,28 @@ import SwiftUI
         ActivityRoute(points: session.route)
     }
 
+    /// The ground this session downloaded, framed for a card — or `nil` when it downloaded none.
+    ///
+    /// **The page's map for a session with no route, and the reason `v23` exists.** `USE OFFLINE MAP`
+    /// and `RECORD ROUTE` are mutually exclusive, so a session can end with tiles in Mapbox's store
+    /// and an empty `workout_route_points`. `route` is then `nil`, the route card is not drawn, and
+    /// without this property the download would be invisible on the one screen it was for.
+    ///
+    /// Both parts are required: the region id says a download was asked for, and the centre is the only
+    /// thing that can frame it — `TileRegion` exposes no geometry. A row with an id and no centre (every
+    /// row written before `v23`) therefore draws nothing, which is the truthful answer for it.
+    ///
+    /// The section is drawn only when this is non-`nil` **and** `routeRenderer` is `.offline`: a region
+    /// that is still downloading or has failed resolves to `.mapKit` through the same
+    /// `RouteMapRenderer.resolve` the route card reads, so the safety property — no blank offline card
+    /// over absent tiles — holds for this card too.
+    public var offlineArea: ActivityOfflineArea? {
+        guard session.offlineRegionID != nil, let center = session.offlineRegionCenter else {
+            return nil
+        }
+        return ActivityOfflineArea(center: center)
+    }
+
     /// Asks what is on disk for the region this session named, and turns that into a renderer.
     ///
     /// **A session with no region asks nothing.** `offlineRegionID` is `nil` for every session recorded

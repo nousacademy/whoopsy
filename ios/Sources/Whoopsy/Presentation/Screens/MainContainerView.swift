@@ -141,7 +141,8 @@ public struct MainContainerView: View {
                     stepRepository: container.stepRepository,
                     analyzeStress: container.analyzeStressUseCase,
                     manage: container.manageBLEConnectionUseCase,
-                    streamUseCase: container.streamBiometricsUseCase),
+                    streamUseCase: container.streamBiometricsUseCase,
+                    trackSteps: container.trackStepsUseCase),
                 recoveryViewModel: RecoveryViewModel(
                     calculate: container.calculateRecoveryUseCase,
                     repository: container.recoveryRepository,
@@ -182,6 +183,10 @@ public struct MainContainerView: View {
                 // every screen that draws it, so it is the container's and this passes the reference
                 // through. See `LiveSessionUseCase`.
                 liveSessionUseCase: container.liveSessionUseCase,
+                // The live map `LiveSessionView` draws above END. `UnavailableOfflineMaps` unless the
+                // app target linked Mapbox — the same value `makeActivityDetailViewModel`'s route card
+                // uses, handed down rather than read from `DIContainer` inside the screen.
+                offlineMaps: container.offlineMaps,
                 // The activity detail page's view model, built here and handed over as a factory
                 // rather than as an instance.
                 //
@@ -260,7 +265,60 @@ public struct MainContainerView: View {
         // because that call never returns.
         .task {
             await container.liveSessionUseCase.endOrphanedLiveActivities()
+            // **The drain runs itself now.** `SYNC HISTORY` was the only caller of
+            // `SyncHistoricalDataUseCase`, so a strap that had banked a night handed it over only when
+            // someone pressed a button — which is not how a strap's cache is meant to be used, and
+            // the owner said so plainly. This watches the link and drains **once per connection**,
+            // because a drain is a loop of writes and re-running it on every state callback would
+            // fight itself; the flag resets on a disconnect, so the next link drains again.
+            startAutoSyncOnConnect()
             await container.trackStepsUseCase.start()
+        }
+    }
+}
+
+extension MainContainerView {
+    /// Drains the strap's flash once each time it connects, without a button.
+    ///
+    /// **Once per connection, and the flag is what makes that true.** `SyncHistoricalDataUseCase`
+    /// writes a drain through the multicast historical stream; a second run started from the next
+    /// `deviceStream` callback would supersede the first (the manager concludes it as `.aborted`) and
+    /// neither would finish. So the flag is set when a drain starts and cleared only on a disconnect —
+    /// the same shape `DeviceViewModel.load()`'s `guard task == nil` uses for the same reason.
+    ///
+    /// **A failed drain is logged and not surfaced**: it happens at launch, before any screen is up,
+    /// and the device page's own `SYNC HISTORY` remains the manual retry. Starting a second drain
+    /// while one is running is the one thing this must not do, so an in-flight drain also holds the
+    /// flag.
+    func startAutoSyncOnConnect() {
+        let container = self.container
+        Task {
+            var drainedThisLink = false
+            for await device in container.manageBLEConnectionUseCase.deviceStream {
+                guard !Task.isCancelled else { return }
+                switch device.connectionState {
+                case .disconnected, .scanning, .connecting, .error:
+                    // A link that ended gets a fresh drain when it returns.
+                    drainedThisLink = false
+                case .connected:
+                    guard !drainedThisLink else { continue }
+                    drainedThisLink = true
+                    do {
+                        let outcome = try await container.syncHistoricalDataUseCase.execute()
+                        AppLogger.ble.notice("""
+                            Auto-sync: \(outcome.recordCount, privacy: .public) record(s) in \
+                            \(outcome.batchCount, privacy: .public) batch(es), ending \
+                            \(String(describing: outcome.ending), privacy: .public)
+                            """)
+                    } catch {
+                        AppLogger.ble.warning("""
+                            Auto-sync failed: \(error.localizedDescription, privacy: .public)
+                            """)
+                    }
+                case .syncing:
+                    continue
+                }
+            }
         }
     }
 }

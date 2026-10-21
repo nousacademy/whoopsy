@@ -58,10 +58,14 @@ public final class CalculateStrainUseCase: Sendable {
             // Estimate duration between samples (default 1 second if continuous)
             let duration: TimeInterval = (i > 0) ? min(5.0, sample.timestamp.timeIntervalSince(samples[i - 1].timestamp)) : 1.0
 
-            let (zoneIdx, load) = StrainAccumulatorMath.loadDelta(for: hr, zones: zones, durationSeconds: duration)
+            let (zoneIdx, load) = StrainAccumulatorMath.loadDelta(
+                for: hr, zones: zones, restingHeartRate: profile.restingHeartRate, durationSeconds: duration)
+            // Load is added even when no zone matched: time above resting but below zone 1's floor is
+            // credited at weight 1 by the low-intensity band. Zone *duration* is added only when a zone
+            // matched, so the five percentages still sum to at most 100.
+            totalAccumulatedLoad += load
             if let zoneIdx = zoneIdx {
                 zoneDurations[zoneIdx, default: 0] += duration
-                totalAccumulatedLoad += load
             }
         }
 
@@ -92,9 +96,9 @@ public final class CalculateStrainUseCase: Sendable {
         let finalStrain = StrainScore(
             date: date,
             score: strainScoreVal,
-            // Measured, even when `strainScoreVal` comes out exactly `0.0` because no sample reached
-            // zone 1: the strap recorded this day, so a zero here is a reading rather than the
-            // absence of one. The guard above is the whole distinction.
+            // Measured, even when `strainScoreVal` comes out exactly `0.0` because no sample rose above
+            // resting: the strap recorded this day, so a zero here is a reading rather than the absence
+            // of one. The guard above is the whole distinction.
             hasMeasurement: true,
             rawAccumulatedLoad: totalAccumulatedLoad,
             // **The one place in this app where an absence is stored as a `0`.** `strains.kilojoules` is

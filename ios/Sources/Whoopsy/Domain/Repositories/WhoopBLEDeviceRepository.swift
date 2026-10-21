@@ -23,6 +23,20 @@ public protocol WhoopBLEDeviceRepository: Sendable {
     /// yielded.
     var motionStream: AsyncStream<MotionBatch> { get }
 
+    /// Heart-rate samples recovered by a historical drain, one per R18 record, stamped with the
+    /// **moment the strap stored them** rather than with their arrival.
+    ///
+    /// **A separate stream from `liveTelemetryStream`, not a second source into it.** A drained sample
+    /// is a day or more old, and every live consumer draws "now" from what it receives — merging the
+    /// two would put a three-day-old pulse on the Home badge. The stream ends when the drain ends:
+    /// `requestHistoricalSync` and this stream describe one operation, and the consumer reads both at
+    /// once.
+    ///
+    /// **This is the producer that used to be missing entirely.** A drained R18 record carried a heart
+    /// rate and R-R intervals and nothing decoded it, so the strap's history — the only place its
+    /// stored biometrics live — reached the store as counts and no rows.
+    var historicalTelemetryStream: AsyncStream<BiometricSample> { get }
+
     /// Scan for nearby WHOOP straps
     func startScanning() async throws
 
@@ -56,6 +70,16 @@ public protocol WhoopBLEDeviceRepository: Sendable {
     /// Throws `WhoopSyncError` when there is no path to a drain at all, so "nothing was sent" cannot
     /// be reported as a completed sync by a caller that only reads the absence of a throw.
     func requestHistoricalSync(from startDate: Date, to endDate: Date) async throws -> HistoricalSyncOutcome
+
+    /// Restarts the strap's firmware — `0x1D REBOOT_STRAP`.
+    ///
+    /// **A recovery, not a routine command.** It exists because a strap whose RTC was lost is
+    /// documented to stop writing history to flash, and a reboot is the way to re-initialise that
+    /// path; it erases nothing. The link drops when the strap restarts, and the standing connect
+    /// re-establishes it when the strap comes back.
+    ///
+    /// Throws when there is no command path, so a caller cannot report a reboot that was never sent.
+    func rebootStrap() async throws
 
     /// Get the current connected device state
     func getCurrentDevice() async -> WhoopDevice?

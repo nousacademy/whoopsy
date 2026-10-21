@@ -29,11 +29,15 @@ import Foundation
 /// refused, and a record type this app models no motion lane for is refused, both by returning `nil`.
 public enum MotionPayloadDecoder {
 
-    /// R21's payload, exactly: 1,244 bytes, fixed.
+    /// R21's payload, exactly: **1,229 bytes**, fixed.
     ///
-    /// Not a minimum. §6 calls the record "fixed 1,244 bytes", and a length test rather than a
-    /// truncation is what keeps a shorter record from being walked off its own end.
-    public static let r21PayloadBytes = 1244
+    /// Not a minimum. §6 calls the *frame* "fixed 1,244 bytes", and that is the figure this constant
+    /// used to hold — which made the length test compare a payload against a frame. The frame's 1,244
+    /// bytes are the 11-byte origin (`innerOrigin` 8 + `innerPrefixBytes` 3) + this payload + the
+    /// 4-byte CRC32 trailer, so the payload is `1,244 − 11 − 4` = **1,229**. A length test rather than
+    /// a truncation is what keeps a shorter record from being walked off its own end; the constant has
+    /// to be the payload's own length or the test refuses every real record.
+    public static let r21PayloadBytes = 1229
 
     /// R10's payload: the 4.0's `REALTIME_RAW_DATA` variant declaring **1917** bytes.
     ///
@@ -58,8 +62,10 @@ public enum MotionPayloadDecoder {
     ///   - frame: A frame whose envelope has already been validated. The payload is **not**
     ///     re-checked against a checksum — `decodeProprietaryFrame` did that, and the frame-level
     ///     CRC32 covers every byte this reads.
-    ///   - receivedAt: The instant the notification was decoded. Used only for the 4.0's live record,
-    ///     which carries no timestamp of its own; see `MotionBatch.timestampIsFromStrap`.
+    ///   - receivedAt: The instant the notification was decoded. It is the `start` of every **live**
+    ///     record — the 4.0's because that layout carries no clock, and the 5.0/MG's because its clock
+    ///     is only as good as a strap RTC this app cannot verify. A **banked** R21 record keeps its own
+    ///     stamp instead; see `MotionBatch.timestampIsFromStrap`.
     public static func decode(frame: WhoopRawFrame, receivedAt: Date) -> MotionBatch? {
         guard let profile = WhoopProtocolProfile.profile(for: frame.generation) else { return nil }
         let payload = frame.payload
@@ -80,10 +86,22 @@ public enum MotionPayloadDecoder {
             // Live and banked are the *same* record here, which is the fact the whole 5.0 path rests
             // on: a drained packet 47 and a live packet 43 carry one R21 layout at 100 Hz, so a
             // night's steps and a walk's steps arrive through one decoder and one accumulator.
-            guard frame.type == types.realtimeRawData || frame.type == types.historicalData else {
-                return nil
-            }
-            return decodeR21(payload: payload, origin: origin, generation: frame.generation)
+            //
+            // **The two differ on which clock keys a day, and that split is load-bearing.** A banked
+            // record's own unix stamp is the only thing that can file a night recovered hours later on
+            // the day it was measured, so it is kept. A live record arrives as it is measured, so the
+            // arrival instant is at least as good — and it is strictly safer, because the strap's RTC
+            // is not something this app can verify: a strap whose clock was lost stamps every live
+            // record with a date years in the past, and trusting it files a whole day of steps under a
+            // key no screen asks for. Measured on a real 5.0 on 2026-10-20: `TrackStepsUseCase` wrote
+            // 22,702 steps under **2000-01-03** and Home's tile stayed at `—` for the entire walk.
+            // This is `decodeR10`'s rule, extended to the generation that does carry a clock, because
+            // a clock that can be wrong is not better than an arrival instant that cannot.
+            let isLive = frame.type == types.realtimeRawData
+            guard isLive || frame.type == types.historicalData else { return nil }
+            return decodeR21(
+                payload: payload, origin: origin, generation: frame.generation,
+                receivedAt: receivedAt, isLive: isLive)
 
         case .standardBleHR, .simulator:
             return nil
@@ -108,7 +126,8 @@ public enum MotionPayloadDecoder {
     }
 
     private static func decodeR21(
-        payload: Data, origin: Int, generation: WhoopHardwareGeneration
+        payload: Data, origin: Int, generation: WhoopHardwareGeneration,
+        receivedAt: Date, isLive: Bool
     ) -> MotionBatch? {
         guard payload.count == r21PayloadBytes else { return nil }
 
@@ -125,25 +144,26 @@ public enum MotionPayloadDecoder {
               let gz = gyroLane(R21.gyroscopeZ)
         else { return nil }
 
-        // The record's own clock: `seconds + fraction / 32768`. Both fields are frame-absolute and
-        // both sit well inside the exact-length guard above, so the reads cannot fall out of range and
-        // there is no failure branch to take — what matters is the one this function *declines* to
-        // take: `decodeR10` substitutes `receivedAt` because the live 4.0 record carries no clock, and
-        // substituting it here would file a drained record under the day it was fetched rather than
-        // the day it was measured, which is precisely the wrong-day failure the stamp exists to avoid.
-        // A record whose stamp is a plausible zero is a separate question and belongs to the caller's
-        // window check, not to the decoder.
+        // **Banked: the record's own clock. Live: the arrival instant.** See `decode` for why the two
+        // differ — a banked record's stamp is the only thing that can file a night recovered later on
+        // the day it was measured, while a live record's stamp is only as good as an RTC this app
+        // cannot verify. The banked read is `seconds + fraction / 32768`, both fields frame-absolute
+        // and well inside the exact-length guard above, so there is no failure branch to take.
         let fraction = Double(readUInt16(payload, at: R21.unixFraction - origin))
         let seconds = Double(readUInt32(payload, at: R21.unixSeconds - origin))
-        let stamp = Date(timeIntervalSince1970: seconds + fraction / 32768.0)
+        let strapStamp = Date(timeIntervalSince1970: seconds + fraction / 32768.0)
+        let stamp = isLive ? receivedAt : strapStamp
 
         return MotionBatch(
             generation: generation,
             start: stamp,
-            timestampIsFromStrap: true,
+            timestampIsFromStrap: !isLive,
             sampleIntervalSeconds: 1.0 / Double(samplesPerAxis),
             accelerometerG: MotionAxes(x: ax, y: ay, z: az),
-            gyroscopeDps: MotionAxes(x: gx, y: gy, z: gz))
+            gyroscopeDps: MotionAxes(x: gx, y: gy, z: gz),
+            // Read even when `start` is the arrival instant: this is the only continuous view of the
+            // strap's RTC, and the drain depends on it.
+            strapTimestamp: strapStamp)
     }
 
     // MARK: - R10 — the 4.0's live layout

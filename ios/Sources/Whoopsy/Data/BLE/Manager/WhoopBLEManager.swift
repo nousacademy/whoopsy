@@ -53,6 +53,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     private var deviceContinuations: [UUID: AsyncStream<WhoopDevice>.Continuation] = [:]
     private var telemetryContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
     private var motionContinuations: [UUID: AsyncStream<MotionBatch>.Continuation] = [:]
+    private var historicalTelemetryContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
 
     private var currentDeviceState: WhoopDevice?
 
@@ -69,6 +70,21 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     private let strapModelRepository: (any StrapModelRepository)?
     private let strapModelLock = NSLock()
     private var strapModelCache: [String: WhoopHardwareGeneration] = [:]
+
+    /// Generations the strap itself proved, one entry per peripheral identifier.
+    ///
+    /// **This is evidence, and it outranks the name heuristic.** `resolvedGeneration` reads `"5"` out
+    /// of the advertised name, but a strap's name is whatever its owner set — the one on this
+    /// machine advertises as `"Alex WHOOP"` — and a strap advertising nothing at all arrives as
+    /// `"WHOOP Strap"`. Neither contains the digit, so both were resolved as a 4.0 and every command
+    /// was framed under the CRC8 envelope the strap does not speak.
+    ///
+    /// A strap that exposes `FD4B0001` is a 5.0/MG: no 4.0 has that service. So discovery records the
+    /// answer here, and every later resolve in this process — a reconnect, the keep-alive's re-arm —
+    /// gets the strap right without re-guessing. It is in-memory rather than persisted because it is
+    /// re-learned on the first connection and the stored-model map is the user's choice, not the
+    /// app's observation.
+    private var serviceObservedGenerations: [String: WhoopHardwareGeneration] = [:]
 
     /// Sequence numbers for outgoing command frames, which are a field of the inner record.
     private let sequence = WhoopCommandSequence()
@@ -88,15 +104,25 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     private let drainLock = NSLock()
     private var drainSession: HistoricalDrainSession?
     private var drainCompletion: CheckedContinuation<HistoricalDrainSession?, Never>?
+    /// The oxygen candidate's counters for the drain in progress. Guarded by `drainLock` like
+    /// `drainSession`, because `routeToDrain` runs on the BLE queue and `concludeDrain` can run from
+    /// there or from a caller's task. See `Spo2CandidateProbe`.
+    private var spo2Probe = Spo2CandidateAccumulator()
     private var drainWatchdog: Task<Void, Never>?
 
-    /// Whether the one-shot discovery/0x2A37 diagnostics have been logged for this connection.
+    /// Whether the one-shot 0x2A37 diagnostic has been logged for this connection.
     ///
     /// Reset on connect and disconnect, so each session logs once. The 0x2A37 branch fires per
     /// notification, and a strap sending at 1 Hz would otherwise write a line a second into the log
     /// — which is the kind of noise that gets logging deleted rather than read.
-    private var hasLoggedCharacteristicInventory = false
     private var hasLoggedHeartRateFrames = false
+
+    /// Whether the first decoded 5.0/MG live heart-rate record has been logged for this connection.
+    ///
+    /// Same once-per-link shape as the flags above. Packet 40 arrives about once a second once the
+    /// strap is armed, so its first appearance is the line that distinguishes "armed and streaming"
+    /// from "subscribed but silent" in a log archive collected after the fact.
+    private var hasLoggedLiveHeartRate = false
 
     /// Whether the one-shot proprietary-frame diagnostic has been logged for this connection.
     ///
@@ -104,6 +130,36 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     /// carry a capture's first evidence — a real strap's packet type, sequence number, opcode and
     /// payload length — so it is worth exactly one line per connection and no more.
     private var hasLoggedProprietaryFrame = false
+
+    /// Whether the first record routed into a drain has been reported for this connection.
+    ///
+    /// One line per link, and it is the one that says *what shape* history arrived in when the drain
+    /// summary says the strap sent records — the summary counts them, this names the type, sequence
+    /// and payload length. `routeToDrain` runs per record, so it cannot be a line per frame.
+    private var hasReportedHistoricalRecord = false
+
+    /// Whether the one-shot command-response diagnostic has been logged for this connection.
+    ///
+    /// **The clock read-back has no parser, so its reply is captured as bytes.** The first
+    /// `commandResponse` frame per link is logged whole, and every response whose `cmd` is
+    /// `setClock`/`getClock` is logged after it — that pair is what a capture compares against the
+    /// clock that was sent, and no field is decoded or claimed.
+    private var hasLoggedCommandResponse = false
+
+    /// The Device Information Service characteristics discovery found, keyed by UUID.
+    ///
+    /// A read has to be issued from the characteristic object discovery handed over, and DIS discovery
+    /// and the connect pass can arrive in either order — so discovery stores them here and
+    /// `requestDeviceInformationReadIfPossible` decides *when* a read is legal. Cleared with the rest
+    /// of the link's state in `prepareForNewLink`.
+    private var deviceInformationCharacteristics: [CBUUID: CBCharacteristic] = [:]
+
+    /// Whether this link has already issued its one DIS read pass.
+    ///
+    /// **Set only when at least one read was actually issued.** A DIS that has not been discovered yet,
+    /// or that exposes no readable characteristic, leaves it false so the later trigger can still try —
+    /// which is what keeps a 5.0 whose DIS arrives before its bond from never being read.
+    private var hasRequestedDeviceInformationRead = false
 
     /// Whether the 5.0/MG bond handshake has been written and is waiting on its acknowledgement.
     ///
@@ -117,6 +173,21 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     /// confirmed write, and a handshake re-run mid-drain is the documented cause of a strap refusing
     /// to stream its type-47 records. See `didWriteValueFor` below.
     private var isAwaitingBondHandshakeAck = false
+
+    /// The 5.0/MG notify characteristics discovery found **before** the bond was acknowledged.
+    ///
+    /// **Subscribing these at discovery is what wedges a 5.0.** noop's field evidence is explicit: the
+    /// puffin characteristics (`fd4b0003`/`0004`/`0005`/`0007`) are subscribed only *after* the confirmed
+    /// `CLIENT_HELLO` is acknowledged, and a pre-bond subscription is refused with "Authentication is
+    /// insufficient" and leaves the bond in a state the strap does not recover from. So discovery
+    /// retains them here and `subscribePendingNotifications()` attaches them on the acknowledgement —
+    /// the one callback that says the link is bonded.
+    ///
+    /// **BLE-queue only**, like `reassembler`: written and read from `didDiscoverCharacteristicsFor` and
+    /// `didWriteValueFor`, both of which CoreBluetooth serialises on the manager's own queue. The
+    /// standard `0x2A37` and `0x2A19` characteristics are never held here — they work unbonded and
+    /// deferring them would hide the one producer that already functions.
+    private var pendingNotifyCharacteristics: [CBCharacteristic] = []
 
     /// The identifier iOS uses to summon this app back for Bluetooth events after terminating it.
     ///
@@ -185,6 +256,9 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     /// strap.
     private var lastActivityAt: Date?
     private var lastActivationSentAt: Date?
+
+    /// When the strap's own clock was last logged, so a per-second record cannot flood the archive.
+    private var lastStrapClockLogAt: Date?
     private var lastBatteryReadAt: Date?
     private var lastKeepAliveTickAt: Date?
 
@@ -244,32 +318,115 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         }
     }
 
-    /// The model for a strap: **the user's stored choice if there is one, otherwise a guess.**
+    /// The model for a strap, in precedence order: **the user's choice, then the strap's own GATT
+    /// evidence, then the name guess.**
+    ///
+    /// The middle rung is why this is not simply `resolvedGeneration(stored:advertisedName:)` any
+    /// more. A 5.0/MG strap exposes a service no 4.0 does, and that is a fact about the hardware
+    /// rather than an inference from what its owner renamed it to. Evidence outranks a stored 4.0
+    /// only because a 4.0 choice for a strap exposing `FD4B0001` cannot be true — and writing 4.0
+    /// opcodes down the 5.0 command characteristic is the cross-generation write this build exists to
+    /// refuse. The choice between 5.0 and 5.0 MG still comes from the user; the service cannot tell
+    /// those two apart.
     private func resolveGeneration(advertisedName: String, deviceId: String) -> WhoopHardwareGeneration {
         strapModelLock.lock()
         let stored = strapModelCache[deviceId]
+        let observed = serviceObservedGenerations[deviceId]
         strapModelLock.unlock()
-        return Self.resolvedGeneration(stored: stored, advertisedName: advertisedName)
+        return Self.resolvedGeneration(
+            stored: stored, observed: observed, advertisedName: advertisedName)
     }
 
-    /// The precedence rule itself, as a pure function of its two inputs.
+    /// Records the strap's own answer when its service list contains the 5.0/MG service.
+    ///
+    /// **Runs from `didDiscoverServices`, before any characteristic is discovered**, so the command
+    /// characteristic discovered next is framed under the CRC16 envelope the first time. Doing this
+    /// from the characteristic callback would be too late on a strap whose 4.0-looking name had
+    /// already put the app on the other envelope.
+    ///
+    /// The user's 5.0-vs-MG answer is preserved; only a generation that cannot be the connected strap
+    /// is corrected. The recorded answer also outlives this connection in memory, so a reconnect —
+    /// which resolves from the advertised name again — does not fall back to 4.0 between links.
+    private func adoptWhoop5FromDiscoveredService(for peripheral: CBPeripheral) {
+        let deviceId = peripheral.identifier.uuidString
+        strapModelLock.lock()
+        let stored = strapModelCache[deviceId]
+        let alreadyObserved = serviceObservedGenerations[deviceId]
+        serviceObservedGenerations[deviceId] = .whoop5
+        strapModelLock.unlock()
+
+        guard let current = currentDeviceState, current.id == deviceId else { return }
+        let keepsUserChoice = stored == .whoop5 || stored == .whoop5MG
+        guard !keepsUserChoice, current.hardwareGeneration != .whoop5 else { return }
+
+        updateDeviceState {
+            WhoopDevice(
+                id: current.id,
+                name: current.name,
+                hardwareGeneration: .whoop5,
+                batteryPercentage: current.batteryPercentage,
+                connectionState: current.connectionState,
+                isOnBody: current.isOnBody,
+                isCharging: current.isCharging,
+                firmwareVersion: current.firmwareVersion,
+                serialNumber: current.serialNumber,
+                signalStrengthRssi: current.signalStrengthRssi,
+                lastSyncTime: current.lastSyncTime
+            )
+        }
+
+        if alreadyObserved != .whoop5 {
+            AppLogger.ble.notice("""
+                The strap exposes \(WhoopGATTConstants.whoop5ServiceUUID, privacy: .public), so it is \
+                treated as a 5.0/MG — advertised name \(current.name, privacy: .public) does not say, \
+                and was resolved as \(current.hardwareGeneration.rawValue, privacy: .public) before \
+                discovery. Commands now use the CRC16 envelope.
+                """)
+        }
+    }
+
+    /// The precedence rule itself, as a pure function of its three inputs.
     ///
     /// Separated from the cache read above for one reason that is not tidiness: this is the rule the
     /// whole generation-aware path rests on, and every way it can be wrong is silent. A guess that
     /// overrode a choice would put the app back on the wrong envelope with the screen still showing
     /// the user's selection; the guess itself cannot tell a 5.0 from a 5.0 MG at all, and a strap
     /// advertising nothing arrives as `"WHOOP Strap"` — no `5` in it, so it is called a 4.0. As a
-    /// static taking both inputs it is assertable without a `CBCentralManager`, which the suite has no
+    /// static taking its inputs it is assertable without a `CBCentralManager`, which the suite has no
     /// way to build (constructing one raises a system Bluetooth prompt).
+    ///
+    /// **`observed` is the strap's own GATT answer and sits between the choice and the guess.** It is
+    /// `.whoop5` when service discovery found `FD4B0001`; no 4.0 exposes that service, so it is
+    /// hardware evidence rather than an inference. Two things follow. It is overruled by a stored
+    /// 5.0/5.0 MG choice because the service cannot distinguish those two and only the user can. It
+    /// *does* overrule a stored 4.0 (or a non-strap transport) because that choice cannot be true for
+    /// this hardware, and honouring it would frame 4.0 opcodes for a 5.0 strap.
     ///
     /// The heuristic is kept as the fallback rather than deleted, because a strap the user has never
     /// been asked about still has to be described as something.
     public static func resolvedGeneration(
         stored: WhoopHardwareGeneration?,
+        observed: WhoopHardwareGeneration?,
         advertisedName: String
     ) -> WhoopHardwareGeneration {
-        if let stored { return stored }
+        if let stored {
+            let storedIsFour = stored == .whoop4
+                || stored == .standardBleHR
+                || stored == .simulator
+            if storedIsFour, let observed { return observed }
+            return stored
+        }
+        if let observed { return observed }
         return advertisedName.contains("5") ? .whoop5 : .whoop4
+    }
+
+    /// The two-input form, kept for callers that have no GATT observation — and for the suite, which
+    /// has asserted this precedence since before the observation rung existed.
+    public static func resolvedGeneration(
+        stored: WhoopHardwareGeneration?,
+        advertisedName: String
+    ) -> WhoopHardwareGeneration {
+        resolvedGeneration(stored: stored, observed: nil, advertisedName: advertisedName)
     }
 
     /// The cache write, kept synchronous on purpose.
@@ -329,6 +486,34 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         }
     }
 
+    /// The heart-rate samples a drain recovers from the strap's flash, one per R18 record.
+    ///
+    /// **A second stream rather than more traffic on `liveTelemetryStream`, and the split is the point.**
+    /// The two producers answer different questions — the live stream is *what the strap is measuring
+    /// now*, stamped with the arrival instant, while these samples carry the timestamp of the moment
+    /// they were stored, which is a day or more old. Merging them would put a drained sample from three
+    /// days ago into every live consumer (the Home badge, the Live Activity), which reads as a current
+    /// pulse. `SyncHistoricalDataUseCase` is this stream's consumer and it is what writes the rows.
+    ///
+    /// It is a multicast registry like the other three, and the same rule applies: anything that yields
+    /// goes through `yieldHistoricalTelemetry`, never the dictionary.
+    ///
+    /// **Finishing the continuations is how a consumer learns the drain ended.** `concludeDrain` calls
+    /// `finish()`, and `AsyncStream.finish()` delivers buffered elements before ending — so a consumer
+    /// awaiting this stream sees every decoded record before its loop exits. Cancelling the consumer
+    /// instead would discard whatever had not yet been pulled.
+    public var historicalTelemetryStream: AsyncStream<BiometricSample> {
+        AsyncStream { continuation in
+            let id = UUID()
+            continuationLock.lock()
+            historicalTelemetryContinuations[id] = continuation
+            continuationLock.unlock()
+            continuation.onTermination = { [weak self] _ in
+                self?.removeHistoricalTelemetryContinuation(id)
+            }
+        }
+    }
+
     private func removeDeviceContinuation(_ id: UUID) {
         continuationLock.lock()
         deviceContinuations[id] = nil
@@ -372,6 +557,33 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         continuationLock.unlock()
     }
 
+    private func removeHistoricalTelemetryContinuation(_ id: UUID) {
+        continuationLock.lock()
+        historicalTelemetryContinuations[id] = nil
+        continuationLock.unlock()
+    }
+
+    /// Logs the strap's own clock against this phone's, at most once a minute.
+    ///
+    /// **The one continuous view of the RTC, and it is free.** Every R21 record carries the strap's
+    /// unix time whether it is live or banked; the live path ignores it for day-keying (a live record
+    /// keys on arrival) but that leaves it available to *observe*. `GET_CLOCK` is the documented
+    /// read-back and this strap answered it once and then stopped, so the record's own field is the
+    /// reliable instrument — and it is exactly the field a drain would file history by, which makes
+    /// the drift it prints the number that matters for recovering a night.
+    private func noteStrapClock(_ strapStamp: Date?, arrival: Date) {
+        guard let strapStamp else { return }
+        let now = arrival
+        if let last = lastStrapClockLogAt, now.timeIntervalSince(last) < 60 { return }
+        lastStrapClockLogAt = now
+        let drift = strapStamp.timeIntervalSince(now) / 3600
+        AppLogger.ble.notice("""
+            Motion record clock: strap=\(strapStamp.description, privacy: .public) \
+            phone=\(now.description, privacy: .public), drift \
+            \(String(format: "%.1f", drift), privacy: .public) h
+            """)
+    }
+
     /// Fans a decoded motion batch out to every live subscriber. See `yieldTelemetry`.
     private func yieldMotion(_ batch: MotionBatch) {
         continuationLock.lock()
@@ -390,6 +602,33 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         let targets = Array(telemetryContinuations.values)
         continuationLock.unlock()
         for continuation in targets { continuation.yield(sample) }
+    }
+
+    /// Fans a drained sample out to every historical subscriber. See `yieldTelemetry`.
+    private func yieldHistoricalTelemetry(_ sample: BiometricSample) {
+        continuationLock.lock()
+        let targets = Array(historicalTelemetryContinuations.values)
+        continuationLock.unlock()
+        for continuation in targets { continuation.yield(sample) }
+    }
+
+    /// Ends every historical consumer's stream, because the drain it was reading has ended.
+    ///
+    /// **`finish()` rather than cancelling the consumers**, on the rule `AsyncStream` documents: a
+    /// finished stream delivers what it buffered and then ends, while a cancelled consumer discards the
+    /// buffer. A drain whose final batch arrived just before `HISTORY_COMPLETE` would otherwise lose
+    /// exactly those samples — the last ones, and the only ones near the present.
+    ///
+    /// Called from `concludeDrain`, so every exit path ends the consumers: the strap's own
+    /// `HISTORY_COMPLETE`, the live edge, the idle window, an abort, a disconnect. The dictionaries are
+    /// cleared here rather than left to `onTermination`, because `finish()` does not remove the entry
+    /// synchronously and a later drain must not resume a stream that has already finished.
+    private func finishHistoricalTelemetry() {
+        continuationLock.lock()
+        let targets = Array(historicalTelemetryContinuations.values)
+        historicalTelemetryContinuations.removeAll()
+        continuationLock.unlock()
+        for continuation in targets { continuation.finish() }
     }
 
     public func startScanning() {
@@ -515,6 +754,31 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         peripheral.writeValue(data, for: char, type: type)
     }
 
+    /// Plays the strap's haptic pattern — the buzz — `loops` times.
+    ///
+    /// **The caller does not know which opcode its strap uses, and must not.** A 4.0 takes command
+    /// `0x4F` with a pattern id; a 5.0/MG takes the puffin remap `0x13` and a fixed notification preset,
+    /// because a real MG rejects 79 outright. `WhoopCommandFrames.hapticsPattern` is where that split
+    /// lives, and this method is the seam a screen or the Live Activity would call.
+    ///
+    /// **`true` means a frame was built and handed to the write path, not that the strap buzzed.** A
+    /// write can still be refused for a link this app cannot address; no acknowledgement is parsed.
+    /// **No screen calls this yet** — it is added here so the first call site does not have to know the
+    /// remap, and it is exercised by the suite rather than by a device.
+    @discardableResult
+    public func buzz(loops: UInt8 = 1, pattern: UInt8 = 2) -> Bool {
+        guard let profile = currentProfile,
+              let frame = WhoopCommandFrames.hapticsPattern(
+                  profile: profile, seq: sequence.next(), pattern: pattern, loops: loops)
+        else {
+            AppLogger.ble.warning("Refused to send haptics: no pattern frame for this strap")
+            return false
+        }
+        sendCommand(frame)
+        AppLogger.ble.notice("Haptics pattern sent (\(frame.count, privacy: .public) bytes, loops \(loops)).")
+        return true
+    }
+
     /// Writes a command that **must** be acknowledged, and reports whether the write was dispatched.
     ///
     /// **This is not `sendCommand` with a different type, and the difference is the whole point of the
@@ -556,6 +820,37 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     private func sendConnectCommands() {
         guard let profile = currentProfile else { return }
 
+        // **The 5.0/MG's clock goes first, before anything is armed.** noop sends SET_CLOCK then
+        // GET_CLOCK as the opening pair of its connect sequence and records why: an un-clocked 5.0
+        // does not bank sensor data to flash at all, so an offload completes with zero body frames.
+        // That is the empty-drain failure this app has been chasing, and it is a *connect-time*
+        // problem rather than a drain-time one — a strap that never banked anything has nothing to
+        // send later. A 4.0 keeps its clock set at the drain, where both of its firmware-specific
+        // forms are already sent; this branch is the CRC16 envelope only.
+        if profile.headerChecksum == .crc16ModbusOverHeader {
+            // **Confirmed writes, and that is the change.** A clock set sent `.withoutResponse` is
+            // acknowledged by CoreBluetooth but gives the strap no reason to answer it, and the
+            // measured state of this strap is a clock **not latching**: `GET_CLOCK` reports
+            // `2024-05-06 05:56 UTC` against a phone at 2026-10-20, across reconnects. Sending it
+            // confirmed puts the strap's own verdict in `didWriteValueFor`, where `sendCommand`'s
+            // unconfirmed form leaves it silent.
+            let epoch = UInt32(Date().timeIntervalSince1970)
+            AppLogger.ble.notice("""
+                SET_CLOCK: sending epoch \(epoch, privacy: .public) \
+                (\(Date(timeIntervalSince1970: TimeInterval(epoch)).description, privacy: .public))
+                """)
+            for frame in WhoopCommandFrames.setClockFrames(
+                profile: profile, seq: sequence.next(), epochSeconds: epoch) {
+                if !sendConfirmedCommand(frame) {
+                    AppLogger.ble.warning("SET_CLOCK could not be written confirmed on this link")
+                }
+            }
+            if let readBack = WhoopCommandFrames.clockReadBack(
+                profile: profile, seq: sequence.next()) {
+                sendConfirmedCommand(readBack)
+            }
+        }
+
         // Send telemetry start command — under the connected strap's own envelope, and only
         // if this build has one *and* knows that generation's command opcodes. The 4.0's
         // `0x05` has no published 5.0 counterpart, so the 5.0 falls to the IMU enable below
@@ -584,11 +879,47 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             sendCommand(frame)
         }
 
+        // The 5.0/MG's live heart rate. That generation has no live-telemetry opcode — the 4.0's
+        // `0x05` above — so without this arm a bonded 5.0 links, streams motion and notifies nothing
+        // heart-rate-shaped at all: `0x03 TOGGLE_REALTIME_HR` with a `[0x01]` body is what makes it
+        // send packet 40, and `HeartRatePayloadDecoder.decodeLive` is what reads it. This is reached
+        // only on a bonded link for a 5.0 (the hello acknowledgement) and unconditionally on a 4.0,
+        // where the dispatcher answers `nil` — a 4.0's live heart rate is the standard `0x2A37`
+        // characteristic, subscribed at discovery.
+        let armedRealtime = WhoopCommandFrames.realtimeHeartRate(
+            profile: profile, seq: sequence.next())
+        if let frame = armedRealtime {
+            sendCommand(frame)
+        }
+
         // The keep-alive's clock starts here, and only here. A re-send is worth attempting once these
         // bytes have actually gone out on this link; a 5.0/MG whose handshake was never acknowledged
         // never reaches this line, which is exactly what stops the watchdog writing pre-bond.
         hasSentConnectCommands = true
         lastActivationSentAt = Date()
+
+        // **After the flag, deliberately.** On a 5.0/MG this function runs on the hello
+        // acknowledgement, so this is the first moment a DIS read can succeed; a read issued before
+        // the bond is refused. It also has to run *after* the flag rather than before it, because the
+        // characteristics may already have been discovered and this is the only call that will ever
+        // be made for them — see `requestDeviceInformationReadIfPossible`.
+        requestDeviceInformationReadIfPossible()
+
+        // The connect pass's own receipt, at a level an archive keeps. Whether `0x03` was built is
+        // the difference between "the strap was asked for a pulse and did not send one" and "nothing
+        // ever asked" — the two states a live-HR-less screen cannot tell apart.
+        AppLogger.ble.notice("""
+            Connect pass sent under \(profile.generation.rawValue, privacy: .public): \
+            motion enable \(WhoopCommandFrames.motionEnableSequence(profile: profile, seq: 0, enable: true).count) \
+            frame(s), realtime HR arm \(armedRealtime == nil ? "not built for this envelope" : "sent", privacy: .public).
+            """)
+        // The same receipt, in the shape a remote sink can carry. **The arm's presence rather than
+        // the heart rate** — see `DiagnosticsEvent` for the metadata rule.
+        Diagnostics.record("connect_pass", [
+            "generation": profile.generation.rawValue,
+            "motionFrames": "\(WhoopCommandFrames.motionEnableSequence(profile: profile, seq: 0, enable: true).count)",
+            "realtimeArm": armedRealtime == nil ? "not-built" : "sent"
+        ])
     }
 
     public func getCurrentDevice() -> WhoopDevice? {
@@ -612,25 +943,53 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     public func drainHistoricalData() async -> HistoricalDrainSession? {
         guard let profile = currentProfile, profile.canTransmitCommands else {
             AppLogger.ble.warning("Refused to start a historical drain: no command opcode set for this strap")
+            Diagnostics.record("drain_refused", ["reason": "no-command-path"])
             return nil
         }
         guard let request = WhoopCommandFrames.historicalSyncRequest(
             profile: profile, seq: sequence.next()) else {
             AppLogger.ble.warning("Refused to start a historical drain: the request builder returned no frame")
+            Diagnostics.record("drain_refused", ["reason": "no-request-frame"])
             return nil
+        }
+
+        // **Ask what the strap holds before touching the cursor.** Every drain on 2026-10-20/21 came
+        // back with ~58 records in one batch — about a minute, roughly the time since connect — which
+        // is what reading from the live edge looks like. The obvious fix is `0x21 SET_READ_POINTER`
+        // with a zero offset, and `WhoopCommandFrames.rewindReadPointer` builds it and §16 pins it…
+        // **but this app records that opcode as never sent**, because a reference groups it with forced
+        // trim as one that mutates history ownership. That is not a write to make blind against a strap
+        // holding the only copy of a night.
+        //
+        // `0x22 GET_DATA_RANGE` is the read-only question that decides whether a seek is even needed:
+        // if the range says the strap holds a minute, there is no backlog and the seek is irrelevant;
+        // if it says hours, the seek is the next step and worth doing deliberately. The reply is logged
+        // raw by `logClockReplyCandidate`'s first-response arm rather than parsed — its layout is
+        // undocumented, which is the same position `GET_CLOCK` was in.
+        if let range = WhoopCommandFrames.dataRangeRequest(profile: profile, seq: sequence.next()) {
+            sendConfirmedCommand(range)
+            AppLogger.ble.notice("Drain: asked GET_DATA_RANGE for the backlog window before requesting")
+            try? await Task.sleep(nanoseconds: 250_000_000)
         }
 
         // A second drain concludes the first rather than overwriting it. `drainSession` is a single
         // slot, so replacing it without resuming the continuation it was waiting on would leave that
         // caller suspended forever — the leak this whole arrangement exists to avoid.
-        concludeDrain(reason: .aborted)
+        //
+        // **The historical streams are left open**, because this call is about to install a drain the
+        // caller has just subscribed to: finishing them here would end the new subscription before a
+        // single record arrived. The previous drain's consumer learns of the supersession from its
+        // own resumed continuation and cancels itself.
+        concludeDrain(reason: .aborted, finishHistoricalStreams: false)
 
         let session = HistoricalDrainSession(profile: profile, startedAt: Date())
+        Diagnostics.record("drain_started", ["generation": profile.generation.rawValue])
 
         return await withCheckedContinuation { (continuation: CheckedContinuation<HistoricalDrainSession?, Never>) in
             drainLock.lock()
             drainSession = session
             drainCompletion = continuation
+            spo2Probe.reset()
             drainLock.unlock()
 
             // The clock goes first, and it is a prerequisite rather than a courtesy: a strap whose RTC
@@ -641,6 +1000,13 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             for frame in WhoopCommandFrames.setClockFrames(
                 profile: profile, seq: sequence.next(), epochSeconds: UInt32(Date().timeIntervalSince1970)) {
                 sendCommand(frame)
+            }
+            // The read-back, on both generations. Issuing it is not checking it — the reply's layout
+            // is undocumented on either envelope and nothing here decodes it; what this buys is that
+            // the reply reaches the frame loop, where it is logged raw. See `clockReadBack`.
+            if let readBack = WhoopCommandFrames.clockReadBack(
+                profile: profile, seq: sequence.next()) {
+                sendCommand(readBack)
             }
             sendCommand(request)
 
@@ -676,7 +1042,41 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             return
         }
         let action = drainSession!.accept(frame, now: now)
+        // The oxygen candidate is read under the same lock as the session: both are per-drain state,
+        // and a line the accumulator decided to dump must be paired with the counters that produced
+        // it. Only the first few in-band records of a drain return a line; the accounting covers
+        // every record and is emitted once by `concludeDrain`.
+        var spo2Line: String?
+        if let observation = Spo2CandidateProbe.decode(frame: frame) {
+            spo2Line = spo2Probe.observe(observation)
+        }
         drainLock.unlock()
+
+        // The first record of the first drain on this link, one-shot. The summary `concludeDrain`
+        // emits counts the records but says nothing about their *shape*, and "the strap sent 400
+        // records" and "the strap sent 400 records of a type nothing decodes" look identical
+        // everywhere else. Recorded outside the lock because it touches no drain state.
+        if !hasReportedHistoricalRecord {
+            hasReportedHistoricalRecord = true
+            Diagnostics.record("historical_record", [
+                "type": String(format: "0x%02X", frame.type),
+                "seq": "\(frame.seq)",
+                "cmd": String(format: "0x%02X", frame.cmd),
+                "payloadBytes": "\(frame.payload.count)"
+            ])
+        }
+
+        if let spo2Line { recordSpo2ProbeLine(spo2Line) }
+
+        // **The record's heart rate and R-R intervals are what the drain exists for, and until this
+        // call they were counted and discarded.** Decoding happens here rather than in
+        // `didUpdateValueFor` because the drain gate above is what says this frame is history: a
+        // packet-40 live frame is not a record any session is walking, and the decoder's own layout
+        // and clock checks refuse everything that is not R18. The sample carries the strap's stored
+        // timestamp, so it is yielded on the historical stream and never the live one.
+        if let sample = HeartRatePayloadDecoder.decodeHistorical(frame: frame) {
+            yieldHistoricalTelemetry(sample)
+        }
 
         switch action {
         case .none:
@@ -711,6 +1111,100 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         let expired = drainSession?.checkIdleTimeout(now: now) ?? false
         drainLock.unlock()
         if expired { concludeDrain(reason: .idleTimeout) }
+    }
+
+    /// Applies a decoded strap event, logging every one and acting only on the four state events.
+    ///
+    /// **The battery event is logged and not decoded.** noop's event schema carries the event number
+    /// and its timestamp and nothing else, so there is no published level byte to read; `0x2A19`
+    /// remains this app's only battery source. A capture that shows the event's body is what would
+    /// change that, which is why the full payload is in the log line.
+    private func handleStrapEvent(_ event: StrapEvent) {
+        let stamp = event.timestamp.map { ISO8601DateFormatter().string(from: $0) } ?? "no timestamp"
+        AppLogger.ble.notice("""
+            Strap event \(event.rawEvent) \(String(describing: event.kind), privacy: .public) at \
+            \(stamp, privacy: .public) payload=\(self.hexPreview(event.payload), privacy: .public)
+            """)
+        // The event number, the state it named and how much payload it carried — not the payload.
+        // `RTC_LOST` is the one worth seeing remotely: it is what files history onto a wrong day.
+        Diagnostics.record("strap_event", [
+            "event": "\(event.rawEvent)",
+            "kind": String(describing: event.kind),
+            "hasTimestamp": event.timestamp == nil ? "false" : "true",
+            "payloadBytes": "\(event.payload.count)"
+        ])
+
+        switch event.kind {
+        case .chargingOn:
+            updateDeviceState { $0.updating(isCharging: true) }
+        case .chargingOff:
+            updateDeviceState { $0.updating(isCharging: false) }
+        case .wristOn:
+            updateDeviceState { $0.updating(isOnBody: true) }
+        case .wristOff:
+            updateDeviceState { $0.updating(isOnBody: false) }
+        case .rtcLost:
+            // The one event with a consequence beyond the device page: every record the strap stamps
+            // from here cannot be filed onto a day until the clock is set again, and the next drain's
+            // SET_CLOCK is what repairs it. Recorded at `.warning` because it is the failure that files
+            // history onto a wrong day rather than onto no day.
+            AppLogger.ble.warning("""
+                Strap reported RTC_LOST at \(stamp, privacy: .public): drained records cannot be \
+                trusted to a day until the next clock set.
+                """)
+        case .batteryLevel, .boot, .setRTC, .other:
+            break
+        }
+    }
+
+    /// Logs a command-response frame raw, so the GET_CLOCK reply is in the archive.
+    ///
+    /// **Bounded on purpose.** The first `commandResponse` frame on a link is logged, and after that
+    /// only a response whose `cmd` is the clock pair — a drain can otherwise produce a response per
+    /// batch, and a per-frame log is a log an archive drops. Nothing here is decoded: the reply's
+    /// layout is undocumented on both generations and no code claims the clock latched.
+    private func logClockReplyCandidate(_ frame: WhoopRawFrame, profile: WhoopProtocolProfile) {
+        let isClockReply = frame.cmd == profile.commandOpcodes?.setClock
+            || frame.cmd == profile.commandOpcodes?.getClock
+            || frame.cmd == profile.syncOpcodes?.setClock
+            || frame.cmd == profile.syncOpcodes?.getClock
+            || frame.cmd == profile.commandOpcodes?.getDataRange
+            || frame.cmd == profile.syncOpcodes?.getDataRange
+        let isFirstResponse = frame.type == profile.packetTypes.commandResponse && !hasLoggedCommandResponse
+
+        guard isClockReply || isFirstResponse else { return }
+        if isFirstResponse { hasLoggedCommandResponse = true }
+
+        AppLogger.ble.notice("""
+            Command response (raw, not decoded): type=0x\(String(frame.type, radix: 16, uppercase: true), privacy: .public) \
+            seq=\(frame.seq) cmd=0x\(String(frame.cmd, radix: 16, uppercase: true), privacy: .public) \
+            payload=\(self.hexPreview(frame.payload), privacy: .public)
+            """)
+
+        // **The clock is deliberately not decoded from this reply.** A best-effort read of it was
+        // tried and removed: the `GET_CLOCK` payload is undocumented, and once the RTC was actually
+        // correct the same decode still produced `2046-03-31` — a number that contradicts the one
+        // clock reading this app *can* verify (`noteStrapClock`'s motion-record field, which read a
+        // 0.0 h drift at the same moment). A log line that reports a wrong answer is worse than no
+        // line: it is exactly the "plausible number out of the wrong offset" failure this file
+        // documents elsewhere. The raw payload above stays for a capture to settle.
+        // Bounded the same way the log line is — this is the path a per-batch response would flood.
+        // The payload is a length here, not its bytes: what a remote reader needs is *that* a clock
+        // answer arrived and from which opcode, and the raw body stays in the local archive.
+        Diagnostics.record("command_response", [
+            "type": String(format: "0x%02X", frame.type),
+            "seq": "\(frame.seq)",
+            "cmd": String(format: "0x%02X", frame.cmd),
+            "payloadBytes": "\(frame.payload.count)"
+        ])
+    }
+
+    /// The first 64 payload bytes as uppercase hex — enough for a DIS or event body, bounded so a
+    /// drained 1,229-byte motion record cannot flood a log line.
+    private func hexPreview(_ data: Data) -> String {
+        let prefix = data.prefix(64)
+        let hex = prefix.map { String(format: "%02X", $0) }.joined(separator: " ")
+        return data.count > prefix.count ? "\(hex) … (\(data.count) bytes)" : hex
     }
 
     /// Arms the idle watchdog for a session, replacing any watchdog the previous drain left.
@@ -768,7 +1262,10 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     /// receives describes why it stopped. `.aborted` is applied only when the session is not already
     /// finished: a drain that ended because the strap said so must not be relabelled by the
     /// disconnect that follows it.
-    private func concludeDrain(reason: HistoricalDrainSession.FinishReason) {
+    private func concludeDrain(
+        reason: HistoricalDrainSession.FinishReason,
+        finishHistoricalStreams: Bool = true
+    ) {
         drainLock.lock()
         guard let session = drainSession else {
             drainLock.unlock()
@@ -785,10 +1282,43 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         drainCompletion = nil
         let watchdog = drainWatchdog
         drainWatchdog = nil
+        // The one summary per drain: the boundary is the session's, because the accumulator's counters
+        // describe exactly the frames `accept` saw. Reset here rather than at the next install so a
+        // drain that ends without a successor does not leave its counts to be printed by the next one.
+        let spo2Summary = spo2Probe.summary()
+        spo2Probe.reset()
         drainLock.unlock()
+
+        if let spo2Summary { recordSpo2ProbeLine(spo2Summary) }
+
+        // The drain's outcome, in counts and a reason name. This is the line a remote reader uses to
+        // tell "the strap sent nothing" from "the strap sent records this build could not decode",
+        // and it is why the event carries `records` even when it is zero.
+        Diagnostics.record("drain_concluded", [
+            "records": "\(finished.recordCount)",
+            "batches": "\(finished.batchCount)",
+            "reason": finished.finishReason.map { String(describing: $0) } ?? "none"
+        ])
 
         watchdog?.cancel()
         continuation?.resume(returning: finished)
+
+        // After the session has been resumed, so a consumer awaiting the drain is already unblocked
+        // when its record stream ends. `finish()` delivers buffered samples before ending, which is
+        // why the final batch is not lost — see `finishHistoricalTelemetry`.
+        if finishHistoricalStreams { finishHistoricalTelemetry() }
+    }
+
+    /// Records one oxygen-candidate line where a capture can read it.
+    ///
+    /// **`.notice`, not `.info`, and the file as well as the log.** `os.log`'s `.debug` and `.info` go to
+    /// a memory buffer and never reach disk, so a probe at those levels can be gone by the time the
+    /// phone is picked up; `docs/TODO.md` §5 records that as the reason a capture log exists at all.
+    /// The line is a raw byte and its neighbours, labelled `spo2probe`, and it is evidence rather than
+    /// a reading — nothing here writes a percentage to a row, a sample or a screen.
+    private func recordSpo2ProbeLine(_ line: String) {
+        AppLogger.ble.notice("\(line, privacy: .public)")
+        CaptureLog.spo2Probe.append(line)
     }
 
     // MARK: - Reconnection
@@ -903,9 +1433,19 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     /// it is a method: a peripheral iOS restores *already connected* never fires `didConnect`, so its
     /// one-shot diagnostics and its bond flag would otherwise be inherited from the process that died.
     private func prepareForNewLink() {
-        hasLoggedCharacteristicInventory = false
+        hasLoggedLiveHeartRate = false
+        // Characteristics belong to one connection — the ones discovered on the previous link must
+        // not be written on the next one, and `setNotifyValue` on a stale `CBCharacteristic` fails
+        // silently. The pending list is the bond-deferred subscriptions (see
+        // `didDiscoverCharacteristicsFor`), and a new link re-discovers them from scratch.
+        commandCharacteristic = nil
+        pendingNotifyCharacteristics.removeAll()
         hasLoggedHeartRateFrames = false
         hasLoggedProprietaryFrame = false
+        hasLoggedCommandResponse = false
+        hasReportedHistoricalRecord = false
+        deviceInformationCharacteristics.removeAll()
+        hasRequestedDeviceInformationRead = false
         // A link that has gone away is not a link that is bonded, and iOS exposes no bond state to
         // ask: CoreBluetooth has no link-encryption property at all, so this flag is the only record
         // of whether this connection reached the strap. Reset on both transitions.
@@ -922,6 +1462,12 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         lastBatteryReadAt = nil
         hasSentConnectCommands = false
         hasLoggedUnreadableBattery = false
+        // The oxygen candidate's counters describe one drain on one link. A link that went away mid-
+        // drain never reaches `concludeDrain` for its counts to be printed, so reset here as well —
+        // under the lock, because `routeToDrain` mutates the accumulator from the BLE queue.
+        drainLock.lock()
+        spo2Probe.reset()
+        drainLock.unlock()
     }
 
     // MARK: - Keep-alive
@@ -1106,8 +1652,24 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         lastActivityAt = Date()
     }
 
+    /// A `WhoopDevice` built from scratch, replacing the current one.
     private func updateDeviceState(_ transform: () -> WhoopDevice) {
-        let updated = transform()
+        applyDeviceState(transform())
+    }
+
+    /// The current device with some fields changed — the shape a reading takes.
+    ///
+    /// **The alternative is the loss this overload exists to prevent.** A notification that carries one
+    /// field (battery, charging state, a DIS string) rebuilt the entity from scratch and silently reset
+    /// everything it did not mention: firmware and serial fell back to their defaults, RSSI to `nil`,
+    /// last-sync to `nil`. A notification that arrives after a read therefore erased the read, and the
+    /// screen showed the loss as "not read yet". `WhoopDevice.updating` keeps every unnamed field.
+    private func updateDeviceState(_ transform: (WhoopDevice) -> WhoopDevice) {
+        guard let current = currentDeviceState else { return }
+        applyDeviceState(transform(current))
+    }
+
+    private func applyDeviceState(_ updated: WhoopDevice) {
         // The state write and the subscriber snapshot are taken under one lock, so the replay in
         // `deviceStream` cannot observe a state that was set before a subscriber it will not be
         // yielded to — which is how a screen ends up showing a stale dash until the next update.
@@ -1205,12 +1767,25 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
     }
 
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        AppLogger.ble.info("Discovered peripheral: \(peripheral.name ?? "Unknown") [\(peripheral.identifier.uuidString)] RSSI: \(RSSI)")
-        self.connectedPeripheral = peripheral
-        peripheral.delegate = self
+        // The advertisement may already carry the generation, and when it does the device is
+        // described correctly from the first frame rather than after service discovery. GATT is still
+        // asked below and remains authoritative; this only moves the answer earlier.
+        let advertisedServices = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
+        if advertisedServices.contains(WhoopGATTConstants.whoop5ServiceUUID) {
+            strapModelLock.lock()
+            serviceObservedGenerations[peripheral.identifier.uuidString] = .whoop5
+            strapModelLock.unlock()
+        }
 
         let devName = peripheral.name ?? "WHOOP Strap"
         let gen = resolveGeneration(advertisedName: devName, deviceId: peripheral.identifier.uuidString)
+        AppLogger.ble.notice("""
+            Discovered \(devName, privacy: .public) [\(peripheral.identifier.uuidString, privacy: .public)] \
+            RSSI \(RSSI.intValue, privacy: .public), resolved as \(gen.rawValue, privacy: .public), \
+            advertised services \(advertisedServices.map(\.uuidString).joined(separator: ", "), privacy: .public)
+            """)
+        self.connectedPeripheral = peripheral
+        peripheral.delegate = self
 
         let device = WhoopDevice(
             id: peripheral.identifier.uuidString,
@@ -1355,6 +1930,21 @@ extension WhoopBLEManager: CBPeripheralDelegate {
 
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard let services = peripheral.services else { return }
+
+        // **The service list is the generation's proof, and it arrives before any characteristic.**
+        // The advertised name is not: it is whatever the owner renamed the strap to, and this is the
+        // one place the strap's actual GATT surface can correct it — early enough that the command
+        // characteristic discovered below is framed under the right envelope the first time.
+        if services.contains(where: { $0.uuid == WhoopGATTConstants.whoop5ServiceUUID }) {
+            adoptWhoop5FromDiscoveredService(for: peripheral)
+        }
+
+        let inventory = services.map(\.uuid.uuidString).joined(separator: ", ")
+        AppLogger.ble.notice("""
+            Discovered service(s) on \(peripheral.name ?? "Strap", privacy: .public): \
+            \(inventory, privacy: .public)
+            """)
+
         for service in services {
             peripheral.discoverCharacteristics(nil, for: service)
         }
@@ -1363,22 +1953,23 @@ extension WhoopBLEManager: CBPeripheralDelegate {
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         guard let characteristics = service.characteristics else { return }
 
-        // One-shot per connection, and the only evidence this app will ever have about which GATT
-        // surface a given strap generation actually exposes. Everything downstream — whether the
-        // 0x2A37 R-R series is worth a column, or whether the work belongs in the proprietary `0x01`
-        // payload instead — is decided from this line and the one in the 0x2A37 branch below.
-        if !hasLoggedCharacteristicInventory {
-            hasLoggedCharacteristicInventory = true
-            let uuids = characteristics.map { "\($0.uuid)[\(Self.describe($0.properties))]" }
-            let hasHeartRate = characteristics.contains {
-                $0.uuid == WhoopGATTConstants.heartRateMeasurementCharacteristicUUID
-            }
-            AppLogger.ble.info("""
-                Discovered \(characteristics.count) characteristic(s) on service \
-                \(service.uuid): \(uuids.joined(separator: ", ")). \
-                0x2A37 Heart Rate Measurement present: \(hasHeartRate)
-                """)
+        // Once per service per connection, and the only evidence this app will ever have about which
+        // GATT surface a given strap generation actually exposes. `didDiscoverCharacteristicsFor`
+        // fires once for each service `didDiscoverServices` asked about, so this is not a per-
+        // notification branch and needs no one-shot flag — the earlier single flag logged whichever
+        // service happened to answer first, which was usually the standard HR service and said
+        // nothing about the proprietary one this app's whole data path depends on.
+        //
+        // `.notice` rather than `.info`: `.info` is memory-only and absent from a log archive, which
+        // is exactly the artifact this line exists to be read from after a strap has been tested.
+        let uuids = characteristics.map { "\($0.uuid)[\(Self.describe($0.properties))]" }
+        let hasHeartRate = characteristics.contains {
+            $0.uuid == WhoopGATTConstants.heartRateMeasurementCharacteristicUUID
         }
+        AppLogger.ble.notice("""
+            GATT \(service.uuid, privacy: .public): \(uuids.joined(separator: ", "), privacy: .public). \
+            0x2A37 present: \(hasHeartRate)
+            """)
 
         for char in characteristics {
             // Kept so the keep-alive tick can ask for a fresh reading. It is also subscribed below if
@@ -1388,8 +1979,44 @@ extension WhoopBLEManager: CBPeripheralDelegate {
                 self.batteryCharacteristic = char
             }
 
-            if char.uuid == WhoopGATTConstants.whoop4CommandUUID || char.uuid == WhoopGATTConstants.whoop5CommandUUID {
+            // The Device Information Service's values are reads, not notifications, so discovery's
+            // only job is to remember the characteristic object the read needs. `nil` from
+            // `DeviceInformationField` means a characteristic on 180A this build does not name.
+            if service.uuid == WhoopGATTConstants.deviceInformationServiceUUID,
+               DeviceInformationField(uuid: char.uuid) != nil {
+                deviceInformationCharacteristics[char.uuid] = char
+            }
+
+            // **A 5.0/MG that also exposes the legacy service must never be sent a 4.0 frame.** The
+            // two opcode tables are not interchangeable; `sendCommand`'s guard checks the profile but
+            // cannot see which characteristic a frame is addressed to, and the 4.0 table contains
+            // opcodes the 5.0 document does not name. When the strap's own service list has already
+            // proven it is a 5.0, the 4.0 command characteristic is ignored and `FD4B0002` is the
+            // only write target.
+            let isWhoop5Command = char.uuid == WhoopGATTConstants.whoop5CommandUUID
+            if isWhoop5Command || char.uuid == WhoopGATTConstants.whoop4CommandUUID {
+                if char.uuid == WhoopGATTConstants.whoop4CommandUUID,
+                   currentDeviceState?.hardwareGeneration == .whoop5
+                    || currentDeviceState?.hardwareGeneration == .whoop5MG {
+                    AppLogger.ble.notice("""
+                        Ignoring the 4.0 command characteristic \(char.uuid, privacy: .public): this \
+                        strap exposes the 5.0/MG service, so commands go to \
+                        \(WhoopGATTConstants.whoop5CommandUUID, privacy: .public) instead.
+                        """)
+                    continue
+                }
                 self.commandCharacteristic = char
+
+                // Last line of defence against addressing the 5.0 characteristic with the other
+                // envelope: if discovery somehow reaches here without the generation correction
+                // having taken effect, refuse rather than write 4.0 opcodes down `FD4B0002`.
+                if isWhoop5Command, currentProfile?.headerChecksum != .crc16ModbusOverHeader {
+                    AppLogger.ble.warning("""
+                        Refusing to write to the 5.0/MG command characteristic under a non-CRC16 \
+                        profile — the two opcode tables are not interchangeable.
+                        """)
+                    continue
+                }
 
                 // **The 5.0/MG handshake goes first, and it goes alone.** Both generations' first
                 // moves used to be sent from here unconfirmed and in one burst, which for a 5.0 is two
@@ -1408,15 +2035,153 @@ extension WhoopBLEManager: CBPeripheralDelegate {
                     // be bonded from this app is the state it was in before this change and there is no
                     // reason to withhold the commands that might still land.
                     isAwaitingBondHandshakeAck = sendConfirmedCommand(hello)
-                    if !isAwaitingBondHandshakeAck { sendConnectCommands() }
+                    let outcome = isAwaitingBondHandshakeAck
+                        ? "written with response; awaiting acknowledgement"
+                        : "could not be written — no .write property"
+                    AppLogger.ble.notice("""
+                        5.0/MG: CLIENT_HELLO (\(hello.count) bytes) \(outcome, privacy: .public) on \
+                        \(char.uuid, privacy: .public).
+                        """)
+                    if !isAwaitingBondHandshakeAck {
+                        sendConnectCommands()
+                        // No handshake is possible, so the acknowledgement that would normally
+                        // release these will never arrive — attach them now rather than leave the
+                        // strap with a live link and no notification path.
+                        subscribePendingNotifications()
+                    }
                 } else {
+                    AppLogger.ble.notice("""
+                        Connect pass for \(self.currentProfile?.generation.rawValue ?? "unknown", privacy: .public) \
+                        on \(char.uuid, privacy: .public) (no CRC16 hello for this envelope).
+                        """)
                     sendConnectCommands()
                 }
             }
 
-            if char.properties.contains(.notify) {
+            // **The 5.0/MG service's notifications wait for the bond.** A pre-bond subscription to
+            // the puffin characteristics (`fd4b0003`/`0004`/`0005`/`0007`) is refused as
+            // "Authentication is insufficient" and leaves the bond wedged — the failure that silenced
+            // this generation's data path even when the hello itself was accepted. So discovery
+            // retains them in `pendingNotifyCharacteristics` and `subscribePendingNotifications()`
+            // attaches them from the acknowledgement (or from the no-`.write` fallback just above).
+            //
+            // **The condition is the service, not `isAwaitingBondHandshakeAck`**, because
+            // characteristics arrive in an order CoreBluetooth does not promise: a notify
+            // characteristic can be discovered before the command characteristic has even been
+            // seen, so at that moment no hello has been sent and the flag is still false. The
+            // standard HR and battery services are never deferred — they work unbonded and are this
+            // app's only producer that already functioned. `.indicate` is subscribed alongside
+            // `.notify`; CoreBluetooth services both through `setNotifyValue`, and the previous loop
+            // ignored indications, which is what the puffin characteristics are.
+            let isFiveService = service.uuid == WhoopGATTConstants.whoop5ServiceUUID
+            let wantsNotifications = char.properties.contains(.notify)
+                || char.properties.contains(.indicate)
+            if isFiveService && !hasSentConnectCommands {
+                if wantsNotifications {
+                    pendingNotifyCharacteristics.append(char)
+                }
+            } else if wantsNotifications {
                 peripheral.setNotifyValue(true, for: char)
             }
+        }
+
+        // DIS can be discovered before or after the proprietary service, so this is one of the two
+        // triggers; the other is the end of `sendConnectCommands`. Whichever comes second issues the
+        // read — and on a 5.0/MG the helper itself refuses until the connect pass has run, because a
+        // pre-bond read is refused by the strap.
+        if service.uuid == WhoopGATTConstants.deviceInformationServiceUUID {
+            requestDeviceInformationReadIfPossible()
+        }
+    }
+
+    /// Issues the one DIS read pass this link is allowed, or defers until the link can take it.
+    ///
+    /// **The ordering is the whole design.** DIS discovery and the proprietary service's discovery
+    /// arrive in an order CoreBluetooth does not promise, and a 5.0/MG refuses reads before its bond
+    /// completes — so this is called from both discovery and the end of `sendConnectCommands` (which
+    /// only runs post-bond on a 5.0), and the checks here decide whether the moment is legal:
+    ///
+    /// - a CRC16 link that has not sent its connect pass is deferred rather than attempted;
+    /// - at least one characteristic with `.read` must be present, or the flag stays unset and the
+    ///   later trigger can still try;
+    /// - once a read has actually been issued, the flag stops a re-read on every later callback.
+    private func requestDeviceInformationReadIfPossible() {
+        guard !hasRequestedDeviceInformationRead else { return }
+        if currentProfile?.headerChecksum == .crc16ModbusOverHeader, !hasSentConnectCommands {
+            return
+        }
+        guard let peripheral = connectedPeripheral else { return }
+
+        var issued = false
+        for uuid in WhoopGATTConstants.deviceInformationCharacteristicUUIDs {
+            guard let char = deviceInformationCharacteristics[uuid],
+                  char.properties.contains(.read) else { continue }
+            peripheral.readValue(for: char)
+            issued = true
+        }
+        if issued {
+            hasRequestedDeviceInformationRead = true
+            AppLogger.ble.notice("""
+                Device Information Service read pass issued over \
+                \(self.deviceInformationCharacteristics.count) characteristic(s) known.
+                """)
+        }
+    }
+
+    /// Applies one DIS value: firmware and serial reach `WhoopDevice`, the other three are logged.
+    ///
+    /// **Model, hardware revision and manufacturer have no field and must not get one here.** They are
+    /// display strings, and inventing a `WhoopDevice` property for one would put a value on the device
+    /// page that nothing asked to show. The log is where a capture reads them.
+    private func handleDeviceInformation(_ uuid: CBUUID, data: Data) {
+        guard let field = DeviceInformationField(uuid: uuid) else { return }
+        guard let text = DeviceInformationPayload.text(from: data) else {
+            AppLogger.ble.warning("""
+                Device Information Service \(field.rawValue, privacy: .public) returned no readable \
+                text (\(data.count) bytes).
+                """)
+            return
+        }
+
+        AppLogger.ble.notice("""
+            Device Information Service \(field.rawValue, privacy: .public) = \(text, privacy: .public)
+            """)
+
+        switch field {
+        case .firmware:
+            updateDeviceState { $0.updating(firmwareVersion: text) }
+        case .serial:
+            updateDeviceState { $0.updating(serialNumber: text) }
+        case .model, .hardwareRevision, .manufacturer:
+            break
+        }
+    }
+
+    /// Attaches the notifications discovery held back until the link was authorised.
+    ///
+    /// Called from exactly the two paths that mean proprietary traffic can flow: a successful hello
+    /// acknowledgement, and the no-`.write` fallback where no handshake exists to wait for. The array
+    /// is emptied as it is subscribed, so a later `didWriteValueFor` — which fires on every confirmed
+    /// write, including the drain's ACKs — cannot re-subscribe anything.
+    ///
+    /// A strap that was never acknowledged keeps its characteristics here for the life of the link:
+    /// the producers were not armed either, so there is nothing this app could do with a notification
+    /// that the strap would refuse anyway.
+    private func subscribePendingNotifications() {
+        guard let peripheral = connectedPeripheral else {
+            pendingNotifyCharacteristics.removeAll()
+            return
+        }
+        let pending = pendingNotifyCharacteristics
+        pendingNotifyCharacteristics.removeAll()
+        for char in pending {
+            peripheral.setNotifyValue(true, for: char)
+        }
+        if !pending.isEmpty {
+            AppLogger.ble.notice("""
+                Subscribed \(pending.count) proprietary notification(s) after the 5.0/MG link was \
+                authorised.
+                """)
         }
     }
 
@@ -1488,9 +2253,29 @@ extension WhoopBLEManager: CBPeripheralDelegate {
             5.0/MG handshake acknowledged — the link is bonded, so the producers are being armed now.
             """)
         sendConnectCommands()
+        // The notification characteristics discovery deferred for the bond. Subscribed here rather
+        // than at discovery for the reason stated in `didDiscoverCharacteristicsFor`: pre-bond they
+        // are refused and wedge the bond.
+        subscribePendingNotifications()
     }
 
     public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        // **A DIS read's answer arrives here, and a refused one arrives with no value at all** — so the
+        // error has to be read before the value guard, or the only diagnostic that says a strap refused
+        // its own information service is silently dropped.
+        if DeviceInformationField(uuid: characteristic.uuid) != nil {
+            guard error == nil else {
+                AppLogger.ble.warning("""
+                    Device Information Service read failed: \(String(describing: error), privacy: .public)
+                    """)
+                return
+            }
+            guard let data = characteristic.value, !data.isEmpty else { return }
+            noteLinkActivity()
+            handleDeviceInformation(characteristic.uuid, data: data)
+            return
+        }
+
         guard let data = characteristic.value, !data.isEmpty else { return }
 
         // Every notification is evidence the link is carrying data — including the battery read,
@@ -1509,10 +2294,19 @@ extension WhoopBLEManager: CBPeripheralDelegate {
                 // per-notification arrival instants or not.
                 if !hasLoggedHeartRateFrames {
                     hasLoggedHeartRateFrames = true
-                    AppLogger.ble.info("""
+                    AppLogger.ble.notice("""
                         0x2A37 frame: flags=0x\(String(data[0], radix: 16, uppercase: true)) \
                         bytes=\(data.count) hr=\(hr) rrIntervals=\(rrs.count)
                         """)
+                    // Metadata only — no bpm. The flags byte says whether the R-R field is present
+                    // and how the value is encoded, and the count is what decides whether a night is
+                    // reconstructible; the heart rate itself is a biometric and never leaves the phone
+                    // through this path.
+                    Diagnostics.record("standard_hr_frame", [
+                        "flags": String(format: "0x%02X", data[0]),
+                        "bytes": "\(data.count)",
+                        "rrIntervals": "\(rrs.count)"
+                    ])
                 }
 
                 let sample = BiometricSample(
@@ -1528,18 +2322,12 @@ extension WhoopBLEManager: CBPeripheralDelegate {
         // 2. Battery level
         if characteristic.uuid == WhoopGATTConstants.batteryLevelCharacteristicUUID {
             let battery = Int(data[0])
+            // **A copy, not a fresh device.** Constructing a `WhoopDevice` here applied every default,
+            // so a battery notification erased the firmware and serial DIS had just reported, reset
+            // RSSI to `-65` and cleared last-sync — a field loss invisible on this branch and visible
+            // on the device page as values that stopped arriving.
             if let current = currentDeviceState {
-                updateDeviceState {
-                    WhoopDevice(
-                        id: current.id,
-                        name: current.name,
-                        hardwareGeneration: current.hardwareGeneration,
-                        batteryPercentage: battery,
-                        connectionState: .connected,
-                        isOnBody: current.isOnBody,
-                        isCharging: current.isCharging
-                    )
-                }
+                updateDeviceState { current.updating(batteryPercentage: battery) }
             }
             return
         }
@@ -1565,17 +2353,58 @@ extension WhoopBLEManager: CBPeripheralDelegate {
         for frame in reassembler.append(data, profile: profile) {
             if !hasLoggedProprietaryFrame {
                 hasLoggedProprietaryFrame = true
-                AppLogger.ble.info("""
-                    Proprietary frame: type=0x\(String(frame.type, radix: 16, uppercase: true)) \
-                    seq=\(frame.seq) cmd=0x\(String(frame.cmd, radix: 16, uppercase: true)) \
+                AppLogger.ble.notice("""
+                    Proprietary frame: type=0x\(String(frame.type, radix: 16, uppercase: true), privacy: .public) \
+                    seq=\(frame.seq) cmd=0x\(String(frame.cmd, radix: 16, uppercase: true), privacy: .public) \
                     payload=\(frame.payload.count) bytes
                     """)
+                Diagnostics.record("proprietary_frame", [
+                    "type": String(format: "0x%02X", frame.type),
+                    "seq": "\(frame.seq)",
+                    "cmd": String(format: "0x%02X", frame.cmd),
+                    "payloadBytes": "\(frame.payload.count)"
+                ])
             }
 
             let now = Date()
             if let batch = MotionPayloadDecoder.decode(frame: frame, receivedAt: now) {
+                noteStrapClock(batch.strapTimestamp, arrival: now)
                 yieldMotion(batch)
             }
+
+            // Packet 40, the 5.0/MG's live `REALTIME_DATA` — the record `0x03 TOGGLE_REALTIME_HR`
+            // arms. It is decoded *before* the drain routing below because it is not and never will
+            // be a historical record: the two producers share no layout, and `routeToDrain` yields
+            // only what the drain's own session is walking. The arrival instant is its timestamp,
+            // per the same convention as `0x2A37` above.
+            if let sample = HeartRatePayloadDecoder.decodeLive(frame: frame, receivedAt: now) {
+                if !hasLoggedLiveHeartRate {
+                    hasLoggedLiveHeartRate = true
+                    AppLogger.ble.notice("""
+                        5.0/MG live heart rate: type=0x\(String(frame.type, radix: 16, uppercase: true), privacy: .public) \
+                        bpm=\(sample.heartRate) rrIntervals=\(sample.rrIntervalsMs?.count ?? 0)
+                        """)
+                    // No bpm — the same metadata rule as the standard characteristic above.
+                    Diagnostics.record("live_hr_frame", [
+                        "type": String(format: "0x%02X", frame.type),
+                        "rrIntervals": "\(sample.rrIntervalsMs?.count ?? 0)"
+                    ])
+                }
+                yieldTelemetry(sample)
+            }
+
+            // Strap events — packet 48 on 5.0/MG, `0x30` on 4.0 — carry the wrist and charger state
+            // `WhoopDevice` has fields for. Decoded here rather than in `routeToDrain` because they
+            // arrive on a connected strap with no drain running, and that call returns immediately
+            // when there is none.
+            if let event = StrapEventDecoder.decode(frame: frame) {
+                handleStrapEvent(event)
+            }
+
+            // The 5.0/MG clock read-back's answer, captured raw. No offset is decoded from it — the
+            // reference logs it and parses none of it either — so this exists so a sideloaded run has
+            // both sides of the SET_CLOCK/GET_CLOCK pair in its archive.
+            logClockReplyCandidate(frame, profile: profile)
 
             // The drain sees every frame, including the ones the motion decoder just consumed: a
             // banked type-47 record *is* an R21 batch, so the same frame is both a step contribution

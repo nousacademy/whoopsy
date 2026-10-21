@@ -22,21 +22,31 @@ enum StepTests {
     static func run() async throws {
         try await StepDetectionMathTests.run()
         try await MotionPayloadDecoderTests.run()
+        try await HeartRatePayloadDecoderTests.run()
+        try await Spo2CandidateProbeTests.run()
+        try await StrapEventDecoderTests.run()
+        try await DiagnosticsTests.run()
+        try await DeviceInformationPayloadTests.run()
         try await StepAccumulatorTests.run()
         try await StepCountPersistenceTests.run()
         try await WhoopProtocolProfileTests.run()
         try await StrainPanelTests.run()
         try await WhoopPacketEncoder5Tests.run()
         try await HistoricalDrainSessionTests.run()
+        // Appended rather than slotted in beside `StepCountPersistenceTests`: every block above was
+        // moved into its file from this section's original body and their order is that body's, while
+        // this one is new. It takes the store's shape for granted, so it belongs after all of them.
+        try await TrackStepsUseCaseTests.run()
     }
 
     // MARK: The builders the section shares across its files
 
     /// §15's `TypicalRangeTests.breakdown` precedent: a fixture more than one topic file needs
     /// lives as a namespace static on the section's own dispatcher enum, so there is one
-    /// definition of it rather than one per caller. These three are the only ones §16 needs
-    /// across a file boundary — `fourFrame`, `sealFour` and the three `write…` helpers are read
-    /// by one file alone and stay inside it.
+    /// definition of it rather than one per caller. These five are the ones §16 needs across a
+    /// file boundary — both generations' frame builders, because the motion decoder and the
+    /// heart-rate decoder each hand-build one — while the three `write…` helpers are read by one
+    /// file alone and stay inside it.
     ///
     /// **None of the three is state.** They are pure functions of their arguments, so a call
     /// from another file produces exactly what the declaring file would have got. §6.2's rule
@@ -103,6 +113,34 @@ enum StepTests {
         frame[9] = 0x42   // seq
         frame[10] = 0x00  // cmd
         return frame
+    }
+
+    /// A 4.0 frame of `payloadBytes` bytes carrying `type`, hand-built to §2's envelope.
+    ///
+    /// Written in frame coordinates for `fiveFrame`'s reason: a helper that asked
+    /// `WhoopProtocolProfile` for the payload origin would share that arithmetic with the decoder,
+    /// so a wrong `innerOrigin` would move both and the fixture would pass.
+    static func fourFrame(type: UInt8, payloadBytes: Int) -> [UInt8] {
+        let declared = 3 + payloadBytes + 4
+        var frame = [UInt8](repeating: 0, count: 4 + declared)
+        frame[0] = 0xAA
+        frame[1] = UInt8(declared & 0xFF)
+        frame[2] = UInt8((declared >> 8) & 0xFF)
+        frame[3] = CRCUtils.crc8(Data([frame[1], frame[2]]))
+        frame[4] = type
+        frame[5] = 0x11   // seq
+        frame[6] = 0x00   // cmd
+        return frame
+    }
+
+    /// The trailer CRC32 alone — the 4.0's header CRC8 is set when the frame is made.
+    static func sealFour(_ frame: inout [UInt8]) {
+        let innerEnd = frame.count - 4
+        let crc32 = CRCUtils.crc32(Data(frame[4..<innerEnd]))
+        frame[innerEnd] = UInt8(crc32 & 0xFF)
+        frame[innerEnd + 1] = UInt8((crc32 >> 8) & 0xFF)
+        frame[innerEnd + 2] = UInt8((crc32 >> 16) & 0xFF)
+        frame[innerEnd + 3] = UInt8((crc32 >> 24) & 0xFF)
     }
 
     /// The header CRC16 over `[0..<6)` and the trailer CRC32 over the inner record.

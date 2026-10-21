@@ -125,6 +125,26 @@ public enum UserProfileWireMapper {
         )
     }
 
+    // MARK: - Wire → row
+
+    /// The row a profile fetched from the database is stored as.
+    ///
+    /// The id is the record's `"primary"` key, not read from the DTO — the wire has no id field, so the
+    /// local key is supplied here exactly as `UserProfileSyncRow(_:)` supplies it for a profile the user
+    /// typed. The birthday is the one field converted back: `day(fromDayKey:)` answers `nil` for a key it
+    /// cannot read, which is the same absence a `null` on the wire already spells.
+    public static func row(for dto: UserProfileDTO, in calendar: Calendar = .current) -> UserProfileSyncRow {
+        UserProfileSyncRow(
+            maxHeartRate: dto.maxHeartRate,
+            restingHeartRate: dto.restingHeartRate,
+            weightKg: dto.weightKg,
+            name: dto.name,
+            birthDate: dto.birthDate.flatMap { RecoveryWireMapper.day(fromDayKey: $0, in: calendar) },
+            gender: dto.gender,
+            heightCm: dto.heightCm
+        )
+    }
+
     // MARK: - What the database will accept
 
     /// Whether this profile is one the server can be given.

@@ -30,18 +30,19 @@ import Whoopsy
 enum CloudSyncTests {
 
     static func run() async throws {
-        // MARK: The port — nineteen doors, none of them a removal
+        // MARK: The port — twenty-five doors, none of them a removal
 
         let port = try sourceText(at: "Domain/Repositories/CloudSync.swift")
         let portMethods = declaredMethods(in: port)
 
-        // **The count is a tripwire rather than a contract.** Nineteen is what the seven resources need
-        // today — four methods for each of the three ranged-and-read resources, two for each of the
-        // three write-only ones, and one for the singleton profile. A resource added later will make
-        // this fail, and that is the point: the failure sends its author to this file, where the
-        // sentence below is waiting to ask whether the new resource arrived with a delete.
-        assertTest(portMethods.count == 19,
-                   "`CloudSync` declares 19 methods — the port's whole vocabulary, and the number this "
+        // **The count is a tripwire rather than a contract.** Twenty-five is what the seven resources
+        // need now that every one reads as well as writes — two reads and two writes each for the six
+        // keyed resources (entries being the exception with one range read), and one read and one write
+        // for the singleton profile. A resource added later will make this fail, and that is the point:
+        // the failure sends its author to this file, where the sentence below is waiting to ask whether
+        // the new resource arrived with a delete.
+        assertTest(portMethods.count == 25,
+                   "`CloudSync` declares 25 methods — the port's whole vocabulary, and the number this "
                        + "sweep is a tripwire for rather than a limit it enforces")
         assertTest(portMethods.filter { $0.lowercased().contains("delete") }.isEmpty,
                    "…and not one of them is a delete: \(portMethods.filter { $0.lowercased().contains("delete") })")

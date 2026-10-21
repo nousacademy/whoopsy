@@ -30,7 +30,11 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
             activityName: workout.activityName,
             hrZonePercents: workout.hrZonePercents,
             steps: workout.steps,
-            offlineRegionID: workout.offlineRegionID
+            offlineRegionID: workout.offlineRegionID,
+            // Two columns, one value. `OfflineMapCenter`'s pair travels together, so writing one
+            // without the other would make the read side's both-non-nil rule silently drop it.
+            offlineRegionCenterLatitude: workout.offlineRegionCenter?.latitude,
+            offlineRegionCenterLongitude: workout.offlineRegionCenter?.longitude
         )
         let route = workout.route.map {
             WorkoutRoutePointRecord(
@@ -81,6 +85,19 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
         try await db.deleteWorkout(id: id.uuidString) > 0
     }
 
+    /// Rebuilds the download centre from `v23`'s two columns, refusing a half-written pair.
+    ///
+    /// A row carrying one column and not the other is not a place, so it reads as no centre — the
+    /// same answer as `nil`/`nil`, and the one that leaves the detail page drawing no map rather than
+    /// a map framed on a coordinate nobody supplied.
+    private static func makeOfflineRegionCenter(from record: WorkoutRecord) -> OfflineMapCenter? {
+        guard
+            let latitude = record.offlineRegionCenterLatitude,
+            let longitude = record.offlineRegionCenterLongitude
+        else { return nil }
+        return OfflineMapCenter(latitude: latitude, longitude: longitude)
+    }
+
     /// Route and splits are read per workout. A row whose `id` is not a UUID is skipped rather than
     /// given a fresh one: `WorkoutSession.id` must be a UUID, and inventing an identity for a row
     /// we cannot address would hand the caller a session that does not correspond to anything
@@ -126,7 +143,10 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
                     activityName: record.activityName,
                     hrZonePercents: record.hrZonePercents,
                     steps: record.steps,
-                    offlineRegionID: record.offlineRegionID
+                    offlineRegionID: record.offlineRegionID,
+                    // Both columns or no centre: one column alone is not a point, and `v23` only
+                    // ever writes the pair, so a lone value is a row from a probe or a hand edit.
+                    offlineRegionCenter: Self.makeOfflineRegionCenter(from: record)
                 )
             )
         }

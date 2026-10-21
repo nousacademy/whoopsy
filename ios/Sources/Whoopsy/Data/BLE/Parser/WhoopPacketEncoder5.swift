@@ -17,8 +17,8 @@ import Foundation
 /// **Nothing here is captured on this project's own hardware.** What grounds it is
 /// `docs/BLE_PROTOCOL.md` §2's envelope, §2.1's two published frames — one of which the suite reproduces
 /// byte-for-byte — and §6's enable sequence. Whether a 5.0 accepts any of it is a question about the
-/// command characteristic's authenticated SMP bond (§7 Q6) and about the firmware, and neither is
-/// answered by a green build.
+/// command characteristic's refusal of writes until the link is encrypted (§7 Q6) and about the
+/// firmware, and neither is answered by a green build.
 public enum WhoopPacketEncoder5 {
     public static let startOfFrame: UInt8 = 0xAA
 
@@ -193,19 +193,84 @@ public enum WhoopPacketEncoder5 {
         return built
     }
 
+    // MARK: - Live heart rate
+
+    /// `0x03` / 3 `TOGGLE_REALTIME_HR`, payload `[0x01]` — **the enable a bonded 5.0 needs before it
+    /// sends live heart rate, and the step this app was missing.**
+    ///
+    /// noop arms it after the confirmed-hello acknowledgement and, from that point, the strap notifies
+    /// packet 40 (`REALTIME_DATA`). The one-byte `0x01` body is that client's own verified sequence
+    /// rather than a guess.
+    ///
+    /// **There is no disable form here, deliberately.** The reference names the toggle and demonstrates
+    /// the arm; nothing establishes what the disarm body is, and `[0x00]` would be this app inventing a
+    /// byte that could turn into a different message on the wire. This build never needs to disarm the
+    /// producer while the link is up, so the builder is enable-only rather than symmetric and invented.
+    public static func realtimeHeartRate(
+        profile: WhoopProtocolProfile,
+        seq: UInt8
+    ) -> Data? {
+        guard let opcodes = fiveEnvelopeOpcodes(profile) else { return nil }
+        return buildPacket(
+            profile: profile, type: profile.packetTypes.command, seq: seq,
+            cmd: opcodes.toggleRealtimeHR, payload: Data([0x01]))
+    }
+
+    // MARK: - Haptics
+
+    /// The eight effect bytes of the notification preset noop captured from a real MG.
+    ///
+    /// `47` and `152` are the effect IDs the captured body carries; the six zeroes are the preset's
+    /// remaining fields, copied verbatim because the reference publishes the bytes and not their
+    /// meaning. They are a constant rather than literals inside the builder so a capture that varies
+    /// one has a single place to change.
+    public static let notificationHapticEffects: [UInt8] = [47, 152, 0, 0, 0, 0, 0, 0]
+
+    /// `0x13` / 19 — the **puffin wire opcode** `RUN_HAPTICS_PATTERN` is transmitted under, payload
+    /// `[0x01] + effects(8) + loopControl(u16 LE = 0) + overallLoop(loops − 1)`.
+    ///
+    /// **The catalog ID is 79 and this generation rejects it.** A real-MG capture in noop shows command
+    /// 79 answered with result `0x03` (unsupported), and the working call arrives as opcode `0x13` with a
+    /// twelve-byte notification preset instead. So this builder does **not** delegate to the 4.0's
+    /// `0x4F` path and does not accept a `pattern`: the captured body names its effects itself, and a
+    /// caller-supplied pattern id has nowhere to go. That is why the façade's `pattern` argument is
+    /// documented as 4.0-only.
+    ///
+    /// **`overallLoop` is `loops − 1`**, which is the reference's convention rather than this app's: the
+    /// captured one-shot body carries `0` where the caller asked for one play. `loopControl` stays zero
+    /// because the reference does not vary it.
+    public static func hapticsNotification(
+        profile: WhoopProtocolProfile,
+        seq: UInt8,
+        loops: UInt8
+    ) -> Data? {
+        guard let opcodes = fiveEnvelopeOpcodes(profile), loops >= 1 else { return nil }
+        var body = Data([0x01])
+        body.append(contentsOf: notificationHapticEffects)
+        body.append(0x00)
+        body.append(0x00)
+        body.append(loops &- 1)
+        return buildPacket(
+            profile: profile, type: profile.packetTypes.command, seq: seq,
+            cmd: opcodes.notifyHaptics, payload: body)
+    }
+
     // MARK: - Clock
 
-    /// `0x92` / 146 `SET_CLOCK`, payload `[u32 epoch LE][u32 0]`.
+    /// `0x0A` / 10 `SET_CLOCK`, payload `[u32 epoch LE][u32 0]`.
     ///
     /// **The prerequisite for trusting any drained record rather than a refinement of it.** A record is
     /// stamped by the strap's own RTC, and a strap whose battery went flat reports `RTC_LOST` with
     /// nothing in the record to show it — so the history files onto a *wrong day* rather than onto no
     /// day, which is the silent half of the failure §4's window check exists to catch.
     ///
-    /// The eight-byte form is the one §4 records for this shape of clock set (`0x0A` on the 4.0 takes
-    /// `[u32 epoch LE][u32 0]` and is the form the 5.0/MG's hardware validated), and unlike the 4.0
-    /// there is no second legacy length in hand for this generation — published clients disagree on the
-    /// 4.0's, which is why `WhoopPacketEncoder` sends both forms there. Here the one form is sent.
+    /// **The opcode is `0x0A` / 10, the same byte and payload the 4.0 uses, under this envelope.** It
+    /// carried `0x92` until the table was corrected against noop, whose connect sequence sends command
+    /// 10 here and whose comment states the clock is **mandatory before history**: an un-clocked 5.0
+    /// does not bank sensor data to flash at all, so an offload completes with zero body frames. The
+    /// 4.0's payload is `[u32 epoch LE][u32 0]`, which is this one, and unlike the 4.0 there is no
+    /// second legacy length in hand — published clients disagree on the 4.0's, which is why
+    /// `WhoopPacketEncoder` sends both forms there. Here the one form is sent.
     ///
     /// **A wrong-length set is acknowledged but not latched**, per §7 Q7, so "the command was written"
     /// is not evidence the clock moved. `getClock` is what turns that into a question with an answer.
@@ -225,16 +290,16 @@ public enum WhoopPacketEncoder5 {
             payload: payload)
     }
 
-    /// `0x93` / 147 `GET_CLOCK` — and **there is no 4.0 counterpart in either reference.**
+    /// `0x0B` / 11 `GET_CLOCK` — the read-back noop sends immediately after SET_CLOCK on this envelope.
     ///
     /// §7 Q7 is the reason it exists: the clock's read-back is cheap and needs no drain, so the app can
-    /// check the RTC it just set instead of assuming it latched. This is the only generation whose
-    /// clock can be checked at all, and the check is what keeps "we sent a clock set" from being
-    /// presented as "the timestamps are trustworthy".
+    /// check the RTC it just set instead of assuming it latched. **A successful SET_CLOCK write is not
+    /// evidence the RTC moved**, and this is what turns that into a question with an answer.
     ///
-    /// The payload and the reply's layout are **both undocumented here** — the reference names the
-    /// opcode — so this sends it bare and §7's capture is what fills either in. Reading the reply is not
-    /// implemented on any path, which is recorded rather than implied by this builder existing.
+    /// The payload and the reply's layout are **both undocumented** — the reference names the opcode and
+    /// logs the answer, and parses none of it — so this sends it bare and the manager logs the reply raw.
+    /// No path in this app decodes that reply or claims a clock latched, which is recorded rather than
+    /// implied by this builder existing.
     public static func getClock(profile: WhoopProtocolProfile, seq: UInt8) -> Data? {
         guard let opcodes = fiveEnvelopeOpcodes(profile) else { return nil }
         return buildPacket(

@@ -391,6 +391,71 @@ enum ActivityRouteAndOfflineMapTests {
                     + "the user can act on (isSupported \(fallbackSupported), state \(fallbackState))")
         }
 
+        // MARK: - The area card's frame
+
+        // The route card is framed by the path it draws; the area card has no path, and `ActivityOfflineArea`
+        // is what turns the centre stored on the row into a frame. **Every number here is a rule**: too wide
+        // a box draws downloaded-tile-free ground at the card's corners the moment the phone is offline, and
+        // a box "square" in degrees rather than in metres draws a different amount of ground at different
+        // latitudes. The suite can see all of it, because the arithmetic is a value and not a `body`.
+        do {
+            let london = OfflineMapCenter(latitude: 51.5074, longitude: -0.1278)
+            let area = ActivityOfflineArea(center: london)
+
+            assertTest(
+                area != nil,
+                "One plausible fix is enough to frame an area card, which is the whole case: a session that "
+                    + "downloaded a map with `RECORD ROUTE` off recorded no route and still has tiles to show")
+
+            // The frame is a square on the ground, `visibleSpanFraction × radius` on a side. Its latitude
+            // span is that in metres divided by one degree of latitude; its longitude span is the same
+            // distance divided again by the cosine, because a degree of longitude is shorter away from the
+            // equator. Both figures are literals rather than recomputed from the code under test.
+            let region = area?.region
+            let expectedLatitudeSpan = 0.1085459
+            let expectedLongitudeSpan = 0.1743949
+            assertTest(
+                abs((region?.latitudeSpan ?? 0) - expectedLatitudeSpan) < 1e-6,
+                "…framed on the downloaded circle's own radius: 16,093 m × 0.75 is 12,069.75 m a side, and "
+                    + "one degree of latitude is 111,194.93 m on `ActivityRoute`'s mean-radius sphere, so the "
+                    + "latitude span is \(expectedLatitudeSpan)° "
+                    + "(\(ActivityDetailTests.shown(region?.latitudeSpan)))")
+            assertTest(
+                abs((region?.longitudeSpan ?? 0) - expectedLongitudeSpan) < 1e-6,
+                "…and the longitude span is that divided by cos(51.5074°), so the box covers the same ground "
+                    + "squarely rather than a rectangle that is a third less wide east–west "
+                    + "(\(ActivityDetailTests.shown(region?.longitudeSpan)))")
+            assertTest(
+                region?.centerLatitude == london.latitude && region?.centerLongitude == london.longitude,
+                "…centred on the downloaded point itself, because the circle was drawn around it")
+
+            // The box is fitted inside the circle rather than inscribed in it: its furthest corner must sit
+            // inside the radius, or the card's corners would be blank offline.
+            let sideMeters = OfflineMapCoverage.radiusMeters * ActivityOfflineArea.visibleSpanFraction
+            let cornerMeters = (sideMeters * sideMeters * 2).squareRoot() / 2
+            assertTest(
+                cornerMeters < OfflineMapCoverage.radiusMeters,
+                "…and its far corner lands \(Int(cornerMeters)) m from the centre against a "
+                    + "\(Int(OfflineMapCoverage.radiusMeters)) m downloaded radius, so every point the card "
+                    + "draws was covered by the download — the margin is also what absorbs the extra width a "
+                    + "wide card's aspect reveals beyond the requested box")
+
+            assertTest(
+                ActivityOfflineArea(center: OfflineMapCenter(latitude: 0, longitude: 0)) == nil,
+                "A `(0, 0)` centre — CoreLocation's *not resolved yet* placeholder, or a row from a hand-run "
+                    + "probe — frames no card at all, on the same plausibility test the route's own fixes pass "
+                    + "through, rather than drawing the Gulf of Guinea")
+            assertTest(
+                ActivityOfflineArea(center: OfflineMapCenter(latitude: 89.9999999, longitude: 12)) == nil,
+                "…and a centre against a pole is refused rather than clamped: the longitude conversion has no "
+                    + "meaning there, and an invented span would be a frame of ground this app did not divide")
+
+            assertTest(
+                area?.spokenSummary == "Map of the area downloaded for this activity.",
+                "…and the card's whole accessible content is one sentence, because a map is a drawing and "
+                    + "carries no figures of its own — there is no distance and no speed to speak")
+        }
+
         // MARK: - The offline switch, through the spy
 
         // The runner must not build a `TileStore`, for `SpyOfflineMaps`' own reason — a real one downloads
@@ -533,8 +598,8 @@ enum ActivityRouteAndOfflineMapTests {
                     liveLocation.yield(latitude: 51.5074, longitude: -0.1278)
                 } },
                 "The switch waits for one position fix, read off a GPS stream the session starts for itself: "
-                    + "the two switches are independent, so this one cannot borrow the route's fix and has to "
-                    + "ask for its own")
+                    + "the two switches are mutually exclusive, so the route is off while this is on and there "
+                    + "is no route stream to borrow a fix from")
 
             assertTest(
                 await waitUntil { await MainActor.run { liveMaps.downloadCount } == 1 },
@@ -588,6 +653,131 @@ enum ActivityRouteAndOfflineMapTests {
                 "…and cancels nothing, because the download had already finished — a cancel here is the one "
                     + "the protocol forbids, and it is unreachable only because the state is read before it is "
                     + "cleared (\(keptCancels) cancellation(s))")
+
+            // ---- The two switches turn each other off ----
+            //
+            // Mutual exclusivity is the user's ruling: a session records a path or downloads an area,
+            // never both. The two blocks below drive the two halves — route on clears the offline map, and
+            // offline on stops the route — from a state where the displaced half is genuinely engaged rather
+            // than merely flipped, so each assertion is a stop of something that was actually running.
+
+            // Route on → offline off. The map is fully downloaded (`.ready`) before the route is turned on,
+            // so the teardown below is a teardown of a finished download — which must still clear the flags
+            // and the region, because a session cannot be both at once.
+            let routeOnLocation = SpyLocationTracking()
+            let routeOnMaps = SpyOfflineMaps()
+            await MainActor.run { routeOnMaps.isSupported = true }
+            let routeOnSession = makeSession(routeOnLocation, routeOnMaps)
+            await routeOnSession.setOfflineMap(true)
+            assertTest(
+                await waitUntil { await MainActor.run {
+                    routeOnLocation.yield(latitude: 51.5074, longitude: -0.1278)
+                } },
+                "A session that downloaded a map and then turns RECORD ROUTE on first reaches `.ready`, so "
+                    + "the exclusivity below is asserted from a download that genuinely finished rather than "
+                    + "one that was merely asked for")
+            assertTest(
+                await waitUntil { await routeOnSession.offlineMapState == .ready },
+                "…and the download lands before the route is turned on")
+            await routeOnSession.setRouteRecording(true)
+            let routeOnOfflineRequested = await routeOnSession.isOfflineMapRequested
+            let routeOnRegion = await routeOnSession.offlineRegionID
+            let routeOnState = await routeOnSession.offlineMapState
+            let routeOnRecording = await routeOnSession.isRecordingRoute
+            assertTest(
+                !routeOnOfflineRequested && routeOnRegion == nil && routeOnState == .absent
+                    && routeOnRecording,
+                "Turning RECORD ROUTE on turns USE OFFLINE MAP off: the flag, the region and the state are "
+                    + "all cleared and the route is the one left on, so a session records a path or "
+                    + "downloads an area, never both (requested \(routeOnOfflineRequested), region "
+                    + "\(ActivityDetailTests.shown(routeOnRegion)), state \(routeOnState))")
+
+            // Offline on → route off. The route's GPS is genuinely started before the offline switch is
+            // flipped, so the stop below is a release of a stream that was really running — not a no-op on
+            // a route that never got permission.
+            let offlineOnLocation = SpyLocationTracking()
+            let offlineOnMaps = SpyOfflineMaps()
+            await MainActor.run { offlineOnMaps.isSupported = true }
+            let offlineOnSession = makeSession(offlineOnLocation, offlineOnMaps)
+            await offlineOnSession.setRouteRecording(true)
+            assertTest(
+                await waitUntil { await MainActor.run { offlineOnLocation.startCount } == 1 },
+                "A session that recorded a route and then turns USE OFFLINE MAP on first has its GPS started "
+                    + "once, so the stop below is a stop of a stream that was genuinely running")
+            await offlineOnSession.setOfflineMap(true)
+            let offlineOnRecording = await offlineOnSession.isRecordingRoute
+            let offlineOnStops = await MainActor.run { offlineOnLocation.stopCount }
+            assertTest(
+                !offlineOnRecording && offlineOnStops >= 1,
+                "…and turning USE OFFLINE MAP on stops RECORD ROUTE: the flag clears and the route's GPS "
+                    + "stream is released, so the offline map's own fix request is the only producer left "
+                    + "(recording \(offlineOnRecording), stops \(offlineOnStops))")
+
+            // ---- The centre `end()` writes ----
+            //
+            // The id alone cannot frame a map, so the fix the region was downloaded around has to reach the
+            // row — and the only writer that can put it there is `end()`, from the state this use case kept
+            // while it was recording. The assertions are the whole chain: the fix is captured, the summary's
+            // session carries it beside the region, and the reset clears both together.
+            let endTelemetry = ScriptedTelemetryRepository()
+            let endLocation = SpyLocationTracking()
+            let endMaps = SpyOfflineMaps()
+            await MainActor.run {
+                endLocation.permission = .authorized
+                endMaps.isSupported = true
+            }
+            let endSession = LiveSessionUseCase(
+                controller: SpyLiveActivityController(),
+                locationTracking: endLocation,
+                streamBiometricsUseCase: StreamBiometricsUseCase(
+                    bleRepository: endTelemetry, biometricRepository: EmptyBiometricStore()),
+                saveWorkoutUseCase: SaveWorkoutUseCase(repository: workoutRepository),
+                userProfileRepository: profileRepository,
+                bleRepository: endTelemetry,
+                activeFastRepository: SpyActiveFastRepository(),
+                offlineMaps: endMaps)
+
+            await endSession.start()
+            assertTest(
+                await waitUntil { endTelemetry.subscriberCount == 1 },
+                "A session that will download a map records first, so the summary below is a real session "
+                    + "rather than an empty one `end()` refuses")
+            endTelemetry.yield(BiometricSample(timestamp: Date(), heartRate: 140))
+            assertTest(
+                await waitUntil { await endSession.snapshot?.sampleCount == 1 },
+                "…with one measured sample in hand, which is what makes `end()` write a row at all")
+
+            await endSession.setOfflineMap(true)
+            assertTest(
+                await waitUntil { await MainActor.run {
+                    endLocation.yield(latitude: 51.5074, longitude: -0.1278)
+                } },
+                "…and the switch takes its fix from a GPS stream of its own, exactly as it does in the "
+                    + "standalone block above")
+            assertTest(
+                await waitUntil { await endSession.offlineMapState == .ready },
+                "…and the download lands `.ready` before the session ends, so the region is one the detail "
+                    + "page will draw")
+
+            let centreInHand = await endSession.offlineRegionCenter
+            let expectedCentre = OfflineMapCenter(latitude: 51.5074, longitude: -0.1278)
+            assertTest(
+                centreInHand == expectedCentre,
+                "…and the use case keeps the fix the region was downloaded around, not a later reading and "
+                    + "not a constant (\(ActivityDetailTests.shown(centreInHand)))")
+
+            let endedSummary = await endSession.end()
+            let endedRow = endedSummary?.workout
+            assertTest(
+                endedRow?.offlineRegionID != nil && endedRow?.offlineRegionCenter == expectedCentre,
+                "…and `end()` writes the pair onto the session's row: an id without a centre is tiles this "
+                    + "app can find and cannot frame, which is the state the detail page's area card exists "
+                    + "to end (\(ActivityDetailTests.shown(endedRow?.offlineRegionID)), "
+                    + "\(ActivityDetailTests.shown(endedRow?.offlineRegionCenter)))")
+            assertTest(
+                await endSession.offlineRegionCenter == nil,
+                "…and the reset clears the centre beside the id, so a second session cannot inherit the "
+                    + "first one's map")
 
             // ---- The switch off *while* the tiles are still arriving ----
 
@@ -696,8 +886,9 @@ enum ActivityRouteAndOfflineMapTests {
             let db = LocalDatabaseManager(inMemory: true)
             let workoutRepository = GRDBWorkoutRepository(db: db)
 
+            let centre = OfflineMapCenter(latitude: 51.5074, longitude: -0.1278)
             let named = ActivityDetailTests.session(
-                "Hiking", startOffset: 0, durationSeconds: 3_600, region: "whoopsy-7c1f")
+                "Hiking", startOffset: 0, durationSeconds: 3_600, region: "whoopsy-7c1f", center: centre)
             let nameless = ActivityDetailTests.session("Hiking", startOffset: 0, durationSeconds: 3_600)
             try await workoutRepository.save(named)
             try await workoutRepository.save(nameless)
@@ -717,6 +908,14 @@ enum ActivityRouteAndOfflineMapTests {
                     + "distinction `source` and `steps` carry: asking for no region is not asking for one "
                     + "called `\"\"`, and a mapper that substituted one would put a session on a region that "
                     + "does not exist (\(ActivityDetailTests.shown(namelessRow?.offlineRegionID)))")
+            assertTest(
+                namedRow?.offlineRegionCenter == centre && namelessRow?.offlineRegionCenter == nil,
+                "…and the centre beside it survives the same round trip through `v23`'s two columns, which "
+                    + "is what lets a session that recorded no route still frame a map of the ground it "
+                    + "downloaded — and a session with no region reads back no centre rather than a "
+                    + "half-written pair "
+                    + "(\(ActivityDetailTests.shown(namedRow?.offlineRegionCenter)), "
+                    + "\(ActivityDetailTests.shown(namelessRow?.offlineRegionCenter)))")
 
             let bridged = namedRow.map { RouteMapRenderer.resolve(session: $0, state: .ready) }
             assertTest(
@@ -795,6 +994,50 @@ enum ActivityRouteAndOfflineMapTests {
                 "…and a build with no SDK behind the switch draws the standard map like every other build, "
                     + "which is the property the whole seam was built for: forgetting to link Mapbox costs "
                     + "this app nothing but the offline option")
+
+            // ---- A session that downloaded a map and recorded no route ----
+            //
+            // This is the case the screenshot that started this work showed: `USE OFFLINE MAP` on, `RECORD
+            // ROUTE` off, and a detail page with no map section at all. The page's route is `nil` — there is
+            // no path — and `offlineArea` is the property the view now falls back to.
+            let centre = OfflineMapCenter(latitude: 51.5074, longitude: -0.1278)
+            let downloaded = await page(
+                ActivityDetailTests.session(
+                    "Hiking", startOffset: 0, durationSeconds: 3_600,
+                    region: "whoopsy-7c1f", center: centre),
+                readyMaps)
+            assertTest(
+                await downloaded.route == nil,
+                "A session recorded with `RECORD ROUTE` off has no route, which is what made the download "
+                    + "invisible on its own detail page before this card existed")
+            assertTest(
+                await downloaded.routeRenderer == .offline(regionID: "whoopsy-7c1f"),
+                "…and its region is `.ready`, so the page resolves to the offline renderer — the same "
+                    + "decision the route card reads, because the question is about tiles rather than about "
+                    + "a path")
+            assertTest(
+                await downloaded.offlineArea != nil,
+                "…and it hands the view an area to draw: the centre from the row, framed by "
+                    + "`ActivityOfflineArea`, so the map the user waited for is the content of the page's "
+                    + "map section rather than a section that is simply absent")
+
+            let regionWithoutCentre = await page(
+                ActivityDetailTests.session(
+                    "Hiking", startOffset: 0, durationSeconds: 3_600, region: "whoopsy-7c1f"),
+                readyMaps)
+            assertTest(
+                await regionWithoutCentre.offlineArea == nil,
+                "…and a row naming a region but carrying no centre (every row written before `v23`) still "
+                    + "draws no area: an id says tiles exist and cannot say where, so a card framed on an "
+                    + "invented point would be the fabricated figure this app refuses everywhere else")
+            let centreWithoutRegion = await page(
+                ActivityDetailTests.session(
+                    "Hiking", startOffset: 0, durationSeconds: 3_600, center: centre),
+                readyMaps)
+            assertTest(
+                await centreWithoutRegion.offlineArea == nil,
+                "…and neither does a centre with no region: both halves of the row are required, exactly as "
+                    + "they are for the renderer's own gate")
         }
     }
 }

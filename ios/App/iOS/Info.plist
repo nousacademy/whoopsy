@@ -22,6 +22,15 @@
     <string>1</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <!-- `LSSupportsOpeningDocumentsInPlace` and `UIFileSharingEnabled` are one pair: together they
+         expose the app's Documents directory in Files under *On My iPhone → Whoopsy*. They exist for
+         the capture log a strap walk writes (`CaptureLog`), so a recording can be read and shared on
+         the phone instead of pulled off it with a cable. Neither key alone does it, and there is no
+         API that writes into another app: the share sheet is the only route out of the sandbox.
+         This does not open a network path of any kind — the file is read by whoever is holding the
+         phone. See `docs/TODO.md` §5 "The capture has to be legible". -->
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
     <!-- The Mapbox PUBLIC token (`pk.…`), read by `MapboxSetup.configure()` and required for the
          offline route map — the `USE OFFLINE MAP` switch on the live session screen and the card it
          draws.
@@ -76,6 +85,8 @@
              the screen locks, which is most of a run. -->
         <string>location</string>
     </array>
+    <key>UIFileSharingEnabled</key>
+    <true/>
     <key>UILaunchScreen</key>
     <dict/>
     <key>UISupportedInterfaceOrientations</key>
@@ -131,5 +142,14 @@
          `Whoopsy.local.xcconfig`, and the deployment's own `wrangler secret put SYNC_API_TOKEN`. -->
     <key>WHOOPSYAPIToken</key>
     <string>$(WHOOPSY_API_TOKEN)</string>
+    <!-- The deployment's Sentry client key (a DSN), read by `WhoopsyApp.init` to install the
+         diagnostics sink. Same two homes and the same empty-means-off rule as the pair above: an
+         empty value installs nothing and starts no SDK. **This is not the `org-slug#code` string
+         Sentry's onboarding page shows for an AI assistant** — that installs an editor plugin and is
+         not a client key; the DSN is `https://<key>@o<org>.ingest.sentry.io/<project>`, from the
+         project's Settings → Client Keys (DSN). It also turns nothing on by itself: the Anonymous
+         diagnostics toggle is the switch, and it defaults off. -->
+    <key>WHOOPSYSentryDSN</key>
+    <string>$(WHOOPSY_SENTRY_DSN)</string>
 </dict>
 </plist>

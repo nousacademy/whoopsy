@@ -593,7 +593,10 @@ enum ActivityOverflowAndDeleteTests {
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
                     streamUseCase: StreamBiometricsUseCase(
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                        biometricRepository: GRDBBiometricRepository(db: db)))
+                        biometricRepository: GRDBBiometricRepository(db: db)),
+                    trackSteps: TrackStepsUseCase(
+                        bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
+                        stepRepository: GRDBStepRepository(db: db)))
             }
             let doomed = ActivityDetailTests.session("Basketball", startOffset: 0, durationSeconds: 600)
             let survivor = ActivityDetailTests.session("Basketball", startOffset: 3600, durationSeconds: 900)

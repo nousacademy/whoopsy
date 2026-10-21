@@ -6,29 +6,27 @@ import SwiftUI
 /// `.syncing`, which is a connected strap draining its history. Every other state is not linked —
 /// including `nil`, which is no strap object at all.
 ///
-/// **Two answers rather than three, and the amber arm the badge used to carry is deliberately gone.**
-/// `WhoopConnectionState`'s six cases are not six kinds of link. `.scanning` and `.connecting` are the
-/// two halves of *not connected yet*, `.error` is a link that failed and `.disconnected` is one that
-/// ended; a yellow dot for the in-progress pair put a strap the app is still hunting for between green
-/// and red, which is a distinction no reader asked for and which the app can act on in no different
-/// way. Only `.connected` and `.syncing` describe a strap that is *there*.
+/// **Three colours, and the split is by what the state means rather than by `isLinked` alone.**
+/// `.connected` and `.syncing` draw green — a strap that is *there*. `.disconnected` draws yellow —
+/// a strap that was linked and is no longer, which the user named the "stale connected" state and
+/// asked to see in yellow rather than red. `.scanning`, `.connecting` and `.error` keep red — the app
+/// hunting for a strap, or a link that failed, is neither there nor stale, and red is the arm that
+/// means "not linked and not yet a warning." The earlier two-colour rule — green for `isLinked`, red
+/// for everything else — drew a disconnected strap in red, and the user corrected that to yellow.
 ///
-/// `.syncing` is the case that makes the rule worth stating rather than assuming, and it is why the
-/// two colours are not simply *connected* and *everything else*: `.syncing`'s raw value is
+/// `.syncing` is the case that makes the rule worth stating rather than assuming: its raw value is
 /// `Syncing History`, so a red dot beside those words would be the app calling a working strap absent.
-/// A third state would be the honest drawing, but the two the user specified are what is drawn and
-/// `.syncing` is a link that is up. **Neither `.syncing` nor `.error` is constructed anywhere in this
-/// build** — `WhoopBLEManager` assigns `.scanning`, `.connecting`, `.connected` and `.disconnected`
-/// only — so both arms are unreachable today; the `switch` is exhaustive regardless, so a writer that
-/// starts producing one is a compile error here rather than a blank dot.
+/// **Neither `.syncing` nor `.error` is constructed anywhere in this build** — `WhoopBLEManager`
+/// assigns `.scanning`, `.connecting`, `.connected` and `.disconnected` only — so the `.syncing` and
+/// `.error` arms are unreachable today; the `switch` is exhaustive regardless, so a writer that starts
+/// producing one is a compile error here rather than a blank dot.
 ///
-/// `recoveryGreen` and `recoveryRed` are borrowed rather than given tokens of their own, and that is
-/// recorded rather than glossed. `.connected` already drew `recoveryGreen` on this badge before this
-/// file existed, so a `connectionOnline` token would be a second name for one value — the drift the
-/// dedicated tokens exist to prevent, arrived at from the other side. `recoveryRed` is new here: the
-/// old mapping drew a disconnected strap in the neutral `textMuted`, and red is the user's own
-/// specification. A *verdict* token meaning a link is a borrowing this file owns as one place to
-/// revisit, not a claim that a disconnected strap is bad news.
+/// The three colours are borrowed rather than given tokens of their own, and that is recorded rather
+/// than glossed. `.connected` already drew `recoveryGreen` on this badge before this file existed, so
+/// a `connectionOnline` token would be a second name for one value — the drift the dedicated tokens
+/// exist to prevent, arrived at from the other side. `recoveryYellow` and `recoveryRed` are *verdict*
+/// tokens borrowed for a link, a borrowing this file owns as one place to revisit, not a claim that a
+/// disconnected or failed strap is good or bad news.
 ///
 /// It cannot live on the enum itself: `WhoopConnectionState` is in `Domain`, which imports only
 /// `Foundation` and so cannot name a `Color`. `RecoveryState+Extensions.swift` is the shape.
@@ -41,8 +39,12 @@ extension WhoopConnectionState {
         }
     }
 
-    /// The colour of Home's connection dot, which draws `isLinked` and nothing finer.
+    /// The colour of Home's connection dot.
     public var linkColor: Color {
-        isLinked ? Theme.recoveryGreen : Theme.recoveryRed
+        switch self {
+        case .connected, .syncing: return Theme.recoveryGreen
+        case .disconnected: return Theme.recoveryYellow
+        case .scanning, .connecting, .error: return Theme.recoveryRed
+        }
     }
 }

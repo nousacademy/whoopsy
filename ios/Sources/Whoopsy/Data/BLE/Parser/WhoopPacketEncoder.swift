@@ -138,6 +138,28 @@ public enum WhoopPacketEncoder {
             payload: payload)
     }
 
+    /// `0x4F` / 79 `RUN_HAPTICS_PATTERN` — plays a pattern, repeated `loops` times.
+    ///
+    /// **This is the 4.0's buzz, and the 5.0's is a different number.** noop's 4.0 branch sends
+    /// `[pattern, loops, 0, 0, 0]` under command 79 — the two trailing zeroes and the five-byte length are
+    /// part of the observed body, not padding this builder invented. Its 5.0 branch sends the same catalog
+    /// ID and a real MG rejects it with result `0x03`, which is why `WhoopPacketEncoder5` remaps to
+    /// `0x13` instead of falling back to this function.
+    ///
+    /// **Not `hapticAlarmCommand` above.** `0x10` is the alarm-class trigger; this plays a pattern with a
+    /// caller-chosen repeat count, and the two are different commands rather than two forms of one.
+    public static func runHapticsPattern(
+        profile: WhoopProtocolProfile,
+        seq: UInt8,
+        pattern: UInt8,
+        loops: UInt8
+    ) -> Data? {
+        guard let opcodes = fourEnvelopeOpcodes(profile), loops >= 1 else { return nil }
+        return buildPacket(
+            profile: profile, type: profile.packetTypes.command, seq: seq,
+            cmd: opcodes.runHapticsPattern, payload: Data([pattern, loops, 0x00, 0x00, 0x00]))
+    }
+
     /// Real-time high-speed telemetry enable.
     public static func enableLiveTelemetry(
         profile: WhoopProtocolProfile,

@@ -114,9 +114,24 @@ enum HomeDeviceSettingsTests {
                 + "correctly. Two screens disagreeing about one strap is what the merge removed.")
         assertTest(
             DeviceSettingsView.batteryText(
-                for: WhoopDevice(id: "strap", batteryPercentage: 62, connectionState: .connected)) == "62%",
+                for: WhoopDevice(
+                    id: "strap", batteryPercentage: 62, batteryIsMeasured: true,
+                    connectionState: .connected)) == "62%",
             "A connected strap's battery is its own stored percentage — the gate withholds the reading "
                 + "when there is none and prints it when there is one.")
+        // **The second gate, and the one the badge was missing.** A `.connected` device whose
+        // percentage is the discovery literal is not a reading: on 2026-10-21 the badge drew a
+        // confident `100%` on a linked strap that had never answered `0x2A19`, which the owner read
+        // as a disconnected strap showing a full battery.
+        assertTest(
+            DeviceSettingsView.batteryText(
+                for: WhoopDevice(id: "strap", batteryPercentage: 100, connectionState: .connected))
+                == ActivityFigure.dash
+                && WhoopDevice(id: "strap", batteryPercentage: 100, connectionState: .connected)
+                    .batteryReading == nil,
+            "…and a connected strap whose value is the literal `100` draws the dash, not `100%` — "
+                + "`batteryIsMeasured` is what separates an answered `0x2A19` from the constant every "
+                + "`WhoopDevice` starts with")
 
         // ---- The gate those three read, over the whole enum, and the two drawings of its absence ----
         //
@@ -127,7 +142,7 @@ enum HomeDeviceSettingsTests {
         // strength of what `.syncing` means is admitted on no evidence at all — `WhoopBLEManager` never
         // constructs it, so no battery has ever been read during a drain here. Pinned to `.connected`.
         let batteryStates = connectionStates.map { state in
-            WhoopDevice(id: "strap", batteryPercentage: 62, connectionState: state).batteryReading
+            WhoopDevice(id: "strap", batteryPercentage: 62, batteryIsMeasured: true, connectionState: state).batteryReading
         }
         assertTest(
             batteryStates == [nil, nil, nil, "62%", nil, nil],
@@ -139,7 +154,8 @@ enum HomeDeviceSettingsTests {
                 + "discovery literal `100` printed as a measurement.")
         assertTest(
             connectionStates.allSatisfy { state in
-                let device = WhoopDevice(id: "strap", batteryPercentage: 62, connectionState: state)
+                let device = WhoopDevice(
+                    id: "strap", batteryPercentage: 62, batteryIsMeasured: true, connectionState: state)
                 return DeviceSettingsView.batteryText(for: device)
                     == (device.batteryReading ?? ActivityFigure.dash)
             },
@@ -222,18 +238,29 @@ enum HomeDeviceSettingsTests {
             "A discovered strap's DEVICE ID is its own peripheral identifier — the real producer, and the "
                 + "only fact in the row that is both present and about a specific strap.")
 
-        // **The firmware assertion is the one that keeps a written-down number off the screen.**
-        // `WhoopDevice.firmwareVersion` is `String?` *defaulted to the literal `"41.14.2.0"`*, and
-        // `WhoopBLEManager.resolvedDevice` only ever propagates it — so every real strap's device object
-        // carries that constant, and returning the field would print a number this app made up. Both of the
-        // screens this page replaced printed exactly that.
+        // **The firmware pair is the one that keeps a written-down number off the screen while letting a
+        // real one on.** The entity's default literal `"41.14.2.0"` is gone, so an unread version is
+        // `nil` and the dash means *not read yet*; a version the strap reported through DIS `2A26` is
+        // printed as it arrived. Asserting only the dash would pass for a page that never printed a real
+        // firmware either, and asserting only the reading would pass for a page that printed the default.
         assertTest(
-            DeviceSettingsView.factValue(.firmware, device: factStrap) == ActivityFigure.dash,
-            "FIRMWARE is `—` on a connected, discovered strap — the case where a naive read of "
-                + "`device.firmwareVersion` would return `41.14.2.0` and look like a reading. That literal "
-                + "is the entity's default and `resolvedDevice` never assigns a real one, so the dash is the "
-                + "honest answer, and it is informative rather than apologetic: the clock-set payload is "
-                + "firmware-specific and a wrong-length set is accepted but never latched.")
+            factStrap.firmwareVersion == nil
+                && DeviceSettingsView.factValue(.firmware, device: factStrap) == ActivityFigure.dash,
+            "FIRMWARE is `—` on a strap whose Device Information Service has not answered yet. The dash "
+                + "is the honest answer, and it is informative rather than apologetic: the clock-set "
+                + "payload is firmware-specific and a wrong-length set is accepted but never latched.")
+        let readStrap = factStrap.updating(firmwareVersion: "41.17.6.0")
+        assertTest(
+            DeviceSettingsView.factValue(.firmware, device: readStrap) == "41.17.6.0",
+            "…and a version the strap reported is printed **verbatim** rather than gated away: the field "
+                + "is now filled by the DIS read, and a page that kept returning the dash would make that "
+                + "read reach no screen at all")
+        assertTest(
+            DeviceSettingsView.factValue(.firmware, device: factStrap.updating(firmwareVersion: ""))
+                == ActivityFigure.dash,
+            "…while an empty string draws the dash, not a blank: `DeviceInformationPayload` refuses an "
+                + "empty read before it reaches the entity, and the guard here keeps a hand-built device "
+                + "from putting empty space in a column titled FIRMWARE")
 
         // **The `-65` trap, and this assertion is the reason the gate exists at all.**
         // `WhoopBLEManager.startScanning` builds its placeholder as
@@ -301,19 +328,19 @@ enum HomeDeviceSettingsTests {
                 + "assigns the other four only — so both arms are unreachable today and are held by this "
                 + "assertion rather than by a screen.")
         assertTest(
-            linkedStates.allSatisfy { $0.linkColor == Theme.recoveryGreen }
-                && connectionStates.filter { !$0.isLinked }
-                    .allSatisfy { $0.linkColor == Theme.recoveryRed },
-            "The dot is green for a linked strap and red for one that is not, across all six states. "
-                + "**The red is the change**: the badge this replaced drew a disconnected strap in the "
-                + "neutral `textMuted`, and a neutral states nothing — it cannot be told from a dimmed "
-                + "control, which is what the same colour means a few points away on the `SLEEP` row.")
+            linkedStates.allSatisfy { $0.linkColor == Theme.recoveryGreen },
+            "The dot is green for a linked strap — `.connected` and `.syncing` — which is the arm "
+                + "unchanged from the rule this replaced.")
         assertTest(
-            connectionStates.allSatisfy { $0.linkColor != Theme.recoveryYellow },
-            "…and the amber is gone. The badge used to draw `.scanning`, `.connecting` and `.syncing` in "
-                + "`recoveryYellow`, which put a strap the app is still searching for and a strap it is "
-                + "draining in one bucket between green and red — a third position no reader can act on "
-                + "differently. This is the assertion that fails if the third arm comes back, and it is "
-                + "the pair to the one above it: two colours, and no reachable third.")
+            connectionStates.filter { $0 == .disconnected }.allSatisfy { $0.linkColor == Theme.recoveryYellow },
+            "…and yellow for `.disconnected`, the \"stale connected\" state: a strap that was linked and "
+                + "is no longer is a warning rather than a failure. **This is the change** — the two-arm "
+                + "rule this replaced drew `.disconnected` in red, and the user corrected it to yellow.")
+        assertTest(
+            connectionStates.filter { [.scanning, .connecting, .error].contains($0) }
+                .allSatisfy { $0.linkColor == Theme.recoveryRed },
+            "…and red stays for `.scanning`, `.connecting` and `.error` — hunting for a strap, or a link "
+                + "that failed, is neither there nor stale. The three arms are the whole of the rule: "
+                + "green linked, yellow stale, red not-there-yet.")
     }
 }

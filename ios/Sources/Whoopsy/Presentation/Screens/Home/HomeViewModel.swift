@@ -228,8 +228,24 @@ import SwiftUI
     private let analyzeStress: AnalyzeStressUseCase
     private let manage: ManageBLEConnectionUseCase
     private let streamUseCase: StreamBiometricsUseCase
+
+    /// The day's step writer, read for its one output: the totals it stores as the strap walks.
+    ///
+    /// **Handed in rather than reached for, and required rather than defaulted**, so a screen cannot
+    /// ship without it and quietly go back to a tile that only moves when the day changes — the exact
+    /// "saved row is not a drawn one" failure this subscription exists to close.
+    private let trackSteps: TrackStepsUseCase
+
     private var task: Task<Void, Never>?
     private var deviceTask: Task<Void, Never>?
+    private var stepsTask: Task<Void, Never>?
+
+    /// The day `load(for:)` last read, so a live write can be matched against the day on screen.
+    private var loadedDay: Date?
+
+    /// How many live writes for `loadedDay` have been folded in since the last `load`, which is what
+    /// lets the load refuse to overwrite one it did not see.
+    private var liveStepWrites = 0
 
     public init(
         recoveryRepository: any RecoveryRepository,
@@ -241,7 +257,8 @@ import SwiftUI
         stepRepository: any StepRepository,
         analyzeStress: AnalyzeStressUseCase,
         manage: ManageBLEConnectionUseCase,
-        streamUseCase: StreamBiometricsUseCase
+        streamUseCase: StreamBiometricsUseCase,
+        trackSteps: TrackStepsUseCase
     ) {
         self.recoveryRepository = recoveryRepository
         self.sleepRepository = sleepRepository
@@ -252,6 +269,7 @@ import SwiftUI
         self.stepRepository = stepRepository
         self.analyzeStress = analyzeStress
         self.manage = manage
+        self.trackSteps = trackSteps
         self.streamUseCase = streamUseCase
     }
 
@@ -285,6 +303,38 @@ import SwiftUI
         }
     }
 
+    /// Follows the day's step total as the strap writes it.
+    ///
+    /// **This is the tile's only live source, and without it the tile never populates in the ordinary
+    /// case.** `load(for:)` reads `stepCounts` once per day selection, and `TrackStepsUseCase` stores a
+    /// new total every second of motion — so Home, which is open before the strap has produced its
+    /// first batch, holds the `—` it read at launch for as long as the screen stays up. Switching day
+    /// and back would show the figure, which is precisely what makes the stale screen read as "steps
+    /// are never recorded".
+    ///
+    /// Idempotent, on `observeDevice()`'s rule: the view calls it from `.task` without tracking whether
+    /// the subscription exists.
+    public func observeSteps() {
+        guard stepsTask == nil else { return }
+        stepsTask = Task { [weak self, trackSteps] in
+            for await written in trackSteps.stepUpdates {
+                guard !Task.isCancelled else { return }
+                self?.applyLiveStepCount(written)
+            }
+        }
+    }
+
+    /// Folds one written total into the tile, if it belongs to the day on screen.
+    ///
+    /// A write for any other day is dropped rather than queued: the screen draws one day, and a total
+    /// from yesterday is not a stale version of today's figure. `liveStepWrites` is bumped here and
+    /// only here, so it counts exactly the writes `load(for:)` could otherwise undo.
+    private func applyLiveStepCount(_ written: StepCount) {
+        guard let loadedDay, written.date == loadedDay else { return }
+        liveStepWrites += 1
+        steps = written.measuredStepCount
+    }
+
     public func load(for date: Date) async {
         isLoading = true
         defer { isLoading = false }
@@ -292,6 +342,15 @@ import SwiftUI
         // Cleared first so a failure on one day does not outlive the day it describes.
         errorMessage = nil
         let previousDay = Calendar.current.date(byAdding: .day, value: -1, to: date) ?? date
+
+        // The day is recorded **before** the reads, so a step total written while they are in flight
+        // is matched against the day being loaded rather than the one being left. `stepWritesBefore`
+        // is the other half: a write that lands during the load is newer than the read that follows
+        // it, and assigning the read would put the dash back under a figure the user just watched
+        // arrive.
+        let day = date.startOfDay
+        loadedDay = day
+        let stepWritesBefore = liveStepWrites
 
         do {
             // The VO₂ estimate's only non-per-day input, started with the other reads so it overlaps
@@ -347,7 +406,14 @@ import SwiftUI
             // which is the rule: a writer persists only when it produced a measurement, and the test
             // it uses is the one its readers use. A *measured* day of no walking is a real `0` and
             // passes through as one; a row holding no measured span draws a dash.
-            steps = try await stepsToday.flatMap(Self.measuredSteps)
+            let readSteps = try await stepsToday.flatMap(Self.measuredSteps)
+            // **The read yields to a live write it did not see.** `stepsToday` was started before the
+            // other reads and awaited after them, so a total stored in that window is newer than this
+            // answer — and it has already been folded into the tile by `applyLiveStepCount`. Assigning
+            // here would overwrite the newer figure with the older one, which is the same defect from
+            // the opposite direction. The day is re-checked because a second `load` may have moved on
+            // while this one was awaiting.
+            if liveStepWrites == stepWritesBefore, loadedDay == day { steps = readSteps }
             previousDaySteps = try await stepsYesterday.flatMap(Self.measuredSteps)
             metricWeek = MetricWeek(
                 endingOn: date,

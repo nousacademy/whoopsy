@@ -421,7 +421,10 @@ enum HomeRingsAndCalendarTests {
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
                     streamUseCase: StreamBiometricsUseCase(
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                        biometricRepository: GRDBBiometricRepository(db: monthDB)))
+                        biometricRepository: GRDBBiometricRepository(db: monthDB)),
+                    trackSteps: TrackStepsUseCase(
+                        bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
+                        stepRepository: GRDBStepRepository(db: monthDB)))
             }
 
             await monthViewModel.loadMonth(containing: anchor)
@@ -495,7 +498,10 @@ enum HomeRingsAndCalendarTests {
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
                     streamUseCase: StreamBiometricsUseCase(
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                        biometricRepository: GRDBBiometricRepository(db: db)))
+                        biometricRepository: GRDBBiometricRepository(db: db)),
+                    trackSteps: TrackStepsUseCase(
+                        bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
+                        stepRepository: GRDBStepRepository(db: db)))
             }
 
             await viewModel.load(for: emptyDay)
@@ -600,7 +606,10 @@ enum HomeRingsAndCalendarTests {
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true)),
                     streamUseCase: StreamBiometricsUseCase(
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                        biometricRepository: GRDBBiometricRepository(db: importedDB)))
+                        biometricRepository: GRDBBiometricRepository(db: importedDB)),
+                    trackSteps: TrackStepsUseCase(
+                        bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
+                        stepRepository: GRDBStepRepository(db: importedDB)))
             }
 
             await home.load(for: importedDay)

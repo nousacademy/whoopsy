@@ -1164,6 +1164,13 @@ public struct ActivityDetailView: View {
     /// state resolved to `.mapKit` at the view model, so a build without the SDK, a session whose
     /// download has not finished, and one whose download failed all draw the same card this page drew
     /// before the feature existed.
+    ///
+    /// **A session with no route but a downloaded region draws the area card instead** — the `else`
+    /// branch. `USE OFFLINE MAP` and `RECORD ROUTE` are mutually exclusive, so tiles with no path are an
+    /// ordinary session rather than an edge case, and without that branch the download the user waited
+    /// for would appear on no screen at all. The branch is over `viewModel.offlineArea`, which is
+    /// `nil` unless the row carries both a region id and a centre, so a session that downloaded
+    /// nothing keeps this section absent with no note.
     @ViewBuilder
     private var routeSection: some View {
         if let route = viewModel.route {
@@ -1173,6 +1180,17 @@ public struct ActivityDetailView: View {
             case .offline(let regionID):
                 viewModel.offlineMaps.map(
                     route: route, unit: .forLocale(.current), regionID: regionID)
+            }
+        } else if let area = viewModel.offlineArea {
+            // The session downloaded a map and recorded no route — the two switches are mutually
+            // exclusive, so this is the ordinary shape for `USE OFFLINE MAP` on its own. Same renderer decision
+            // as the route branch: `.offline` draws the downloaded tiles, anything else draws the
+            // same frame on MapKit rather than a blank card.
+            switch viewModel.routeRenderer {
+            case .mapKit:
+                ActivityOfflineAreaMapView(area: area)
+            case .offline(let regionID):
+                viewModel.offlineMaps.map(area: area, regionID: regionID)
             }
         }
     }

@@ -318,6 +318,29 @@ enum HistoricalDrainSessionTests {
                     + "at different origins. A router that reached for the wrong table could not produce "
                     + "both of these shapes")
 
+            // **The seek, which the drain was missing entirely.** The request carries no window, so the
+            // read cursor is the only thing that says where a drain starts — and without moving it a
+            // strap that has been streaming answers from the live edge. Measured across five drains on
+            // 2026-10-20/21: ~58 records, one batch, about a minute, every time.
+            let fourRewind = WhoopCommandFrames.rewindReadPointer(profile: .whoop4, seq: 2)
+            let fiveRewind = WhoopCommandFrames.rewindReadPointer(profile: .whoop5, seq: 2)
+            assertTest(
+                fourRewind?[6] == 0x21 && fiveRewind?[10] == 0x21,
+                "`SET_READ_POINTER` is command **33 / 0x21** under both envelopes, so the seek is one "
+                    + "byte in either table")
+            assertTest(
+                fourRewind.map { Array($0[7..<11]) } == [0x00, 0x00, 0x00, 0x00] && fourRewind?.count == 15
+                    && fiveRewind.map { Array($0[11..<15]) } == [0x00, 0x00, 0x00, 0x00]
+                    && fiveRewind?.count == 19,
+                "…carrying a **u32 little-endian byte offset of 0** and nothing else — the rewind to the "
+                    + "oldest record the strap holds. 15 and 19 bytes are `header + 3 + 4 + 4`, the pair "
+                    + "that fails if the offset changes width on one builder only")
+            assertTest(
+                WhoopCommandFrames.rewindReadPointer(profile: .whoop4, seq: 2, offset: 0x0800_0000)
+                    .map { Array($0[7..<11]) } == [0x00, 0x00, 0x00, 0x08],
+                "…and a non-zero offset is little-endian at the same origin, so the builder can seek to a "
+                    + "known position rather than only rewinding")
+
             let fourRequest = WhoopCommandFrames.historicalSyncRequest(profile: .whoop4, seq: 1)
             let fiveRequest = WhoopCommandFrames.historicalSyncRequest(profile: .whoop5, seq: 1)
             assertTest(
@@ -393,18 +416,29 @@ enum HistoricalDrainSessionTests {
                 fourClock.count == 2 && fourClock[0][5] == 4 && fourClock[1][5] == 5,
                 "…as two records rather than one sent twice, which is what the differing seq says")
             assertTest(
-                fiveClock.count == 1 && fiveClock[0].count == 23
+                fiveClock.count == 2
+                    && fiveClock[0].count == 23 && fiveClock[1].count == 24
                     && Array(fiveClock[0][11..<15]) == epochBytes
-                    && Array(fiveClock[0][15..<19]) == [0x00, 0x00, 0x00, 0x00],
-                "The 5.0 takes one form and gets one frame: `0x92` with `[u32 epoch LE][u32 0]`, where "
-                    + "the 4.0's newer form spends the second word on a subsecond unit this app never sets")
+                    && Array(fiveClock[0][15..<19]) == [0x00, 0x00, 0x00, 0x00]
+                    && Array(fiveClock[1][11..<15]) == epochBytes,
+                "The 5.0 now takes **both** lengths too — the 8-byte `[u32 epoch LE][u32 0]` and the "
+                    + "9-byte legacy form — because the 8-byte one was measured *not latching* on a real "
+                    + "5.0: written confirmed, acknowledged, and the RTC stayed at 2000-01-03, read off "
+                    + "the motion record's own clock field. The two are 23 and 24 bytes and share the "
+                    + "epoch at their payload origin. Got \(fiveClock.map(\.count))")
             assertTest(
-                WhoopCommandFrames.clockReadBack(profile: .whoop4, seq: 5) == nil
-                    && WhoopCommandFrames.clockReadBack(profile: .whoop5, seq: 5)?[10] == 0x93,
-                "The clock's read-back exists on one generation only — neither reference gives the 4.0 "
-                    + "one, so asking gets `nil` rather than a command this app invented. **Sending it is "
-                    + "not checking it**: nothing in this app decodes the reply, so no path here may claim "
-                    + "a clock latched; what the pair buys is that a capture sees both sides of it")
+                fiveClock.count == 2 && fiveClock[0][9] == 4 && fiveClock[1][9] == 5,
+                "…and they are two records rather than one sent twice, which is what the differing seq "
+                    + "says — the second is a no-op if the firmware takes the first")
+            let fourReadBack = WhoopCommandFrames.clockReadBack(profile: .whoop4, seq: 5)
+            assertTest(
+                fourReadBack?[6] == 0x0B
+                    && WhoopCommandFrames.clockReadBack(profile: .whoop5, seq: 5)?[10] == 0x0B,
+                "The clock's read-back exists on **both** generations and is command **11** on both — "
+                    + "the same byte in two envelopes, which is what makes the number a claim about the "
+                    + "command rather than about the strap. **Sending it is not checking it**: the reply "
+                    + "is logged raw and nothing decodes it, so no path here may claim a clock latched; "
+                    + "what the pair buys is that a capture sees both sides of it")
         }
     }
 }

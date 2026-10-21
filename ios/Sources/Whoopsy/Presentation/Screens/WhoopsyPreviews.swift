@@ -31,7 +31,8 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 stepRepository: container.stepRepository,
                 analyzeStress: container.analyzeStressUseCase,
                 manage: container.manageBLEConnectionUseCase,
-                streamUseCase: container.streamBiometricsUseCase
+                streamUseCase: container.streamBiometricsUseCase,
+                trackSteps: container.trackStepsUseCase
             ),
             recoveryViewModel: RecoveryViewModel(
                 calculate: container.calculateRecoveryUseCase,
@@ -79,6 +80,7 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 keyStore: container.syncKeyStore,
                 missingCloudKey: container.missingCloudKey),
             liveSessionUseCase: container.liveSessionUseCase,
+            offlineMaps: container.offlineMaps,
             makeActivityDetailViewModel: { session, liveFast in
                 ActivityDetailViewModel(
                     session: session,
@@ -187,7 +189,10 @@ struct LiveSessionView_Previews: PreviewProvider {
         NavigationStack {
             // A preview has no Home behind it to hand the row to, so the callback is a no-op here and
             // deliberately not defaulted on the type — every real caller has to decide.
-            LiveSessionView(useCase: DIContainer.preview.liveSessionUseCase, onEnded: { _ in })
+            LiveSessionView(
+                useCase: DIContainer.preview.liveSessionUseCase,
+                offlineMaps: DIContainer.preview.offlineMaps,
+                onEnded: { _ in })
         }
         .preferredColorScheme(.dark)
     }

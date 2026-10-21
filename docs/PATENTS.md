@@ -118,7 +118,7 @@ over time — **is** WHOOP's structure, and 21 is a disclosed multiplier. Whoeve
 | bands | 5 | "a plurality … **(e.g., three)**", then exemplifies **four** |
 | boundaries | 50 / 60 / 70 / 80 / 90 %HRR | the user's **AT** and **CPT** |
 | weights | 1.0 / 2.0 / 4.5 / 9.0 / 16.0 | **0 / 1 / 18 / 42** |
-| saturation | `21·(1 − e^(−k·TotalLoad))`, `k ≈ 0.000045` | linear `/(w(1)·24 hr)`, then arctan |
+| saturation | `21·(1 − e^(−k·L))` — two curves: day `k ≈ 1.085e-5`; session `k = 0.005`, `L^0.55` | linear `/(w(1)·24 hr)`, then arctan |
 | muscular | **not implemented** — the integrator is cardiovascular only | separate family; combination **[not disclosed]** |
 
 **The band boundaries are the finding that matters.** WHOOP's bands are not percentages of anything —
@@ -142,14 +142,19 @@ those two rows are a dash on every day the export does not cover.
 Two smaller things worth recording. The patent's own band count is **internally inconsistent** — the
 text says "(e.g., three)" and then gives a four-category example — so the app's five matches no number
 WHOOP ever wrote, including their own. And the disclosed ramp is **far steeper** than the app's: WHOOP's
-top band is 42× its second band, while the app's is 16× its first.
+top band is 42× its second band, while the app's is 16× its first. The one part the app now shares with
+the disclosure rather than substituting around is the **weight-1 floor**: `StrainAccumulatorMath`'s
+low-intensity band credits a heart rate above resting but below zone 1 at weight 1.0, which is §1's
+"weight 1 to every minute above zero HRR" made explicit rather than left as the zero it was when this
+section was first written.
 
 **The exponential is the app's invention.** No `21(1 − e^(−k·L))`, no logarithm, and **no `k`** appears
 anywhere in the family. WHOOP's ceiling comes from bounding the input by construction — `I_T ≤ w(1)·|T|`
 — and then an arctan whose steepness `N` and inflection `p` are never defined. **The disclosed scaling
 is therefore numerically uninstantiable**: this app could not adopt WHOOP's form even if it wanted to,
-because the parameters that would make it a function were never published. `k` belongs in the same
-category as `SleepNeedMath`'s 6.40 — a fitted constant of this app's own.
+because the parameters that would make it a function were never published. The scaling constants
+(`k_day`, `k_session`, and the `0.55` power) belong in the same category as `SleepNeedMath`'s 6.40 —
+fitted constants of this app's own.
 
 **One structural note.** `N_T = I_T / (w(1)·24 hr)` means the normalisation assumes `w(1) = 42`. The
 scale's ceiling is a **function of the top band weight**, so WHOOP's 21, its weights, and its
@@ -212,10 +217,13 @@ WHOOP's own `Day Strain` over the bundled export (n = 933):
 
 Two observations, one of which is evidence and one of which is not. **The evidence:** a distribution with
 a soft floor near 4 over 933 days is consistent with the disclosed weight function, which gives weight
-**1 to every minute above zero HRR** — a day spent entirely under 50 %HRR integrates to zero under this
-app's table but not under WHOOP's. **The non-evidence:** this app's integrator cannot be run against the
-export, because the export carries no heart-rate series and no database on this machine holds one. The
-distribution is consistent with the disclosed model; it does not measure the app's error.
+**1 to every minute above zero HRR**. When this section was first written the app integrated a day spent
+entirely under 50 %HRR to zero; the low-intensity band (`StrainAccumulatorMath.loadDelta` credits a
+heart rate above resting but below zone 1 at weight 1.0, with no zone time) has since closed that gap,
+and `dayStrainScalingFactor` is calibrated so a 16-hour quiet day scores `≈ 9.8`, this distribution's
+no-workout mean. **The non-evidence:** this app's integrator cannot be run against the export, because
+the export carries no heart-rate series and no database on this machine holds one. The distribution is
+consistent with the disclosed model; it does not measure the app's error.
 
 ---
 

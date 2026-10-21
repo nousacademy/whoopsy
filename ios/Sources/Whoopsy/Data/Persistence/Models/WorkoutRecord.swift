@@ -76,6 +76,21 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
     /// than this being non-`nil`.
     public let offlineRegionID: String?
 
+    /// The centre the region above was downloaded around, in plain degrees — `v23`'s two nullable
+    /// columns. Both are `nil`, or both carry a value; a row with one and not the other is not a point
+    /// and `GRDBWorkoutRepository` reads it as no centre at all.
+    ///
+    /// **They are here because the id alone cannot frame a card.** Mapbox's `TileRegion` exposes no
+    /// geometry, so a session that turned `USE OFFLINE MAP` on while `RECORD ROUTE` was off would hold
+    /// tiles on disk and nothing for the detail page's map to look at. See `OfflineMapCenter`.
+    ///
+    /// **They are deliberately local-only**, unlike every other column on this record: the wire carries
+    /// the region id and has no field for the centre, because the tiles are on one phone and another
+    /// phone's tile store knows nothing about them. That is why `WorkoutRecord+SyncRow` drops the pair
+    /// on its way to a sync row, and why a synced row stored back has `nil` here.
+    public let offlineRegionCenterLatitude: Double?
+    public let offlineRegionCenterLongitude: Double?
+
     public init(
         id: String,
         date: Date,
@@ -88,7 +103,9 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         activityName: String? = nil,
         hrZonePercents: [Double]? = nil,
         steps: Int? = nil,
-        offlineRegionID: String? = nil
+        offlineRegionID: String? = nil,
+        offlineRegionCenterLatitude: Double? = nil,
+        offlineRegionCenterLongitude: Double? = nil
     ) {
         self.id = id
         self.date = date
@@ -102,6 +119,8 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         self.hrZonePercents = hrZonePercents
         self.steps = steps
         self.offlineRegionID = offlineRegionID
+        self.offlineRegionCenterLatitude = offlineRegionCenterLatitude
+        self.offlineRegionCenterLongitude = offlineRegionCenterLongitude
     }
 
     enum CodingKeys: String, CodingKey {
@@ -117,6 +136,8 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         case hrZonePercents = "hr_zone_percents"
         case steps
         case offlineRegionID = "offline_region_id"
+        case offlineRegionCenterLatitude = "offline_region_center_latitude"
+        case offlineRegionCenterLongitude = "offline_region_center_longitude"
     }
 }
 

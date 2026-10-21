@@ -21,11 +21,32 @@ struct WhoopsyApp: App {
 
     init() {
         let isXcodeCanvas = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+        // **Before the container, so no protocol event can be emitted before there is a sink.** The
+        // install is a no-op on a build with no DSN — which is every clone and every host build — and
+        // on a canvas, where logging a designer's preview into an operator's project would be noise.
+        if !isXcodeCanvas {
+            SentryDiagnostics.install(
+                dsn: Self.sentryDSN,
+                analyticsEnabled: UserDefaults.standard.bool(
+                    forKey: UserDefaultsAppPreferencesRepository.analyticsDefaultsKey)
+            )
+        }
         _environment = State(initialValue: AppEnvironment(
             container: isXcodeCanvas
                 ? .preview
                 : DIContainer(useMockBLE: false, offlineMaps: Self.offlineMaps)
         ))
+    }
+
+    /// The deployment's own Sentry DSN, or `nil` when this build has none.
+    ///
+    /// Read through `Info.plist` so the value comes from `Whoopsy.local.xcconfig` (gitignored) rather
+    /// than from a tracked file: a DSN is a project key for one operator's account, and the format is
+    /// `https://<key>@o<org>.ingest.sentry.io/<project>` — **not** the `org-slug#code` string the
+    /// Sentry onboarding page offers, which installs an editor plugin and is not a client key. An
+    /// unset key expands to `""`, which `SentryDiagnostics.normalized` treats as absent.
+    private static var sentryDSN: String? {
+        Bundle.main.object(forInfoDictionaryKey: "WHOOPSYSentryDSN") as? String
     }
 
     /// The offline map this build can offer, decided once and before anything else touches the SDK.

@@ -7,9 +7,9 @@ import SwiftUI
 ///
 /// The switch that starts a download is thrown from `LiveSessionUseCase`, which is `Domain`, so the
 /// control surface has to be reachable from there — and a `Domain` type holding a `Presentation`
-/// protocol would invert the one dependency rule this codebase states and enforces. `map(route:unit:)`
-/// is the only member that could not go with it: it takes `ActivityRoute` and returns `AnyView`, and
-/// both are `Presentation` types.
+/// protocol would invert the one dependency rule this codebase states and enforces. The two `map`
+/// members are what could not go with it: they take `ActivityRoute` / `ActivityOfflineArea` and return
+/// `AnyView`, and both are `Presentation` types.
 ///
 /// So the split is at that member and nowhere else. Everything a `Domain` caller does goes through
 /// ``OfflineMapServing``; everything a `View` does goes through this.
@@ -33,6 +33,14 @@ public protocol OfflineMapRendering: OfflineMapServing {
     /// distance and speed in the device's own system and the renderer must not form a second opinion
     /// about which one that is.
     func map(route: ActivityRoute, unit: ActivityRoute.Unit, regionID: String) -> AnyView
+
+    /// The area card for a region that is `.ready` on a session with **no route**.
+    ///
+    /// The second drawing this seam owes, and the case that forced it: `USE OFFLINE MAP` and
+    /// `RECORD ROUTE` are mutually exclusive, so a session can hold tiles and no path. `ActivityOfflineArea`
+    /// frames the ground from the centre stored on the row; this method draws it either with the offline
+    /// SDK or with MapKit, on the same only-called-when-ready contract as the route card.
+    func map(area: ActivityOfflineArea, regionID: String) -> AnyView
 }
 
 /// The offline map, in a build that does not have one.
@@ -74,6 +82,11 @@ public final class UnavailableOfflineMaps: OfflineMapRendering {
     /// loses nothing.
     public func map(route: ActivityRoute, unit: ActivityRoute.Unit, regionID: String) -> AnyView {
         AnyView(ActivityRouteMapView(route: route, unit: unit))
+    }
+
+    /// The iOS area card, on the same rule: a build without the SDK loses nothing.
+    public func map(area: ActivityOfflineArea, regionID: String) -> AnyView {
+        AnyView(ActivityOfflineAreaMapView(area: area))
     }
 }
 

@@ -145,10 +145,15 @@ enum SleepDebtMathTests {
             // Packets of 50 intervals span 45 s and arrive 45 s apart, so the series is continuous.
             // Anchored inside the use case's own window rather than at the reference date, and 30
             // packets cover 22.5 minutes — over `minimumRunSeconds` with room for many windows.
+            //
+            // **21:30 the previous evening, not `morning − 6 h`.** The read window is 9 PM → 10 AM,
+            // so an 18:00 anchor is samples the read never returns and the use case answers `nil` —
+            // it was written against a window that started at 1 PM. 22.5 minutes from 21:30 stays
+            // comfortably inside the corrected window.
             let beats = SleepNeedTests.syntheticPackets(
                 [(bpm: 15, amplitudeMs: 40)],
                 meanRRMs: 900, intervalsPerPacket: 50, packetCount: 30,
-                anchor: morning.addingTimeInterval(-6 * 3600))
+                anchor: morning.addingTimeInterval(-2.5 * 3600))
             let night = OvernightBiometricStore(samples: beats.map { packet in
                 BiometricSample(
                     timestamp: packet.arrival,

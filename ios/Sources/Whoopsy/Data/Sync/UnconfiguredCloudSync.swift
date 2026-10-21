@@ -83,11 +83,27 @@ public struct UnconfiguredCloudSync: CloudSync {
         throw failure()
     }
 
+    public func sleep(on day: Date) async throws -> SleepSyncRow? {
+        throw failure()
+    }
+
+    public func sleeps(from: Date, to: Date) async throws -> [SleepSyncRow] {
+        throw failure()
+    }
+
     public func writeSleep(_ row: SleepSyncRow) async throws {
         throw failure()
     }
 
     public func writeSleeps(_ rows: [SleepSyncRow]) async throws -> Int {
+        throw failure()
+    }
+
+    public func stepCount(on day: Date) async throws -> StepCountSyncRow? {
+        throw failure()
+    }
+
+    public func stepCounts(from: Date, to: Date) async throws -> [StepCountSyncRow] {
         throw failure()
     }
 
@@ -99,6 +115,10 @@ public struct UnconfiguredCloudSync: CloudSync {
         throw failure()
     }
 
+    public func receptiveInactivities(from: Date, to: Date) async throws -> [ReceptiveInactivitySyncRow] {
+        throw failure()
+    }
+
     public func writeReceptiveInactivity(_ row: ReceptiveInactivitySyncRow) async throws {
         throw failure()
     }
@@ -107,12 +127,17 @@ public struct UnconfiguredCloudSync: CloudSync {
         throw failure()
     }
 
+    public func profile() async throws -> UserProfileSyncRow? {
+        throw failure()
+    }
+
     public func writeProfile(_ row: UserProfileSyncRow) async throws {
         throw failure()
     }
 
-    /// One sentence, built once, so all nineteen methods fail identically and a caller cannot tell from the
-    /// message which one it reached — which is right, because the answer is the same for all nineteen.
+    /// One sentence, built once, so all twenty-five methods fail identically and a caller cannot tell from
+    /// the message which one it reached — which is right, because the answer is the same for all
+    /// twenty-five.
     private func failure() -> CloudSyncError {
         .unreachable(
             message: "this build has no database behind it: \(missingKey) is not set in Info.plist")

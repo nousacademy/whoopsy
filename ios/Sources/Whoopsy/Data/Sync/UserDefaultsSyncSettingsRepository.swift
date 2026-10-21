@@ -43,14 +43,19 @@ public final class UserDefaultsSyncSettingsRepository: SyncSettingsRepository, @
     private static let namespace = "org.whoopsy.sync"
 
     private let defaults: UserDefaults
+    private let keychain: any DestinationStore
 
-    public init(defaults: UserDefaults = .standard) {
+    public init(
+        defaults: UserDefaults = .standard,
+        keychain: any DestinationStore = KeychainDestinationStore()
+    ) {
         self.defaults = defaults
+        self.keychain = keychain
     }
 
     public func load() async -> SyncSettings {
         SyncSettings(
-            destination: destination(),
+            destination: await destination(),
             range: range(),
             uploadsBiometricSamples: defaults.bool(forKey: Self.namespace + ".uploadsBiometricSamples")
         )
@@ -58,6 +63,7 @@ public final class UserDefaultsSyncSettingsRepository: SyncSettingsRepository, @
 
     public func save(_ settings: SyncSettings) async {
         defaults.set(settings.destination.rawValue, forKey: Self.namespace + ".destination")
+        await keychain.save(settings.destination)
         write(settings.range?.from, forKey: Self.namespace + ".rangeFrom")
         write(settings.range?.to, forKey: Self.namespace + ".rangeTo")
         defaults.set(settings.uploadsBiometricSamples, forKey: Self.namespace + ".uploadsBiometricSamples")
@@ -68,13 +74,16 @@ public final class UserDefaultsSyncSettingsRepository: SyncSettingsRepository, @
     /// The stored destination, or `.device` when nothing readable is stored.
     ///
     /// Two cases land on the fallback and both are ordinary. A key nobody has written is the default
-    /// state of a fresh install. A `rawValue` this build does not know is what a downgrade leaves
-    /// behind — and `.device` is the right answer there rather than an error, because it is the branch
-    /// that sends nothing to a server. The opposite guess would start uploading a user's history on the
-    /// strength of a string nobody here can read.
-    private func destination() -> SyncSettings.Destination {
-        guard let raw = defaults.string(forKey: Self.namespace + ".destination") else { return .device }
-        return SyncSettings.Destination(rawValue: raw) ?? .device
+    /// state of a fresh install; on that path the Keychain is asked, because it survives a delete and a
+    /// reinstall should restore `.cloud` rather than reset. A `rawValue` this build does not know is
+    /// what a downgrade leaves behind — and `.device` is the right answer there rather than an error,
+    /// because it is the branch that sends nothing to a server. The opposite guess would start uploading
+    /// a user's history on the strength of a string nobody here can read.
+    private func destination() async -> SyncSettings.Destination {
+        if let raw = defaults.string(forKey: Self.namespace + ".destination") {
+            return SyncSettings.Destination(rawValue: raw) ?? .device
+        }
+        return await keychain.load() ?? .device
     }
 
     /// The stored span, or `nil` unless **both** ends are there.

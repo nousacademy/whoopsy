@@ -20,12 +20,12 @@ import Foundation
 /// The API's own surface is the same small operation set per resource for the same reason, and this
 /// mirrors it.
 ///
-/// **The seven are not symmetric in this protocol and the asymmetry is the API's.** Recoveries,
-/// strains and workouts are read as well as written, because three routes read them and one consumer —
-/// the read path — needs them. Sleeps, step counts and entries are **written here and nowhere read**,
-/// and a profile is written and *never* read back into the database: `PUT /v1/profile` is the whole of
-/// that resource's surface as far as this app is concerned. A read method with no caller is a promise
-/// this port does not keep, so the seven methods added below are all writes.
+/// **The seven are symmetric in this protocol now.** Every resource is read as well as written — the
+/// three day/session-keyed ones (`recoveries`, `strains`, `workouts`) were read from the start, and the
+/// four the read path grew into later (`sleeps`, `stepCounts`, `receptiveInactivities`, the `profile`)
+/// gained their read methods when the write-through decorators gained a read-back half. The port's own
+/// history records the asymmetry it once had: the four were written and nowhere read, because a read
+/// method with no caller is a promise this port does not keep. That promise now has callers.
 ///
 /// What the resources do *not* share is any of their positions: a range is a position in one
 /// resource's history, and two resources can be at different ones — a week of nights sent and a year
@@ -176,6 +176,17 @@ public protocol CloudSync: Sendable {
 
     // MARK: - Sleeps, keyed on the wake day
 
+    /// One night's row, or `nil` when the database holds none for its wake day.
+    ///
+    /// **The day is the night's *wake* day**, exactly as the write's key is — a caller that recomputed
+    /// one from `startTime` would ask for a different night than the one stored. `nil` is the server's
+    /// `404 no_measurement_for_day`, the same absence `recovery(on:)` translates.
+    func sleep(on day: Date) async throws -> SleepSyncRow?
+
+    /// Every night the database holds in `[from, to)`, **half-open**, ascending — `recoveries(from:to:)`'s
+    /// convention rather than the wire's.
+    func sleeps(from: Date, to: Date) async throws -> [SleepSyncRow]
+
     /// Write one night, replacing whatever the database holds for its day.
     ///
     /// **The day is the night's *wake* day and the row is authoritative over it.** `/v1/sleeps/{date}`
@@ -203,6 +214,13 @@ public protocol CloudSync: Sendable {
 
     // MARK: - Step counts, keyed on the day
 
+    /// One day's row, or `nil` when the database holds none for it — `recovery(on:)`'s absence. A
+    /// measured day of no walking is a row carrying `stepCount: 0`, not a `nil`.
+    func stepCount(on day: Date) async throws -> StepCountSyncRow?
+
+    /// Every day the database holds a step count for in `[from, to)`, **half-open**, ascending.
+    func stepCounts(from: Date, to: Date) async throws -> [StepCountSyncRow]
+
     /// Write one day's steps, replacing whatever the database holds for it.
     ///
     /// **The only write here whose caller must decide something the row cannot say.** A `measuredSeconds`
@@ -219,6 +237,10 @@ public protocol CloudSync: Sendable {
     func writeStepCounts(_ rows: [StepCountSyncRow]) async throws -> Int
 
     // MARK: - Receptive inactivities, keyed on the entry
+
+    /// Every entry the database holds in `[from, to)`, **half-open**, ascending — `recoveries(from:to:)`'s
+    /// convention. A day holds several entries, so there is no per-day slot and the read is a range.
+    func receptiveInactivities(from: Date, to: Date) async throws -> [ReceptiveInactivitySyncRow]
 
     /// Write one entry, replacing whatever the database holds under its id.
     ///
@@ -238,6 +260,11 @@ public protocol CloudSync: Sendable {
     func writeReceptiveInactivities(_ rows: [ReceptiveInactivitySyncRow]) async throws -> Int
 
     // MARK: - The profile, a singleton
+
+    /// The one profile the caller owns, or `nil` when the partition holds none — a user who has not
+    /// filled the form in. The app's cold-start 190/60 pair is applied by the *client*, not published
+    /// here.
+    func profile() async throws -> UserProfileSyncRow?
 
     /// Write the caller's profile, replacing the whole row.
     ///

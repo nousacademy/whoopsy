@@ -41,6 +41,14 @@ public final class WhoopBLEDeviceRepositoryImpl: WhoopBLEDeviceRepository, @unch
         }
     }
 
+    public var historicalTelemetryStream: AsyncStream<BiometricSample> {
+        if isMockMode {
+            return mockBleManager!.historicalTelemetryStream
+        } else {
+            return realBleManager!.historicalTelemetryStream
+        }
+    }
+
     public func startScanning() async throws {
         if isMockMode {
             mockBleManager!.startScanning()
@@ -99,6 +107,27 @@ public final class WhoopBLEDeviceRepositoryImpl: WhoopBLEDeviceRepository, @unch
                   pattern: pattern)
         else { return }
         manager.sendCommand(cmdData)
+    }
+
+    /// Sends `0x1D REBOOT_STRAP`, and **fails rather than silently doing nothing** when this build
+    /// cannot frame it — the same rule the haptic call states, because a reboot the user believes they
+    /// asked for and that never went out is worse than a refusal.
+    public func rebootStrap() async throws {
+        guard !isMockMode, let manager = realBleManager, let profile = manager.currentProfile else {
+            throw WhoopSyncError.noCommandPath(
+                generation: currentDeviceGenerationLabel())
+        }
+        guard let frame = WhoopCommandFrames.rebootStrap(
+            profile: profile, seq: manager.commandSequence.next()) else {
+            throw WhoopSyncError.noCommandPath(
+                generation: currentDeviceGenerationLabel())
+        }
+        manager.sendCommand(frame)
+        AppLogger.ble.notice("Sent REBOOT_STRAP (0x1D) to the strap — the link will drop and re-form.")
+    }
+
+    private func currentDeviceGenerationLabel() -> String {
+        realBleManager?.currentProfile?.generation.rawValue ?? "unknown"
     }
 
     /// Runs a drain to its conclusion and reports what it did.

@@ -147,14 +147,26 @@ enum LiveSessionAccumulatorTests {
             "…and a table that cannot define a scale answers 0 rather than dividing by its own zero, "
                 + "which `computeZones` never produces and a caller must not be able to reach")
 
-        // `nil` and `0.0` are different answers, and this is the pair that says so.
+        // `nil`, `0.0` and a small positive figure are three different answers, and this is the trio
+        // that says so: below resting is `0.0`, and above resting but under zone 1 is positive.
         var subZoneOnly = LiveSessionAccumulator(zones: zones190, restingHeartRate: 60, weightKg: nil)
         assertTest(subZoneOnly.snapshot.strain == nil, "…`nil` before any sample")
         subZoneOnly.accept(heartRate: 50, at: t0, isOnBody: true)
         assertTest(
             subZoneOnly.snapshot.strain == 0.0,
-            "…and exactly `0.0` after a sample that never reached zone 1, which is a measurement of a "
-                + "session that stayed under the first band (\(subZoneOnly.snapshot.strain.map { "\($0)" } ?? "nil"))")
+            "…and exactly `0.0` after a sample at or below resting, which is a measurement of a "
+                + "session that never rose above resting (\(subZoneOnly.snapshot.strain.map { "\($0)" } ?? "nil"))")
+
+        // Above resting (60) but below zone 1's floor (125): the low-intensity band credits weight 1.0
+        // and no zone, so the strain is a small positive figure while zone time stays zero.
+        var lowBandOnly = LiveSessionAccumulator(zones: zones190, restingHeartRate: 60, weightKg: nil)
+        lowBandOnly.accept(heartRate: 100, at: t0, isOnBody: true)
+        let lowBandSnapshot = lowBandOnly.snapshot
+        assertTest(
+            (lowBandSnapshot.strain ?? -1) == 0.1 && lowBandSnapshot.zoneSeconds.reduce(0, +) == 0,
+            "…and a sample above resting but below zone 1 scores the low band — a positive strain "
+                + "with no zone time (\(lowBandSnapshot.strain.map { "\($0)" } ?? "nil") / "
+                + "\(lowBandSnapshot.zoneSeconds))")
 
         // The calorie denominator. `CalculateStrainUseCase` passes `count / 60` — a duration fabricated
         // from the number of samples — which is right on a 1 Hz stream and wrong on any other. Here the

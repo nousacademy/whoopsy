@@ -268,6 +268,19 @@ final class MapboxOfflineMaps: OfflineMapRendering {
                 mapSurface: AnyView(MapboxRouteMapView(route: route))))
     }
 
+    /// The area card's picture, for a session that downloaded a map and recorded no route.
+    ///
+    /// `regionID` is unused here for the same reason it is unused above — the store is keyed globally
+    /// and the region has done its work by existing — and `.ready` is again guaranteed by the renderer
+    /// before this is reached. The frame comes from `ActivityOfflineArea`, which fits a box inside the
+    /// circle `download` filled, so this surface cannot show ground the download never covered.
+    func map(area: ActivityOfflineArea, regionID: String) -> AnyView {
+        AnyView(
+            ActivityOfflineAreaMapView(
+                area: area,
+                mapSurface: AnyView(MapboxAreaMapView(area: area))))
+    }
+
     // MARK: - The one-time walk
 
     /// Reads what is already on disk into `states`.

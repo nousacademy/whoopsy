@@ -11,6 +11,15 @@ public final class ManageBLEConnectionUseCase: Sendable {
         bleRepository.deviceStream
     }
 
+    /// The strap's live heart rate and R-R notifications, for the Device page's pulse reading.
+    ///
+    /// Forwarded rather than copied, exactly as `deviceStream` is: the BLE layer's registry is
+    /// multicast, so this is a second subscriber beside `StreamBiometricsUseCase`'s rather than a
+    /// competing reader of one continuation.
+    public var liveTelemetryStream: AsyncStream<BiometricSample> {
+        bleRepository.liveTelemetryStream
+    }
+
     public func startScanning() async throws {
         try await bleRepository.startScanning()
     }
@@ -35,6 +44,11 @@ public final class ManageBLEConnectionUseCase: Sendable {
 
     public func triggerHapticAlarm(durationSeconds: Int = 3, pattern: Int = 1) async throws {
         try await bleRepository.sendHapticAlert(durationSeconds: durationSeconds, pattern: pattern)
+    }
+
+    /// Restarts the strap's firmware — `0x1D`. Throws when this build cannot frame the command.
+    public func rebootStrap() async throws {
+        try await bleRepository.rebootStrap()
     }
 
     public func getCurrentDevice() async -> WhoopDevice? {

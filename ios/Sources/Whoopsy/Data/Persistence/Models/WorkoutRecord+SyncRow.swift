@@ -18,7 +18,10 @@ import Foundation
 /// **Hand-written and not reflective**, on the same bargain `RecoveryRecord+SyncRow` documents: a
 /// `Mirror`-based copy would silently stop covering a field the day someone adds one to `WorkoutRecord`,
 /// dropping the new column on every synced row with a green build and no log line. Written out, a
-/// fourteenth property is a compile error here.
+/// fifteenth property is a compile error here — **except the two `offline_region_center_*` columns,
+/// which are deliberately outside the wire.** A tile download belongs to one phone's tile store, so the
+/// centre is stored locally and dropped on the way to a sync row (and a row arriving from a sync stores
+/// `nil`); see `WorkoutRecord.offlineRegionCenterLatitude` and `OfflineMapCenter`.
 extension WorkoutRecord {
 
     /// The row a sync sends for this record and its children, or `nil` when the stored id will not parse.

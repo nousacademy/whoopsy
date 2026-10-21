@@ -47,4 +47,25 @@ public struct ReceptiveInactivitySyncRow: Equatable, Sendable {
         self.note = note
         self.startedAt = startedAt
     }
+
+    /// The row an entry would be stored as. The entity's `UUID` id crosses to the record's `String`
+    /// spelling — the same `id.uuidString` `GRDBReceptiveInactivityRepository` writes, so the identity
+    /// the wire upserts on is the identity the phone stores.
+    public init(_ activity: ReceptiveInactivity) {
+        self.init(
+            id: activity.id.uuidString,
+            date: activity.date,
+            name: activity.name,
+            note: activity.note,
+            startedAt: activity.startedAt
+        )
+    }
+
+    /// The entity a screen would draw, or `nil` for a row whose id will not parse as a `UUID` — the same
+    /// boundary `GRDBReceptiveInactivityRepository.makeActivities` applies, and for its reason: an entry
+    /// with no addressable identity must not come back as a fresh `UUID` that corresponds to nothing.
+    public var activity: ReceptiveInactivity? {
+        guard let id = UUID(uuidString: id) else { return nil }
+        return ReceptiveInactivity(id: id, date: date, name: name, note: note, startedAt: startedAt)
+    }
 }

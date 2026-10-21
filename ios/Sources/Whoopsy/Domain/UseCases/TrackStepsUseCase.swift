@@ -49,6 +49,20 @@ public actor TrackStepsUseCase {
     /// Whether a consumer is already attached. See the type's comment.
     private var isRunning = false
 
+    /// The day totals this use case has written, for whichever screen is drawing the current day.
+    ///
+    /// **A saved row is not a drawn one.** `HomeViewModel` reads `stepCounts` once per day selection,
+    /// and this writer flushes a new total every second of motion — so a screen opened before the strap
+    /// started moving would hold the dash it read at launch for as long as it stays open, which is a
+    /// tile that never populates rather than one that is a little late. This stream is the hand-off
+    /// that closes that gap, exactly as `LiveSessionUseCase`'s `onEnded` is for a finished session.
+    ///
+    /// `nonisolated` so a view model can bind to it without awaiting the actor: subscribers observe a
+    /// value, they never drive one.
+    public nonisolated var stepUpdates: AsyncStream<StepCount> { hub.stream }
+
+    private nonisolated let hub = StepUpdateHub()
+
     /// How many days of accumulators are held.
     ///
     /// Two, because a drain fills today and yesterday at most in ordinary use and the current day is
@@ -73,6 +87,7 @@ public actor TrackStepsUseCase {
         isRunning = true
         defer { isRunning = false }
 
+        AppLogger.ble.notice("TrackStepsUseCase: attached to the motion stream")
         for await batch in bleRepository.motionStream {
             await ingest(batch)
         }
@@ -90,6 +105,7 @@ public actor TrackStepsUseCase {
         if let existing = accumulators[day] {
             accumulator = existing
         } else {
+            AppLogger.ble.notice("TrackStepsUseCase: first motion for day \(String(describing: day), privacy: .public) (batch.start \(String(describing: batch.start), privacy: .public))")
             let stored = try? await stepRepository.getStepCount(for: day)
             accumulator = StepAccumulator(
                 sampleRateHz: 1.0 / batch.sampleIntervalSeconds,
@@ -124,15 +140,58 @@ public actor TrackStepsUseCase {
     /// structural rather than implied by the batch size.
     private func write(_ accumulator: StepAccumulator, for day: Date) async {
         guard accumulator.measuredSeconds > 0 else { return }
+        noteRateIfMinuteRolled(accumulator, for: day)
+        let row = StepCount(
+            date: day,
+            stepCount: accumulator.stepCount,
+            measuredSeconds: accumulator.measuredSeconds)
         do {
-            try await stepRepository.saveStepCount(
-                StepCount(
-                    date: day,
-                    stepCount: accumulator.stepCount,
-                    measuredSeconds: accumulator.measuredSeconds))
+            try await stepRepository.saveStepCount(row)
+            // Only once the store has it: a subscriber drawing this figure would otherwise show a
+            // count the database cannot answer back, which is the one way a live tile can be more
+            // current than the truth.
+            hub.yield(row)
+            // `.debug` rather than `.notice`: this fires once per second of motion, so persisting it
+            // would bury the day-keying line above under a page of counts.
+            AppLogger.ble.debug("TrackStepsUseCase: wrote \(row.stepCount, privacy: .public) steps for \(String(describing: row.date), privacy: .public)")
         } catch {
             AppLogger.database.error("Failed saving step count: \(error.localizedDescription)")
         }
+    }
+
+    /// Last logged minute and count per day, so the rate line prints once a minute rather than once
+    /// per batch.
+    private var lastRateLog: [Date: (minute: Int, steps: Int)] = [:]
+
+    /// One line a minute carrying the two numbers that separate a **mis-scaled** counter from one
+    /// that **counts while still** — and they need different fixes.
+    ///
+    /// `measuredSeconds` grows by the batches' own spans, so comparing its growth against wall time
+    /// says whether the strap is delivering 100 Hz records at the expected rate or handing the same
+    /// motion to the accumulator more than once. `steps` growth over the same minute is the rate: a
+    /// deliberate walk is ~100–130 steps a minute, and anything near the 180/min refractory cap means
+    /// the detector is firing on arm movement rather than on footfalls.
+    private func noteRateIfMinuteRolled(_ accumulator: StepAccumulator, for day: Date) {
+        let minute = Int(accumulator.measuredSeconds / 60)
+        guard let previous = lastRateLog[day] else {
+            lastRateLog[day] = (minute, accumulator.stepCount)
+            AppLogger.ble.notice("""
+                TrackSteps rate: begin at steps=\(accumulator.stepCount, privacy: .public) \
+                measured=\(Int(accumulator.measuredSeconds), privacy: .public)s
+                """)
+            return
+        }
+        guard minute > previous.minute else { return }
+        lastRateLog[day] = (minute, accumulator.stepCount)
+        let minutes = minute - previous.minute
+        let steps = accumulator.stepCount - previous.steps
+        // The log line's own timestamp is the wall clock, so it is not repeated here — and `Domain`
+        // cannot reach the presentation layer's date formatter anyway.
+        AppLogger.ble.notice("""
+            TrackSteps rate: +\(steps, privacy: .public) steps in \(minutes, privacy: .public) measured \
+            min (total steps=\(accumulator.stepCount, privacy: .public), measured \
+            \(Int(accumulator.measuredSeconds) / 60, privacy: .public) min)
+            """)
     }
 
     /// Drops accumulators for days outside the retention window.
@@ -143,5 +202,44 @@ public actor TrackStepsUseCase {
     private func evictStaleAccumulators(keeping day: Date) {
         let cutoff = Calendar.current.date(byAdding: .day, value: -Self.retainedDays, to: day) ?? day
         accumulators = accumulators.filter { $0.key >= cutoff }
+    }
+}
+
+/// Fans written day totals out to every attached reader.
+///
+/// **A lock rather than the actor's isolation, and the choice is forced by `stepUpdates` being
+/// `nonisolated`.** A subscriber binds to the stream from a view model's own task, which has no reason
+/// to await this actor — and an actor-isolated `AsyncStream` property would put every subscriber
+/// behind the writer's mailbox for a value it only reads. This is `WhoopBLEManager`'s three registries
+/// in miniature, including the reason they are registries at all: a second reader must not orphan a
+/// first, and the failure if one does is silent.
+///
+/// The type is private to this file because nothing outside the use case may yield into it. A screen
+/// that could publish a day total could publish a **fabricated** one, and the row it stands beside
+/// would not agree with it.
+private final class StepUpdateHub: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [UUID: AsyncStream<StepCount>.Continuation] = [:]
+
+    var stream: AsyncStream<StepCount> {
+        AsyncStream { continuation in
+            let id = UUID()
+            lock.lock()
+            continuations[id] = continuation
+            lock.unlock()
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                self.lock.lock()
+                self.continuations[id] = nil
+                self.lock.unlock()
+            }
+        }
+    }
+
+    func yield(_ count: StepCount) {
+        lock.lock()
+        let readers = Array(continuations.values)
+        lock.unlock()
+        for reader in readers { reader.yield(count) }
     }
 }

@@ -201,6 +201,14 @@ public struct HomeDashboardView: View {
     /// `let` and not the `@State` its three sibling view models are.
     private let liveSessionUseCase: LiveSessionUseCase
 
+    /// The map surface `LiveSessionView`'s live map draws through, handed down with the session.
+    ///
+    /// Threaded from `DIContainer.offlineMaps` rather than read there, on the injected-dependency rule:
+    /// `LiveSessionView` needs the **rendering** half of the offline-map seam (the `map(area:regionID:)`
+    /// that returns an `AnyView`), which the use case deliberately does not carry. This is the same value
+    /// `makeActivityDetailViewModel`'s pages use.
+    private let offlineMaps: any OfflineMapRendering
+
     /// Whether `LiveSessionView` is pushed.
     ///
     /// The destination itself has to live **inside** the `NavigationStack` below, while the menu whose
@@ -258,6 +266,7 @@ public struct HomeDashboardView: View {
         localDataViewModel: LocalDataViewModel,
         syncViewModel: SyncStorageViewModel,
         liveSessionUseCase: LiveSessionUseCase,
+        offlineMaps: any OfflineMapRendering,
         makeActivityDetailViewModel: @escaping (WorkoutSession, ActiveFast?) -> ActivityDetailViewModel
     ) {
         _viewModel = State(initialValue: viewModel)
@@ -269,6 +278,7 @@ public struct HomeDashboardView: View {
         self.localDataViewModel = localDataViewModel
         self.syncViewModel = syncViewModel
         self.liveSessionUseCase = liveSessionUseCase
+        self.offlineMaps = offlineMaps
         self.makeActivityDetailViewModel = makeActivityDetailViewModel
     }
 
@@ -317,7 +327,7 @@ public struct HomeDashboardView: View {
                     // pop, so without this the row is stored and drawn nowhere until the day changes —
                     // which is precisely the "activities never get saved" symptom. `endFast()` below is
                     // the same pattern, and `updateWorkout(_:on:)` the same merge.
-                    LiveSessionView(useCase: liveSessionUseCase) { workout in
+                    LiveSessionView(useCase: liveSessionUseCase, offlineMaps: offlineMaps) { workout in
                         viewModel.updateWorkout(workout, on: selectedDate)
                     }
                 }
@@ -372,6 +382,11 @@ public struct HomeDashboardView: View {
                 }
                 .task {
                     await viewModel.observeDevice()
+                    // Started before the load rather than after it, so the subscription is already
+                    // attached when the first motion batch is written: the load reads a stored total
+                    // and this follows the ones written while the screen is up, which is the only
+                    // way the `STEPS` tile populates without the user changing day.
+                    viewModel.observeSteps()
                     await viewModel.load(for: selectedDate)
                 }
                 .onChange(of: selectedDate) { _, newDate in
@@ -987,19 +1002,25 @@ public struct HomeDashboardView: View {
             // The mark and the dot's placement are `StrapGlyph`'s, which is also what the device page's
             // header draws — so one glyph and one corner rule serve both screens. What stays here is
             // what this badge alone decides: **which colour** the dot is (`linkState.linkColor`, the
-            // `isLinked` rule) and **how big** it is, because the badge is read at 12 pt against a
+            // three-way `linkColor` rule) and **how big** it is, because the badge is read at 12 pt against a
             // 7 pt dot and the device page badges a 13 pt plus on a 22 pt mark.
             StrapGlyph(size: 12, surface: Theme.homeCard) {
                 Circle()
                     .fill(linkState.linkColor)
                     .frame(width: 7, height: 7)
             }
-            if let reading = viewModel.device?.batteryReading {
-                Text(reading)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .monospacedDigit()
-            }
+            // **A dash rather than an empty slot, and the history matters.** The slot used to hold
+            // `ActivityFigure.dash`; the user read that dash as a battery *bar* (measured: 9.7 × 1.3 pt
+            // of white at this type size) and asked for nothing at all. It then held nothing, and once
+            // the `batteryIsMeasured` gate landed the user asked for a dash back — so it is drawn in
+            // `Theme.textSecondary` rather than the reading's bright ink, which is what separates *no
+            // reading* from a low battery at this size. The two screens now agree about the absence as
+            // well as about when it applies, which is the invariant `batteryReading` exists to hold.
+            Text(viewModel.device?.batteryReading ?? ActivityFigure.dash)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(
+                    viewModel.device?.batteryReading == nil ? Theme.textSecondary : Theme.textPrimary)
+                .monospacedDigit()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
