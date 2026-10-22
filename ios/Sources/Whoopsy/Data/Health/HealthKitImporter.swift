@@ -127,7 +127,9 @@ public struct HealthKitImporter: Sendable {
                 hrvBaselineDeltaMs: scoring.hrvBaselineDeltaMs,
                 rhrBaselineDeltaBpm: scoring.rhrBaselineDeltaBpm)
 
-            try await recoveryRepository.saveRecovery(recovery)
+            // Labelled, so a repair that clears this app's own pre-fix rows cannot take a HealthKit
+            // measurement with it — and so `isLocallyComputed` answers false for it.
+            try await recoveryRepository.saveRecovery(recovery, source: "healthkit")
             history.append(recovery)
             imported += 1
         }

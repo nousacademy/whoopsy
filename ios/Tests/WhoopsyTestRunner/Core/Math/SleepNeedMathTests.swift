@@ -173,7 +173,8 @@ enum SleepNeedMathTests {
                 biometricRepository: night,
                 sleepRepository: sleepRepository,
                 strainRepository: strainRepository,
-                userProfileRepository: profileRepository
+                userProfileRepository: profileRepository,
+                motionRepository: FixtureMotionEpochRepository()
             ).execute(for: morning)
 
             assertTest(session != nil, "A night with enough samples is classified and stored")
@@ -250,7 +251,8 @@ enum SleepNeedMathTests {
                 biometricRepository: night,
                 sleepRepository: bareSleepRepository,
                 strainRepository: GRDBStrainRepository(db: bareDB),
-                userProfileRepository: GRDBUserProfileRepository(db: bareDB)
+                userProfileRepository: GRDBUserProfileRepository(db: bareDB),
+                motionRepository: FixtureMotionEpochRepository()
             ).execute(for: morning)
 
             let bareStored = try await bareSleepRepository.getSleepSession(for: morning)

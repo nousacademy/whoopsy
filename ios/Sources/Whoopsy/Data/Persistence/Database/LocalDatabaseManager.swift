@@ -852,6 +852,37 @@ public actor LocalDatabaseManager {
                 .deleteAll(db)
         }
 
+        // **`v32` adds the one signal the sleep classifier has never had on the live path.** A heart
+        // rate alone cannot separate "asleep" from "lying still awake" — the stager's own comment says
+        // a still, wakeful person classifies as asleep — so a night that never happened could still
+        // become a session. The strap's R21 motion already arrives; this table is where it is kept,
+        // one 30-second window per row, so the next morning's onset detector can require a sustained
+        // quiet run instead of trusting a heart-rate band. Local-only: motion is an input to this
+        // phone's classifier and is not one of the seven synced resources.
+        migrator.registerMigration("v32_motion_epochs") { db in
+            try db.create(table: "motionEpochs") { t in
+                t.primaryKey("start", .datetime)
+                t.column("date", .datetime).notNull().indexed()
+                t.column("end", .datetime).notNull()
+                t.column("meanMagnitudeG", .double).notNull()
+                t.column("maxMagnitudeG", .double).notNull()
+                t.column("sampleCount", .integer).notNull()
+            }
+        }
+
+        // **`v33` clears every recovery row this app wrote before it stopped inventing a baseline.**
+        // Those rows were scored against a cold-start constant, or against each other's pre-fix HRV,
+        // so they are not measurements of the quantity the current scorer reports — and left in place
+        // they would be exactly the baseline the new rule refuses to invent. `source IS NULL` is the
+        // legacy set: the strap path only started labelling its rows `strap` after this migration, so
+        // no row written by the current code can be caught by it. Imported rows carry their own label
+        // and are untouched — WHOOP's export and HealthKit are measurements, not this app's estimates.
+        migrator.registerMigration("v33_clear_unversioned_recoveries") { db in
+            try RecoveryRecord
+                .filter(Column("source") == nil)
+                .deleteAll(db)
+        }
+
         try migrator.migrate(queue)
     }
 
@@ -1002,6 +1033,16 @@ public actor LocalDatabaseManager {
         }
     }
 
+    /// Removes a row the current scorer refuses — the no-measured-baseline case. A day with no
+    /// score has no row, the same rule the writer follows when it returns `nil`.
+    public func deleteRecovery(for date: Date) throws {
+        try dbQueue.write { db in
+            try RecoveryRecord
+                .filter(Column("date") == date.startOfDay)
+                .deleteAll(db)
+        }
+    }
+
     /// The three day-keyed tables (`recoveries`, `sleeps`, `strains`) are read back with
     /// `date.startOfDay` as the lookup key, so writes are snapped to the same instant here. Callers
     /// pass wall-clock dates; saving one raw makes GRDB's `save` append a row that no keyed read can
@@ -1138,6 +1179,16 @@ public actor LocalDatabaseManager {
     public func getSleep(for date: Date) throws -> SleepRecord? {
         try dbQueue.read { db in
             try SleepRecord.fetchOne(db, key: ["date": date.startOfDay])
+        }
+    }
+
+    /// Removes a night this app classified when a re-analysis says there was no night. A day with no
+    /// measurement has no row — the same rule `AnalyzeSleepUseCase` follows when it writes nothing.
+    public func deleteSleepSession(for date: Date) throws {
+        try dbQueue.write { db in
+            try SleepRecord
+                .filter(Column("date") == date.startOfDay)
+                .deleteAll(db)
         }
     }
 
@@ -1325,6 +1376,28 @@ public actor LocalDatabaseManager {
     public func getStepCount(for date: Date) throws -> StepCountRecord? {
         try dbQueue.read { db in
             try StepCountRecord.fetchOne(db, key: ["date": date.startOfDay])
+        }
+    }
+
+    /// Upserts one 30-second motion window. The recorder saves the same `start` repeatedly as its
+    /// batches arrive, so this is an INSERT-or-UPDATE on the window's own key.
+    public func saveMotionEpoch(_ record: MotionEpochRecord) throws {
+        var snapped = record
+        snapped.date = record.date.startOfDay
+        try dbQueue.write { db in
+            try snapped.save(db)
+        }
+    }
+
+    /// Epochs whose **start** falls in `[from, to)` — the same half-open bound every other window
+    /// read here uses, so a night's last epoch cannot be counted into the next day.
+    public func getMotionEpochs(from: Date, to: Date) throws -> [MotionEpochRecord] {
+        try dbQueue.read { db in
+            try MotionEpochRecord
+                .filter(Column("start") >= from)
+                .filter(Column("start") < to)
+                .order(Column("start").asc)
+                .fetchAll(db)
         }
     }
 

@@ -61,5 +61,40 @@ enum AnalyzeSleepUseCaseTests {
             AnalyzeSleepUseCase.readWindow(for: midnight, calendar: calendar).from == window.from,
             "…and a midnight morning date yields the same window as an afternoon one, so opening the "
                 + "page at 13:38 does not move the night it is analysing")
+
+        // ── The staging threshold is measured, not the profile's cold start ──────────────────────
+        //
+        // With no profile row `restingHeartRate` is 60, so the awake test is `> 75` and a real awake
+        // evening at 69–75 classified as sleep from the window's edge. The estimator below is the
+        // lowest-third rule `CalculateRecoveryUseCase` applies, so one night has one resting rate.
+        let base = Date(timeIntervalSince1970: 1_790_000_000)
+        func night(hours: Double, awake: Int, asleep: Int) -> [BiometricSample] {
+            let count = Int(hours * 3_600)
+            let awakeCount = count * 2 / 5
+            return (0..<count).map { index in
+                BiometricSample(
+                    timestamp: base.addingTimeInterval(Double(index)),
+                    heartRate: index < awakeCount ? awake : asleep)
+            }
+        }
+        assertTest(
+            AnalyzeSleepUseCase.restingHeartRate(
+                from: night(hours: 1, awake: 70, asleep: 50)) == 50,
+            "A night's resting rate is the lowest third's mean — 50 bpm, not the profile's cold-start "
+                + "60 that made an awake evening pass the awake test")
+        assertTest(
+            AnalyzeSleepUseCase.restingHeartRate(
+                from: night(hours: 1, awake: 70, asleep: 62)) == 62,
+            "…and the estimate follows the data rather than a constant")
+        assertTest(
+            AnalyzeSleepUseCase.restingHeartRate(
+                from: Array(night(hours: 1, awake: 70, asleep: 50).prefix(1_799))) == nil,
+            "A window shorter than thirty minutes has no estimate, so the profile remains the "
+                + "fallback rather than a handful of beats becoming a threshold")
+        assertTest(
+            AnalyzeSleepUseCase.restingHeartRate(
+                from: night(hours: 1, awake: 120, asleep: 120)) == nil,
+            "…and an implausible 120 bpm window is refused rather than accepted as a person's resting "
+                + "rate")
     }
 }

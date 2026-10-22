@@ -31,32 +31,52 @@ public final class CalculateRecoveryUseCase: Sendable {
         let profile = try await userProfileRepository.getUserProfile()
         let sleepSession = try await sleepRepository.getSleepSession(for: date)
 
-        // Fetch sleep samples if session exists, else use last night (10 PM to 7 AM). These are the
-        // **whole night's** samples, and they are what resting heart rate is read from.
-        let sleepStart = sleepSession?.startTime ?? Calendar.current.date(byAdding: .hour, value: -8, to: date)!
-        let sleepEnd = sleepSession?.endTime ?? date
+        // **No classified night is no recovery.** The HRV window is the night, and the resting rate
+        // is read from the night's own samples; an arbitrary "last eight hours" is a default window
+        // wearing the same metric tag, and it mixes a different quantity into the same baseline. A day
+        // whose night the classifier never saw — no motion, no span, no session — is absent, exactly
+        // as `AnalyzeSleepUseCase` leaves that night absent.
+        guard let sleepSession else {
+            AppLogger.algorithms.notice("""
+                Recovery absent: no classified night for \(date.description, privacy: .public). The \
+                HRV window is the night, not a default eight hours.
+                """)
+            return nil
+        }
+
+        // The **whole night's** samples, and they are what resting heart rate is read from.
+        let sleepStart = sleepSession.startTime
+        let sleepEnd = sleepSession.endTime
         let overnightSamples = try await biometricRepository.getSamples(from: sleepStart, to: sleepEnd)
 
-        // **HRV is read from the last deep-sleep run, not from the whole night.** WHOOP's Recovery HRV
-        // is measured inside the last slow-wave episode before waking (`docs/PATENTS.md` §1), and this
-        // app used to substitute a whole-night RMSSD — which is a *different quantity*: REM and brief
-        // awakenings carry far more beat-to-beat variation, so a whole-night figure runs high, and the
-        // imported rows store WHOOP's slow-wave number, so a 30-day baseline was mixing two
-        // distributions under one metric. Measured on a real strap night: whole-night 105 ms against a
-        // 910-night recorded median of 53.
+        // **HRV is read from the last deep-sleep run, and the window grows backward when that run
+        // cannot support an estimate.** WHOOP's Recovery HRV is measured inside the last slow-wave
+        // episode before waking (`docs/PATENTS.md` §1), and this app used to substitute a whole-night
+        // RMSSD — a *different quantity*: REM and brief awakenings carry far more beat-to-beat
+        // variation, so a whole-night figure runs high, and imported rows store WHOOP's slow-wave
+        // number, so a 30-day baseline was mixing two distributions under one metric.
         //
-        // A night with no classified deep stage falls back to the whole session and says so in the log,
-        // rather than reporting nothing: a night the stager could not resolve still has beats, and the
-        // fallback is the previous behaviour stated rather than hidden.
-        let hrvWindow = Self.deepestLastRun(in: sleepSession)
-            ?? DateInterval(start: sleepStart, end: sleepEnd)
-        let hrvSamples = if hrvWindow.start == sleepStart && hrvWindow.end == sleepEnd {
-            overnightSamples
+        // **The run alone is not always measurable, and the reason is the strap rather than the
+        // stager.** A notification carries at most four R-R intervals and at rest usually one, so a
+        // deep run can hold no successive difference at all: measured on a real night, a 28-minute run
+        // held zero, and the last run was a single 30-second epoch. Selecting it and then failing the
+        // difference gate would report no HRV for a night that had plenty — so the window keeps the
+        // anchor's end and moves its start backward until the estimate has support. A night with no
+        // classified deep stage still falls back to the whole session and says so in the log.
+        let selection = Self.selectHRVWindow(
+            anchor: Self.deepestLastRun(in: sleepSession),
+            session: DateInterval(start: sleepStart, end: sleepEnd),
+            samples: overnightSamples)
+        let hrvSamples = selection.samples
+        let windowNote = if !selection.hasDeepRun {
+            " [no deep run — whole session]"
+        } else if selection.expandedBy > 0 {
+            " [last deep run + \(Int((selection.expandedBy / 60).rounded())) min earlier]"
         } else {
-            try await biometricRepository.getSamples(from: hrvWindow.start, to: hrvWindow.end)
+            " [last deep run]"
         }
         AppLogger.algorithms.notice("""
-            Recovery HRV window: \(hrvWindow.start.description, privacy: .public) →             \(hrvWindow.end.description, privacy: .public)             (\(Int(hrvWindow.duration), privacy: .public) s, \(hrvSamples.count, privacy: .public) samples)            \(Self.deepestLastRun(in: sleepSession) == nil ? " [no deep run — whole session]" : "")
+            Recovery HRV window: \(selection.window.start.description, privacy: .public) →             \(selection.window.end.description, privacy: .public)             (\(Int(selection.window.duration), privacy: .public) s, \(hrvSamples.count, privacy: .public) samples)            \(windowNote, privacy: .public)
             """)
 
         // Extract RR intervals and resting HR. Each notification's interval list is one contiguous
@@ -130,20 +150,45 @@ public final class CalculateRecoveryUseCase: Sendable {
 
         // Historical baselines. The strap measures RMSSD, so that is the metric this path scores;
         // `RecoveryScoring` filters history to it so HealthKit-sourced SDNN days cannot leak in.
-        let history = try await recoveryRepository.getRecoveryHistory(days: 30)
+        //
+        // **The day being scored is not its own baseline**, so the window is taken strictly before
+        // it — `baselineWindow` is the same function the screen uses for the comparison it prints.
+        let wideHistory = try await recoveryRepository.getRecoveryHistory(days: 30, endingOn: date)
+        let history = RecoveryScoring.baselineWindow(before: date, in: wideHistory)
+
+        // **A score needs a measured baseline, and there is no substitute for one.** A z-score
+        // against a cold-start constant is a default dressed as a measurement: it says today is
+        // average against a number the app invented. Below the minimum the day is still a
+        // measurement — HRV, resting rate and the rest are real — so it is stored **unscored**, and
+        // `RecoveryMetric.hasScore` keeps every ring and trend from drawing the reserved `0` as a
+        // result. Storing it is what lets the baseline build: three of these are the three
+        // observations that make the fourth day scorable, and without them the rule could never
+        // bootstrap. `minimumBaselineDays` is the same threshold the screen's comparison uses.
+        let measuredDays = history.filter(\.hasMeasurement).count
+        let hasBaseline = measuredDays >= RecoveryScoring.minimumBaselineDays
+        if !hasBaseline {
+            AppLogger.algorithms.notice("""
+                Recovery unscored: \(measuredDays, privacy: .public) measured day(s) before \
+                \(date.description, privacy: .public), below the \
+                \(RecoveryScoring.minimumBaselineDays, privacy: .public) a baseline needs. HRV and \
+                resting rate are stored as a measurement; no score is invented from a cold start.
+                """)
+        }
+
         // No sleep session is not an average night. The pivot is the only value for this term that
         // adds nothing to the score, which is what "unknown" should contribute.
-        let sleepPerformance = sleepSession.map { Double($0.sleepPerformancePercentage) / 100.0 }
-            ?? BaselineStatisticsMath.sleepPerformancePivot
+        let sleepPerformance = Double(sleepSession.sleepPerformancePercentage) / 100.0
 
-        let scoring = RecoveryScoring.score(
-            RecoveryScoring.Input(
-                history: history,
-                todayHrvValueMs: hrvValueMs,
-                todayHrvMetric: .rmssd,
-                todayRestingHeartRate: restingHR,
-                sleepPerformance: sleepPerformance,
-                fallbackRestingHeartRateBaseline: profile.baselineRhr))
+        let scoring: RecoveryScoring.Output? = hasBaseline
+            ? RecoveryScoring.score(
+                RecoveryScoring.Input(
+                    history: history,
+                    todayHrvValueMs: hrvValueMs,
+                    todayHrvMetric: .rmssd,
+                    todayRestingHeartRate: restingHR,
+                    sleepPerformance: sleepPerformance,
+                    fallbackRestingHeartRateBaseline: profile.baselineRhr))
+            : nil
 
         let skinTemps = overnightSamples.compactMap { $0.skinTemperatureCelsius }
         let avgSkinTemp = skinTemps.isEmpty ? nil : BaselineStatisticsMath.mean(skinTemps)
@@ -154,21 +199,24 @@ public final class CalculateRecoveryUseCase: Sendable {
         let spO2Values = overnightSamples.compactMap { $0.spO2Percentage }
         let avgSpO2 = spO2Values.isEmpty ? nil : BaselineStatisticsMath.mean(spO2Values)
 
+        let source = hasBaseline ? RecoveryMetric.strapSource : RecoveryMetric.measurementSource
         let recovery = RecoveryMetric(
             date: date.startOfDay,
-            score: scoring.score,
+            // The reserved `0` on an unscored day. `hasScore` is false for it, so nothing draws it.
+            score: scoring?.score ?? 0,
             hrvValueMs: hrvValueMs,
             hrvMetric: .rmssd,
             restingHeartRate: restingHR,
             skinTemperatureCelsius: avgSkinTemp.map { $0.rounded(toPlaces: 1) },
             skinTemperatureBaselineDelta: skinTempDelta.map { $0.rounded(toPlaces: 2) },
             spO2Percentage: avgSpO2?.rounded(toPlaces: 1),
-            respiratoryRate: sleepSession?.respiratoryRate,
-            hrvBaselineDeltaMs: scoring.hrvBaselineDeltaMs,
-            rhrBaselineDeltaBpm: scoring.rhrBaselineDeltaBpm
+            respiratoryRate: sleepSession.respiratoryRate,
+            hrvBaselineDeltaMs: scoring?.hrvBaselineDeltaMs,
+            rhrBaselineDeltaBpm: scoring?.rhrBaselineDeltaBpm,
+            source: source
         )
 
-        try await recoveryRepository.saveRecovery(recovery)
+        try await recoveryRepository.saveRecovery(recovery, source: source)
         return recovery
     }
 
@@ -203,5 +251,76 @@ public final class CalculateRecoveryUseCase: Sendable {
             }
         }
         return DateInterval(start: runStart, end: runEnd)
+    }
+
+    /// Which stretch of the night Recovery HRV is measured over, and the samples inside it.
+    ///
+    /// **The last deep run is the anchor, and not always the window.** The strap's R-R notifications
+    /// are sparse at rest — at most four intervals, usually one — so a deep run can contain no
+    /// successive difference at all. A window that cannot clear `minimumRMSSDDifferences` is not a
+    /// measurement, so this keeps the anchor's **end** (the instant the patent names) and moves its
+    /// **start** backward in `step` increments until the estimator has support. Bounded by the
+    /// session: if even the whole session cannot clear the gate, the session is returned and the
+    /// caller's guard refuses the row.
+    ///
+    /// A pure function so §10 can assert the selection with no database and no strap — the reason
+    /// `deepestLastRun` is one too.
+    public struct HRVWindowSelection: Sendable {
+        public let window: DateInterval
+        public let samples: [BiometricSample]
+        /// How far before the anchor the window had to start. Zero when the anchor itself cleared the
+        /// gate, and zero for a night with no deep run (nothing was expanded).
+        public let expandedBy: TimeInterval
+        /// Whether a classified deep run existed to anchor on. False selects the whole session.
+        public let hasDeepRun: Bool
+    }
+
+    public static func selectHRVWindow(
+        anchor: DateInterval?,
+        session: DateInterval,
+        samples: [BiometricSample],
+        step: TimeInterval = 15 * 60,
+        minimumDifferences: Int = HeartRateVariabilityMath.minimumRMSSDDifferences
+    ) -> HRVWindowSelection {
+        let pool = samples.filter { $0.timestamp >= session.start && $0.timestamp <= session.end }
+
+        func differences(in window: DateInterval) -> Int {
+            let runs = pool
+                .filter { $0.timestamp >= window.start && $0.timestamp <= window.end }
+                .compactMap(\.rrIntervalsMs)
+            return HeartRateVariabilityMath.differenceCount(fromRuns: runs)
+        }
+
+        func selected(_ window: DateInterval, expandedBy: TimeInterval) -> HRVWindowSelection {
+            HRVWindowSelection(
+                window: window,
+                samples: pool.filter {
+                    $0.timestamp >= window.start && $0.timestamp <= window.end
+                },
+                expandedBy: expandedBy,
+                hasDeepRun: anchor != nil)
+        }
+
+        guard let anchor else {
+            return selected(session, expandedBy: 0)
+        }
+
+        let anchored = DateInterval(start: anchor.start, end: anchor.end)
+        if differences(in: anchored) >= minimumDifferences {
+            return selected(anchored, expandedBy: 0)
+        }
+
+        var start = anchor.start
+        while start > session.start {
+            start = max(session.start, start - step)
+            let candidate = DateInterval(start: start, end: anchor.end)
+            if differences(in: candidate) >= minimumDifferences {
+                return selected(candidate, expandedBy: anchor.start.timeIntervalSince(start))
+            }
+        }
+
+        // Even the anchor-to-session-start stretch was short. The whole session is the last window
+        // with a chance of support, and the caller's guard still has the final word.
+        return selected(session, expandedBy: anchor.start.timeIntervalSince(session.start))
     }
 }

@@ -5,22 +5,32 @@ public final class AnalyzeSleepUseCase: Sendable {
     private let sleepRepository: any SleepRepository
     private let strainRepository: any StrainRepository
     private let userProfileRepository: any UserProfileRepository
+    private let motionRepository: any MotionEpochRepository
 
     public init(
         biometricRepository: any BiometricRepository,
         sleepRepository: any SleepRepository,
         strainRepository: any StrainRepository,
-        userProfileRepository: any UserProfileRepository
+        userProfileRepository: any UserProfileRepository,
+        motionRepository: any MotionEpochRepository
     ) {
         self.biometricRepository = biometricRepository
         self.sleepRepository = sleepRepository
         self.strainRepository = strainRepository
         self.userProfileRepository = userProfileRepository
+        self.motionRepository = motionRepository
     }
 
     /// Samples needed before a night is classified at all: one full 30-second epoch. Below this
     /// there is nothing to average, so the night is reported as absent rather than guessed at.
     static let minimumEpochSamples = 30
+
+    /// A 30-second window whose mean `|a|` is below this is **still**.
+    ///
+    /// `|a|` includes gravity, so a motionless strap reads ≈1.0 rather than 0 and a genuine movement
+    /// clears 1.05 quickly. This is the number the onset decision thresholds, and it is deliberately
+    /// the same one the stage bands use for their stillness requirement — one definition of "quiet".
+    public static let motionQuietCeiling: Double = 1.05
 
     /// The span a night is read out of: **9 PM the previous evening to 10 AM**, which is *when the
     /// strap might have been worn* rather than the night itself — `SleepOnsetMath` is what trims it to
@@ -43,6 +53,27 @@ public final class AnalyzeSleepUseCase: Sendable {
             ?? previousEvening
         let tenAM = calendar.date(bySettingHour: 10, minute: 0, second: 0, of: morning) ?? morning
         return (ninePM, tenAM)
+    }
+
+    /// The night's own resting heart rate, or `nil` when the window is too thin to estimate one.
+    ///
+    /// **The lowest third's mean**, which is the same estimator `CalculateRecoveryUseCase` applies to
+    /// its overnight samples — one definition of resting heart rate rather than two. It is measured
+    /// from the read window rather than read from the profile because the profile's cold start is a
+    /// fixed 60 bpm and the classifier's awake test is `rest × 1.25`: with no profile row an awake
+    /// evening at 69–75 bpm passed it as sleep and the night began at the 9 PM window edge.
+    ///
+    /// A pure function so §13 can assert the estimate without a database or a strap.
+    public static func restingHeartRate(from samples: [BiometricSample]) -> Int? {
+        // Thirty minutes at the live path's ~1 Hz is the floor: below it the lowest third is a
+        // handful of beats, and a handful is a reading rather than a resting rate.
+        guard samples.count >= 1_800 else { return nil }
+        let rates = samples.map(\.heartRate).sorted()
+        let lowestThird = max(1, rates.count / 3)
+        let mean = Double(rates.prefix(lowestThird).reduce(0, +)) / Double(lowestThird)
+        let estimate = Int(mean.rounded())
+        // Outside this band the window never settled, and the profile is the safer answer.
+        return (30...100).contains(estimate) ? estimate : nil
     }
 
     /// A night with too few samples is `nil` — no session is invented and **nothing is written**.
@@ -88,48 +119,72 @@ public final class AnalyzeSleepUseCase: Sendable {
             return nil
         }
 
+        // **No motion, no night.** The classifier used to decide that a night happened from a
+        // heart-rate band, and a heart rate cannot separate sleep from lying still awake — the
+        // stager's own note says a still, wakeful person classifies as asleep, so a night that never
+        // happened would still become a session. The strap's motion is the independent signal: the
+        // recorder writes one epoch per 30 seconds, and a window it never filled is reported as
+        // absent rather than guessed at from heart rate alone.
+        let motionEpochs = try await motionRepository.getMotionEpochs(
+            from: prevEvening, to: morningEnd)
+        guard !motionEpochs.isEmpty else {
+            AppLogger.algorithms.notice("""
+                Sleep analysis: absent — no motion epochs in the window. A heart-rate-only night is \
+                not a measurement: motion is what separates sleep from lying still awake.
+                """)
+            return nil
+        }
+
         // Classify 30-second epochs. Stages are assigned here and **nothing is summed**: the sums are
         // taken below, over the epochs the night actually holds, so a trim cannot leave a duration
         // behind for an epoch it dropped.
-        let epochDuration: TimeInterval = 30.0
-        let strideSize = 30
+        //
+        // **The epoch grid is the motion recorder's, not a count of samples.** A stride of 30 samples
+        // is 30 seconds only if the samples arrived a second apart, and the sleep window is exactly
+        // where that assumption is least safe — a gap in the live stream turns one "epoch" into
+        // minutes. `RecordMotionUseCase` writes true 30-second windows, so the grid is wall time.
+        //
+        // **Two references, because the two questions are different.** "Is this person asleep?" is
+        // decided by motion and, secondarily, by a heart rate below the night's own measured ceiling;
+        // "which stage?" keeps the profile's resting rate. Using the measured rate for both was tried
+        // on a real night and collapsed deep sleep to 0.04 h, while the profile's 60 left 4.8 h —
+        // neither real. The profile is the stage bands' baseline and the ceiling's fallback.
+        let measuredRest = Self.restingHeartRate(from: samples)
         let restHR = Double(profile.restingHeartRate)
+        let onsetCeiling = Double(measuredRest ?? profile.restingHeartRate) * 1.25
+        AppLogger.algorithms.notice("""
+            Sleep staging: bands at \(restHR, privacy: .public) bpm (profile), onset ceiling \
+            \(onsetCeiling, privacy: .public) bpm (measured \(measuredRest ?? -1, privacy: .public) bpm; -1 means the profile fallback)
+            """)
 
-        var epochs: [(start: Date, end: Date, stage: SleepStageType)] = []
+        var epochs: [(
+            start: Date, end: Date, stage: SleepStageType, avgHR: Double, motionMean: Double
+        )] = []
 
-        // **One line an hour, and it is the instrument this model has never had.** Live samples from
-        // the standard heart-rate characteristic carry no accelerometer, so staging here is heart rate
-        // alone — and the one parameter deciding where a night starts is how far above resting an
-        // epoch's rate may sit before it counts as awake. That number has never been checked against a
-        // real wrist: on 2026-10-20 a strap reported a night beginning at **9:06 PM** for a wearer who
-        // went to sleep at **1 AM**, and nothing could say whether the 9 PM epochs sat 2 bpm above
-        // resting or 20. The curve is what the threshold gets chosen from.
+        // The hourly curve carries **motion beside heart rate** — the two signals the onset decision
+        // reads, printed together so a night where they disagree is visible in one line.
         var hourlyRates: [Int: [Int]] = [:]
         var hourlyAccels: [Int: [Double]] = [:]
 
-        for i in stride(from: 0, to: samples.count, by: strideSize) {
-            let epochSamples = Array(samples[i..<min(i + strideSize, samples.count)])
-            guard let firstEpochSample = epochSamples.first,
-                  let lastEpochSample = epochSamples.last else { continue }
+        // One pass over the HR samples, bucketed into the recorder's 30-second windows. A pointer
+        // rather than a filter per epoch: thirteen hours of 1 Hz samples against ~1,500 epochs is
+        // otherwise tens of millions of comparisons.
+        var sampleIndex = 0
+        for motion in motionEpochs {
+            var epochSamples: [BiometricSample] = []
+            while sampleIndex < samples.count, samples[sampleIndex].timestamp < motion.end {
+                if samples[sampleIndex].timestamp >= motion.start {
+                    epochSamples.append(samples[sampleIndex])
+                }
+                sampleIndex += 1
+            }
+            guard !epochSamples.isEmpty else { continue }
 
-            let avgEpochHR = Double(epochSamples.map { $0.heartRate }.reduce(0, +)) / Double(epochSamples.count)
-
-            // Motion, when the epoch measured any. `accelerationMagnitude` is `nil` on a notification
-            // that carried no accelerometer, which is every sample the live `0x2A37` path produces —
-            // so the two motion tests below are made only over the epochs that can make them.
-            let motions = epochSamples.compactMap(\.accelerationMagnitude)
-            let avgAccel: Double? =
-                motions.isEmpty ? nil : motions.reduce(0, +) / Double(motions.count)
-
-            // **An absent motion reading drops the motion test rather than failing it**, which is the
-            // opposite of what `StressMath.isResting` does with the same absence, and deliberately
-            // so. There the gate exists to assert stillness, so unmeasured cannot pass; here the two
-            // tests sit *beside* a heart-rate band that can decide alone, and the substituted `0.0`
-            // these fields used to carry was already satisfying both of them — a fabricated free-fall
-            // reading classified as still, so every existing night staged on heart rate anyway. This
-            // makes that behaviour explicit instead of accidental, and the heart rate keeps the vote.
-            let motionIsElevated = avgAccel.map { $0 > StressMath.motionCeiling } ?? false
-            let motionIsQuiet = avgAccel.map { $0 < 1.05 } ?? true
+            let avgEpochHR = Double(epochSamples.map { $0.heartRate }.reduce(0, +))
+                / Double(epochSamples.count)
+            let motionMean = motion.meanMagnitudeG
+            let motionIsElevated = motionMean > StressMath.motionCeiling
+            let motionIsQuiet = motionMean < Self.motionQuietCeiling
 
             let stage: SleepStageType
             if motionIsElevated || avgEpochHR > restHR * 1.25 {
@@ -143,11 +198,12 @@ public final class AnalyzeSleepUseCase: Sendable {
             }
 
             epochs.append(
-                (start: firstEpochSample.timestamp, end: lastEpochSample.timestamp, stage: stage))
+                (start: motion.start, end: motion.end, stage: stage, avgHR: avgEpochHR,
+                 motionMean: motionMean))
 
-            let hour = calendar.component(.hour, from: firstEpochSample.timestamp)
+            let hour = calendar.component(.hour, from: motion.start)
             hourlyRates[hour, default: []].append(Int(avgEpochHR.rounded()))
-            if let avgAccel { hourlyAccels[hour, default: []].append(avgAccel) }
+            hourlyAccels[hour, default: []].append(motionMean)
         }
 
         // The curve, one line an hour. `.notice` so it survives into a log archive read after the run;
@@ -180,13 +236,23 @@ public final class AnalyzeSleepUseCase: Sendable {
         // separate guard because it answers a different question — that one asks whether there is
         // enough to average, this one whether there is a night here at all.
         guard let period = SleepOnsetMath.sleepPeriod(of: epochs.map {
-            SleepOnsetMath.Epoch(start: $0.start, end: $0.end, isAsleep: $0.stage != .awake)
+            // **Asleep means quiet and below the night's ceiling — motion first.** A heart rate alone
+            // called an awake evening asleep; a still strap is what makes the claim a measurement. An
+            // epoch that moved is awake even when its rate sat low, which is the case a no-sleep night
+            // presents.
+            SleepOnsetMath.Epoch(
+                start: $0.start, end: $0.end,
+                isAsleep: $0.motionMean < Self.motionQuietCeiling
+                    && $0.avgHR < onsetCeiling)
         }) else {
-            let asleep = epochs.filter { $0.stage != .awake }.count
+            let asleep = epochs.filter {
+                $0.motionMean < Self.motionQuietCeiling && $0.avgHR < onsetCeiling
+            }.count
             AppLogger.algorithms.notice("""
-                Sleep analysis: absent — \(epochs.count, privacy: .public) epochs, \
-                \(asleep, privacy: .public) not awake, and no run reaching \
-                \(Int(SleepOnsetMath.minimumSleepRunSeconds), privacy: .public) s.
+                Sleep analysis: absent — \(epochs.count, privacy: .public) motion epochs, \
+                \(asleep, privacy: .public) quiet and below the ceiling, and no quiet run reaching \
+                \(Int(SleepOnsetMath.minimumSleepRunSeconds), privacy: .public) s. A night whose \
+                motion never settles is not a night.
                 """)
             return nil
         }
@@ -206,13 +272,13 @@ public final class AnalyzeSleepUseCase: Sendable {
         for epoch in night {
             switch epoch.stage {
             case .awake:
-                awakeSec += epochDuration
+                awakeSec += epoch.end.timeIntervalSince(epoch.start)
                 // A disturbance is a counted awake epoch, so a dropped one is not a disturbance — it
                 // was never in the night to disturb it.
                 disturbances += 1
-            case .deep: deepSec += epochDuration
-            case .rem: remSec += epochDuration
-            case .light: lightSec += epochDuration
+            case .deep: deepSec += epoch.end.timeIntervalSince(epoch.start)
+            case .rem: remSec += epoch.end.timeIntervalSince(epoch.start)
+            case .light: lightSec += epoch.end.timeIntervalSince(epoch.start)
             }
 
             stages.append(

@@ -14,6 +14,12 @@ public final class GRDBSleepRepository: SleepRepository, Sendable {
         try await db.getSleep(for: date).map(Self.makeSession)
     }
 
+    /// Removes a provisional night the classifier no longer stands behind — see
+    /// `SleepRepository.deleteSleepSession(for:)`.
+    public func deleteSleepSession(for date: Date) async throws {
+        try await db.deleteSleepSession(for: date)
+    }
+
     public func saveSleepSession(_ session: SleepSession, source: String?) async throws {
         let record = SleepRecord(
             date: session.date,

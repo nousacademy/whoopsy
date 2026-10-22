@@ -10,7 +10,7 @@ Most of this has not been captured on this project's own hardware, but **the 5.0
 
 | Tag | Meaning |
 | :--- | :--- |
-| **[captured]** | Observed on this project's own strap from a recorded session. **So far there is one: the 5.0 live-heart-rate path recorded in §5.** The historical drain, the motion layouts and both 4.0 halves remain uncaptured. |
+| **[captured]** | Observed on this project's own strap from a recorded session. **On one 5.0: the bond, `SET_CLOCK`, live heart rate and R-R, live `R21` motion, and a flash drain carrying `R18` records — §3, §4 and §5.** A *banked* `R21` record and both 4.0 halves remain uncaptured. |
 | **[reported 4.0]** | Stated by the open-source WHOOP 4.0 reference. Not independently confirmed here. |
 | **[reported 5.0]** | Stated by the open-source WHOOP 5.0 / MG reference. Not independently confirmed here. |
 | **[filed]** | Stated in a regulatory, standards or equipment-approval filing by or about the hardware. Stronger than a reverse-engineering reference about **which sensors exist**, because the filing is made under a duty of accuracy and the sensor list is the filing's subject. It is still not a capture, and **a filing says nothing about the wire format** — no filing in hand describes a record layout, an opcode or a byte offset. |
@@ -423,8 +423,9 @@ has no confirmation to wait for, and that fallback arms them anyway) — plus th
 (`WhoopBLEManager.sendConnectCommands()`: the motion enable on both generations and the `0x03`
 live-HR arm on a 5.0/MG), and the drain — §4 carries its status.
 
-**On a 5.0/MG the connect pass now starts with the clock, because that generation banks nothing until
-it is set.** `sendConnectCommands()` sends `0x0A SET_CLOCK` with the phone's epoch before the motion
+**On a 5.0/MG the connect pass now starts with the clock, on the premise that that generation banks
+nothing until it is set — a premise the 5.0 capture could not confirm, because its archive did not
+grow even after the clock latched.** `sendConnectCommands()` sends `0x0A SET_CLOCK` with the phone's epoch before the motion
 and live-HR arms, then `0x0B GET_CLOCK` so a capture sees both sides of the exchange; the drain sends
 the same pair before its `0x16` request. **The read-back's reply is logged and not decoded** — neither
 reference parses it — so this app still does not claim a clock latched. **The Device Information

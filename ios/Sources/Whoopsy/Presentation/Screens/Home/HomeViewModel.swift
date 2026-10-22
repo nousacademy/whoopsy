@@ -491,7 +491,9 @@ import SwiftUI
             let span = calendar.dateComponents([.day], from: first, to: last).day ?? 0
             let rows = try await recoveryRepository.getRecoveryHistory(days: span, endingOn: last)
             monthTiers = rows.reduce(into: [:]) { tiers, row in
-                guard row.hasMeasurement else { return }
+                // A measured-but-unscored day is not a tier: its reserved `0` is "no score", and
+                // painting it red would state a result the app refused to produce.
+                guard row.hasScore else { return }
                 tiers[calendar.startOfDay(for: row.date)] = row.state
             }
         } catch {

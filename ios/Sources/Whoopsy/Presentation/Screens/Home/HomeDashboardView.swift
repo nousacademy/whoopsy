@@ -1193,7 +1193,7 @@ public struct HomeDashboardView: View {
     /// but `hasMeasurement` remains the gate regardless, because rows written by an older build still
     /// hold zeros with the flag clear, and they are the same number as a real 0% day otherwise.
     private var recoveryValue: String? {
-        guard let recovery = viewModel.recovery, recovery.hasMeasurement else { return nil }
+        guard let recovery = viewModel.recovery, recovery.hasScore else { return nil }
         return "\(recovery.score)%"
     }
 
@@ -1206,7 +1206,8 @@ public struct HomeDashboardView: View {
     /// placeholder row left by an older build — the `score: 0` a strap-less day used to store — cannot
     /// put a red 0% on this screen, which is the same reason `RecoveryDashboardView` gives it no ring.
     private var recoveryRingColor: Color {
-        viewModel.recovery?.state.color ?? Theme.recoveryGreen
+        guard let recovery = viewModel.recovery, recovery.hasScore else { return Theme.recoveryGreen }
+        return recovery.state.color
     }
 
     /// Strain is read on a 0–21 Borg scale, not a percentage.

@@ -452,7 +452,7 @@ public struct MetricWeek: Equatable, Sendable {
             strain: strain.flatMap { $0.hasMeasurement ? $0.score : nil },
             // Same reserved-zero convention as strain: `hasMeasurement` is `hrvValueMs > 0`, so a
             // placeholder row's `score: 0` is not a tier, it is the absence of one.
-            recoveryScore: recovery.flatMap { $0.hasMeasurement ? $0.score : nil },
+            recoveryScore: recovery.flatMap { $0.hasScore ? $0.score : nil },
             // Gated twice (see `restingRate` above), because the flag is about the row and `> 0` is
             // the reserved marker in this column specifically.
             restingHeartRate: restingRate,

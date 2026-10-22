@@ -523,6 +523,7 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
             // day from a missing reading would put a fabricated 0 ms into the baseline. The export's
             // `Recovery score %` column is deliberately not used — see the type's doc comment.
             if row.wakeOnset != nil, let hrv = row.hrvMs, hrv > 0, let restingHeartRate = row.restingHeartRate {
+                let history = RecoveryScoring.baselineWindow(before: day, in: scoredSeries)
                 if let existing = try await recoveryRepository.getLocalRecovery(for: day),
                     existing.hasMeasurement
                 {
@@ -532,14 +533,20 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
                     // already on disk.
                     scoredSeries.append(existing)
                     dayHasRecovery = true
-                } else {
+                } else if history.filter(\.hasMeasurement).count
+                    >= RecoveryScoring.minimumBaselineDays
+                {
+                    // **A score needs a measured baseline here too.** Scoring the first imported days
+                    // against a cold-start constant would put a default at the head of the history
+                    // and let every later day's window carry it. Those days keep their sleep, strain
+                    // and measurements; they simply have no recovery row, and the walk continues.
                     let sleepPerformance = session.map { Double($0.sleepPerformancePercentage) / 100.0 }
                         ?? BaselineStatisticsMath.sleepPerformancePivot
 
                     // Input built as its own value: inlined into the call, the mix of `nil`-coalescing,
                     // `map` and optional arguments upstream defeats the type checker.
                     let input = RecoveryScoring.Input(
-                        history: RecoveryScoring.baselineWindow(before: day, in: scoredSeries),
+                        history: history,
                         todayHrvValueMs: hrv,
                         // The export does not name its HRV metric. WHOOP publishes overnight HRV as
                         // rMSSD, and the observed distribution (52.5 ± 10.5 ms, range 15–99) sits in
@@ -567,6 +574,27 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
 
                     try await recoveryRepository.saveRecovery(recovery, source: Self.sourceLabel)
                     scoredSeries.append(recovery)
+                    recoveriesWritten += 1
+                    wroteForThisDay = true
+                    dayHasRecovery = true
+                } else {
+                    // The first measured days have no baseline to score against. Their measurement is
+                    // stored **unscored** — HRV and resting rate are real and join the window; the
+                    // composite is absent and `hasScore` keeps the reserved `0` off every ring. This
+                    // is what lets the imported history bootstrap instead of starting on a constant.
+                    let measurement = RecoveryMetric(
+                        date: day,
+                        score: 0,
+                        hrvValueMs: hrv,
+                        hrvMetric: .rmssd,
+                        restingHeartRate: restingHeartRate,
+                        skinTemperatureCelsius: row.skinTempCelsius,
+                        spO2Percentage: row.bloodOxygenPercent,
+                        respiratoryRate: row.respiratoryRate,
+                        source: RecoveryMetric.measurementSource)
+                    try await recoveryRepository.saveRecovery(
+                        measurement, source: RecoveryMetric.measurementSource)
+                    scoredSeries.append(measurement)
                     recoveriesWritten += 1
                     wroteForThisDay = true
                     dayHasRecovery = true

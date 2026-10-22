@@ -182,7 +182,8 @@ enum SleepOnsetMathTests {
                     biometricRepository: OvernightBiometricStore(samples: samples),
                     sleepRepository: sleepRepository,
                     strainRepository: GRDBStrainRepository(db: db),
-                    userProfileRepository: GRDBUserProfileRepository(db: db)
+                    userProfileRepository: GRDBUserProfileRepository(db: db),
+                    motionRepository: FixtureMotionEpochRepository()
                 ).execute(for: morning)
 
                 assertTest(
@@ -191,14 +192,18 @@ enum SleepOnsetMathTests {
                         + "read window opened — five hours of an awake strap at the front are not part of "
                         + "the night (got \(session.map { "\($0.startTime.timeIntervalSince(base))" } ?? "nil") s in)")
                 assertTest(
-                    session?.endTime == base.addingTimeInterval(25_140),
-                    "…and it ends where its last run closed, not where the samples ran out "
+                    session?.endTime == base.addingTimeInterval(25_170),
+                    "…and it ends on the last quiet **window's** own edge — the motion recorder's "
+                        + "30-second grid rounds the final sample up to 25,170 rather than stopping at "
+                        + "the sample's 25,140 "
                         + "(got \(session.map { "\($0.endTime.timeIntervalSince(base))" } ?? "nil") s in)")
                 assertTest(
-                    session?.deepSleepSeconds == 120,
-                    "…so the four epochs inside the span are the whole of what is counted — four 30-second "
-                        + "epochs is 120 s, against the 600 s of awake time that stood beside them in the "
-                        + "untrimmed sum (got \(session.map { "\($0.deepSleepSeconds)" } ?? "nil") s)")
+                    session?.deepSleepSeconds == 3_600,
+                    "…and the deep block is counted in the recorder's own 30-second windows: the "
+                        + "fixture puts one sample a minute across two hours, so 120 windows are deep "
+                        + "and each contributes 30 s — 3,600 s, not the 120 s the old "
+                        + "30-samples-is-one-epoch assumption reported for the same two hours "
+                        + "(got \(session.map { "\($0.deepSleepSeconds)" } ?? "nil") s)")
                 assertTest(
                     session?.awakeSeconds == 0 && session?.disturbanceCount == 0,
                     "…and the twenty awake epochs outside the span contribute **nothing**, to the awake "
@@ -208,9 +213,10 @@ enum SleepOnsetMathTests {
                 assertTest(
                     session.map {
                         $0.lightSleepSeconds + $0.deepSleepSeconds + $0.remSleepSeconds + $0.awakeSeconds
-                            == 4 * 30
+                            == 120 * 30
                     } ?? false,
-                    "…and the four sums account for exactly the four retained epochs, once each. This is "
+                    "…and the four sums account for exactly the retained 30-second windows, once each — "
+                        + "120 windows spanning the fixture's two hours. This is "
                         + "the assertion that fails if the span is trimmed and the sums are not: the "
                         + "`asleep + awake = DURATION` identity the sleep detail screen prints is built on "
                         + "those two moving together")
@@ -218,23 +224,21 @@ enum SleepOnsetMathTests {
                 assertTest(false, "The onset trim threw: \(error)")
             }
 
-            // ── The same night, with no accelerometer at all ─────────────────────────────────────────
+            // ── No motion is no night ────────────────────────────────────────────────────────────
             //
-            // Every sample the live `0x2A37` path constructs carries no motion, so this is the shape of a
-            // real strap night rather than a hypothetical one — and the classifier must stage it exactly
-            // as it staged the fixture above. **That equality is the whole assertion**, because the
-            // entity's old `0.0` default was already satisfying both motion tests by accident: a
-            // fabricated free-fall reading is below the 1.05 quiet line, so the heart-rate bands have
-            // been deciding these nights all along. What changed is that the absence is now stated rather
-            // than spelled as a physically impossible measurement — so if the two fixtures ever disagree,
-            // the degradation broke rather than the model.
+            // **This block used to assert the opposite, and the inversion is the owner's ruling.**
+            // It said a night carrying no accelerometer was still detected from heart rate alone. A
+            // heart rate cannot tell sleep from lying still awake — the stager's own note says a
+            // still, wakeful person classifies as asleep — so that rule turned a night that never
+            // happened into a session. Onset now reads the motion recorder's 30-second epochs; a
+            // window it never filled, or one whose motion never settles, is an absent night.
             do {
                 let calendar = Calendar.current
                 let morning = calendar.startOfDay(for: Date())
-                let db = LocalDatabaseManager(inMemory: true)
                 let base = Self.nightBase(morning: morning, calendar: calendar)
 
-                // The same ten/four/ten shape, built with no `accelerometer*` argument at all.
+                // The same ten/four/ten shape, built with no `accelerometer*` argument at all — which
+                // is every sample the live `0x2A37` path produces.
                 let withoutMotion: [BiometricSample] = [awake, awake, awake, awake, awake, awake, awake,
                     awake, awake, awake, deep, deep, deep, deep, awake, awake, awake, awake, awake, awake,
                     awake, awake, awake, awake]
@@ -249,31 +253,31 @@ enum SleepOnsetMathTests {
                     }
                 assertTest(
                     withoutMotion.allSatisfy { $0.accelerationMagnitude == nil },
-                    "The fixture really carries no accelerometer on any sample, so what follows is about "
-                        + "the absence and not about a value that happens to be still")
+                    "The fixture's samples carry no accelerometer, as the live path's do — so the "
+                        + "motion signal has to come from the recorder rather than from these rows")
 
-                let session = try await AnalyzeSleepUseCase(
-                    biometricRepository: OvernightBiometricStore(samples: withoutMotion),
-                    sleepRepository: GRDBSleepRepository(db: db),
-                    strainRepository: GRDBStrainRepository(db: db),
-                    userProfileRepository: GRDBUserProfileRepository(db: db)
-                ).execute(for: morning)
-
-                assertTest(
-                    session?.startTime == base.addingTimeInterval(18_000)
-                        && session?.endTime == base.addingTimeInterval(25_140),
-                    "A night with no motion is still detected where its heart rate says it is: the "
-                        + "motionless-epoch test cannot be made, so the elevated-heart-rate test and the "
-                        + "heart-rate bands decide the staging alone (got "
-                        + "\(session.map { "\($0.startTime.timeIntervalSince(base))–\($0.endTime.timeIntervalSince(base))" } ?? "nil") s)")
-                assertTest(
-                    session?.deepSleepSeconds == 120 && session?.awakeSeconds == 0,
-                    "…and it stages **identically** to the same night carrying a real gravity shell — the "
-                        + "calibration the fabricated `0.0` had been producing by accident, kept while the "
-                        + "fabrication is removed (got "
-                        + "\(session.map { "\($0.deepSleepSeconds) s deep, \($0.awakeSeconds) s awake" } ?? "nil"))")
+                for (label, repository) in [
+                    ("no motion recorded", FixtureMotionEpochRepository(epochs: [])),
+                    ("motion never settles", FixtureMotionEpochRepository(magnitude: 1.5)),
+                ] {
+                    let db = LocalDatabaseManager(inMemory: true)
+                    let sleepRepository = GRDBSleepRepository(db: db)
+                    let session = try await AnalyzeSleepUseCase(
+                        biometricRepository: OvernightBiometricStore(samples: withoutMotion),
+                        sleepRepository: sleepRepository,
+                        strainRepository: GRDBStrainRepository(db: db),
+                        userProfileRepository: GRDBUserProfileRepository(db: db),
+                        motionRepository: repository
+                    ).execute(for: morning)
+                    let stored = try await sleepRepository.getSleepSession(for: morning)
+                    assertTest(
+                        session == nil && stored == nil,
+                        "\(label): a low heart rate is **not a night** — no session is returned and "
+                            + "nothing is written, because the one signal that separates sleep from "
+                            + "lying still awake is missing or never quiet")
+                }
             } catch {
-                assertTest(false, "The motionless-night fixture threw: \(error)")
+                assertTest(false, "The no-motion fixtures threw: \(error)")
             }
 
             // ── A window with no sustained run is absent, and writes nothing ─────────────────────────
@@ -295,7 +299,8 @@ enum SleepOnsetMathTests {
                         biometricRepository: OvernightBiometricStore(samples: samples),
                         sleepRepository: sleepRepository,
                         strainRepository: GRDBStrainRepository(db: db),
-                        userProfileRepository: GRDBUserProfileRepository(db: db)
+                        userProfileRepository: GRDBUserProfileRepository(db: db),
+                    motionRepository: FixtureMotionEpochRepository()
                     ).execute(for: morning)
                     // Read back rather than trusting the return value: "wrote nothing" is a claim about
                     // the table, and the optional is only a claim about the call.

@@ -638,7 +638,7 @@ public struct RecoveryDetailView: View {
     // would hand back `.red`, a tier the day does not have, and the `nil` case is the same yellow the
     // old private switch's `default:` produced.
     private var color: Color {
-        hasMeasurement ? (viewModel.recovery?.state.color ?? Theme.recoveryYellow) : Theme.textSecondary
+        hasScore ? (viewModel.recovery?.state.color ?? Theme.recoveryYellow) : Theme.textSecondary
     }
 
     /// A day the strap recorded nothing for now stores no row at all, so `nil` is the ordinary case
@@ -647,10 +647,14 @@ public struct RecoveryDetailView: View {
     /// about physiology where the truth is the absence of data. The dash is what that looks like, and
     /// it is what an absent row renders too, since every gate below reads through the optional.
     private var hasMeasurement: Bool { viewModel.recovery?.hasMeasurement == true }
+    /// A measured day can still have no composite: fewer than three measured days precede it, and
+    /// the score is never invented from a cold-start baseline. The HRV and resting rate below are
+    /// still real and still drawn; only the ring and the percentage are absent.
+    private var hasScore: Bool { viewModel.recovery?.hasScore == true }
     private var dash: String { "—" }
-    private var gaugeProgress: Double { hasMeasurement ? Double(viewModel.recovery?.score ?? 0) / 100 : 0 }
-    private var gaugeText: String { hasMeasurement ? "\(viewModel.recovery?.score ?? 0)%" : dash }
-    private var gaugeLabel: String { hasMeasurement ? "Recovery" : "No data" }
+    private var gaugeProgress: Double { hasScore ? Double(viewModel.recovery?.score ?? 0) / 100 : 0 }
+    private var gaugeText: String { hasScore ? "\(viewModel.recovery?.score ?? 0)%" : dash }
+    private var gaugeLabel: String { hasScore ? "Recovery" : "No data" }
 
     /// A measured day's HRV and resting heart rate, or a dash.
     ///

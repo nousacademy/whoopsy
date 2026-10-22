@@ -16,6 +16,9 @@ public final class DIContainer: @unchecked Sendable {
     public let workoutRepository: any WorkoutRepository
     public let receptiveInactivityRepository: any ReceptiveInactivityRepository
     public let stepRepository: any StepRepository
+    /// The strap's motion, one 30-second window per row. Local-only — it is the signal the sleep
+    /// onset detector reads, not one of the seven synced resources.
+    public let motionEpochRepository: any MotionEpochRepository
 
     // Use Cases
     public let streamBiometricsUseCase: StreamBiometricsUseCase
@@ -32,6 +35,10 @@ public final class DIContainer: @unchecked Sendable {
     /// `TrackStepsUseCase` — so it is started once from `MainContainerView`'s app-level task and not
     /// from any screen's load.
     public let trackStepsUseCase: TrackStepsUseCase
+    /// Long-running beside the step counter, on the same multicast stream: the pedometer reads the
+    /// batches for steps and this records them for stillness. Started from `MainContainerView`'s
+    /// app-level task, not from a screen.
+    public let recordMotionUseCase: RecordMotionUseCase
     public let preferencesRepository: any AppPreferencesRepository
     public let healthKitSync: any HealthKitSyncing
     public let whoopExportImport: any WhoopExportImporting
@@ -319,6 +326,7 @@ public final class DIContainer: @unchecked Sendable {
             ? CloudStepRepository(
                 local: GRDBStepRepository(db: db), cloud: cloud, settingsStore: syncSettings, status: syncStatus)
             : GRDBStepRepository(db: db)
+        self.motionEpochRepository = GRDBMotionEpochRepository(db: db)
         self.streamBiometricsUseCase = StreamBiometricsUseCase(
             bleRepository: bleRepository,
             biometricRepository: biometricRepository
@@ -342,7 +350,9 @@ public final class DIContainer: @unchecked Sendable {
             sleepRepository: sleepRepository,
             // The night's Sleep Need is a function of the previous day's Strain — see `SleepNeedMath`.
             strainRepository: strainRepository,
-            userProfileRepository: userProfileRepository
+            userProfileRepository: userProfileRepository,
+            // Sleep onset is a motion question — see `MotionEpoch` and `AnalyzeSleepUseCase`.
+            motionRepository: motionEpochRepository
         )
 
         // Derived on read, like the other no-schema metrics: nothing here writes, so pointing it at
@@ -386,6 +396,10 @@ public final class DIContainer: @unchecked Sendable {
         self.trackStepsUseCase = TrackStepsUseCase(
             bleRepository: bleRepository,
             stepRepository: stepRepository
+        )
+        self.recordMotionUseCase = RecordMotionUseCase(
+            bleRepository: bleRepository,
+            motionRepository: motionEpochRepository
         )
         // The same repositories the strap path writes through, so an import and a strap run land in
         // one table under one day key rather than two stores that can disagree.

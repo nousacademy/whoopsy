@@ -74,8 +74,18 @@ import SwiftUI
         week = nil
         do {
             var stored = try await repository.getRecovery(for: date)
-            if shouldCompute(for: date, stored: stored) {
+            let hasSleepSession = try await sleepRepository.getSleepSession(for: date) != nil
+            if shouldCompute(for: date, stored: stored, hasSleepSession: hasSleepSession) {
+                let provisional = stored
                 stored = try await calculate.execute(for: date)
+                // **A re-score that refuses the day must also remove the row it replaces.** The use
+                // case writes nothing when the window holds too few measured days, so without this
+                // the previous score would stay on disk and seed the very baseline it was denied.
+                // Only a strap-computed row (`source == nil`) is provisional; an imported one is a
+                // measurement the current scorer has no business deleting.
+                if stored == nil, let provisional, provisional.isLocallyComputed {
+                    try? await repository.deleteRecovery(for: date)
+                }
             }
             recovery = stored
 
@@ -141,19 +151,31 @@ import SwiftUI
 
     /// Whether to fall through to the calculating use case.
     ///
-    /// Only for today, and only when nothing has been measured for it. Both halves are load-bearing.
-    /// The `isToday` test keeps the recompute off every past day: raw samples exist only for days the
-    /// app was running, so a past day would come back as no row at all over a stored one.
-    /// The `hasMeasurement` test keeps it off a day that already holds a reading — including the case
-    /// where the strap recorded today, and the hypothetical where an export covers today — and it also
-    /// stops the tab re-scoring itself on every appearance for the rest of the day.
+    /// Today only, for `isToday`'s own reason: raw samples exist only for days the app was running,
+    /// so a past day would come back as no row at all over a stored one.
     ///
-    /// A day with no measurement is not the same as a day with no row, which is why this tests the
-    /// measurement and not `nil`: the strap may have recorded nothing yet and still record something
-    /// later today, and a placeholder row left on disk by an older build
-    /// (`RecoveryMetric.hasMeasurement`) is a legitimate candidate to fill.
-    private func shouldCompute(for date: Date, stored: RecoveryMetric?) -> Bool {
-        Calendar.current.isDateInToday(date) && stored?.hasMeasurement != true
+    /// **A stored RMSSD row is provisional once a classified night exists, and this is the gate that
+    /// replaces it.** A screen that reads a stored row never re-runs the estimator, so before this
+    /// rule every fix to the window, the filter or the difference gate left its predecessor's number
+    /// on disk until a migration deleted the day — three such migrations (`v29`–`v31`) each existed
+    /// only to clear one. Recomputing is the permanent answer: `execute` writes with an upsert keyed
+    /// on the day, so the row converges on the current rule and a later fix needs no migration.
+    ///
+    /// Two guards keep that narrow. The recompute needs a **sleep session**, because without one the
+    /// HRV window is an arbitrary eight hours and opening the tab before the night is classified would
+    /// overwrite a real row with a fallback — which is exactly how today's 58.3 ms fallback was
+    /// written. And it applies only to an **RMSSD** row: HealthKit supplies SDNN, a different
+    /// quantity, and this path must never replace it (`docs/ALGORITHMS.md`'s never-mix rule).
+    ///
+    /// A day with no measurement is not the same as a day with no row, which is why the first branch
+    /// tests the measurement and not `nil`: the strap may record something later today, and a
+    /// placeholder row left by an older build (`RecoveryMetric.hasMeasurement`) is fillable.
+    private func shouldCompute(
+        for date: Date, stored: RecoveryMetric?, hasSleepSession: Bool
+    ) -> Bool {
+        guard Calendar.current.isDateInToday(date) else { return false }
+        if stored?.hasMeasurement != true { return true }
+        return hasSleepSession && stored?.hrvMetric == .rmssd
     }
 
     /// Which metric the screen is presenting. Once HealthKit SDNN days and strap RMSSD days share

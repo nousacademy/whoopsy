@@ -29,6 +29,12 @@ public struct CloudSleepRepository: SleepRepository {
         self.calendar = calendar
     }
 
+    /// Local only, deliberately: the Worker has no delete endpoint, and a night this app classified
+    /// is this phone's own provisional row rather than a row the database holds an opinion about.
+    public func deleteSleepSession(for date: Date) async throws {
+        try await local.deleteSleepSession(for: date)
+    }
+
     public func getSleepSession(for date: Date) async throws -> SleepSession? {
         if let stored = try await local.getSleepSession(for: date) { return stored }
         guard await storesInCloud() else { return nil }

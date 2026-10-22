@@ -272,7 +272,15 @@ public struct MainContainerView: View {
             // because a drain is a loop of writes and re-running it on every state callback would
             // fight itself; the flag resets on a disconnect, so the next link drains again.
             startAutoSyncOnConnect()
-            await container.trackStepsUseCase.start()
+            // **Both streams run for the life of the app, so they cannot be awaited in sequence** —
+            // the first never returns. A task group keeps the step counter and the motion recorder
+            // alive together on the same multicast stream; neither steals the other's batches.
+            let steps = container.trackStepsUseCase
+            let motion = container.recordMotionUseCase
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await steps.start() }
+                group.addTask { await motion.start() }
+            }
         }
     }
 }

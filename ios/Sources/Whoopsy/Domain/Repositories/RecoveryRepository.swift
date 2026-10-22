@@ -38,6 +38,13 @@ public protocol RecoveryRepository: Sendable {
 }
 
 extension RecoveryRepository {
+    /// Removes a row this app computed when a re-score now refuses the day — the no-baseline case.
+    ///
+    /// **A default no-op**, because a use case or a spy has no storage to remove. The GRDB store and
+    /// its cloud decorator override it; the cloud half deliberately has no delete endpoint, so the
+    /// decorator removes the local copy only.
+    public func deleteRecovery(for date: Date) async throws {}
+
     /// Saves with no provenance label. This is the form for a caller that *is* the source — the
     /// strap path and the HealthKit import both measure what they write, so there is nothing for
     /// them to record.

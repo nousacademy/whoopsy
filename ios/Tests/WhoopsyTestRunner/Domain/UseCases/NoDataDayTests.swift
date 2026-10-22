@@ -23,6 +23,18 @@ enum NoDataDayTests {
         // "no night exists" without touching storage, which is what the sleep-pivot assertion needs,
         // while the sleep check needs the real repository to prove nothing was written.
         let sleepRepository = GRDBSleepRepository(db: db)
+        // **Recovery needs the night.** Its HRV window is the classified session, so a fixture that
+        // wants a measurement has to supply one; the absence of a session is its own test below.
+        func nightSession(on day: Date) -> SleepSession {
+            SleepSession(
+                date: day.startOfDay,
+                startTime: day.addingTimeInterval(-2 * 3600),
+                endTime: day,
+                sleepStages: [
+                    SleepStageSegment(
+                        startTime: day.addingTimeInterval(-2 * 3600), endTime: day, stage: .light)
+                ])
+        }
         // Empty, like every other store here — and unreachable for this section's night anyway, since the
         // use case returns at its sample-count guard before it ever reads a strain.
         let strainRepository = GRDBStrainRepository(db: db)
@@ -67,6 +79,15 @@ enum NoDataDayTests {
             // a measured row inside it would be counted into `daysAlreadyRecorded` and break that check's
             // premise rather than this one's.
             let measuredDay = calendar.date(byAdding: .day, value: -10, to: today)!
+            // **A score needs three measured days before it**, so the fixture supplies them. They sit
+            // at −14…−16: before the measured day being scored, and before the sparse day at −12, so
+            // neither test's premise is disturbed by a row it did not intend to exist.
+            for offset in 14...16 {
+                try await recoveryRepository.saveRecovery(
+                    RecoveryMetric(
+                        date: calendar.date(byAdding: .day, value: -offset, to: today)!,
+                        score: 50, hrvValueMs: 60, hrvMetric: .rmssd, restingHeartRate: 55))
+            }
             // Each notification carries several adjacent beats (800/850 alternating); the run is what
             // `calculateRMSSD(fromRuns:)` differences within. The old flattened form — one interval
             // per sample — differenced beats a whole notification apart and inflated the HRV.
@@ -76,10 +97,11 @@ enum NoDataDayTests {
                     heartRate: 52,
                     rrIntervalsMs: [800.0, 850.0, 800.0, 850.0])
             })
+            try await sleepRepository.saveSleepSession(nightSession(on: measuredDay))
             let measuredResult = try await CalculateRecoveryUseCase(
                 biometricRepository: nightWithRR,
                 recoveryRepository: recoveryRepository,
-                sleepRepository: NoSleepSource(),
+                sleepRepository: sleepRepository,
                 userProfileRepository: profileRepository
             ).execute(for: measuredDay)
             assertTest(
@@ -94,6 +116,35 @@ enum NoDataDayTests {
             assertTest(
                 try await recoveryRepository.getRecovery(for: measuredDay) != nil,
                 "…and it is stored under its own day key")
+
+            // ── Below a measured baseline the day is absent, and no default fills in ────────────
+            //
+            // The counterpart to the seed above: the same night with real R-R intervals, in a
+            // database with no measured days before it. The score is a z-score, so it needs a
+            // baseline — and a cold-start constant (65 ms, 54 bpm) is a default dressed as a
+            // measurement. The day is refused rather than scored against one.
+            let bareDB = LocalDatabaseManager(inMemory: true)
+            let bareRecovery = GRDBRecoveryRepository(db: bareDB)
+            let noBaseline = try await CalculateRecoveryUseCase(
+                biometricRepository: nightWithRR,
+                recoveryRepository: bareRecovery,
+                // The session lives in the main store; the recovery/profile stores are the bare one,
+                // so this isolates the baseline gate rather than the session requirement.
+                sleepRepository: sleepRepository,
+                userProfileRepository: GRDBUserProfileRepository(db: bareDB)
+            ).execute(for: measuredDay)
+            let bareStored = try await bareRecovery.getRecovery(for: measuredDay)
+            assertTest(
+                noBaseline?.hasScore == false && noBaseline?.hrvValueMs == 50.0,
+                "A night with real R-R but no measured days before it is **measured and unscored** — "
+                    + "the 50 ms HRV is kept, and no score is invented from a cold-start baseline "
+                    + "(got \(noBaseline.map { "\($0.hrvValueMs) ms, hasScore \($0.hasScore)" } ?? "nil"))")
+            assertTest(
+                bareStored?.source == RecoveryMetric.measurementSource
+                    && bareStored?.hasScore == false,
+                "…and the row is stored as a measurement so the window can build: three of these are "
+                    + "what make a fourth day scorable, and a rule that wrote nothing could never "
+                    + "bootstrap")
 
             // ── A night that yields no scorable HRV must not become a row either ─────────────────────
             //
@@ -112,10 +163,11 @@ enum NoDataDayTests {
                     heartRate: 52,
                     rrIntervalMs: index == 0 ? 800.0 : nil)
             })
+            try await sleepRepository.saveSleepSession(nightSession(on: sparseDay))
             let sparseResult = try await CalculateRecoveryUseCase(
                 biometricRepository: oneInterval,
                 recoveryRepository: recoveryRepository,
-                sleepRepository: NoSleepSource(),
+                sleepRepository: sleepRepository,
                 userProfileRepository: profileRepository
             ).execute(for: sparseDay)
             assertTest(
@@ -212,7 +264,8 @@ enum NoDataDayTests {
                 biometricRepository: EmptyBiometricStore(),
                 sleepRepository: sleepRepository,
                 strainRepository: strainRepository,
-                userProfileRepository: profileRepository)
+                userProfileRepository: profileRepository,
+                motionRepository: FixtureMotionEpochRepository())
             let session = try await sleepUseCase.execute(for: today)
             assertTest(
                 session == nil,
@@ -270,6 +323,95 @@ enum NoDataDayTests {
                 ) == nil,
                 "…and a night with no classified deep stage has no window, which is what makes the "
                     + "whole-session fallback an explicit choice rather than a silent one")
+
+            // ---- The window grows backward when the anchor run is too sparse to measure ----
+            //
+            // Measured on a real strap night: the last deep run was a single 30-second epoch, and a
+            // 28-minute run beside it held **zero** successive differences, because the strap sends
+            // at most four R-R intervals per notification and usually one. Taking the anchor alone
+            // therefore reported no HRV for a night that had plenty, so the window keeps the anchor's
+            // end and moves its start backward until the estimate has the differences it needs.
+            let sessionInterval = DateInterval(
+                start: base, end: base.addingTimeInterval(3_600))
+            let anchor = DateInterval(
+                start: base.addingTimeInterval(3_000),
+                end: base.addingTimeInterval(3_060))
+
+            /// Seven notifications of four adjacent beats: 3 successive differences each, 21 total —
+            /// just over the gate, which is what makes the boundary visible.
+            func fourBeatSamples(at seconds: [Double]) -> [BiometricSample] {
+                seconds.map { second in
+                    BiometricSample(
+                        timestamp: base.addingTimeInterval(second),
+                        heartRate: 55,
+                        rrIntervalsMs: [800, 810, 800, 810])
+                }
+            }
+            // The anchor itself holds one interval and therefore no difference at all.
+            let anchorSample = BiometricSample(
+                timestamp: anchor.start, heartRate: 54, rrIntervalsMs: [800])
+
+            // Ten-minute steps, with the earlier samples ten minutes back, so one step reaches them.
+            let previous = fourBeatSamples(at: [2_400, 2_460, 2_520, 2_580, 2_640, 2_700, 2_760])
+            let selection = CalculateRecoveryUseCase.selectHRVWindow(
+                anchor: anchor,
+                session: sessionInterval,
+                samples: previous + [anchorSample],
+                step: 600)
+
+            assertTest(
+                selection.window
+                    == DateInterval(start: base.addingTimeInterval(2_400), end: anchor.end),
+                "A sparse anchor takes the earlier samples with it: the window starts one step back "
+                    + "and keeps the anchor's **end**, the instant WHOOP's patent names (got "
+                    + "\(selection.window.start.timeIntervalSince(base))–"
+                    + "\(selection.window.end.timeIntervalSince(base)) s)")
+            assertTest(
+                selection.expandedBy == 600 && selection.hasDeepRun,
+                "…and the selection reports how far it had to expand (600 s) while still saying it "
+                    + "was anchored on a deep run")
+            assertTest(
+                selection.samples.count == 8
+                    && selection.samples.contains { $0.timestamp == anchor.start },
+                "…carrying both the seven earlier notifications and the anchor's own sample, so the "
+                    + "estimator sees the same beats the window names")
+
+            // The counterpart: an anchor that already clears the gate is returned unchanged. Without
+            // this, "expands backward" would be satisfied by a rule that always widens.
+            let richAnchor = CalculateRecoveryUseCase.selectHRVWindow(
+                anchor: anchor,
+                session: sessionInterval,
+                samples: fourBeatSamples(
+                    at: [3_000, 3_006, 3_012, 3_018, 3_024, 3_030, 3_036]),
+                step: 600)
+            assertTest(
+                richAnchor.window == anchor && richAnchor.expandedBy == 0,
+                "A deep run that already holds 21 successive differences is used exactly as selected, "
+                    + "with no expansion")
+
+            // The bound, and the no-anchor arm: without a deep run the whole session is the window,
+            // and an anchor that never reaches the gate stops at the session's own start rather than
+            // walking past it.
+            let noAnchor = CalculateRecoveryUseCase.selectHRVWindow(
+                anchor: nil,
+                session: sessionInterval,
+                samples: previous,
+                step: 600)
+            assertTest(
+                noAnchor.window == sessionInterval && !noAnchor.hasDeepRun,
+                "A night with no deep run selects the whole session and says so")
+
+            let bounded = CalculateRecoveryUseCase.selectHRVWindow(
+                anchor: DateInterval(
+                    start: base.addingTimeInterval(60), end: base.addingTimeInterval(120)),
+                session: sessionInterval,
+                samples: [BiometricSample(
+                    timestamp: base.addingTimeInterval(60), heartRate: 54, rrIntervalsMs: [800])],
+                step: 600)
+            assertTest(
+                bounded.window == sessionInterval && bounded.expandedBy == 60,
+                "Expansion stops at the session's start and returns the whole session rather than "
+                    + "a window that begins before the night")
         }
     }
 }

@@ -122,6 +122,12 @@ public struct CloudRecoveryRepository: RecoveryRepository {
     /// **`.rejected` and `.malformed` still propagate.** They are bugs rather than weather, they are the
     /// two cases `CloudSyncError` documents as never degradable, and the local row stays written in both
     /// — it went in first — so a caller's retry is a safe upsert of a day that is already correct.
+    /// Local only, deliberately: the Worker has no delete endpoint, and a row this phone computed is
+    /// not a row the database holds an opinion about.
+    public func deleteRecovery(for date: Date) async throws {
+        try await local.deleteRecovery(for: date)
+    }
+
     public func saveRecovery(_ recovery: RecoveryMetric, source: String?) async throws {
         try await local.saveRecovery(recovery, source: source)
 

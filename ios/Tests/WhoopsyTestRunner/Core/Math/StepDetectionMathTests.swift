@@ -37,6 +37,9 @@ enum StepTests {
         // moved into its file from this section's original body and their order is that body's, while
         // this one is new. It takes the store's shape for granted, so it belongs after all of them.
         try await TrackStepsUseCaseTests.run()
+        // The other consumer of the same stream. It is new rather than moved, like the block above,
+        // and it sits beside it because both are about what the motion stream is used for.
+        try await RecordMotionUseCaseTests.run()
     }
 
     // MARK: The builders the section shares across its files

@@ -165,7 +165,8 @@ enum SleepDebtMathTests {
                 biometricRepository: night,
                 sleepRepository: sleepRepository,
                 strainRepository: strainRepository,
-                userProfileRepository: profileRepository
+                userProfileRepository: profileRepository,
+                motionRepository: FixtureMotionEpochRepository()
             ).execute(for: morning)
 
             assertTest(session != nil, "A night whose samples carry an R-R series is still classified")

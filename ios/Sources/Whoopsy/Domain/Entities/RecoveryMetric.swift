@@ -16,6 +16,39 @@ public struct RecoveryMetric: Identifiable, Equatable, Sendable {
     public let hrvBaselineDeltaMs: Double?
     public let rhrBaselineDeltaBpm: Int?
 
+    /// Which producer wrote the row, as `recoveries.source` holds it — `nil` for a day this app
+    /// classified from the strap, a label for an imported one.
+    ///
+    /// **It is a read-side provenance bit, not a wire field.** A row written by an estimator that
+    /// has since been corrected must be distinguishable from one the current estimator stands
+    /// behind: the strap path is the only writer with no label, so `source == nil` is exactly the
+    /// set a repair may reconsider. The cloud mapper does not carry it, on the two-names rule —
+    /// it describes this phone's history rather than the record's own fields.
+    public let source: String?
+
+    /// The label `CalculateRecoveryUseCase` writes for a **scored** day.
+    public static let strapSource = "strap"
+
+    /// The label for a day that was measured but could not be scored: fewer than
+    /// `RecoveryScoring.minimumBaselineDays` measured days before it, and no cold-start substitute.
+    ///
+    /// **It is a measurement, not a missing one.** The HRV and resting rate are real and count toward
+    /// the baseline; only the composite is absent. The stored `score` is the reserved `0`, which
+    /// `hasScore` keeps off every ring and trend — a zero that is never drawn is a storage encoding
+    /// for "no score", not a default result.
+    public static let measurementSource = "measurement"
+
+    /// Whether the row carries a composite score. A measured but unscored day has an HRV to show and
+    /// no recovery percentage to draw, which is a different state from `hasMeasurement` (the absence
+    /// of a reading).
+    public var hasScore: Bool { hasMeasurement && source != Self.measurementSource }
+
+    /// Whether this phone produced the row, as opposed to an import. The delete-on-refusal rule is
+    /// allowed to remove only these; an imported row is a measurement from another source.
+    public var isLocallyComputed: Bool {
+        source == nil || source == Self.strapSource || source == Self.measurementSource
+    }
+
     public init(
         id: UUID = UUID(),
         date: Date = Date(),
@@ -28,7 +61,8 @@ public struct RecoveryMetric: Identifiable, Equatable, Sendable {
         spO2Percentage: Double? = nil,
         respiratoryRate: Double? = nil,
         hrvBaselineDeltaMs: Double? = nil,
-        rhrBaselineDeltaBpm: Int? = nil
+        rhrBaselineDeltaBpm: Int? = nil,
+        source: String? = nil
     ) {
         self.id = id
         self.date = date
@@ -42,6 +76,7 @@ public struct RecoveryMetric: Identifiable, Equatable, Sendable {
         self.respiratoryRate = respiratoryRate
         self.hrvBaselineDeltaMs = hrvBaselineDeltaMs
         self.rhrBaselineDeltaBpm = rhrBaselineDeltaBpm
+        self.source = source
     }
 
     /// Whether this day holds an actual measurement, as opposed to a placeholder for a day that had

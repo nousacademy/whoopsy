@@ -50,7 +50,7 @@ it — and the disclosed **anchors are physiological measurements this app canno
 | Model | WHOOP's disclosed shape | The anchor it needs | What this app substitutes |
 | :--- | :--- | :--- | :--- |
 | **Strain** | Full: HRR → piecewise weight → integrate → normalise → arctan → ×21 | The user's **anaerobic threshold** and **creatine-phosphate threshold** | a fixed 50/60/70/80/90 %HRR grid |
-| **Recovery HRV** | HRV over a short window inside the **last slow-wave-sleep episode before waking** | sleep staging | RMSSD over the last classified deep-sleep run — the same anchor, on this app's own stage labels; a night with no deep stage falls back to the whole session and says so |
+| **Recovery HRV** | HRV over a short window inside the **last slow-wave-sleep episode before waking** | sleep staging | RMSSD over the last classified deep-sleep run, **widened backward until it holds 20 successive differences** — the same episode, but a sparser-window rule rather than WHOOP's HR-quality sub-window, on this app's own stage labels; a night with no deep stage falls back to the whole session and says so |
 | **Sleep staging** | nothing — deferred to a trained classifier | the classifier | actigraphy + heart-rate dip, and a sustained-run rule for where the night starts and ends |
 | **Sleep need** | `Baseline + f1(strain) + f2(debt) − Naps` | the baseline and the debt term | a fitted linear coefficient |
 | **Stress** | `α·f(motion)·[w·HR + (1−w)·HRV]` or an HRRR quantile | a trained distribution and a motion-conditioned context | z-scores against a flat baseline |
@@ -308,17 +308,20 @@ The rationale, `[0266]`:
 
 | | this app [app] | WHOOP |
 | :--- | :--- | :--- |
-| what is measured | RMSSD over the last classified deep-sleep run, from the strap's R-R series | HRV in a short window inside the last SWS episode |
-| window duration | the last contiguous deep-sleep run; the whole session when no deep stage exists | **[not disclosed]** — "a predetermined duration", no seconds, minutes or beat counts anywhere |
+| what is measured | RMSSD over the last classified deep-sleep run, widened backward when that run is too sparse, from the strap's R-R series | HRV in a short window inside the last SWS episode |
+| window duration | the last contiguous deep-sleep run, extended backward until RMSSD has 20 successive differences; the whole session when no deep stage exists | **[not disclosed]** — "a predetermined duration", no seconds, minutes or beat counts anywhere |
 | window selection | n/a | highest **heart-rate data quality** |
 | whether it is claimed | — | **yes**, in two granted patents |
 
-**The window now matches; the measurement behind it does not.** The app selects the same anchor WHOOP
-discloses — the last classified deep-sleep run before waking — but the stage labels come from this
-app's own actigraphy-and-heart-rate stager rather than WHOOP's trained classifier (§3.1), and a night
-with no deep stage falls back to the whole session. So the selection is aligned while the input to it
-is not, and the README-level claim that the app reproduces WHOOP's recovery must not be read as
-covering this.
+**The episode now matches; the window and the staging behind it do not.** The app selects the same
+anchor WHOOP discloses — the last classified deep-sleep run before waking — but it does not select a
+short sub-window by heart-rate data quality. It starts at that run and widens **backward** until the
+estimator has 20 successive differences, because the strap's at-rest notifications are too sparse for
+a single run to support one — measured on a real night, a 28-minute deep run held zero. The stage
+labels come from this app's own actigraphy-and-heart-rate stager rather than WHOOP's trained
+classifier (§3.1). A night with no deep stage falls back to the whole session. So the episode is
+aligned while the window and the input to it are not, and the README-level claim that the app
+reproduces WHOOP's recovery must not be read as covering this.
 
 ### 2.4 What the patents do corroborate
 

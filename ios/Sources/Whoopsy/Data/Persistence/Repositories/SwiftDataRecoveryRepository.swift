@@ -13,6 +13,12 @@ public final class GRDBRecoveryRepository: RecoveryRepository, Sendable {
         try await db.getRecovery(for: date).map(Self.makeMetric)
     }
 
+    /// Removes a row the current scorer no longer stands behind — see
+    /// `RecoveryRepository.deleteRecovery(for:)`.
+    public func deleteRecovery(for date: Date) async throws {
+        try await db.deleteRecovery(for: date)
+    }
+
     public func saveRecovery(_ recovery: RecoveryMetric, source: String?) async throws {
         let record = RecoveryRecord(
             date: recovery.date,
@@ -50,7 +56,8 @@ public final class GRDBRecoveryRepository: RecoveryRepository, Sendable {
             restingHeartRate: record.restingHeartRate,
             skinTemperatureCelsius: record.skinTemp,
             spO2Percentage: record.spo2,
-            respiratoryRate: record.respiratoryRate
+            respiratoryRate: record.respiratoryRate,
+            source: record.source
         )
     }
 }

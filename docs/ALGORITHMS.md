@@ -390,14 +390,16 @@ enough back for the window to fill: `baselineWindowLookbackDays` = 180 covers ev
 data for. A short read does not fail loudly; it silently prints a baseline built from fewer days than
 the score above it used.
 
-**A mean is not a baseline until the window held observations.**
-`BaselineStatisticsMath.baseline` substitutes a **cold-start constant** when it is handed an empty
-window — 65 ms RMSSD, 40 ms SDNN, 54 bpm — which is the right thing for scoring a first day and the
-wrong thing to print, because a screen showing `65 ms` as "your HRV baseline" would be presenting a
-constant as a measurement. `RecoveryScoring.baselines(history:todayHrvMetric:...)` therefore returns
-a `Baselines` carrying each mean **and the count it was taken over**, and `Baselines.displayed`
-withholds a mean unless its count reached `minimumBaselineDays` (= 3). The counts are the whole
-mechanism; a caller that read the means directly would print the cold start.
+**A mean is not a baseline until the window held observations, and the scorer no longer substitutes
+one.** `BaselineStatisticsMath.baseline` still falls back to a **cold-start constant** on an empty
+window — 65 ms RMSSD, 40 ms SDNN, 54 bpm — but **no scoring path reaches that fallback**:
+`CalculateRecoveryUseCase` and `WhoopExportImporter` both require `minimumBaselineDays` (= 3) measured
+days before a day. The first days are still **measurements**, not absences: their HRV and resting
+rate are stored with `hasScore == false` and the reserved `0` that nothing draws, so the window can
+build and the fourth day is the first scorable one. A score against a cold-start constant would be a
+default dressed as a result. `RecoveryScoring.baselines(history:todayHrvMetric:...)` returns each
+mean **and the count it was taken over**, and `Baselines.displayed` withholds a mean below three; the
+counts are the whole mechanism, so a caller that read the means directly would print the cold start.
 
 `RecoveryScoring.score(_:)` is built on `baselines(...)`, so the Recovery detail screen's four rows —
 HRV, resting heart rate, respiratory rate, sleep performance — print the numbers the score in the
@@ -426,12 +428,11 @@ make every trend line across the join meaningless.
 
 Two properties of the walk are worth knowing when reading old scores:
 
-* **The baseline is the imported window, not a warmed-up one.** The first day has no history and lands
-  on the cold-start constants above; the 31st day has a full window. Early scores are therefore
-  computed against a thinner baseline than later ones, which is inherent to scoring a history
-  forward. No minimum-days rule is applied **to the score**: `BaselineStatisticsMath.baseline` falls
-  back for an empty window, and the coefficient-of-variation floor keeps a 1–3 value window from
-  pinning the score to the $\pm 4$ clamp. That is the deliberate difference from
+* **The baseline is the imported window, and the first days are measurements rather than scores.**
+  The first three days have no baseline; they are stored unscored and join the window, so the fourth
+  is the first scorable day. **No cold-start constant reaches a score**, on the import path or the
+  strap path. The coefficient-of-variation floor keeps a thin 1–3 value window from pinning a score
+  to the $\pm 4$ clamp once the minimum is met. That is the deliberate difference from
   `Baselines.displayed` above, which is a *display* gate: a one-day window still scores a day, it
   just is not printed as that day's baseline.
 * **A day the app already measured is never overwritten.** Imported rows are written only where no
@@ -511,7 +512,10 @@ The baseline is also **not** `UserProfile.targetSleepHours`. That field is a har
 never editable and never persisted, so comparing a real imported night against it would be comparing
 WHOOP's own need to a constant this app wrote down.
 
-What a day with **no sleep session** contributes to an otherwise-measured day is the sleep *pivot*,
+**On the strap path, no classified night is no recovery at all**: `CalculateRecoveryUseCase` refuses a
+day whose session is absent, because the HRV window is the night and an arbitrary eight hours would be
+a default window under the same metric tag. The import paths still score a day that carries an HRV and
+no night, and what such a day contributes to the session-less term is the sleep *pivot*,
 $0.70$ — the one value of that term which shifts the score by zero. Substituting a plausible night
 would turn "we do not know how you slept" into a real adjustment.
 
@@ -564,12 +568,28 @@ A tier is computed from the **score**, so it is defined only for a measured day:
 This is the model for **strap-only** nights. It reads the accelerometer and heart-rate channels, so
 it is only as real as the R-R and accelerometer round-trip is — see the note below.
 
-Each epoch is a stride of **30 samples** — nominally 30 seconds, but the stride is a count of samples
-and the span it covers is whatever those samples cover — classified by its mean heart rate against the
-profile's resting rate and its mean accelerometer magnitude against the line between a still strap and
-a moving one. `accelerationMagnitude` is $\lvert a \rvert$ in Gs, so **gravity is inside it**: a
-motionless strap reads $\approx 1.0$, not $0$, which is why the movement thresholds sit just above 1
-rather than near zero.
+Each epoch is a **30-second motion window** written by `RecordMotionUseCase` — wall time, not a count
+of samples — classified by its mean heart rate against the profile's resting rate and its mean
+accelerometer magnitude against the line between a still strap and a moving one.
+`accelerationMagnitude` is $\lvert a \rvert$ in Gs, so **gravity is inside it**: a motionless strap
+reads $\approx 1.0$, not $0$, which is why the movement thresholds sit just above 1 rather than near
+zero.
+
+**Onset is a motion decision, and the stage bands are not consulted for it.** The analyzer calls an
+epoch asleep only when its mean magnitude is below 1.05 G **and** its mean heart rate is below the
+night's measured ceiling — the lowest third's resting rate × 1.25, the estimator
+`CalculateRecoveryUseCase` already applies. Sleep is the first sustained ten-minute run of such
+epochs; wake is the end of the last. **A window with no motion epochs is an absent night**: a heart
+rate alone cannot separate sleep from lying still awake, so the app reports no night rather than
+guessing one, and a night whose motion never settles is absent for the same reason. This replaced an
+onset rule that classified epochs through the heart-rate stager, which reported a real wearer's 22:30
+bedtime as 9 PM — the window's first minute — because a cold-start resting rate of 60 bpm made "awake"
+mean above 75.
+
+The **stage bands** keep the profile's resting rate while the ceiling is measured, and the split is
+deliberate. Putting the bands on the measured 51 bpm collapsed deep sleep to 0.04 h on a real night;
+the profile's 60 left 4.8 h. The measured rate decides *when the night began*; the profile's decides
+*which stage*.
 
 1. **Awake**: mean acceleration $> 1.25$ G **or** mean heart rate $> 1.25 \times$ resting.
 2. **Deep / SWS**: mean heart rate $< 0.92 \times$ resting **and** mean acceleration $< 1.05$ G.
@@ -581,17 +601,14 @@ These are the numbers in `AnalyzeSleepUseCase`, which is the only instantiation 
 disjunction of a loose movement threshold and a heart-rate one, which makes it *easy* to be called
 awake and — the half that matters below — **impossible to be called awake while lying still**.
 
-**An epoch that carried no accelerometer drops the two motion tests rather than failing them.** The
-channel is `nil`, not $0.0$: `BiometricSample.accelerationMagnitude` is an optional and is `nil`
-unless the notification carried all three axes, which is every sample the live `0x2A37` path
-produces because nothing in the BLE layer decodes a motion payload. So such an epoch can be called
-awake on heart rate alone, and neither the deep band's nor the rem band's stillness requirement can
-refuse it — the heart rate keeps the vote. This is the opposite of what the same absence does in §5,
-and deliberately: there the gate exists to *assert* stillness, so an unmeasured window cannot pass
-it. A defaulted $0.0$ would satisfy both motion tests outright, since a fabricated free-fall reading
-is below every threshold — which is why the field is `nil` and the tests are dropped rather than
-answered. It matters because $0.0$ G is free fall and unreachable on a body at rest: a motionless
-worn strap reads $\approx 1.0$ G, with gravity inside the magnitude.
+**Motion is a separate channel from the heart-rate samples, and that is the point.** The live
+`0x2A37` samples carry no accelerometer; `RecordMotionUseCase` reads the strap's R21 stream and writes
+`motionEpochs`, so the analyzer no longer has to answer "was there motion?" from a field that is
+always absent on the live path. A window the recorder never filled is not treated as still — it is
+not a window at all, which is what makes the no-sleep case an absence rather than a guess. A
+defaulted $0.0$ would satisfy both motion tests outright, since a fabricated free-fall reading is
+below every threshold; $0.0$ G is free fall and unreachable on a body at rest, and a motionless worn
+strap reads $\approx 1.0$ G with gravity inside the magnitude.
 
 HealthKit publishes stages directly from `sleepAnalysis` (AASM-derived), which is a measurement
 rather than a heuristic and is strictly better where it exists. `HealthSleepStage` already defines

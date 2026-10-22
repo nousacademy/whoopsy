@@ -221,8 +221,25 @@ import SwiftUI
         week = nil
         do {
             var stored = try await repository.getSleepSession(for: date)
-            if Calendar.current.isDateInToday(date), stored == nil {
+            // **A session this app classified is provisional for today, and this is the gate that
+            // replaces it.** `hasWhoopSleepNeed` is the entity's one provenance bit — true for a night
+            // an import supplied, false for one `AnalyzeSleepUseCase` classified — and a strap session
+            // written before a fix to the stager (the crop window, the onset run, the resting-rate
+            // threshold) is otherwise never reclassified, because a screen that reads a stored row
+            // never re-runs the analysis. Recomputing is the permanent answer, the same one
+            // `RecoveryViewModel` now applies: the save is an upsert keyed on the day, so the night
+            // converges on the current rule. An imported night is left alone.
+            if Calendar.current.isDateInToday(date),
+                stored?.hasWhoopSleepNeed != true {
+                let provisional = stored
                 stored = try await analyze.execute(for: date)
+                // **A re-analysis that says "no night" must also remove the provisional row.** The
+                // analyzer writes nothing for an absent night, so without this the previous
+                // classification would stay on disk and Recovery would go on reading a night the
+                // current rule denies.
+                if stored == nil, provisional != nil {
+                    try? await repository.deleteSleepSession(for: date)
+                }
             }
             session = stored
             sleepConsistency = try await resolveConsistency(for: stored)
