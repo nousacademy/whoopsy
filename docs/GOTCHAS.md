@@ -396,7 +396,7 @@ The gate is `ActivityFigure.isFast`, above. `ActivityDetailViewModel.loadFasting
 
 ## The Worker's local database and its test database are two different databases, and only one of them is built for you.
 
-`npm test` constructs its D1 from `migrations/` inside the pool via `applyD1Migrations`, so the suite is always current; `wrangler dev` keeps a separate one under `backend/.wrangler/state` that starts empty. A fresh checkout that starts the dev server and curls it gets `500` with `no such table: recoveries` until `npx wrangler d1 migrations apply whoopsy-sync --local` has been run once. Reach for the Worker's own log before the code: the response body is the shared envelope and deliberately carries no detail, so the table name is only in the log — see `README.md` § The backend.
+`npm test` constructs its D1 from `migrations/` inside the pool via `applyD1Migrations`, so the suite is always current; `wrangler dev` keeps a separate one under `backend/.wrangler/state` that starts empty. A fresh checkout that starts the dev server and curls it gets `500` with `no such table: recoveries` until `npx wrangler d1 migrations apply whoopsy-sync --local` has been run once. Reach for the Worker's own log before the code: the response body is the shared envelope and deliberately carries no detail, so the table name is only in the log — see `docs/BACKEND.md` § Running it.
 
 ## The remote diagnostics path is one seam and it is metadata-only; the Sentry edge lives in the app target, not the package.
 

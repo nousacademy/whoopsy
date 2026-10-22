@@ -12,25 +12,11 @@ stores everything in a local SQLite file, and works out Recovery, Strain and Sle
 account, no analytics, nothing you cannot switch off. `Package.swift` declares exactly one
 dependency, GRDB.swift, and it is a SQLite library.
 
-**The repository does now contain a `backend/`, and it changes none of that.** It is a Cloudflare
-Worker (Hono in front of D1 + R2) with eight resources carried end to end — `recoveries` at
-`/v1/recoveries/{date}`, `workouts` at `/v1/workouts/{id}`, `strains` at `/v1/strains/{date}`,
-`sleeps` at `/v1/sleeps/{date}`, `stepCounts` at `/v1/step-counts/{date}`,
-`receptiveInactivities` at `/v1/receptive-inactivities/{id}`, `biometricSamples` at
-`/v1/biometric-samples/{id}` and `userProfiles` at `/v1/profile`, each from the route through the
-service and the repository into its own D1 migration — plus the contract generated from those route
-definitions rather than written by hand. **Eight of them are the Worker's; the app's sync speaks to
-seven** — `biometricSamples` deliberately stays on the phone, because its window is measured in
-seconds rather than days — so the two counts in this file differ on purpose, and everything the
-Worker carries is described in [§ The backend](#the-backend). **The app reaches it, and only when it
-is told where to look.** `ios/Sources/Whoopsy/Data/Networking/` is the HTTP client and `Data/Sync/`
-is the sync behind the profile page's `STORAGE` pane — the app's only network code — and both are
-inert on a build that has not been configured with a base URL *and* a credential. Such a build draws
-a sentence naming the key it is missing and hard-codes no hostname; that is the state every fresh
-clone is in, and it is the pattern settled rather than infrastructure. **A configured build is the
-other state, and it is the one this repository's owner runs**: the Worker is deployed, every `/v1`
-request it serves carries a bearer credential, and the run button on that pane is what moves a
-resource.
+**The repository also contains an optional `backend/`, and the app does not depend on it.** It is a
+self-hosted Cloudflare Worker for mirroring the app's seven synced resources; every feature works
+without it, it opens no socket until both a base URL and a credential are configured, and a fresh
+clone is inert. Its resources, routes, gates, deployment and the app-side setup are
+[`docs/BACKEND.md`](docs/BACKEND.md).
 
 **One exception, and it is opt-in and off until you configure it.** The route card's offline map hands
 its tile requests to Mapbox's SDK — a third-party binary the *Xcode target* links, because it is
@@ -44,8 +30,8 @@ feature: no switch, no SDK, no request. See [§ Optional: the offline map](#opti
 
 - **You own the data.** Everything lives in one SQLite file in the app's sandbox. Export it, back it
   up, delete it. There is no account to close and no server holding a copy.
-- **No membership.** The app costs nothing to run because it costs nothing to operate. There is no
-  backend to pay for.
+- **No membership.** The app costs nothing to run because it costs nothing to operate. The optional
+  backend is self-hosted and is not required for any feature.
 - **No analytics, no telemetry, no crash reporting.** No engagement metrics, no feature flags, no
   device fingerprinting. Nothing is measured about you that you did not ask to be measured.
 - **Transparent.** Every number traces to a formula in [`ALGORITHMS.md`](docs/ALGORITHMS.md), with its
@@ -154,6 +140,7 @@ file and `CLAUDE.md` are the only two left at the repo root.
 | [`ALGORITHMS.md`](docs/ALGORITHMS.md) | **The maths.** RMSSD/SDNN, the Strain model, the Recovery z-score, sleep staging, sleep need — with constants and citations. |
 | [`BLE_PROTOCOL.md`](docs/BLE_PROTOCOL.md) | **Bluetooth.** GATT UUIDs for all three straps, both `0xAA` envelopes, CRC layout, handshake sequence. |
 | [`CLAUDE.md`](CLAUDE.md) | **Working in this repo.** Build and test commands, and the hard-won gotchas that are not obvious from the code. Also the entry point for AI-assisted development. |
+| [`BACKEND.md`](docs/BACKEND.md) | **The optional backend.** The Worker's resources, routes, gates, deployment, and the app-side sync configuration. Not required to build or run the app. |
 
 ---
 
@@ -168,7 +155,7 @@ whoopsy/
 │   ├── App/          Xcode-only sources: iOS/, Map/, LiveActivity/, Config/
 │   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 2884-assertion suite,
 │                     mirroring Sources/Whoopsy/ file for file
-├── backend/          a Cloudflare Worker (Hono · D1 · R2) — eight resources end to end
+├── backend/          optional Cloudflare Worker — see docs/BACKEND.md
 ├── shared/           openapi.json, generated from the Worker's routes
 ├── docs/             the specs
 └── Makefile  scripts/  tmp/  CLAUDE.md  README.md
@@ -180,52 +167,9 @@ there, the project consuming the package product, and every path *inside* either
 or project-relative. That is why the app could move under `ios/` without a single source file
 changing — and why the paths below carry the prefix while the ones inside the package do not.
 
-**`backend/` holds eight resources and a generated contract, and only the first cost design.** The note
-at the top of this file says why. Its shape — route → service → repository → migration, with
-`shared/openapi.json` produced from the route definitions — was settled by `recoveries`, and the other
-seven are that shape written again: `workouts` needed its own migration and nothing else, because a
-workout is an aggregate of three tables rather than one row per day, and `strains`, `sleeps` and
-`stepCounts` needed no new shape at all — they are the day-keyed upsert the first one established, and
-the work they took was in what they *refuse* to invent rather than in how they are wired.
-`stepCounts` is the narrowest of the eight. `receptiveInactivities` is the second resource keyed on an
-`id` rather than on a day — a day holds several entries — and it is `workouts`' key with none of
-`workouts`' aggregate: one table, no children, and two nullable columns (`note`, `startedAt`) whose
-absences are the majority case rather than the exception.
-**`biometricSamples` is the third keyed on an `id`, and it is the one resource here whose read window
-is a span of instants rather than a count of days** — a day of `biometric_samples` is up to 86,400
-rows, so a day-counted window would make "give me last month" a read no Worker should be asked for.
-It is also the only adapter in this Worker that handles JSON: `rr_intervals_ms` holds a `[Double]` as
-text and is published as an array of numbers rather than as the string that is secretly JSON, because
-a series of intervals has no interior a decoder would have to agree about — which is exactly why
-`sleep_stages`, whose segments carry interior `Date`s, stays an opaque blob. And it is the one
-resource whose identity is the **client's** derivation rather than a key this app's storage already
-had: the phone's local row key is an autoincrement in that device's own SQLite that never reaches its
-entity, so two devices in one partition would both mint from 1 and silently overwrite each other; the
-wire id is therefore a client-derived string, and the Worker validates the shape and publishes that
-the derivation must be **deterministic** — so that a replay is an upsert rather than a second row —
-without reproducing a recipe, because a server that derived an id would be a second implementation of
-the client's identity.
-**`userProfiles` is the fourth resource with no date key, and it is the one whose shape deviates
-furthest — it is a singleton.** A partition holds one profile or none, so its whole surface is
-`GET /v1/profile` and `PUT /v1/profile`: no `{id}` to address a member with, no `{date}`, no `/batch`
-to chunk, and no `?days=` window to ask for. `PUT` rather than `POST`, because the app's own save is a
-whole-row upsert and there is no meaningful "create a second one". **The path is the only segment in
-this document that is singular**, because a plural collection path for a resource that can never hold
-more than one row reads as "list them" and there is no list — while the file, the type and the D1 table
-all keep the resource's own name (`userProfiles.ts`, `UserProfile`, `user_profiles`). It is also the
-only resource here whose table has **no `id` column at all** — `PRIMARY KEY (user_id)` alone — and the
-only one whose refusal code is `not_found` with **no** service error class behind it: the one rule it
-publishes (`restingHeartRate` strictly below `maxHeartRate`) is stated on the write body's `.refine()`
-and therefore in the contract, so there is nothing left for a service to refuse.
-**Three of the eight have a kebab-case path, and it is the one URL here a reader cannot spell from
-the resource's own name**: `/v1/step-counts`, where the type is `StepCount` and the table is
-`step_counts`; `/v1/receptive-inactivities`, where the type is `ReceptiveInactivity` and the table is
-`receptive_inactivities`; and `/v1/biometric-samples`, where the type is `BiometricSample` and the
-table is `biometric_samples`. `receptive-inactivities` is also the only three-segment path in the
-document, so it sorts above `/v1/recoveries` rather than among the resources it resembles — and
-`biometric-samples` sorts above it, being the document's one entry that precedes every
-`/v1/recoveries` path on the letter `b`.
-[`§ The backend`](#the-backend) below is how to run it.
+**`backend/` is optional and no app feature requires it.** It is a Cloudflare Worker with a
+generated contract; its eight resources, their routes and its gates are described in
+[`docs/BACKEND.md`](docs/BACKEND.md). The rest of this file is about the app.
 
 ---
 
@@ -386,60 +330,14 @@ frame each card has already fixed; the reasoning is in [`CLAUDE.md`](CLAUDE.md)'
 ### Optional: the sync database
 
 `STORAGE` — the third pane on the profile page — is a `DEVICE STORAGE │ WHOOPSY SYNC API` switch over
-the seven resources the app mirrors into the Worker under `backend/`. This section is the app's half of
-turning it on; the Worker's own half is [§ The backend](#the-backend).
+the seven resources the app can mirror to the optional backend. **It is off at every layer until you
+supply both halves of one decision, and neither is in this repository**: a base URL and a credential
+in `ios/App/Config/Whoopsy.local.xcconfig` (gitignored). A build with neither draws a sentence naming
+the missing key and never opens a socket.
 
-**It is off at every layer until you supply both halves of one decision, and neither is in this
-repository.**
+The server side, the credential's two homes, the `$()` xcconfig trap and the deployment steps are in
+[`docs/BACKEND.md`](docs/BACKEND.md), under **Configuring the app** and **Deployment**.
 
-| Setting | Where it goes | Why |
-| :--- | :--- | :--- |
-| `WHOOPSY_API_BASE_URL` | `ios/App/Config/Whoopsy.local.xcconfig` — **gitignored** | The deployed Worker's origin. Expands into `WHOOPSYAPIBaseURL` in `Info.plist` at build time; kept out of the repository, so a clone copies the example and pastes its own |
-| `WHOOPSY_API_TOKEN` | the same file | **The deployment's shared secret**, sent as `Authorization: Bearer`. The same string in three homes — `backend/.dev.vars` for `npm run dev`, this file for the app, and `wrangler secret put SYNC_API_TOKEN` for the deployment |
-
-**Both or neither, and that is the Worker's rule rather than a preference.** It refuses every `/v1`
-request until its own `SYNC_API_TOKEN` is set and the request's credential matches it, so a hostname on
-its own is not a half-configured build — it is an install that opens a socket on every read to collect
-a `401`. `DIContainer` reads the pair together and wires `UnconfiguredCloudSync` when *either* is
-missing, which is what a fresh clone, every SwiftUI preview and the host test runner all get.
-
-**The origin has one home, and it is the table's first row.** `shared/openapi.json` is committed, so
-its `servers[0].url` carries `/` — the OpenAPI *relative* form, meaning *the origin this document was
-fetched from* — and therefore names no deployment at all: a hostname there would be one operator's
-subdomain living in a file every reader opens and every clone regenerates. Nothing in `backend/` has
-to agree with it. The Worker serves the origin each request arrived on and `wrangler dev` names
-`http://localhost:8787`, so neither needs configuring, and `GET /openapi.json` is where you ask a
-deployment what its own hostname is. See [§ The backend](#the-backend).
-
-```bash
-cp ios/App/Config/Whoopsy.local.xcconfig.example ios/App/Config/Whoopsy.local.xcconfig
-openssl rand -base64 32 | tr '+/' '-_' | tr -d '='   # your secret — the same value in all three homes
-# edit the copy and set both keys, beside the Mapbox token if you want the offline map too
-```
-
-The `tr` is not decoration: **an xcconfig value containing `//` is truncated at that point**, because
-`//` opens a comment. Plain base64 can produce one, and the failure would be a token that silently
-differs from the deployment's by everything after the slash.
-
-**The base URL hits that rule every time, because `https://` contains it**, so it has to be written
-with an empty `$()` standing in for the second slash:
-
-```
-WHOOPSY_API_BASE_URL = https:/$()/whoopsy-sync.your-account-subdomain.workers.dev
-```
-
-Get this wrong and the build is **green** and the app's base URL is the string `https:` — an
-`NSURLSession` failure at runtime with nothing at build time to suggest why. The `$()` expands to
-nothing, so the two slashes never sit adjacently in the file and the expansion puts them back. Both
-traps are the same rule seen twice: an xcconfig value is not a string literal, and what looks like
-punctuation in one is syntax.
-
-**Your secret is yours, and two deployments sharing one would be sharing rows.** It is not in this
-repository. What it buys is bounded and worth stating plainly: it stops scanners, bots and drive-by
-requests against a discoverable `*.workers.dev` hostname. It is **not** authentication — the token is
-compiled into the app and extractable from the binary, so anyone holding the string has the same access
-you do. There is no `accounts` table, no registration and no revocation, and `X-Whoopsy-User-Id` is a
-partition name rather than a credential. Real per-install identity is a design that is not built.
 
 ### Optional: remote protocol diagnostics
 
@@ -547,173 +445,16 @@ database, and a full run leaves the file byte-identical. That is documented rath
 
 ---
 
-## The backend
+## Optional backend
 
-`backend/` is a Cloudflare Worker — [Hono](https://hono.dev) in front of D1 and R2 — and it is a
-separate toolchain from everything above. **It is deployed**, at a `*.workers.dev` hostname that is
-deliberately written down nowhere in this repository — the committed contract carries `/`, and the
-deployment names its own origin in the document it serves — and it refuses every `/v1` request that
-does not carry the deployment's own
-secret. The app does reach it, and only when it is told where to look: `ios/Sources/Whoopsy/Data/Networking/`
-is the HTTP client and `Data/Sync/` is the sync written on it, and both are inert on any build whose
-`Info.plist` expands `WHOOPSYAPIBaseURL` or `WHOOPSYAPIToken` to nothing — which is every fresh clone,
-so the sync's screen reports an unconfigured database and nothing else happens. Neither half of that
-credential is in this repository, and [§ Optional: the sync database](#optional-the-sync-database)
-above is where a clone supplies its own.
+`backend/` is a Cloudflare Worker ([Hono](https://hono.dev) in front of D1 and R2) for optionally
+mirroring the app's seven synced resources. **It is not required**: the app is offline-first, every
+feature works without it, and a fresh clone is inert until both a base URL and a credential are
+configured.
 
-Eight resources are carried the whole way: `recoveries` at `/v1/recoveries/{date}`, `strains` at
-`/v1/strains/{date}`, `sleeps` at `/v1/sleeps/{date}` and `stepCounts` at `/v1/step-counts/{date}` —
-one row per day each, keyed on the date — plus `workouts` at `/v1/workouts/{id}`,
-`receptiveInactivities` at `/v1/receptive-inactivities/{id}` and `biometricSamples` at
-`/v1/biometric-samples/{id}`, each keyed on an id because a day holds several rather than one, and
-`userProfiles` at `/v1/profile`. Each
-runs from the route through the service and the repository into its own D1 migration,
-and every one of them but `userProfiles` takes a `POST /batch` chunk beside its single-row verbs. `workouts` is the one that is not a
-single row: a session carries its own `route` and `splits` inline, so a session is one request and
-never three, and the server writes parent and children in one transaction. `receptiveInactivities` is
-the other id-keyed resource and it is a single row: an entry has a name, an optional start time and an
-optional note, and **no end** — which is why it is a table of its own rather than a `workouts` row,
-since `workouts`' two instants are `NOT NULL` and the half-open overlap read Home's `ACTIVITIES` card
-is built on depends on them. Both of its nullable columns are nullable rather than optional on the
-wire, so an absent note has one spelling (`null`) and `""` is refused; and its read orders
-`date ASC, started_at ASC NULLS LAST, name ASC`, because SQLite would otherwise sort untimed entries
-above the timed ones on their own day and the untimed entry is the majority case. `biometricSamples`
-is the third id-keyed resource and the one whose collection read is a different shape: a sample is a
-single row with no children, so it carries the `PUT`/`GET /{id}` pair and a batch like the other two,
-but its window takes **two instants** rather than a day and a day-count — a day of that table is up to
-86,400 rows, so the bound is a span (`MAX_BIOMETRIC_SAMPLE_WINDOW_SECONDS`, `604_800`, a constant in
-this resource's own unit rather than an alias of the four day-keyed windows') and **both bounds are
-required**, because a defaulted `to` would be the Worker's clock answering the caller's question.
-**Its id is the client's derivation rather than a key this app's storage already had**: a sample has no
-identifier that can travel — the phone's local row key is an autoincrement in that device's own SQLite
-and never reaches its entity — so the contract requires a UUID *and* that it be deterministic, and
-takes no view of the recipe. It is also **the only adapter in this Worker that handles JSON**:
-`rr_intervals_ms` holds a `[Double]` as text and is published as an array of numbers, which is the
-honest self-describing shape for a series with no interior a decoder would have to agree about — the
-same argument that keeps `sleep_stages`, whose segments carry interior `Date`s, an opaque blob. Two
-more of its decisions are worth naming because they are absences rather than values: the series is
-published under one name only (`rrIntervalsMs`; the legacy lossy `rrIntervalMs` scalar is deliberately
-not carried at all), and nine of its twelve wire fields are nullable with **no default in either
-direction** — a channel the strap did not report says `null`, and a substituted `0.0` accelerometer
-axis would be free fall, on the *still* side of every movement threshold. **`userProfiles` is the
-eighth and it is the one whose shape is a singleton**, so every clause above stops applying to it at
-once: no key on the path (`/v1/profile`, the document's only singular segment), no `/batch` chunk, no
-window, no `{id}`, no `id` column — `PRIMARY KEY (user_id)` alone — and a `PUT` rather than a `POST`,
-because a whole-row upsert is what the app's own save is and there is no second profile to create. Its
-absence is a `404 not_found` rather than `no_measurement_for_day`, since no day is the subject; and it
-is the only resource here whose service refuses nothing at all, because the one rule it holds — a
-resting heart rate strictly below the maximal one — is published on the write body's `.refine()` and
-therefore in `shared/openapi.json`, so a `UserProfileError` would be a class no code path could
-produce. **No resource here
-has a delete route**, so a client can write an entry and read it back but cannot remove it through this
-API. **The four day-keyed resources are not copies of each other** — `strains`, `sleeps` and
-`stepCounts` share a shape (an upsert, a range read, a chunk) and not an absence rule, because
-`strains` stores a `hasMeasurement` flag that can deny a row which exists while `sleeps` and
-`stepCounts` have no such column and answer a day with no row as a `404`; a night's day key is its
-**wake** day; and `stepCounts` is the narrowest of the three, with no `source` and no nullable column
-at all, because the strap is its only producer.
-`shared/openapi.json` is **generated from the route definitions** and served live by the Worker at
-`GET /openapi.json`, so the committed contract and the
-running one cannot disagree.
+Its eight resources, routes, gates, deployment, local development and the app-side configuration are
+[`docs/BACKEND.md`](docs/BACKEND.md).
 
-```bash
-cd backend
-npm ci                     # or `npm install` the first time
-npm run typecheck          # tsc --noEmit, three projects
-npm test                   # the real Worker against a local D1 — see the warning below
-npm run openapi            # rewrites ../shared/openapi.json
-make -C .. backend-check   # all of the above, failing if the contract is stale
-```
-
-**It requires a credential, and the credential is one shared secret rather than an identity.** Every
-`/v1` path refuses a request that does not carry `Authorization: Bearer <SYNC_API_TOKEN>` — the
-deployment's own secret, set with `wrangler secret put` and never in this repository. `GET /health` and
-`GET /openapi.json` are the two paths that answer without it. **What that buys is bounded and worth
-stating plainly**: it stops scanners, bots and drive-by requests against a discoverable `*.workers.dev`
-hostname. It does **not** authenticate a person — the same string is compiled into the app and
-extractable from the binary, so anyone holding it has the same access you do.
-
-**`X-Whoopsy-User-Id` is not a credential and is checked second.** It selects which rows a request is
-about, the Worker hashes it and never stores it, and nothing verifies it as an identity — what makes it
-unguessable is its length, not anything the server checks. There is no `accounts` table, no
-registration and no revocation; the migration carries a `user_id` column from the first file so the
-table already has its partition the day a verified one exists, and that is a design this repository has
-not built.
-
-**A deployment with no secret refuses everything, and it answers `500` rather than `401`.** An unarmed
-Worker is the operator's problem and not the caller's, and a `401` there would tell a person holding a
-curl that their credential was wrong when the truth is that there is no secret for it to be wrong
-about. The body is the shared envelope and carries no detail; the sentence naming `SYNC_API_TOKEN` is
-in the Worker's own log. **Set the secret before you deploy** — `wrangler deploy` does not fail on a
-missing one, it ships a Worker that refuses every request.
-
-**It is deployed, and the deployment belongs to one account.** `wrangler deploy` ran on 2026-10-07, and
-the hostname it printed is written down in exactly one place: the gitignored
-`ios/App/Config/Whoopsy.local.xcconfig`, which is what the app reads. It is not in
-`shared/openapi.json` — that file is committed, and its `servers[0].url` carries `/` so that it names
-no deployment at all. **Nothing reads that field** — the client is handed its base URL through
-`Info.plist` — so a fork regenerates the contract unchanged and nothing breaks; it is documentation.
-The live document reads its own instead: `GET /openapi.json` names the origin the request arrived on,
-which a deployed Worker and `wrangler dev` both answer correctly with nothing configured. The two
-Cloudflare resources predate the
-deploy: the `whoopsy-sync` D1 database (region ENAM) and the `whoopsy-exports` R2 bucket exist in that
-account, and `wrangler.toml`'s `database_id` holds the id `wrangler d1 create` returned — so
-`wrangler d1 migrations apply whoopsy-sync --remote` writes to a real schema, and it has been run
-there. A fresh clone needs neither `wrangler d1 create` nor `wrangler r2 bucket create` — the names are
-taken and both commands fail on an existing resource — only `migrations apply --remote` if it wants the
-remote schema, `--local` for `wrangler dev`, and **its own** `SYNC_API_TOKEN`: the secret belongs to the
-deployment, and two deployments sharing one would be sharing rows.
-
-To exercise it by hand, note that **`wrangler dev`'s database and the test suite's are two different
-databases.** `npm test` builds its own from `migrations/` on every run; `wrangler dev` keeps one under
-`backend/.wrangler/state` that starts empty, so a fresh checkout that curls the dev server gets
-`500` with `no such table: recoveries` until:
-
-```bash
-npx wrangler d1 migrations apply whoopsy-sync --local
-npx wrangler dev --port 8787
-```
-
-**And it answers `500` on every `/v1` request until `backend/.dev.vars` holds a secret.** `wrangler
-dev` reads that file — gitignored, with `backend/.dev.vars.example` committed as the template — and
-it is where the local `SYNC_API_TOKEN` goes, and the only thing that goes there:
-
-```bash
-cp .dev.vars.example .dev.vars    # from backend/, then paste your own token after the `=`
-curl -s localhost:8787/v1/recoveries?days=2 \
-  -H "Authorization: Bearer $SYNC_API_TOKEN" -H "X-Whoopsy-User-Id: $ANY_32_CHAR_STRING"
-```
-
-Without it the gate throws rather than returning `401`, which is deliberate and is the paragraph
-above: an unarmed Worker is the operator's problem, not the caller's. `GET /health` and `GET
-/openapi.json` answer either way.
-
-The check that the two readings of the contract really are one document is a shell step rather than a
-spec, because a Worker has no filesystem — and `/openapi.json` is one of the two paths that needs no
-credential, so this works on an unarmed dev server:
-
-```bash
-curl -s localhost:8787/openapi.json | grep -v '"url"' | diff - <(grep -v '"url"' ../shared/openapi.json) \
-  && echo IDENTICAL
-```
-
-**The `grep` drops one line, and it is the one line the two readings are allowed to disagree about.**
-`servers[0].url` is the document's only `"url"` line (`grep -c '"url"' ../shared/openapi.json`) and the
-only field in it that belongs to a *deployment* rather than to the API: the dev server names
-`http://localhost:8787`, which is the origin its request arrived on, while the committed file names
-`/`, which is the origin a document is served from. Everything else — the paths, the schemas, the
-pretty-printing — comes out of one `getOpenAPI31Document` call on one `createApp()`, which is what
-this compares. The filter is exact rather than approximate, which is why it is a `grep` and not a
-hand-trimmed `diff`.
-
-**Local development runs late-2024 `workerd` while a deployment would run `compatibility_date`'s
-semantics.** `wrangler` is pinned to exactly `3.95.0` because that is what
-`@cloudflare/vitest-pool-workers` pairs with, and it warns on every run that `2026-10-01` is ahead of
-the runtime it ships and falls back to `2024-12-05`. Nothing in this resource uses a flag from after
-that date, so the fallback is inert here — but a feature that did would be green locally and wrong
-deployed. Moving to wrangler 4 is a coordinated bump and is not this pass.
-
----
 
 ## Roadmap and contributing
 

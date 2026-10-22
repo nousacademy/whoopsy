@@ -42,7 +42,7 @@ that target is the Swift pair and must stay runnable without a Node install:
 make backend-check               # npm ci + typecheck + test + regenerate the contract, then diff it
 npm --prefix backend test        # just the Worker's suite (real Worker, local D1, no deploy)
 npm --prefix backend run openapi # rewrite shared/openapi.json from the route definitions
-npm --prefix backend run dev     # wrangler dev on :8787 — see README § The backend
+npm --prefix backend run dev     # wrangler dev on :8787 — see docs/BACKEND.md
 ```
 
 `make backend-check` is the four steps in one argument — install, prove the types, prove the behaviour,
