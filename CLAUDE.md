@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Written in Swift 6 with strict concurrency (`async`/`await`, `AsyncStream`, `Sendable`), structured as Clean Architecture + DDD. The SwiftPM package has one dependency: GRDB.swift (SQLite). The Xcode app target links two SDKs the package deliberately does not — MapboxMaps and Sentry — each behind a `#if canImport` in `ios/App/`, so the host build and the suite take the guarded fallback and never compile the SDK.
 
-**The repo is a monorepo, and this file is about the app in it.** The SwiftPM package and `Whoopsy.xcodeproj` live under `ios/`; `backend/` is a Cloudflare Worker (Hono in front of D1 + R2), and `shared/openapi.json` is the contract the two halves agree on. **The Worker carries eight resources and has its own toolchain and its own gate — that is `docs/BACKEND.md`.** The iOS half syncs **seven** of the eight — `biometricSamples` deliberately stays on the phone, because its window is measured in seconds rather than days — so a sentence below saying "seven resources" is describing the client's sync and one saying "eight" is describing what the Worker carries. Paths below are written **from the repo root**, so anything naming a real file carries the `ios/` prefix; the unprefixed layer names (`Data/BLE/`, `Core/Math/`, `Presentation/DesignSystem/`, `App/DependencyInjection/`) are shorthand for paths inside `ios/Sources/Whoopsy/` and were never root-resolvable.
+**The repo is a monorepo, and this file is about the app in it.** The SwiftPM package and `Whoopsy.xcodeproj` live under `ios/`; `backend/` is a Cloudflare Worker (Hono in front of D1 + R2), and `shared/openapi.json` is the contract the two halves agree on — generated, with a readable slice per resource beside it at `shared/<segment>/openapi.json`. **The Worker carries eight resources and has its own toolchain and its own gate — that is `docs/BACKEND.md`.** The iOS half syncs **seven** of the eight — `biometricSamples` deliberately stays on the phone, because its window is measured in seconds rather than days — so a sentence below saying "seven resources" is describing the client's sync and one saying "eight" is describing what the Worker carries. Paths below are written **from the repo root**, so anything naming a real file carries the `ios/` prefix; the unprefixed layer names (`Data/BLE/`, `Core/Math/`, `Presentation/DesignSystem/`, `App/DependencyInjection/`) are shorthand for paths inside `ios/Sources/Whoopsy/` and were never root-resolvable.
 
 **Where to look.** `## Commands` and `### Tests` are how to build and run it. **`## Pages` is the inventory of every screen the app has** — each page, the view model behind it, and how it is reached — and it is the section to update when a page is added, moved or renamed. `## Architecture` is the layers and the wiring rules, `### Persistent gotchas` is what has already gone wrong here once, and `### Reference docs` is the specs.
 
@@ -41,7 +41,7 @@ that target is the Swift pair and must stay runnable without a Node install:
 ```bash
 make backend-check               # npm ci + typecheck + test + regenerate the contract, then diff it
 npm --prefix backend test        # just the Worker's suite (real Worker, local D1, no deploy)
-npm --prefix backend run openapi # rewrite shared/openapi.json from the route definitions
+npm --prefix backend run openapi # rewrite shared/openapi.json and one slice per resource
 npm --prefix backend run dev     # wrangler dev on :8787 — see docs/BACKEND.md
 ```
 
@@ -152,7 +152,7 @@ The real suite lives under `ios/Tests/WhoopsyTestRunner/` (a hand-rolled assert 
 **Read the summary line, not the scrollback:**
 
 ```
-SUITE sections=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24 assertions=2972 failed=0 exit=0
+SUITE sections=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25 assertions=3144 failed=0 exit=0
 ```
 
 `sections=` is the field that catches a dropped section, `assertions=` the field that catches a section that ran but stopped asserting, and the exit code is trustworthy. Sections live in `Support/SectionRegistry.swift`'s `testSections()`, which `runSections(_:)` iterates and the `Task` awaits inside a `do`/`catch`, and `finishSuite` is the single exit path for every outcome — an unobserved throw, or a hang at the 30 s timeout, would otherwise idle out the `RunLoop` and exit **0**. A `WHOOPSY_SECTIONS` value naming a section that does not exist exits 1 rather than running nothing and reporting success.
@@ -399,7 +399,7 @@ Nine skills under `.claude/skills/` route work that is easy to get wrong:
 - **`api-versioning`** — when the Worker's API version or its `/v1` address changes, or when a route,
   DTO, schema or bound changes in a way that might force one. It walks the coupled sites — `API_VERSION`
   and `API_PREFIX` in `backend/src/openapi.ts`, the `version` in `backend/package.json`, the eight
-  mounts, the `version` on `GET /health`, the **generated** `shared/openapi.json`, the client's seven
+  mounts, the `version` on `GET /health`, the **generated** `shared/openapi.json` and its per-resource slices, the client's seven
   paths in `SyncedResource.swift`, and `docs/BACKEND.md` § Versioning. Its one hard rule is that **a
   change is a version event only when it forces a consumer to alter code** — a rewrite behind an
   unchanged shape is not one, however large it is.

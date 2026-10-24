@@ -1,0 +1,552 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Whoopsy Sync API — receptive-inactivities",
+    "version": "0.1.0",
+    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold. This file is the `receptive-inactivities` slice of that document: the `/v1/receptive-inactivities` paths and the components they reference. `shared/openapi.json` is the whole contract."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it."
+    }
+  ],
+  "paths": {
+    "/v1/receptive-inactivities": {
+      "get": {
+        "summary": "Read a window of entries",
+        "description": "Every entry filed on a day in an inclusive window ending on `endingOn`, ordered by day, then by start time with untimed entries last, then by name. The answer is a bare array with **no padding**: a day inside the window holding no entry is simply absent, and an empty array means nothing in the window was recorded. **`days=0` is the ordinary per-day read** — a day holds several entries, so there is no per-day slot for one to occupy and no `/{date}` endpoint to reach for instead.",
+        "parameters": [
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 4000,
+              "description": "How many days back from `endingOn` to reach. **The window is inclusive at both ends, so `days=14` spans 15 calendar days** — this mirrors the app's own window exactly, deliberately, so a ported call returns identical rows. `0` means the single day `endingOn`, which is the app's ordinary per-day read.",
+              "example": 0
+            },
+            "required": false,
+            "name": "days",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The newest day in the window, inclusive. Optional only because the server has no notion of the caller's local today — its own is UTC, and a device eight hours behind it is a day out. **Clients should always send this.**",
+              "example": "2026-08-22"
+            },
+            "required": false,
+            "name": "endingOn",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entries in the window, oldest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReceptiveInactivity"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/receptive-inactivities/{id}": {
+      "get": {
+        "summary": "Read one entry",
+        "description": "One entry, or `404 not_found` if this partition holds no such id. An entry has nothing filed under it — no route, no splits, no children of any kind — so this is the whole of the row and there is nothing a second request could fetch.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "description": "A UUID string. Any version and either case, because `UUID(uuidString:)` accepts both — the app mints v4 ids for a hand-entered entry and derives v5 ids from an entry's date, type and text for an import. Not decoration: the app **drops a row whose id will not parse**, so an id refused here is a row that would otherwise be stored and never shown.",
+              "example": "7805a9df-1064-5201-9c99-378fd38d1ed6"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entry, as the database holds it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceptiveInactivity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`id` is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No entry with that id in this partition.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Write one entry",
+        "description": "Insert or replace the entry — the upsert the app's own `save` is, which is INSERT-or-UPDATE by primary key. Answers with the row **read back from the database**, so a caller can confirm that a `null` stayed `null` rather than being folded into an empty string or a midnight. There are no children to replace, so unlike a session's `PUT` an omitted field cannot silently delete a stored child — the entire row is these six fields.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "description": "A UUID string. Any version and either case, because `UUID(uuidString:)` accepts both — the app mints v4 ids for a hand-entered entry and derives v5 ids from an entry's date, type and text for an import. Not decoration: the app **drops a row whose id will not parse**, so an id refused here is a row that would otherwise be stored and never shown.",
+              "example": "7805a9df-1064-5201-9c99-378fd38d1ed6"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceptiveInactivityWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored entry, as the database holds it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceptiveInactivity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id, the header or the body failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/receptive-inactivities/batch": {
+      "post": {
+        "summary": "Write a chunk of entries",
+        "description": "Insert or replace up to `MAX_BATCH_RECEPTIVE_INACTIVITIES` entries in one request — the shape the app's import needs, where a sixty-entry notes log is one of these instead of sixty round trips. Every entry is keyed on the same `(userId, id)` pair the single-entry `PUT` writes, and the app derives that id from the entry's own date, type and text, so a chunk replayed after a timeout is safe: **it rewrites each entry with the values it already holds and the row count does not move.** The whole chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — an entry the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection. `written` counts entries.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceptiveInactivityBatchWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many entries the database reported writing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceptiveInactivityBatchResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The header or the body failed validation — including a chunk larger than the cap and an id carried twice.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ReceptiveInactivityBatchResult": {
+        "type": "object",
+        "properties": {
+          "written": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many entries the database reported writing. On this resource an entry is one row and has no children, so this is also the row count. A replayed chunk reports the same number as the first send, not zero.",
+            "example": 62
+          }
+        },
+        "required": [
+          "written"
+        ],
+        "description": "The outcome of a bulk write. It reports what the database did, not what was on disk afterwards."
+      },
+      "ReceptiveInactivityBatchWrite": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReceptiveInactivityBatchRow"
+            },
+            "minItems": 1,
+            "maxItems": 200,
+            "description": "The entries to write, at least one and at most 200. Each id must appear exactly once. Unlike a session, an entry is one row and has no children, so this cap is the whole bound on a request's work."
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "additionalProperties": false,
+        "description": "A chunk of entries to insert or replace. Adds and overwrites; it never deletes, so an entry the caller leaves out is left alone rather than removed."
+      },
+      "ReceptiveInactivityBatchRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "description": "A UUID string. Any version and either case, because `UUID(uuidString:)` accepts both — the app mints v4 ids for a hand-entered entry and derives v5 ids from an entry's date, type and text for an import. Not decoration: the app **drops a row whose id will not parse**, so an id refused here is a row that would otherwise be stored and never shown.",
+            "example": "7805a9df-1064-5201-9c99-378fd38d1ed6"
+          },
+          "date": {
+            "type": "string",
+            "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+            "example": "2026-08-22"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What the entry was — `Dream`, `Meditation`, and whatever a future producer names. **A label and not a measurement**, which is why it is a string: the app resolves it through its own vocabulary table rather than requiring one of a closed set, so a new producer can join this path without a schema change. Never empty: a nameless entry is not a shape the producer can make.",
+            "example": "Dream"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The entry's own prose, or `null` when nothing was written. **`null` is not `\"\"`** — the column being nullable is what gives absence a spelling, and an empty string is a value nobody supplied. The text is both a value and, on the app's side, an input to the row's derived id, so a re-worded entry leaves its predecessor beside it rather than overwriting it.",
+            "example": "Standing in a house that was not mine."
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A time-of-day on `date`, or `null` for an untimed entry — which is the ordinary case rather than the exception, and every one of the app's 62 bundled rows is untimed. **The first nullable instant in this API**: a session has a beginning by definition, while a note routinely has no recorded time at all, and defaulting one to midnight would sort and print as a time nobody gave. The client rebuilds the hour and minute onto `date`'s own year, month and day, so a non-null value is always on the day beside it.",
+            "example": "2026-08-22T03:40:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "name",
+          "note",
+          "startedAt"
+        ],
+        "additionalProperties": false,
+        "description": "One entry of a bulk write. The id is required and carried in the body, because a batch has no path to put it in."
+      },
+      "ReceptiveInactivityWrite": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+            "example": "2026-08-22"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What the entry was — `Dream`, `Meditation`, and whatever a future producer names. **A label and not a measurement**, which is why it is a string: the app resolves it through its own vocabulary table rather than requiring one of a closed set, so a new producer can join this path without a schema change. Never empty: a nameless entry is not a shape the producer can make.",
+            "example": "Dream"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The entry's own prose, or `null` when nothing was written. **`null` is not `\"\"`** — the column being nullable is what gives absence a spelling, and an empty string is a value nobody supplied. The text is both a value and, on the app's side, an input to the row's derived id, so a re-worded entry leaves its predecessor beside it rather than overwriting it.",
+            "example": "Standing in a house that was not mine."
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A time-of-day on `date`, or `null` for an untimed entry — which is the ordinary case rather than the exception, and every one of the app's 62 bundled rows is untimed. **The first nullable instant in this API**: a session has a beginning by definition, while a note routinely has no recorded time at all, and defaulting one to midnight would sort and print as a time nobody gave. The client rebuilds the hour and minute onto `date`'s own year, month and day, so a non-null value is always on the day beside it.",
+            "example": "2026-08-22T03:40:00.000Z"
+          }
+        },
+        "required": [
+          "date",
+          "name",
+          "note",
+          "startedAt"
+        ],
+        "additionalProperties": false,
+        "description": "The fields of an entry, less its identity — the id comes from the path. `date` **is** here: this row's start time is optional, so the day cannot be derived from it and must be stated."
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "invalid_request",
+                  "unauthorized",
+                  "no_measurement_for_day",
+                  "not_found",
+                  "route_not_found",
+                  "internal_error"
+                ],
+                "description": "A stable, machine-readable reason. Switch on this rather than on the message.",
+                "example": "invalid_request"
+              },
+              "message": {
+                "type": "string",
+                "description": "A human-readable explanation. Not stable — do not parse it.",
+                "example": "date: must be a calendar day in YYYY-MM-DD form"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "description": "Every non-2xx response this API produces, from every route."
+      },
+      "ReceptiveInactivity": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "description": "A UUID string. Any version and either case, because `UUID(uuidString:)` accepts both — the app mints v4 ids for a hand-entered entry and derives v5 ids from an entry's date, type and text for an import. Not decoration: the app **drops a row whose id will not parse**, so an id refused here is a row that would otherwise be stored and never shown.",
+            "example": "7805a9df-1064-5201-9c99-378fd38d1ed6"
+          },
+          "date": {
+            "type": "string",
+            "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+            "example": "2026-08-22"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What the entry was — `Dream`, `Meditation`, and whatever a future producer names. **A label and not a measurement**, which is why it is a string: the app resolves it through its own vocabulary table rather than requiring one of a closed set, so a new producer can join this path without a schema change. Never empty: a nameless entry is not a shape the producer can make.",
+            "example": "Dream"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The entry's own prose, or `null` when nothing was written. **`null` is not `\"\"`** — the column being nullable is what gives absence a spelling, and an empty string is a value nobody supplied. The text is both a value and, on the app's side, an input to the row's derived id, so a re-worded entry leaves its predecessor beside it rather than overwriting it.",
+            "example": "Standing in a house that was not mine."
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A time-of-day on `date`, or `null` for an untimed entry — which is the ordinary case rather than the exception, and every one of the app's 62 bundled rows is untimed. **The first nullable instant in this API**: a session has a beginning by definition, while a note routinely has no recorded time at all, and defaulting one to midnight would sort and print as a time nobody gave. The client rebuilds the hour and minute onto `date`'s own year, month and day, so a non-null value is always on the day beside it.",
+            "example": "2026-08-22T03:40:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "name",
+          "note",
+          "startedAt"
+        ],
+        "description": "One entry in the receptive-inactivity log: what it was, which day it belongs to, and optionally when and what was written. Nothing on this row is measured — no strain, no heart rate, no steps — so an absent value is `null` and never a zero-filled stand-in."
+      }
+    }
+  }
+}

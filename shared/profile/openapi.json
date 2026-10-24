@@ -1,0 +1,351 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Whoopsy Sync API — profile",
+    "version": "0.1.0",
+    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold. This file is the `profile` slice of that document: the `/v1/profile` paths and the components they reference. `shared/openapi.json` is the whole contract."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it."
+    }
+  ],
+  "paths": {
+    "/v1/profile": {
+      "get": {
+        "summary": "Read the caller's profile",
+        "description": "The one profile this caller owns, or `404 not_found` if the partition holds none. **There is no empty-row state here and no window and no list**: a profile is a singleton, so this endpoint answers the whole of what the resource is, and a client that gets a `404` has a user who has not filled the form in rather than a user whose profile is blank. The app's own cold-start 190/60 pair is applied by the *client* when it merges that absence with its local copy — this API does not publish it, because a server that did would be inventing a zone table and calling it a row.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The header failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "This partition holds no profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Write the caller's profile",
+        "description": "Insert or replace the caller's profile — the whole-row upsert the app's own `saveUserProfile` is. Answers with the row **read back from the database**, not with the request echoed, so a caller can see that a `weightKg` sent as `null` is still `null` rather than a `0` some layer defaulted. **Every field must be sent**: this is a whole-row write, so a field sent as `null` is cleared and a field omitted is a `400` — there is no partial update on this resource and a client changing one field reads the row, changes it and sends the whole thing back.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserProfileWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored profile, as the database holds it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The header or the body failed validation — including a body naming its own identity, and a resting heart rate not strictly below the maximal one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "UserProfileWrite": {
+        "type": "object",
+        "properties": {
+          "maxHeartRate": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "The user's maximum heart rate, in bpm. Required: this is one of the two inputs the zone table is built from, so an absent one is not a missing reading, it is a table that cannot be computed. Must be **strictly greater** than `restingHeartRate` — see the write body. No upper bound, deliberately: the app's own form band is a Presentation-layer guard, and publishing it here would refuse a profile the app can hold.",
+            "example": 190
+          },
+          "restingHeartRate": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "The user's resting heart rate, in bpm. Required, for `maxHeartRate`'s reason. Positive: a rate of zero is not a measurement, it is an absent one, and an absent one has no row here.",
+            "example": 60
+          },
+          "weightKg": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Body weight in kilograms, or `null` when the user has not said. **The one field here a model divides into**: the calorie estimate is scaled by it, so a fabricated value would scale a figure by a body nobody described, and a `0` would be a division with no answer. Positive, or absent — never `0`.",
+            "example": 75
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The user's first name, or `null` when they have not given one. **`null` is not `\"\"`** — the column being nullable is what gives absence a spelling, and an empty string is a value nobody supplied. Nothing in the app reads this: it is a declared fact, saved and drawn back onto the form.",
+            "example": "Alex"
+          },
+          "birthDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The user's birthday as a calendar day, `YYYY-MM-DD`, or `null` when unset. **A day key and not an instant**: the user supplies a date, not a moment, and an instant would carry a time of day and a UTC offset they never gave. The app's own column is a `datetime`, so the client is the one that converts — and it converts on both sides, which is where a `startOfDay` snap can be got wrong.",
+            "example": "1994-03-17"
+          },
+          "gender": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "man",
+              "woman",
+              "nonBinary",
+              "preferNotToSay"
+            ],
+            "description": "One of the app's four words — `man`, `woman`, `nonBinary`, `preferNotToSay` — or `null` when the user has not said, which is a distinct answer from any of the four. Closed rather than a free string, because the app resolves an unrecognised word to `null` rather than guessing at it: an open field would accept values every reader silently drops.",
+            "example": "preferNotToSay"
+          },
+          "heightCm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Height in centimetres, or `null` when the user has not said. Positive, for `weightKg`'s reason and with a weaker one behind it: nothing in the app divides by a height, but a height of zero is not a height, and the absence already has a spelling.",
+            "example": 178
+          }
+        },
+        "required": [
+          "maxHeartRate",
+          "restingHeartRate",
+          "weightKg",
+          "name",
+          "birthDate",
+          "gender",
+          "heightCm"
+        ],
+        "additionalProperties": false,
+        "description": "A whole profile. There is no path identity to omit — the caller's key says whose row this is — so the body carries every stored field and nothing else. This is a **whole-row** write: a field sent as `null` is cleared, not left alone."
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "invalid_request",
+                  "unauthorized",
+                  "no_measurement_for_day",
+                  "not_found",
+                  "route_not_found",
+                  "internal_error"
+                ],
+                "description": "A stable, machine-readable reason. Switch on this rather than on the message.",
+                "example": "invalid_request"
+              },
+              "message": {
+                "type": "string",
+                "description": "A human-readable explanation. Not stable — do not parse it.",
+                "example": "date: must be a calendar day in YYYY-MM-DD form"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "description": "Every non-2xx response this API produces, from every route."
+      },
+      "UserProfile": {
+        "type": "object",
+        "properties": {
+          "maxHeartRate": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "The user's maximum heart rate, in bpm. Required: this is one of the two inputs the zone table is built from, so an absent one is not a missing reading, it is a table that cannot be computed. Must be **strictly greater** than `restingHeartRate` — see the write body. No upper bound, deliberately: the app's own form band is a Presentation-layer guard, and publishing it here would refuse a profile the app can hold.",
+            "example": 190
+          },
+          "restingHeartRate": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "The user's resting heart rate, in bpm. Required, for `maxHeartRate`'s reason. Positive: a rate of zero is not a measurement, it is an absent one, and an absent one has no row here.",
+            "example": 60
+          },
+          "weightKg": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Body weight in kilograms, or `null` when the user has not said. **The one field here a model divides into**: the calorie estimate is scaled by it, so a fabricated value would scale a figure by a body nobody described, and a `0` would be a division with no answer. Positive, or absent — never `0`.",
+            "example": 75
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The user's first name, or `null` when they have not given one. **`null` is not `\"\"`** — the column being nullable is what gives absence a spelling, and an empty string is a value nobody supplied. Nothing in the app reads this: it is a declared fact, saved and drawn back onto the form.",
+            "example": "Alex"
+          },
+          "birthDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The user's birthday as a calendar day, `YYYY-MM-DD`, or `null` when unset. **A day key and not an instant**: the user supplies a date, not a moment, and an instant would carry a time of day and a UTC offset they never gave. The app's own column is a `datetime`, so the client is the one that converts — and it converts on both sides, which is where a `startOfDay` snap can be got wrong.",
+            "example": "1994-03-17"
+          },
+          "gender": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "man",
+              "woman",
+              "nonBinary",
+              "preferNotToSay"
+            ],
+            "description": "One of the app's four words — `man`, `woman`, `nonBinary`, `preferNotToSay` — or `null` when the user has not said, which is a distinct answer from any of the four. Closed rather than a free string, because the app resolves an unrecognised word to `null` rather than guessing at it: an open field would accept values every reader silently drops.",
+            "example": "preferNotToSay"
+          },
+          "heightCm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Height in centimetres, or `null` when the user has not said. Positive, for `weightKg`'s reason and with a weaker one behind it: nothing in the app divides by a height, but a height of zero is not a height, and the absence already has a spelling.",
+            "example": 178
+          }
+        },
+        "required": [
+          "maxHeartRate",
+          "restingHeartRate",
+          "weightKg",
+          "name",
+          "birthDate",
+          "gender",
+          "heightCm"
+        ],
+        "description": "One person's profile: the two heart rates the zone table is built from, and five declared facts about the body that no model here reads. A partition holding no profile is a `404` — this resource has no empty-row state, because the app's cold-start pair is the client's answer to an absence rather than a row this API would invent."
+      }
+    }
+  }
+}

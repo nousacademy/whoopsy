@@ -1,0 +1,907 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Whoopsy Sync API — workouts",
+    "version": "0.1.0",
+    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold. This file is the `workouts` slice of that document: the `/v1/workouts` paths and the components they reference. `shared/openapi.json` is the whole contract."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it."
+    }
+  ],
+  "paths": {
+    "/v1/workouts": {
+      "get": {
+        "summary": "Read a window of sessions",
+        "description": "Every session filed on a day in an inclusive window ending on `endingOn`, oldest first. The answer is a bare array with **no padding**: a day inside the window holding no session is simply absent, and an empty array means nothing in the window was recorded. A day holds several sessions, so there is no per-day slot for one to occupy.",
+        "parameters": [
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 4000,
+              "description": "How many days back from `endingOn` to reach. **The window is inclusive at both ends, so `days=14` spans 15 calendar days** — this mirrors the app's own window exactly, deliberately, so a ported call returns identical rows. `0` means the single day `endingOn`.",
+              "example": 14
+            },
+            "required": false,
+            "name": "days",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The newest day in the window, inclusive. Optional only because the server has no notion of the caller's local today — its own is UTC, and a device eight hours behind it is a day out. **Clients should always send this.**",
+              "example": "2026-08-22"
+            },
+            "required": false,
+            "name": "endingOn",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sessions in the window, oldest first, each with its route and splits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Workout"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workouts/{id}": {
+      "get": {
+        "summary": "Read one session",
+        "description": "One session and everything filed under it, or `404 not_found` if this partition holds no such id. The children come back with it — a caller never fetches a route separately, because a route has no identity outside the session that owns it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "description": "A UUID string. Any version and either case, because `UUID(uuidString:)` accepts both — the app mints v4 ids for a live session and derives ids from instants for an import, and neither carries a meaningful version nibble. Not decoration: the app **skips a row whose id will not parse**, so an id refused here is a row that would otherwise be stored and never shown.",
+              "example": "6f9619ff-8b86-d011-b42d-00c04fc964ff"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session, with its route and splits in order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workout"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`id` is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No session with that id in this partition.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Write one session",
+        "description": "Insert or replace the session and its children — the upsert the app's own `saveWorkout` is. **A write replaces the route and the splits**, so a body must carry them: an omitted `route` is a `400`, not a silent deletion of a stored path. Answers with the row **read back from the database**, so a caller can see that a `null` stayed `null` rather than being folded into a `0` or an empty array.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "description": "A UUID string. Any version and either case, because `UUID(uuidString:)` accepts both — the app mints v4 ids for a live session and derives ids from instants for an import, and neither carries a meaningful version nibble. Not decoration: the app **skips a row whose id will not parse**, so an id refused here is a row that would otherwise be stored and never shown.",
+              "example": "6f9619ff-8b86-d011-b42d-00c04fc964ff"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkoutWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored session, as the database holds it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workout"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id, the header or the body failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workouts/batch": {
+      "post": {
+        "summary": "Write a chunk of sessions",
+        "description": "Insert or replace up to `MAX_BATCH_WORKOUTS` sessions in one request — the shape the app's first sync needs, where a six-hundred-and-seventy-three-session history is four of these instead of six hundred and seventy-three round trips. Every session is keyed on the same `(userId, id)` pair the single-session `PUT` writes, so a chunk replayed after a timeout is safe: **it rewrites each session with the values it already holds and the row count does not move.** The whole chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — a session the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection. `written` counts sessions and not rows.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkoutBatchWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many sessions the database reported writing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkoutBatchResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The header or the body failed validation — including a chunk larger than the cap, an id carried twice, and a chunk whose routes or splits exceed what one request may hold.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "WorkoutBatchResult": {
+        "type": "object",
+        "properties": {
+          "written": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many **sessions** the database reported writing — not rows, and not children: a session with a 2,000-point route is one. A replayed chunk reports the same number as the first send, not zero.",
+            "example": 200
+          }
+        },
+        "required": [
+          "written"
+        ],
+        "description": "The outcome of a bulk write, counted in sessions rather than rows. It reports what the database did, not what was on disk afterwards."
+      },
+      "WorkoutBatchWrite": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkoutBatchRow"
+            },
+            "minItems": 1,
+            "maxItems": 200,
+            "description": "The sessions to write, at least one and at most 200. Each id must appear exactly once, and the batch's routes and splits are capped in total at 2000 and 200 — the cap that actually bounds a request's work, since a session costs three statements before its children. A chunk of the app's full history is four of these."
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "additionalProperties": false,
+        "description": "A chunk of sessions to insert or replace. Adds and overwrites; it never deletes, so a session the caller leaves out is left alone rather than removed."
+      },
+      "WorkoutBatchRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "description": "A UUID string. Any version and either case, because `UUID(uuidString:)` accepts both — the app mints v4 ids for a live session and derives ids from instants for an import, and neither carries a meaningful version nibble. Not decoration: the app **skips a row whose id will not parse**, so an id refused here is a row that would otherwise be stored and never shown.",
+            "example": "6f9619ff-8b86-d011-b42d-00c04fc964ff"
+          },
+          "date": {
+            "type": "string",
+            "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+            "example": "2026-08-22"
+          },
+          "startedAt": {
+            "type": "string",
+            "description": "An instant in canonical UTC form: ISO-8601, exactly three fractional digits, `Z` offset — `2026-08-22T13:45:00.000Z`. Other spellings of the same moment are refused, so that the stored text sorts chronologically.",
+            "example": "2026-08-22T13:45:00.000Z"
+          },
+          "endedAt": {
+            "type": "string",
+            "description": "An instant in canonical UTC form: ISO-8601, exactly three fractional digits, `Z` offset — `2026-08-22T13:45:00.000Z`. Other spellings of the same moment are refused, so that the stored text sorts chronologically.",
+            "example": "2026-08-22T13:45:00.000Z"
+          },
+          "strain": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The session's cardiovascular load on WHOOP's 0–21 scale, or `null` for a session nothing measured one on — a fast is the producer of that case. `null` and `0.0` are different answers: `0.0` is a measured session that never left zone 1.",
+            "example": 7.4
+          },
+          "averageHeartRate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Average heart rate in bpm, or `null` when unmeasured. Positive and never zero: a rate of zero is not a measurement, it is an absent one, and an absent one has a spelling already.",
+            "example": 132
+          },
+          "maxHeartRate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Peak heart rate in bpm, or `null` when unmeasured. Positive for `averageHeartRate`'s reason.",
+            "example": 171
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Provenance — which producer wrote the row (`whoop_export`, `zero_fasting`, …). `null` means this app recorded it. An empty string is refused: it is a value nobody supplied, and the column being nullable is what gives absence a spelling.",
+            "example": "whoop_export"
+          },
+          "activityName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The activity's own label. **A label and not a measurement**, which is why it is a string rather than a number: WHOOP's classifier abstains rather than guessing and its export writes exactly the word `Activity` on the rows it could not categorise. `null` is a session with no name at all.",
+            "example": "Basketball"
+          },
+          "hrZonePercents": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "description": "The 5 zone shares, zone 1 first, as whole percents summing to **at most** 100 — the remainder is time below zone 1, which belongs to no band, so the five do not cover the session. `null` is a session with no zone block, which is **not** `[0,0,0,0,0]`: that array is a real reading of a session that never reached zone 1. The app derives a row's duration from its own share, so the two figures on a row can never contradict each other, and a fractional share is a value from some other producer.",
+            "example": [
+              12,
+              40,
+              33,
+              10,
+              0
+            ]
+          },
+          "steps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Steps counted during the session, or `null` when no motion was seen. **`null` is not a measured `0`** — a session that measured motion and counted no steps is a real zero, and one whose motion never arrived is an absence.",
+            "example": 693
+          },
+          "offlineRegionID": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The Mapbox tile region downloaded around this session, or `null` for every session recorded with `USE OFFLINE MAP` off — which is most of them. The device answers whether those tiles are still on disk; this column only records that a region was requested.",
+            "example": null
+          },
+          "route": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkoutRoutePoint"
+            },
+            "maxItems": 2000,
+            "description": "The session's GPS fixes in order. **Required and never defaulted**: a write replaces the route, so an omitted one would delete a stored path rather than leave it alone. Empty means the session has no route, which is an affirmative claim. At most 2000."
+          },
+          "splits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkoutSplit"
+            },
+            "maxItems": 200,
+            "description": "The session's laps in order. Required, and required to be empty rather than absent, for `route`'s reason. At most 200."
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "startedAt",
+          "endedAt",
+          "strain",
+          "averageHeartRate",
+          "maxHeartRate",
+          "source",
+          "activityName",
+          "hrZonePercents",
+          "steps",
+          "offlineRegionID",
+          "route",
+          "splits"
+        ],
+        "additionalProperties": false,
+        "description": "One session of a bulk write. The id is required and carried in the body, because a batch has no path to put it in."
+      },
+      "WorkoutSplit": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "description": "A UUID string. Any version and either case, because `UUID(uuidString:)` accepts both — the app mints v4 ids for a live session and derives ids from instants for an import, and neither carries a meaningful version nibble. Not decoration: the app **skips a row whose id will not parse**, so an id refused here is a row that would otherwise be stored and never shown.",
+            "example": "6f9619ff-8b86-d011-b42d-00c04fc964ff"
+          },
+          "elapsed": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Seconds into the session at which this lap closed. A `TimeInterval` in the app, so fractional.",
+            "example": 300.5
+          },
+          "strain": {
+            "type": "number",
+            "minimum": 0,
+            "description": "The lap's own strain contribution. The app's `StrainScore` scale is 0–21, but this is a model output and is not bounded here — a bound that refused a row the app can compute would be worse than one that admits an overshoot.",
+            "example": 3.4
+          }
+        },
+        "required": [
+          "id",
+          "elapsed",
+          "strain"
+        ],
+        "description": "One lap. Ordered by array index, exactly as `WorkoutRoutePoint` is. **No producer exists yet** — the app has no lap model."
+      },
+      "WorkoutRoutePoint": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "description": "A UUID string. Any version and either case, because `UUID(uuidString:)` accepts both — the app mints v4 ids for a live session and derives ids from instants for an import, and neither carries a meaningful version nibble. Not decoration: the app **skips a row whose id will not parse**, so an id refused here is a row that would otherwise be stored and never shown.",
+            "example": "6f9619ff-8b86-d011-b42d-00c04fc964ff"
+          },
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "description": "Degrees, ±90. A value outside the range is not a place.",
+            "example": 40.7128
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "description": "Degrees, ±180.",
+            "example": -74.006
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "An instant in canonical UTC form: ISO-8601, exactly three fractional digits, `Z` offset — `2026-08-22T13:45:00.000Z`. Other spellings of the same moment are refused, so that the stored text sorts chronologically.",
+            "example": "2026-08-22T13:45:00.000Z"
+          },
+          "heartRate": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "The heart rate in force at this fix, in bpm. Required: the app stamps every point it records from the session's own accumulator, so there is no fix in this system that has no rate.",
+            "example": 148
+          }
+        },
+        "required": [
+          "id",
+          "latitude",
+          "longitude",
+          "timestamp",
+          "heartRate"
+        ],
+        "description": "One GPS fix. The array's order **is** the route's order — it is stored against its index and read back by it."
+      },
+      "WorkoutWrite": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+            "example": "2026-08-22"
+          },
+          "startedAt": {
+            "type": "string",
+            "description": "An instant in canonical UTC form: ISO-8601, exactly three fractional digits, `Z` offset — `2026-08-22T13:45:00.000Z`. Other spellings of the same moment are refused, so that the stored text sorts chronologically.",
+            "example": "2026-08-22T13:45:00.000Z"
+          },
+          "endedAt": {
+            "type": "string",
+            "description": "An instant in canonical UTC form: ISO-8601, exactly three fractional digits, `Z` offset — `2026-08-22T13:45:00.000Z`. Other spellings of the same moment are refused, so that the stored text sorts chronologically.",
+            "example": "2026-08-22T13:45:00.000Z"
+          },
+          "strain": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The session's cardiovascular load on WHOOP's 0–21 scale, or `null` for a session nothing measured one on — a fast is the producer of that case. `null` and `0.0` are different answers: `0.0` is a measured session that never left zone 1.",
+            "example": 7.4
+          },
+          "averageHeartRate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Average heart rate in bpm, or `null` when unmeasured. Positive and never zero: a rate of zero is not a measurement, it is an absent one, and an absent one has a spelling already.",
+            "example": 132
+          },
+          "maxHeartRate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Peak heart rate in bpm, or `null` when unmeasured. Positive for `averageHeartRate`'s reason.",
+            "example": 171
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Provenance — which producer wrote the row (`whoop_export`, `zero_fasting`, …). `null` means this app recorded it. An empty string is refused: it is a value nobody supplied, and the column being nullable is what gives absence a spelling.",
+            "example": "whoop_export"
+          },
+          "activityName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The activity's own label. **A label and not a measurement**, which is why it is a string rather than a number: WHOOP's classifier abstains rather than guessing and its export writes exactly the word `Activity` on the rows it could not categorise. `null` is a session with no name at all.",
+            "example": "Basketball"
+          },
+          "hrZonePercents": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "description": "The 5 zone shares, zone 1 first, as whole percents summing to **at most** 100 — the remainder is time below zone 1, which belongs to no band, so the five do not cover the session. `null` is a session with no zone block, which is **not** `[0,0,0,0,0]`: that array is a real reading of a session that never reached zone 1. The app derives a row's duration from its own share, so the two figures on a row can never contradict each other, and a fractional share is a value from some other producer.",
+            "example": [
+              12,
+              40,
+              33,
+              10,
+              0
+            ]
+          },
+          "steps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Steps counted during the session, or `null` when no motion was seen. **`null` is not a measured `0`** — a session that measured motion and counted no steps is a real zero, and one whose motion never arrived is an absence.",
+            "example": 693
+          },
+          "offlineRegionID": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The Mapbox tile region downloaded around this session, or `null` for every session recorded with `USE OFFLINE MAP` off — which is most of them. The device answers whether those tiles are still on disk; this column only records that a region was requested.",
+            "example": null
+          },
+          "route": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkoutRoutePoint"
+            },
+            "maxItems": 2000,
+            "description": "The session's GPS fixes in order. **Required and never defaulted**: a write replaces the route, so an omitted one would delete a stored path rather than leave it alone. Empty means the session has no route, which is an affirmative claim. At most 2000."
+          },
+          "splits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkoutSplit"
+            },
+            "maxItems": 200,
+            "description": "The session's laps in order. Required, and required to be empty rather than absent, for `route`'s reason. At most 200."
+          }
+        },
+        "required": [
+          "date",
+          "startedAt",
+          "endedAt",
+          "strain",
+          "averageHeartRate",
+          "maxHeartRate",
+          "source",
+          "activityName",
+          "hrZonePercents",
+          "steps",
+          "offlineRegionID",
+          "route",
+          "splits"
+        ],
+        "additionalProperties": false,
+        "description": "The fields of a session, less its identity — the id comes from the path. `date` **is** here, unlike a recovery's: a session's day is the device's `startOfDay(startedAt)` and this Worker cannot derive it."
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "invalid_request",
+                  "unauthorized",
+                  "no_measurement_for_day",
+                  "not_found",
+                  "route_not_found",
+                  "internal_error"
+                ],
+                "description": "A stable, machine-readable reason. Switch on this rather than on the message.",
+                "example": "invalid_request"
+              },
+              "message": {
+                "type": "string",
+                "description": "A human-readable explanation. Not stable — do not parse it.",
+                "example": "date: must be a calendar day in YYYY-MM-DD form"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "description": "Every non-2xx response this API produces, from every route."
+      },
+      "Workout": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "description": "A UUID string. Any version and either case, because `UUID(uuidString:)` accepts both — the app mints v4 ids for a live session and derives ids from instants for an import, and neither carries a meaningful version nibble. Not decoration: the app **skips a row whose id will not parse**, so an id refused here is a row that would otherwise be stored and never shown.",
+            "example": "6f9619ff-8b86-d011-b42d-00c04fc964ff"
+          },
+          "date": {
+            "type": "string",
+            "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+            "example": "2026-08-22"
+          },
+          "startedAt": {
+            "type": "string",
+            "description": "An instant in canonical UTC form: ISO-8601, exactly three fractional digits, `Z` offset — `2026-08-22T13:45:00.000Z`. Other spellings of the same moment are refused, so that the stored text sorts chronologically.",
+            "example": "2026-08-22T13:45:00.000Z"
+          },
+          "endedAt": {
+            "type": "string",
+            "description": "An instant in canonical UTC form: ISO-8601, exactly three fractional digits, `Z` offset — `2026-08-22T13:45:00.000Z`. Other spellings of the same moment are refused, so that the stored text sorts chronologically.",
+            "example": "2026-08-22T13:45:00.000Z"
+          },
+          "strain": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The session's cardiovascular load on WHOOP's 0–21 scale, or `null` for a session nothing measured one on — a fast is the producer of that case. `null` and `0.0` are different answers: `0.0` is a measured session that never left zone 1.",
+            "example": 7.4
+          },
+          "averageHeartRate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Average heart rate in bpm, or `null` when unmeasured. Positive and never zero: a rate of zero is not a measurement, it is an absent one, and an absent one has a spelling already.",
+            "example": 132
+          },
+          "maxHeartRate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Peak heart rate in bpm, or `null` when unmeasured. Positive for `averageHeartRate`'s reason.",
+            "example": 171
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Provenance — which producer wrote the row (`whoop_export`, `zero_fasting`, …). `null` means this app recorded it. An empty string is refused: it is a value nobody supplied, and the column being nullable is what gives absence a spelling.",
+            "example": "whoop_export"
+          },
+          "activityName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The activity's own label. **A label and not a measurement**, which is why it is a string rather than a number: WHOOP's classifier abstains rather than guessing and its export writes exactly the word `Activity` on the rows it could not categorise. `null` is a session with no name at all.",
+            "example": "Basketball"
+          },
+          "hrZonePercents": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "description": "The 5 zone shares, zone 1 first, as whole percents summing to **at most** 100 — the remainder is time below zone 1, which belongs to no band, so the five do not cover the session. `null` is a session with no zone block, which is **not** `[0,0,0,0,0]`: that array is a real reading of a session that never reached zone 1. The app derives a row's duration from its own share, so the two figures on a row can never contradict each other, and a fractional share is a value from some other producer.",
+            "example": [
+              12,
+              40,
+              33,
+              10,
+              0
+            ]
+          },
+          "steps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Steps counted during the session, or `null` when no motion was seen. **`null` is not a measured `0`** — a session that measured motion and counted no steps is a real zero, and one whose motion never arrived is an absence.",
+            "example": 693
+          },
+          "offlineRegionID": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The Mapbox tile region downloaded around this session, or `null` for every session recorded with `USE OFFLINE MAP` off — which is most of them. The device answers whether those tiles are still on disk; this column only records that a region was requested.",
+            "example": null
+          },
+          "route": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkoutRoutePoint"
+            },
+            "maxItems": 2000,
+            "description": "The session's GPS fixes in order. **Required and never defaulted**: a write replaces the route, so an omitted one would delete a stored path rather than leave it alone. Empty means the session has no route, which is an affirmative claim. At most 2000."
+          },
+          "splits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkoutSplit"
+            },
+            "maxItems": 200,
+            "description": "The session's laps in order. Required, and required to be empty rather than absent, for `route`'s reason. At most 200."
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "startedAt",
+          "endedAt",
+          "strain",
+          "averageHeartRate",
+          "maxHeartRate",
+          "source",
+          "activityName",
+          "hrZonePercents",
+          "steps",
+          "offlineRegionID",
+          "route",
+          "splits"
+        ],
+        "description": "One recorded session with its route and laps. A day holds several, so a session is addressed by `id` and `date` is an ordinary field. Unmeasured fields are `null`, never zero-filled."
+      }
+    }
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Whoopsy Sync API — health",
+    "version": "0.1.0",
+    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold. This file is the `health` slice of that document: the `/health` paths and the components they reference. `shared/openapi.json` is the whole contract."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it."
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Liveness",
+        "description": "Answers while the Worker is running. Reads nothing — a liveness probe that queried D1 would turn a database blip into a restart loop — and reports which bindings the isolate was handed.",
+        "responses": {
+          "200": {
+            "description": "The Worker is up, with a report of its bindings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ],
+            "description": "Always `ok`. This endpoint answers only when the Worker is running, so there is no other value it could honestly return."
+          },
+          "service": {
+            "type": "string",
+            "description": "The Worker's name, as `wrangler.toml` declares it.",
+            "example": "whoopsy-sync"
+          },
+          "version": {
+            "type": "string",
+            "description": "The implementation version this Worker is running, read from `API_VERSION`. It is the API's own semver and is deliberately decoupled from the address in the URL — this deployment answers on `/v1` while reporting `0.1.0`, because the prefix moves only when the wire needs a new address. See `docs/BACKEND.md` § Versioning.",
+            "example": "0.1.0"
+          },
+          "bindings": {
+            "type": "object",
+            "properties": {
+              "db": {
+                "type": "boolean",
+                "description": "Whether `DB` is a usable D1 binding. A shape test, not a connection test — no query is issued."
+              },
+              "exports": {
+                "type": "boolean",
+                "description": "Whether `EXPORTS` is a usable R2 binding. Declared by the scaffold and unwritten by this slice."
+              }
+            },
+            "required": [
+              "db",
+              "exports"
+            ],
+            "description": "Which bindings this isolate was handed, by shape."
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "version",
+          "bindings"
+        ],
+        "description": "The Worker's liveness and its binding report."
+      }
+    }
+  }
+}

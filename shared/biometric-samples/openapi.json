@@ -1,0 +1,772 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Whoopsy Sync API — biometric-samples",
+    "version": "0.1.0",
+    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold. This file is the `biometric-samples` slice of that document: the `/v1/biometric-samples` paths and the components they reference. `shared/openapi.json` is the whole contract."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it."
+    }
+  ],
+  "paths": {
+    "/v1/biometric-samples": {
+      "get": {
+        "summary": "Read a window of samples",
+        "description": "Every sample whose arrival instant falls in `from`…`to`, **inclusive at both ends**, oldest first. The answer is a bare array with **no padding**: an empty array means nothing was recorded in the window, which is the ordinary answer for a stretch the strap did not cover rather than an error. **Both bounds are required** — `to` is not defaulted to the server's now, because that would be the Worker's clock answering the caller's question. The window may span at most a week; a client syncing a longer history chunks it. Samples sharing a millisecond are ordered by id, which is arbitrary rather than chronological: the app's own tiebreak *is* arrival order, and this resource's id is content-derived, so that clause is a stable order and not a recovered one.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "The oldest instant in the window, **inclusive**. Together with `to` this must span no more than 604800 seconds — a week — which is the bound that makes \"give me everything\" unaskable rather than merely large. A client syncing a long history chunks it. `from` must not be later than `to`.",
+              "example": "2026-08-21T00:00:00.000Z"
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The newest instant in the window, **inclusive**. Required, and not defaulted to the server's now: a defaulted upper bound would be the Worker's clock answering the caller's question, which is a different thing from a defaulted *day* the server can at least name. An empty window is a `200` holding an empty array — a stretch the strap did not cover is not an error.",
+              "example": "2026-08-22T00:00:00.000Z"
+            },
+            "required": true,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The samples in the window, oldest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BiometricSample"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter failed validation, or the window is reversed or wider than a week.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/biometric-samples/{id}": {
+      "get": {
+        "summary": "Read one sample",
+        "description": "One sample, or `404 not_found` if this partition holds no such id. A sample has nothing filed under it — its R-R series is a column rather than rows of its own — so this is the whole of the row. It is addressed by id because every id-keyed resource in this API is, which is worth saying here: **the app's own port has no such read** (`getSamples(from:to:)` is the whole of it), so this endpoint exists so that a client which has just written an id can confirm it landed without asking for a window around it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "description": "A UUID string. Any version and either case. **The derivation is the client's**, and the one property this API needs from it is determinism: the same sample must always derive the same id, so that a replayed chunk is an upsert rather than a second row. The app has no sample identifier of its own that could travel — its local key is an autoincrement in that device's SQLite — so two devices sharing a partition would otherwise overwrite each other.",
+              "example": "8f14e45f-ceea-467a-9c2b-1c3a5b7d0e11"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sample, as the database holds it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BiometricSample"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`id` is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No sample with that id in this partition.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Write one sample",
+        "description": "Insert or replace the sample — the upsert the app's own `save` is, which is INSERT-or-UPDATE by primary key. Answers with the row **read back from the database**, which on this resource is the assertion that matters: nine of these twelve fields are nullable, so a stray default anywhere in the write path would be invisible in an echo of the request. **The id is the client's own derivation and must be deterministic**, so that re-sending the same sample replaces a row rather than adding one; the Worker validates the shape and takes no view of how it was derived. **`timestamp` is required and travels in the body**, because the instant *is* the sample — it is the lookup column and the read window's subject — and deriving it from the server's clock would stamp when the write arrived rather than when the beats were heard.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "description": "A UUID string. Any version and either case. **The derivation is the client's**, and the one property this API needs from it is determinism: the same sample must always derive the same id, so that a replayed chunk is an upsert rather than a second row. The app has no sample identifier of its own that could travel — its local key is an autoincrement in that device's SQLite — so two devices sharing a partition would otherwise overwrite each other.",
+              "example": "8f14e45f-ceea-467a-9c2b-1c3a5b7d0e11"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BiometricSampleWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored sample, as the database holds it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BiometricSample"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id, the header or the body failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/biometric-samples/batch": {
+      "post": {
+        "summary": "Write a chunk of samples",
+        "description": "Insert or replace up to `MAX_BATCH_BIOMETRIC_SAMPLES` samples in one request — the shape a sync needs, where a burst of notifications is one request instead of one per sample. **On this resource that cap is a chunk size rather than a day's worth**: a sample is one row and has no children, so the row cap *is* the whole bound on the request's work, and a day at 1 Hz is roughly 432 chunks. Every sample is keyed on the same `(userId, id)` pair the single-sample `PUT` writes, so a chunk replayed after a timeout is safe: **it rewrites each sample with the values it already holds and the row count does not move.** The whole chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — a sample the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection. `written` counts samples, and a replay reports the same number as the first send rather than zero.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BiometricSampleBatchWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many samples the database reported writing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BiometricSampleBatchResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The header or the body failed validation — including a chunk larger than the cap and an id carried twice.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BiometricSampleBatchResult": {
+        "type": "object",
+        "properties": {
+          "written": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many samples the database reported writing. A sample is one row and has no children, so this is also the row count. A replayed chunk reports the same number as the first send, not zero.",
+            "example": 200
+          }
+        },
+        "required": [
+          "written"
+        ],
+        "description": "The outcome of a bulk write. It reports what the database did, not what was on disk afterwards."
+      },
+      "BiometricSampleBatchWrite": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BiometricSampleBatchRow"
+            },
+            "minItems": 1,
+            "maxItems": 200,
+            "description": "The samples to write, at least one and at most 200. Each id must appear exactly once. **A sample is one row and has no children, so this cap is the whole bound on a request's work** — and it is a chunk size rather than a day's worth: a day at 1 Hz is up to 86,400 samples, so a full day is many requests."
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "additionalProperties": false,
+        "description": "A chunk of samples to insert or replace. Adds and overwrites; it never deletes, so a sample the caller leaves out is left alone rather than removed."
+      },
+      "BiometricSampleBatchRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "description": "A UUID string. Any version and either case. **The derivation is the client's**, and the one property this API needs from it is determinism: the same sample must always derive the same id, so that a replayed chunk is an upsert rather than a second row. The app has no sample identifier of its own that could travel — its local key is an autoincrement in that device's SQLite — so two devices sharing a partition would otherwise overwrite each other.",
+            "example": "8f14e45f-ceea-467a-9c2b-1c3a5b7d0e11"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "When the app heard the beats, in canonical UTC form. **An arrival instant and not a beat time**, which is the app's own documented caveat: the BLE layer stamps the clock when a notification is decoded, so this is when the beats were heard rather than when they happened. It is the lookup column — a window is a range over this field — and it is the natural input to the id derivation below, with the caveat that a derivation folding in nothing else makes two samples in one millisecond collide.",
+            "example": "2026-08-22T13:45:00.000Z"
+          },
+          "heartRate": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The pulse at this notification, in beats per minute. **The one channel that is always present**, because a sample exists only when the decoder had a pulse to report — and it may legitimately be `0`, which is why the bound is `nonnegative` and not `positive`. Not rounded: what the strap reported is what is stored.",
+            "example": 62
+          },
+          "rrIntervalsMs": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "number",
+              "minimum": 0
+            },
+            "minItems": 1,
+            "description": "The beat-to-beat intervals **one notification** carried, in wire order, in milliseconds — or `null` when it carried none. A series rather than one figure, because that is what the characteristic sends: within a notification these are adjacent beats by definition, and across notifications they are not, so a consumer differencing them must not difference across a boundary. That is why the array is published whole rather than flattened into a single figure. **`null` is the one spelling of \"no intervals\"**: an empty array is refused, because the app's BLE layer already collapses that case on the way in and a stored `[]` would be a value no producer writes.",
+            "example": [
+              958,
+              962,
+              955
+            ]
+          },
+          "accelX": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Acceleration along X in Gs, or `null` when the notification carried no motion. **The three axes are nullable independently and are not constrained to agree**: the strap sends the triplet as one record, so in practice all three arrive together or none does, but \"none\" is three `null`s rather than a fourth flag. The app has a defined reading for a partial triplet — its acceleration magnitude is `null` unless every axis is present — so a rule refusing it here would reject a row the storage holds. **A `0.0` would be the one value that must never be substituted**: free fall is physically unreachable on a body and lands on the *still* side of every movement threshold.",
+            "example": 0.98
+          },
+          "accelY": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Acceleration along Y in Gs, or `null`. Independently nullable — see `accelX`.",
+            "example": -0.12
+          },
+          "accelZ": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Acceleration along Z in Gs, or `null`. Independently nullable — see `accelX`.",
+            "example": 0.04
+          },
+          "skinTemp": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Skin temperature in degrees Celsius, or `null` when the optical engine reported none. Unbounded on purpose: this Worker holds no physiological band for a temperature, and a range invented here would refuse a real reading rather than a fabricated one. `recoveries.skinTemperature` is the same quantity and is bounded the same way.",
+            "example": 33.6
+          },
+          "spo2Percentage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Blood-oxygen saturation as a percentage, or `null` when no estimate was produced. Bounded `0`…`100` because that is what a percentage is, which is the one bound here that is definitional rather than physiological — `recoveries.spo2Percentage` carries it too, so the same quantity is not bounded two ways.",
+            "example": 96.5
+          },
+          "isOnBody": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the strap was on a wrist, or `null` when it did not say. **The app's own mapper resolves this absence to `true` on read, and that default is deliberately not copied here.** `true` and `false` are opposite measurements of a question nobody answered, and a defaulted `true` would put \"worn\" on a row the strap never described.",
+            "example": true
+          },
+          "isCharging": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the strap was charging, or `null` when it did not say. Defaulting to `false` is the same fabrication as defaulting `isOnBody` to `true`, and is refused for the same reason.",
+            "example": false
+          },
+          "rawSequenceNumber": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 4294967295,
+            "description": "The frame's own sequence number, or `null` for a frame that did not carry one — which is every live notification, since only a banked record off the flash has a counter. Bounded because the app types it as a 32-bit unsigned integer, so a value outside that range is one no producer can emit.",
+            "example": 10342
+          }
+        },
+        "required": [
+          "id",
+          "timestamp",
+          "heartRate",
+          "rrIntervalsMs",
+          "accelX",
+          "accelY",
+          "accelZ",
+          "skinTemp",
+          "spo2Percentage",
+          "isOnBody",
+          "isCharging",
+          "rawSequenceNumber"
+        ],
+        "additionalProperties": false,
+        "description": "One sample of a bulk write. The id is required and carried in the body, because a batch has no path to put it in."
+      },
+      "BiometricSampleWrite": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "description": "When the app heard the beats, in canonical UTC form. **An arrival instant and not a beat time**, which is the app's own documented caveat: the BLE layer stamps the clock when a notification is decoded, so this is when the beats were heard rather than when they happened. It is the lookup column — a window is a range over this field — and it is the natural input to the id derivation below, with the caveat that a derivation folding in nothing else makes two samples in one millisecond collide.",
+            "example": "2026-08-22T13:45:00.000Z"
+          },
+          "heartRate": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The pulse at this notification, in beats per minute. **The one channel that is always present**, because a sample exists only when the decoder had a pulse to report — and it may legitimately be `0`, which is why the bound is `nonnegative` and not `positive`. Not rounded: what the strap reported is what is stored.",
+            "example": 62
+          },
+          "rrIntervalsMs": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "number",
+              "minimum": 0
+            },
+            "minItems": 1,
+            "description": "The beat-to-beat intervals **one notification** carried, in wire order, in milliseconds — or `null` when it carried none. A series rather than one figure, because that is what the characteristic sends: within a notification these are adjacent beats by definition, and across notifications they are not, so a consumer differencing them must not difference across a boundary. That is why the array is published whole rather than flattened into a single figure. **`null` is the one spelling of \"no intervals\"**: an empty array is refused, because the app's BLE layer already collapses that case on the way in and a stored `[]` would be a value no producer writes.",
+            "example": [
+              958,
+              962,
+              955
+            ]
+          },
+          "accelX": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Acceleration along X in Gs, or `null` when the notification carried no motion. **The three axes are nullable independently and are not constrained to agree**: the strap sends the triplet as one record, so in practice all three arrive together or none does, but \"none\" is three `null`s rather than a fourth flag. The app has a defined reading for a partial triplet — its acceleration magnitude is `null` unless every axis is present — so a rule refusing it here would reject a row the storage holds. **A `0.0` would be the one value that must never be substituted**: free fall is physically unreachable on a body and lands on the *still* side of every movement threshold.",
+            "example": 0.98
+          },
+          "accelY": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Acceleration along Y in Gs, or `null`. Independently nullable — see `accelX`.",
+            "example": -0.12
+          },
+          "accelZ": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Acceleration along Z in Gs, or `null`. Independently nullable — see `accelX`.",
+            "example": 0.04
+          },
+          "skinTemp": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Skin temperature in degrees Celsius, or `null` when the optical engine reported none. Unbounded on purpose: this Worker holds no physiological band for a temperature, and a range invented here would refuse a real reading rather than a fabricated one. `recoveries.skinTemperature` is the same quantity and is bounded the same way.",
+            "example": 33.6
+          },
+          "spo2Percentage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Blood-oxygen saturation as a percentage, or `null` when no estimate was produced. Bounded `0`…`100` because that is what a percentage is, which is the one bound here that is definitional rather than physiological — `recoveries.spo2Percentage` carries it too, so the same quantity is not bounded two ways.",
+            "example": 96.5
+          },
+          "isOnBody": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the strap was on a wrist, or `null` when it did not say. **The app's own mapper resolves this absence to `true` on read, and that default is deliberately not copied here.** `true` and `false` are opposite measurements of a question nobody answered, and a defaulted `true` would put \"worn\" on a row the strap never described.",
+            "example": true
+          },
+          "isCharging": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the strap was charging, or `null` when it did not say. Defaulting to `false` is the same fabrication as defaulting `isOnBody` to `true`, and is refused for the same reason.",
+            "example": false
+          },
+          "rawSequenceNumber": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 4294967295,
+            "description": "The frame's own sequence number, or `null` for a frame that did not carry one — which is every live notification, since only a banked record off the flash has a counter. Bounded because the app types it as a 32-bit unsigned integer, so a value outside that range is one no producer can emit.",
+            "example": 10342
+          }
+        },
+        "required": [
+          "timestamp",
+          "heartRate",
+          "rrIntervalsMs",
+          "accelX",
+          "accelY",
+          "accelZ",
+          "skinTemp",
+          "spo2Percentage",
+          "isOnBody",
+          "isCharging",
+          "rawSequenceNumber"
+        ],
+        "additionalProperties": false,
+        "description": "The fields of a sample, less its identity — the id comes from the path. Every field is required **except** the ones that are `.nullable()`, where `null` is the strap's word for a channel it did not report and not an omission."
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "invalid_request",
+                  "unauthorized",
+                  "no_measurement_for_day",
+                  "not_found",
+                  "route_not_found",
+                  "internal_error"
+                ],
+                "description": "A stable, machine-readable reason. Switch on this rather than on the message.",
+                "example": "invalid_request"
+              },
+              "message": {
+                "type": "string",
+                "description": "A human-readable explanation. Not stable — do not parse it.",
+                "example": "date: must be a calendar day in YYYY-MM-DD form"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "description": "Every non-2xx response this API produces, from every route."
+      },
+      "BiometricSample": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "description": "A UUID string. Any version and either case. **The derivation is the client's**, and the one property this API needs from it is determinism: the same sample must always derive the same id, so that a replayed chunk is an upsert rather than a second row. The app has no sample identifier of its own that could travel — its local key is an autoincrement in that device's SQLite — so two devices sharing a partition would otherwise overwrite each other.",
+            "example": "8f14e45f-ceea-467a-9c2b-1c3a5b7d0e11"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "When the app heard the beats, in canonical UTC form. **An arrival instant and not a beat time**, which is the app's own documented caveat: the BLE layer stamps the clock when a notification is decoded, so this is when the beats were heard rather than when they happened. It is the lookup column — a window is a range over this field — and it is the natural input to the id derivation below, with the caveat that a derivation folding in nothing else makes two samples in one millisecond collide.",
+            "example": "2026-08-22T13:45:00.000Z"
+          },
+          "heartRate": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The pulse at this notification, in beats per minute. **The one channel that is always present**, because a sample exists only when the decoder had a pulse to report — and it may legitimately be `0`, which is why the bound is `nonnegative` and not `positive`. Not rounded: what the strap reported is what is stored.",
+            "example": 62
+          },
+          "rrIntervalsMs": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "number",
+              "minimum": 0
+            },
+            "minItems": 1,
+            "description": "The beat-to-beat intervals **one notification** carried, in wire order, in milliseconds — or `null` when it carried none. A series rather than one figure, because that is what the characteristic sends: within a notification these are adjacent beats by definition, and across notifications they are not, so a consumer differencing them must not difference across a boundary. That is why the array is published whole rather than flattened into a single figure. **`null` is the one spelling of \"no intervals\"**: an empty array is refused, because the app's BLE layer already collapses that case on the way in and a stored `[]` would be a value no producer writes.",
+            "example": [
+              958,
+              962,
+              955
+            ]
+          },
+          "accelX": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Acceleration along X in Gs, or `null` when the notification carried no motion. **The three axes are nullable independently and are not constrained to agree**: the strap sends the triplet as one record, so in practice all three arrive together or none does, but \"none\" is three `null`s rather than a fourth flag. The app has a defined reading for a partial triplet — its acceleration magnitude is `null` unless every axis is present — so a rule refusing it here would reject a row the storage holds. **A `0.0` would be the one value that must never be substituted**: free fall is physically unreachable on a body and lands on the *still* side of every movement threshold.",
+            "example": 0.98
+          },
+          "accelY": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Acceleration along Y in Gs, or `null`. Independently nullable — see `accelX`.",
+            "example": -0.12
+          },
+          "accelZ": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Acceleration along Z in Gs, or `null`. Independently nullable — see `accelX`.",
+            "example": 0.04
+          },
+          "skinTemp": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Skin temperature in degrees Celsius, or `null` when the optical engine reported none. Unbounded on purpose: this Worker holds no physiological band for a temperature, and a range invented here would refuse a real reading rather than a fabricated one. `recoveries.skinTemperature` is the same quantity and is bounded the same way.",
+            "example": 33.6
+          },
+          "spo2Percentage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Blood-oxygen saturation as a percentage, or `null` when no estimate was produced. Bounded `0`…`100` because that is what a percentage is, which is the one bound here that is definitional rather than physiological — `recoveries.spo2Percentage` carries it too, so the same quantity is not bounded two ways.",
+            "example": 96.5
+          },
+          "isOnBody": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the strap was on a wrist, or `null` when it did not say. **The app's own mapper resolves this absence to `true` on read, and that default is deliberately not copied here.** `true` and `false` are opposite measurements of a question nobody answered, and a defaulted `true` would put \"worn\" on a row the strap never described.",
+            "example": true
+          },
+          "isCharging": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the strap was charging, or `null` when it did not say. Defaulting to `false` is the same fabrication as defaulting `isOnBody` to `true`, and is refused for the same reason.",
+            "example": false
+          },
+          "rawSequenceNumber": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 4294967295,
+            "description": "The frame's own sequence number, or `null` for a frame that did not carry one — which is every live notification, since only a banked record off the flash has a counter. Bounded because the app types it as a 32-bit unsigned integer, so a value outside that range is one no producer can emit.",
+            "example": 10342
+          }
+        },
+        "required": [
+          "id",
+          "timestamp",
+          "heartRate",
+          "rrIntervalsMs",
+          "accelX",
+          "accelY",
+          "accelZ",
+          "skinTemp",
+          "spo2Percentage",
+          "isOnBody",
+          "isCharging",
+          "rawSequenceNumber"
+        ],
+        "description": "One notification off the strap: when it arrived, what the pulse was, and whatever else it carried. Nine of the twelve fields are nullable, and a `null` on any of them is the strap's own word for a channel it did not report — never a zero-filled stand-in."
+      }
+    }
+  }
+}

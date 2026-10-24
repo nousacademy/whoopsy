@@ -1,0 +1,803 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Whoopsy Sync API — sleeps",
+    "version": "0.1.0",
+    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold. This file is the `sleeps` slice of that document: the `/v1/sleeps` paths and the components they reference. `shared/openapi.json` is the whole contract."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it."
+    }
+  ],
+  "paths": {
+    "/v1/sleeps": {
+      "get": {
+        "summary": "Read a window of nights",
+        "description": "Every night holding a row in an inclusive window ending on `endingOn`. Days with no row are **omitted** rather than returned as zero-filled records — an empty array is a real answer and means nothing in the window has a row. On a partially-worn history that is the ordinary case rather than an edge: a night the user did not wear the strap is a hole in the middle of the range, not a missing tail. The window is inclusive at both ends, so `days=14` spans 15 calendar days.",
+        "parameters": [
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 4000,
+              "description": "How many days back from `endingOn` to reach. **The window is inclusive at both ends, so `days=14` spans 15 calendar days** — this mirrors the app's own `historyWindow(days:endingOn:)` exactly, deliberately, so a ported call returns identical rows. `0` means the single day `endingOn`. Days inside the window with no row are omitted rather than padded, which on a partially-worn history is the ordinary case.",
+              "example": 14
+            },
+            "required": false,
+            "name": "days",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The newest day in the window, inclusive. Optional only because the server has no notion of the caller's local today — its own is UTC, and a device eight hours behind it is a day out. **Clients should always send this.**",
+              "example": "2026-08-22"
+            },
+            "required": false,
+            "name": "endingOn",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The nights holding a row in the window, oldest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Sleep"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sleeps/{date}": {
+      "get": {
+        "summary": "Read one night",
+        "description": "One night's row, or `404 no_measurement_for_day` if that day has no row at all. **There is no second kind of row here**: a night the classifier could not read is never written, so unlike `strains` there is no unmeasured-row state to tell a reading apart from. The `date` is the night's **wake** day, not the day it began on.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+              "example": "2026-08-22"
+            },
+            "required": true,
+            "name": "date",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The night's row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sleep"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`date` is not a calendar day in `YYYY-MM-DD` form.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "That day has no row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Write one night",
+        "description": "Insert or replace the day's row — the day-keyed upsert the app's own `saveSleep` is. Answers with the row **read back from the database**, not with the request echoed, so a caller can see that a `null` stayed `null` rather than arriving back as the `0` a default somewhere in the write path might have folded it into. That assertion is the whole of what this resource's write path has to get right: three of its nullable fields are values a model on the device computes, and the device is the only party that knows whether one exists.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+              "example": "2026-08-22"
+            },
+            "required": true,
+            "name": "date",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SleepWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored row, as the database holds it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sleep"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The day, the header or the body failed validation — including a body carrying its own `date` and one whose `endTime` does not follow its `startTime`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sleeps/batch": {
+      "post": {
+        "summary": "Write a chunk of nights",
+        "description": "Insert or replace up to `MAX_BATCH_SLEEPS` nights in one request — the shape the app's first sync needs, where a nine-hundred-day history is five of these instead of nine hundred round trips. Every row is keyed on the same `(userId, date)` pair the single-day `PUT` writes, so a chunk replayed after a timeout is safe: **it rewrites each row with the values it already holds and the row count does not move.** The chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — a day the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection: on a nine-hundred-day history with holes in it, a verb that said `these are the nights` would oblige the server to remove a fourth of the user's sleep history on the first sync of a partially-worn range.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SleepBatchWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many rows the database reported writing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SleepBatchResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The header or the body failed validation — including a chunk larger than the cap, a night carried twice, and a row whose `endTime` does not follow its `startTime`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SleepBatchResult": {
+        "type": "object",
+        "properties": {
+          "written": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many rows the database reported writing. A replayed chunk reports the same number as the first send, not zero — `INSERT … ON CONFLICT DO UPDATE` counts a matched row as changed.",
+            "example": 200
+          }
+        },
+        "required": [
+          "written"
+        ],
+        "description": "The outcome of a bulk write. It reports what the database did, not what was on disk afterwards."
+      },
+      "SleepBatchWrite": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SleepBatchRow"
+            },
+            "minItems": 1,
+            "maxItems": 200,
+            "description": "The nights to write, at least one and at most 200. Each day must appear exactly once. A chunk of the app's full history is five of these."
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "additionalProperties": false,
+        "description": "A chunk of nights to insert or replace. Adds and overwrites; it never deletes, so a day the caller leaves out is left alone rather than removed."
+      },
+      "SleepBatchRow": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+            "example": "2026-08-22"
+          },
+          "startTime": {
+            "type": "string",
+            "description": "When the night began, as an instant in canonical UTC form. **The day this night is filed under is not derived from this field** — it is the *wake* day, and it comes from the path or from the row's own `date`.",
+            "example": "2026-08-21T23:12:00.000Z"
+          },
+          "endTime": {
+            "type": "string",
+            "description": "When it ended. Refused by both write bodies unless it is strictly later than `startTime` — a night of zero length is not a night. The response carries no such refinement, deliberately.",
+            "example": "2026-08-22T07:04:00.000Z"
+          },
+          "sleepPerformance": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Sleep performance as a whole-scale percentage. **This is the app's own figure and not WHOOP's column**: every stored row holds `clamp(asleep ÷ need × 100, 0, 100)` computed on the device, so one formula covers all 910 imported nights and every night after. The export's own `Sleep performance %` is parsed by the app and read by nothing. The bounds are the scale's definition, and the clamp is applied before the value is stored — a client sending a figure outside them is describing a different quantity.",
+            "example": 81.3
+          },
+          "totalSleepNeeded": {
+            "type": "number",
+            "minimum": 0,
+            "description": "The night's requirement, in **seconds** — not minutes, which is the unit WHOOP's own `Sleep need (min)` column uses and which the importer converts. **A value below the eight-hour baseline is real and correct**: 53 of the bundled export's nights carry one, and the app's own formula cannot produce it, because a strap night's need is a computed baseline plus a fitted strain term while an imported night's is WHOOP's own. Nothing distinguishes the two producers here except `source`.",
+            "example": 33420
+          },
+          "lightSleep": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Light sleep, in seconds. One of the three stages whose sum is the asleep total `sleepPerformance` divides.",
+            "example": 18720
+          },
+          "deepSleep": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Deep (slow-wave) sleep, in seconds. **Zero is legal and is a measurement**: the export holds a night of 15h40m of light sleep with no deep and no REM at all, and a bar chart draws that as a labelled column carrying no bar.",
+            "example": 5400
+          },
+          "remSleep": {
+            "type": "number",
+            "minimum": 0,
+            "description": "REM sleep, in seconds. Zero is legal and is a measurement, for the reason above.",
+            "example": 3060
+          },
+          "awakeTime": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Wakefulness within the night's own span, in seconds — the fourth stage total and not a fifth row. It is what makes `asleep + awake == duration` an identity a reader can check against the night's two boundary instants: the three stages above plus this one span the whole night.",
+            "example": 1620
+          },
+          "respiratoryRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Breaths per minute, **derived from the R-R series rather than read off a sensor** — the strap has no respiratory sensor. `null` on every night that series cannot support, which includes every imported night, since the export carries no R-R series at all. **`null` and `0` are different answers**: the estimator declining and the estimator returning a figure are different facts, and a server that filled one in would be publishing a reading no device took. Non-negative rather than positive because the optional already carries the absence — this bound only refuses a negative breathing rate.",
+            "example": 14.4
+          },
+          "disturbanceCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "How many times the night's sleep was disturbed. `null` on every imported night — the export has no such column — and on any night the actigraphy classifier could not read. A `0` is a measured night nobody stirred, which is a different claim from a night nobody scored.",
+            "example": 7
+          },
+          "sleepConsistency": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "WHOOP's own Sleep Consistency for the night, as a whole percent. Nullable for two separate reasons and both are real states: a night with fewer than four priors has none, and a row written before the app's `v9` migration has none either. **`null` is 'not scored', which is not a score of zero** — a `0` here would claim a night maximally inconsistent with its own history.",
+            "example": 88
+          },
+          "sleepDebt": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The accumulated deficit, in **seconds** — WHOOP's `Sleep debt (min)` converted, whose 910 non-empty export values run 0 to 127 minutes. **The two producers are different quantities and only one of them is a term of the need above it**: WHOOP's need is a total that contains `need_from_sleep_debt`, while the app's own `SleepNeedMath` deliberately omits any debt term — so `need − debt` is WHOOP's base-plus-strain on an imported night and a base requirement short by the whole deficit on a strap night. Nothing but `source` distinguishes them, which is why the app's breakdown card gates on provenance rather than on this field being non-null.",
+            "example": 6240
+          },
+          "sleepStages": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 262144,
+            "description": "The night's stage timeline, as **opaque JSON text**, stored and handed back unchanged. On the phone this field is an array of typed segments; on this side of the boundary it is the string the column holds, and **nothing in this Worker parses it, validates its interior or re-serialises it**. That is a decision rather than a shortcut, and it has three parts. The server never reads into the blob and takes no opinion about it, so there is no second decoder here that has to agree with the app's `Codable` one forever. The instants inside it are **unix milliseconds** — a third convention that this API's own `InstantSchema` exists to keep out of the published contract, so a structured wire form would either impose a conversion on the client with a silent-corruption failure mode or put a second instant spelling in this document. And the failure mode of a string is bounded and honest: a client that PUTs garbage gets the same garbage back, which is the property a sync exists for. An empty string is refused — a night with no stages and a night that was never staged are the same thing, and `null` is that thing's only representation; an empty array is never stored. `null` on every imported night permanently, because the export reports stage *totals* and no timeline.",
+            "example": "[{\"id\":\"8B1F0C24-3E5A-4D77-9C21-6F0B7A2E4D18\",\"start\":1787372263000,\"end\":1787372293000,\"stage\":\"Light\"}]"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Provenance — which producer wrote the row (`whoop_export`, …). `null` means this app measured it, or that the row predates the column. An empty string is refused: it is a value nobody supplied, and the whole point of the column being nullable is that absence has a spelling already. **It carries more weight on this resource than on any other in this API**, because it is the only marker separating two producers of `sleepPerformance`, `sleepConsistency`, `sleepDebt` and `respiratoryRate` — four fields the app computes for a strap night and stores verbatim for an imported one.",
+            "example": "whoop_export"
+          }
+        },
+        "required": [
+          "date",
+          "startTime",
+          "endTime",
+          "sleepPerformance",
+          "totalSleepNeeded",
+          "lightSleep",
+          "deepSleep",
+          "remSleep",
+          "awakeTime",
+          "respiratoryRate",
+          "disturbanceCount",
+          "sleepConsistency",
+          "sleepDebt",
+          "sleepStages",
+          "source"
+        ],
+        "additionalProperties": false,
+        "description": "One night of a bulk write. The day is required and carried in the body, because a batch has no path to put it in. It is the night's **wake** day."
+      },
+      "SleepWrite": {
+        "type": "object",
+        "properties": {
+          "startTime": {
+            "type": "string",
+            "description": "When the night began, as an instant in canonical UTC form. **The day this night is filed under is not derived from this field** — it is the *wake* day, and it comes from the path or from the row's own `date`.",
+            "example": "2026-08-21T23:12:00.000Z"
+          },
+          "endTime": {
+            "type": "string",
+            "description": "When it ended. Refused by both write bodies unless it is strictly later than `startTime` — a night of zero length is not a night. The response carries no such refinement, deliberately.",
+            "example": "2026-08-22T07:04:00.000Z"
+          },
+          "sleepPerformance": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Sleep performance as a whole-scale percentage. **This is the app's own figure and not WHOOP's column**: every stored row holds `clamp(asleep ÷ need × 100, 0, 100)` computed on the device, so one formula covers all 910 imported nights and every night after. The export's own `Sleep performance %` is parsed by the app and read by nothing. The bounds are the scale's definition, and the clamp is applied before the value is stored — a client sending a figure outside them is describing a different quantity.",
+            "example": 81.3
+          },
+          "totalSleepNeeded": {
+            "type": "number",
+            "minimum": 0,
+            "description": "The night's requirement, in **seconds** — not minutes, which is the unit WHOOP's own `Sleep need (min)` column uses and which the importer converts. **A value below the eight-hour baseline is real and correct**: 53 of the bundled export's nights carry one, and the app's own formula cannot produce it, because a strap night's need is a computed baseline plus a fitted strain term while an imported night's is WHOOP's own. Nothing distinguishes the two producers here except `source`.",
+            "example": 33420
+          },
+          "lightSleep": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Light sleep, in seconds. One of the three stages whose sum is the asleep total `sleepPerformance` divides.",
+            "example": 18720
+          },
+          "deepSleep": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Deep (slow-wave) sleep, in seconds. **Zero is legal and is a measurement**: the export holds a night of 15h40m of light sleep with no deep and no REM at all, and a bar chart draws that as a labelled column carrying no bar.",
+            "example": 5400
+          },
+          "remSleep": {
+            "type": "number",
+            "minimum": 0,
+            "description": "REM sleep, in seconds. Zero is legal and is a measurement, for the reason above.",
+            "example": 3060
+          },
+          "awakeTime": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Wakefulness within the night's own span, in seconds — the fourth stage total and not a fifth row. It is what makes `asleep + awake == duration` an identity a reader can check against the night's two boundary instants: the three stages above plus this one span the whole night.",
+            "example": 1620
+          },
+          "respiratoryRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Breaths per minute, **derived from the R-R series rather than read off a sensor** — the strap has no respiratory sensor. `null` on every night that series cannot support, which includes every imported night, since the export carries no R-R series at all. **`null` and `0` are different answers**: the estimator declining and the estimator returning a figure are different facts, and a server that filled one in would be publishing a reading no device took. Non-negative rather than positive because the optional already carries the absence — this bound only refuses a negative breathing rate.",
+            "example": 14.4
+          },
+          "disturbanceCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "How many times the night's sleep was disturbed. `null` on every imported night — the export has no such column — and on any night the actigraphy classifier could not read. A `0` is a measured night nobody stirred, which is a different claim from a night nobody scored.",
+            "example": 7
+          },
+          "sleepConsistency": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "WHOOP's own Sleep Consistency for the night, as a whole percent. Nullable for two separate reasons and both are real states: a night with fewer than four priors has none, and a row written before the app's `v9` migration has none either. **`null` is 'not scored', which is not a score of zero** — a `0` here would claim a night maximally inconsistent with its own history.",
+            "example": 88
+          },
+          "sleepDebt": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The accumulated deficit, in **seconds** — WHOOP's `Sleep debt (min)` converted, whose 910 non-empty export values run 0 to 127 minutes. **The two producers are different quantities and only one of them is a term of the need above it**: WHOOP's need is a total that contains `need_from_sleep_debt`, while the app's own `SleepNeedMath` deliberately omits any debt term — so `need − debt` is WHOOP's base-plus-strain on an imported night and a base requirement short by the whole deficit on a strap night. Nothing but `source` distinguishes them, which is why the app's breakdown card gates on provenance rather than on this field being non-null.",
+            "example": 6240
+          },
+          "sleepStages": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 262144,
+            "description": "The night's stage timeline, as **opaque JSON text**, stored and handed back unchanged. On the phone this field is an array of typed segments; on this side of the boundary it is the string the column holds, and **nothing in this Worker parses it, validates its interior or re-serialises it**. That is a decision rather than a shortcut, and it has three parts. The server never reads into the blob and takes no opinion about it, so there is no second decoder here that has to agree with the app's `Codable` one forever. The instants inside it are **unix milliseconds** — a third convention that this API's own `InstantSchema` exists to keep out of the published contract, so a structured wire form would either impose a conversion on the client with a silent-corruption failure mode or put a second instant spelling in this document. And the failure mode of a string is bounded and honest: a client that PUTs garbage gets the same garbage back, which is the property a sync exists for. An empty string is refused — a night with no stages and a night that was never staged are the same thing, and `null` is that thing's only representation; an empty array is never stored. `null` on every imported night permanently, because the export reports stage *totals* and no timeline.",
+            "example": "[{\"id\":\"8B1F0C24-3E5A-4D77-9C21-6F0B7A2E4D18\",\"start\":1787372263000,\"end\":1787372293000,\"stage\":\"Light\"}]"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Provenance — which producer wrote the row (`whoop_export`, …). `null` means this app measured it, or that the row predates the column. An empty string is refused: it is a value nobody supplied, and the whole point of the column being nullable is that absence has a spelling already. **It carries more weight on this resource than on any other in this API**, because it is the only marker separating two producers of `sleepPerformance`, `sleepConsistency`, `sleepDebt` and `respiratoryRate` — four fields the app computes for a strap night and stores verbatim for an imported one.",
+            "example": "whoop_export"
+          }
+        },
+        "required": [
+          "startTime",
+          "endTime",
+          "sleepPerformance",
+          "totalSleepNeeded",
+          "lightSleep",
+          "deepSleep",
+          "remSleep",
+          "awakeTime",
+          "respiratoryRate",
+          "disturbanceCount",
+          "sleepConsistency",
+          "sleepDebt",
+          "sleepStages",
+          "source"
+        ],
+        "additionalProperties": false,
+        "description": "The fields of a night's sleep, less its day — the day comes from the path."
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "invalid_request",
+                  "unauthorized",
+                  "no_measurement_for_day",
+                  "not_found",
+                  "route_not_found",
+                  "internal_error"
+                ],
+                "description": "A stable, machine-readable reason. Switch on this rather than on the message.",
+                "example": "invalid_request"
+              },
+              "message": {
+                "type": "string",
+                "description": "A human-readable explanation. Not stable — do not parse it.",
+                "example": "date: must be a calendar day in YYYY-MM-DD form"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "description": "Every non-2xx response this API produces, from every route."
+      },
+      "Sleep": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+            "example": "2026-08-22"
+          },
+          "startTime": {
+            "type": "string",
+            "description": "When the night began, as an instant in canonical UTC form. **The day this night is filed under is not derived from this field** — it is the *wake* day, and it comes from the path or from the row's own `date`.",
+            "example": "2026-08-21T23:12:00.000Z"
+          },
+          "endTime": {
+            "type": "string",
+            "description": "When it ended. Refused by both write bodies unless it is strictly later than `startTime` — a night of zero length is not a night. The response carries no such refinement, deliberately.",
+            "example": "2026-08-22T07:04:00.000Z"
+          },
+          "sleepPerformance": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Sleep performance as a whole-scale percentage. **This is the app's own figure and not WHOOP's column**: every stored row holds `clamp(asleep ÷ need × 100, 0, 100)` computed on the device, so one formula covers all 910 imported nights and every night after. The export's own `Sleep performance %` is parsed by the app and read by nothing. The bounds are the scale's definition, and the clamp is applied before the value is stored — a client sending a figure outside them is describing a different quantity.",
+            "example": 81.3
+          },
+          "totalSleepNeeded": {
+            "type": "number",
+            "minimum": 0,
+            "description": "The night's requirement, in **seconds** — not minutes, which is the unit WHOOP's own `Sleep need (min)` column uses and which the importer converts. **A value below the eight-hour baseline is real and correct**: 53 of the bundled export's nights carry one, and the app's own formula cannot produce it, because a strap night's need is a computed baseline plus a fitted strain term while an imported night's is WHOOP's own. Nothing distinguishes the two producers here except `source`.",
+            "example": 33420
+          },
+          "lightSleep": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Light sleep, in seconds. One of the three stages whose sum is the asleep total `sleepPerformance` divides.",
+            "example": 18720
+          },
+          "deepSleep": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Deep (slow-wave) sleep, in seconds. **Zero is legal and is a measurement**: the export holds a night of 15h40m of light sleep with no deep and no REM at all, and a bar chart draws that as a labelled column carrying no bar.",
+            "example": 5400
+          },
+          "remSleep": {
+            "type": "number",
+            "minimum": 0,
+            "description": "REM sleep, in seconds. Zero is legal and is a measurement, for the reason above.",
+            "example": 3060
+          },
+          "awakeTime": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Wakefulness within the night's own span, in seconds — the fourth stage total and not a fifth row. It is what makes `asleep + awake == duration` an identity a reader can check against the night's two boundary instants: the three stages above plus this one span the whole night.",
+            "example": 1620
+          },
+          "respiratoryRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Breaths per minute, **derived from the R-R series rather than read off a sensor** — the strap has no respiratory sensor. `null` on every night that series cannot support, which includes every imported night, since the export carries no R-R series at all. **`null` and `0` are different answers**: the estimator declining and the estimator returning a figure are different facts, and a server that filled one in would be publishing a reading no device took. Non-negative rather than positive because the optional already carries the absence — this bound only refuses a negative breathing rate.",
+            "example": 14.4
+          },
+          "disturbanceCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "How many times the night's sleep was disturbed. `null` on every imported night — the export has no such column — and on any night the actigraphy classifier could not read. A `0` is a measured night nobody stirred, which is a different claim from a night nobody scored.",
+            "example": 7
+          },
+          "sleepConsistency": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "WHOOP's own Sleep Consistency for the night, as a whole percent. Nullable for two separate reasons and both are real states: a night with fewer than four priors has none, and a row written before the app's `v9` migration has none either. **`null` is 'not scored', which is not a score of zero** — a `0` here would claim a night maximally inconsistent with its own history.",
+            "example": 88
+          },
+          "sleepDebt": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The accumulated deficit, in **seconds** — WHOOP's `Sleep debt (min)` converted, whose 910 non-empty export values run 0 to 127 minutes. **The two producers are different quantities and only one of them is a term of the need above it**: WHOOP's need is a total that contains `need_from_sleep_debt`, while the app's own `SleepNeedMath` deliberately omits any debt term — so `need − debt` is WHOOP's base-plus-strain on an imported night and a base requirement short by the whole deficit on a strap night. Nothing but `source` distinguishes them, which is why the app's breakdown card gates on provenance rather than on this field being non-null.",
+            "example": 6240
+          },
+          "sleepStages": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 262144,
+            "description": "The night's stage timeline, as **opaque JSON text**, stored and handed back unchanged. On the phone this field is an array of typed segments; on this side of the boundary it is the string the column holds, and **nothing in this Worker parses it, validates its interior or re-serialises it**. That is a decision rather than a shortcut, and it has three parts. The server never reads into the blob and takes no opinion about it, so there is no second decoder here that has to agree with the app's `Codable` one forever. The instants inside it are **unix milliseconds** — a third convention that this API's own `InstantSchema` exists to keep out of the published contract, so a structured wire form would either impose a conversion on the client with a silent-corruption failure mode or put a second instant spelling in this document. And the failure mode of a string is bounded and honest: a client that PUTs garbage gets the same garbage back, which is the property a sync exists for. An empty string is refused — a night with no stages and a night that was never staged are the same thing, and `null` is that thing's only representation; an empty array is never stored. `null` on every imported night permanently, because the export reports stage *totals* and no timeline.",
+            "example": "[{\"id\":\"8B1F0C24-3E5A-4D77-9C21-6F0B7A2E4D18\",\"start\":1787372263000,\"end\":1787372293000,\"stage\":\"Light\"}]"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "Provenance — which producer wrote the row (`whoop_export`, …). `null` means this app measured it, or that the row predates the column. An empty string is refused: it is a value nobody supplied, and the whole point of the column being nullable is that absence has a spelling already. **It carries more weight on this resource than on any other in this API**, because it is the only marker separating two producers of `sleepPerformance`, `sleepConsistency`, `sleepDebt` and `respiratoryRate` — four fields the app computes for a strap night and stores verbatim for an imported one.",
+            "example": "whoop_export"
+          }
+        },
+        "required": [
+          "date",
+          "startTime",
+          "endTime",
+          "sleepPerformance",
+          "totalSleepNeeded",
+          "lightSleep",
+          "deepSleep",
+          "remSleep",
+          "awakeTime",
+          "respiratoryRate",
+          "disturbanceCount",
+          "sleepConsistency",
+          "sleepDebt",
+          "sleepStages",
+          "source"
+        ],
+        "description": "One night's sleep, filed under the day it **woke** on. A day with no row is a 404 — this resource has no unmeasured-row state, because a night the classifier could not read is never written at all."
+      }
+    }
+  }
+}

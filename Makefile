@@ -64,7 +64,8 @@ backend-check:
 	npm --prefix backend run typecheck
 	npm --prefix backend test
 	npm --prefix backend run openapi
-	git diff --exit-code -- shared/openapi.json
+	git diff --exit-code HEAD -- shared
+	test -z "$$(git status --porcelain -- shared)"
 
 # Build output lives under the repo's own `tmp/build/` so nothing is written outside the tree;
 # it is gitignored, and `tmp/README.md` says what the folder is for.

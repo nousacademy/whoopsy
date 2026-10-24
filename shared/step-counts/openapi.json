@@ -1,0 +1,494 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Whoopsy Sync API — step-counts",
+    "version": "0.1.0",
+    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold. This file is the `step-counts` slice of that document: the `/v1/step-counts` paths and the components they reference. `shared/openapi.json` is the whole contract."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Every `/v1` path requires `Authorization: Bearer <SYNC_API_TOKEN>`; `GET /health` and `GET /openapi.json` are the two that answer without it."
+    }
+  ],
+  "paths": {
+    "/v1/step-counts": {
+      "get": {
+        "summary": "Read a window of days",
+        "description": "Every day holding a row in an inclusive window ending on `endingOn`. Days with no row are **omitted** rather than returned as zero-filled records — an empty array is a real answer, and on a step history it is a common one: the strap is worn intermittently, so the gaps are inside the range rather than only at its ends. The window is inclusive at both ends, so `days=14` spans 15 calendar days.",
+        "parameters": [
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 4000,
+              "description": "How many days back from `endingOn` to reach. **The window is inclusive at both ends, so `days=14` spans 15 calendar days** — this mirrors the app's own `historyWindow(days:endingOn:)` exactly, deliberately, so a ported call returns identical rows. `0` means the single day `endingOn`.",
+              "example": 14
+            },
+            "required": false,
+            "name": "days",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The newest day in the window, inclusive. Optional only because the server has no notion of the caller's local today — its own is UTC, and a device eight hours behind it is a day out. **Clients should always send this.**",
+              "example": "2026-08-22"
+            },
+            "required": false,
+            "name": "endingOn",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The days holding a row in the window, oldest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StepCount"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/step-counts/{date}": {
+      "get": {
+        "summary": "Read one day",
+        "description": "One day's row, or `404 no_measurement_for_day` if that day has no row at all. **There is no second kind of row here**: a day the strap did not measure is never written, so unlike `strains` there is no unmeasured-row state to tell a reading apart from. A measured day of no walking is a `200` carrying `stepCount: 0`, which is a real reading rather than an absence.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+              "example": "2026-08-22"
+            },
+            "required": true,
+            "name": "date",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The day's row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepCount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`date` is not a calendar day in `YYYY-MM-DD` form.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "That day has no row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Write one day",
+        "description": "Insert or replace the day's row — the day-keyed upsert the app's own step-row write is. Answers with the row **read back from the database**, not with the request echoed, so a caller can see that a `0` was stored as a `0` rather than arriving back as some default the write path might have folded it into. On this resource that assertion has a sharp edge: `measuredSeconds` is the field that separates a measured day of no walking from a day nothing measured, so a default on it would publish the second state as the first.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+              "example": "2026-08-22"
+            },
+            "required": true,
+            "name": "date",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepCountWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored row, as the database holds it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepCount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The day, the header or the body failed validation — including a body carrying its own `date`, a fractional `stepCount` and a `measuredSeconds` that is not a number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/step-counts/batch": {
+      "post": {
+        "summary": "Write a chunk of days",
+        "description": "Insert or replace up to `MAX_BATCH_STEP_COUNTS` days in one request — the shape a first sync needs, where a long worn history is a handful of these rather than one round trip per day. Every row is keyed on the same `(userId, date)` pair the single-day `PUT` writes, so a chunk replayed after a timeout is safe: **it rewrites each row with the values it already holds and the row count does not move.** The chunk is one transaction, so a failure writes nothing and the same body can be sent again. **It never deletes** — a day the caller leaves out is left alone, which is why this is a `POST` on `/batch` and not a `PUT` on the collection. That promise is worth more here than on any sibling: a step history is mostly days the strap was not worn, so a verb that said `these are the days` would be a request to delete most of the user's record every time it was sent.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepCountBatchWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many rows the database reported writing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepCountBatchResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The header or the body failed validation — including a chunk larger than the cap, a day carried twice, and a row carrying a field the contract does not have.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "StepCountBatchResult": {
+        "type": "object",
+        "properties": {
+          "written": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many rows the database reported writing. A replayed chunk reports the same number as the first send, not zero — `INSERT … ON CONFLICT DO UPDATE` counts a matched row as changed.",
+            "example": 200
+          }
+        },
+        "required": [
+          "written"
+        ],
+        "description": "The outcome of a bulk write. It reports what the database did, not what was on disk afterwards."
+      },
+      "StepCountBatchWrite": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepCountBatchRow"
+            },
+            "minItems": 1,
+            "maxItems": 200,
+            "description": "The days to write, at least one and at most 200. Each day must appear exactly once. A chunk of the app's full history is five of these."
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "additionalProperties": false,
+        "description": "A chunk of days to insert or replace. Adds and overwrites; it never deletes, so a day the caller leaves out is left alone rather than removed."
+      },
+      "StepCountBatchRow": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+            "example": "2026-08-22"
+          },
+          "stepCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Steps the strap's pedometer counted that day. A whole number of steps, and **`0` is a measurement**: a day of no walking that the strap did wear is a real zero, distinguished from a day nothing measured by `measuredSeconds` below and never by this field. There is no fraction to round — the app stores an `Int` and the accumulator adds whole peaks — so a fractional value is refused rather than truncated, on the rule that this API does not edit a client's figure.",
+            "example": 8432
+          },
+          "measuredSeconds": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Seconds of motion the count above came from, as the app's accumulator summed them — `Σ min(5.0, Δt)` over the batches it was handed, so a fractional value is ordinary rather than an error. **This is the field that separates a measured day from a day nothing measured**: the app's `StepCount.hasMeasurement` is exactly `measuredSeconds > 0`, so a client derives that flag from this number rather than receiving it. `0` is accepted and stored rather than refused — a row holding it is one no current writer produces but that the app can still hold, and an API that refused it would be deciding a row the client has does not exist. It is never a default: this API applies none to any field, because a `0` filled in here would publish a day nothing measured as a day that was.",
+            "example": 41760
+          }
+        },
+        "required": [
+          "date",
+          "stepCount",
+          "measuredSeconds"
+        ],
+        "additionalProperties": false,
+        "description": "One day of a bulk write. The day is required and carried in the body, because a batch has no path to put it in."
+      },
+      "StepCountWrite": {
+        "type": "object",
+        "properties": {
+          "stepCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Steps the strap's pedometer counted that day. A whole number of steps, and **`0` is a measurement**: a day of no walking that the strap did wear is a real zero, distinguished from a day nothing measured by `measuredSeconds` below and never by this field. There is no fraction to round — the app stores an `Int` and the accumulator adds whole peaks — so a fractional value is refused rather than truncated, on the rule that this API does not edit a client's figure.",
+            "example": 8432
+          },
+          "measuredSeconds": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Seconds of motion the count above came from, as the app's accumulator summed them — `Σ min(5.0, Δt)` over the batches it was handed, so a fractional value is ordinary rather than an error. **This is the field that separates a measured day from a day nothing measured**: the app's `StepCount.hasMeasurement` is exactly `measuredSeconds > 0`, so a client derives that flag from this number rather than receiving it. `0` is accepted and stored rather than refused — a row holding it is one no current writer produces but that the app can still hold, and an API that refused it would be deciding a row the client has does not exist. It is never a default: this API applies none to any field, because a `0` filled in here would publish a day nothing measured as a day that was.",
+            "example": 41760
+          }
+        },
+        "required": [
+          "stepCount",
+          "measuredSeconds"
+        ],
+        "additionalProperties": false,
+        "description": "The fields of a step count, less its day — the day comes from the path."
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "invalid_request",
+                  "unauthorized",
+                  "no_measurement_for_day",
+                  "not_found",
+                  "route_not_found",
+                  "internal_error"
+                ],
+                "description": "A stable, machine-readable reason. Switch on this rather than on the message.",
+                "example": "invalid_request"
+              },
+              "message": {
+                "type": "string",
+                "description": "A human-readable explanation. Not stable — do not parse it.",
+                "example": "date: must be a calendar day in YYYY-MM-DD form"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "description": "Every non-2xx response this API produces, from every route."
+      },
+      "StepCount": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "A calendar day, `YYYY-MM-DD`. Not an instant: a value carrying a time component is refused rather than snapped, because the day is `startOfDay` in the *device's* calendar and this server cannot re-derive the device's midnight.",
+            "example": "2026-08-22"
+          },
+          "stepCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Steps the strap's pedometer counted that day. A whole number of steps, and **`0` is a measurement**: a day of no walking that the strap did wear is a real zero, distinguished from a day nothing measured by `measuredSeconds` below and never by this field. There is no fraction to round — the app stores an `Int` and the accumulator adds whole peaks — so a fractional value is refused rather than truncated, on the rule that this API does not edit a client's figure.",
+            "example": 8432
+          },
+          "measuredSeconds": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Seconds of motion the count above came from, as the app's accumulator summed them — `Σ min(5.0, Δt)` over the batches it was handed, so a fractional value is ordinary rather than an error. **This is the field that separates a measured day from a day nothing measured**: the app's `StepCount.hasMeasurement` is exactly `measuredSeconds > 0`, so a client derives that flag from this number rather than receiving it. `0` is accepted and stored rather than refused — a row holding it is one no current writer produces but that the app can still hold, and an API that refused it would be deciding a row the client has does not exist. It is never a default: this API applies none to any field, because a `0` filled in here would publish a day nothing measured as a day that was.",
+            "example": 41760
+          }
+        },
+        "required": [
+          "date",
+          "stepCount",
+          "measuredSeconds"
+        ],
+        "description": "One day's step count. A day the strap did not measure has no row and is a 404; a measured day of no walking is a `200` carrying `stepCount: 0` and a positive `measuredSeconds`."
+      }
+    }
+  }
+}
