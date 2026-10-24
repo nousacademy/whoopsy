@@ -540,7 +540,7 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
                     // against a cold-start constant would put a default at the head of the history
                     // and let every later day's window carry it. Those days keep their sleep, strain
                     // and measurements; they simply have no recovery row, and the walk continues.
-                    let sleepPerformance = session.map { Double($0.sleepPerformancePercentage) / 100.0 }
+                    let sleepPerformance = session.map { Double($0.sleepSufficiencyPercentage) / 100.0 }
                         ?? BaselineStatisticsMath.sleepPerformancePivot
 
                     // Input built as its own value: inlined into the call, the mix of `nil`-coalescing,
@@ -607,14 +607,15 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
             // and the export has none, so recomputing would mean feeding a different algorithm. The
             // zone breakdown is absent too, which is why the Strain screen has to render the absence.
             if let strainScore = row.dayStrain {
-                // The **measurement**, not the row — matching the recovery half above. A placeholder
-                // left on disk by an older build (`score: 0.0`, flag cleared) is a day this app never
-                // measured, so WHOOP's own figure for it must still land. Testing row existence
-                // instead skipped the day outright and counted it into `daysAlreadyRecorded`, which
-                // also contradicted this type's own contract that it never touches a day the app
-                // measured itself — a placeholder day was not measured.
+                // The **provenance**, not the row and not the flag. A placeholder left on disk by an
+                // older build (`score: 0.0`, flag cleared, no source) is a day this app never measured,
+                // so WHOOP's own figure for it must still land — and so must WHOOP's figure for a day
+                // this app scored from a partial drain: an estimate does not outrank the measurement
+                // the export is carrying. **The only row an import refuses to touch is one it wrote
+                // itself**, which is what makes a second import idempotent without letting a device
+                // recompute stand in front of WHOOP's number.
                 let existingStrain = try await strainRepository.getStrain(for: day)
-                if existingStrain?.hasMeasurement != true {
+                if existingStrain?.source != Self.sourceLabel {
                     let strain = StrainScore(
                         date: day,
                         score: strainScore,
@@ -632,7 +633,9 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
                         hasMeasurement: true,
                         activeCalories: row.energyKcal ?? 0,
                         averageHeartRate: row.averageHeartRate ?? 0,
-                        maxHeartRate: row.maxHeartRate ?? 0)
+                        maxHeartRate: row.maxHeartRate ?? 0,
+                        source: Self.sourceLabel,
+                        algorithm: .whoopExport)
                     try await strainRepository.saveStrain(strain, source: Self.sourceLabel)
                     strainsWritten += 1
                     wroteForThisDay = true

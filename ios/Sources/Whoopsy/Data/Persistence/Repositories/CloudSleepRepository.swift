@@ -12,6 +12,9 @@ public struct CloudSleepRepository: SleepRepository {
     private let local: any SleepRepository
     private let cloud: any CloudSync
     private let settingsStore: any SyncSettingsRepository
+    /// Injected so the runner is not a function of the hour it runs. `DIContainer` passes
+    /// `SyncSchedule.isOpen`; the default keeps every test and preview open.
+    private let isCallWindowOpen: @Sendable () -> Bool
     private let status: any SyncStatus
     private let calendar: Calendar
 
@@ -20,13 +23,15 @@ public struct CloudSleepRepository: SleepRepository {
         cloud: any CloudSync,
         settingsStore: any SyncSettingsRepository,
         status: any SyncStatus,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        isCallWindowOpen: @escaping @Sendable () -> Bool = { true }
     ) {
         self.local = local
         self.cloud = cloud
         self.settingsStore = settingsStore
         self.status = status
         self.calendar = calendar
+        self.isCallWindowOpen = isCallWindowOpen
     }
 
     /// Local only, deliberately: the Worker has no delete endpoint, and a night this app classified
@@ -59,18 +64,10 @@ public struct CloudSleepRepository: SleepRepository {
         return Self.merged(cloud: fetched, local: stored)
     }
 
+    /// **Local only** — the daily run writes the database copy. A mirror per save is the call volume
+    /// `SyncSchedule` exists to remove.
     public func saveSleepSession(_ session: SleepSession, source: String?) async throws {
         try await local.saveSleepSession(session, source: source)
-        guard await storesInCloud() else { return }
-        do {
-            try await cloud.writeSleep(SleepSyncRow(session, source: source))
-            await status.clear(session.date)
-        } catch let error as CloudSyncError {
-            // A failed push never fails the local write. `.unreachable` is the degrade case: the night
-            // is saved on the phone, and the `SYNC` button reconciles what this missed. `.rejected` and
-            // `.malformed` are bugs and surface.
-            guard case .unreachable = error else { throw error }
-        }
     }
 
     /// The two answers as one ascending window, with the phone's night winning on a day both hold —
@@ -83,6 +80,7 @@ public struct CloudSleepRepository: SleepRepository {
     }
 
     private func storesInCloud() async -> Bool {
-        await settingsStore.load().destination == .cloud
+        guard await settingsStore.load().destination == .cloud else { return false }
+        return isCallWindowOpen()
     }
 }

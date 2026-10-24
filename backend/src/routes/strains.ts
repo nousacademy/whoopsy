@@ -103,6 +103,7 @@ function toWire(strain: Strain): StrainWire {
     maxHeartRate: strain.maxHeartRate,
     hasMeasurement: strain.hasMeasurement,
     source: strain.source,
+    algorithm: strain.algorithm,
   };
 }
 

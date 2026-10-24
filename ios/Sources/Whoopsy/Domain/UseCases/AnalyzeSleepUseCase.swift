@@ -32,6 +32,25 @@ public final class AnalyzeSleepUseCase: Sendable {
     /// the same one the stage bands use for their stillness requirement — one definition of "quiet".
     public static let motionQuietCeiling: Double = 1.05
 
+    /// How far above the **measured sleeping rate** an epoch may sit and still count as asleep.
+    ///
+    /// **1.10, not the stage bands' 1.25, and the difference is which rate it multiplies.** The stage
+    /// awake test multiplies the profile's *awake* baseline, where 1.25 is a reasonable band; the
+    /// onset ceiling multiplies the lowest third of the night, which is already a sleeping rate. On a
+    /// real night the measured rate was 51 bpm and the wearer's awake plateau before bed sat at
+    /// 58–61: `× 1.25` put the ceiling at 63.75, inside that plateau, and reported a 21:27 onset for
+    /// a 22:30 bedtime. `× 1.10` puts it at 56.1 and the same night's onset at 22:44 — and every
+    /// ceiling from 1.04× to 1.18× lands in that same 22:44–22:47 window, so the choice is a plateau
+    /// rather than a fit to one pair.
+    public static let onsetRestingMultiple: Double = 1.10
+
+    /// The same ceiling when the window is too thin to measure a sleeping rate.
+    ///
+    /// **The profile's rate is an *awake* baseline, so it keeps the stage bands' 1.25.** Applying
+    /// 1.10 to it would be the scale error in the other direction: a fixture night at 67 bpm with a
+    /// cold-start 60 on file is a plausible sleeping rate, and `60 × 1.10 = 66` would refuse it.
+    public static let onsetFallbackMultiple: Double = 1.25
+
     /// The span a night is read out of: **9 PM the previous evening to 10 AM**, which is *when the
     /// strap might have been worn* rather than the night itself — `SleepOnsetMath` is what trims it to
     /// the night inside that span.
@@ -151,7 +170,11 @@ public final class AnalyzeSleepUseCase: Sendable {
         // neither real. The profile is the stage bands' baseline and the ceiling's fallback.
         let measuredRest = Self.restingHeartRate(from: samples)
         let restHR = Double(profile.restingHeartRate)
-        let onsetCeiling = Double(measuredRest ?? profile.restingHeartRate) * 1.25
+        let onsetCeiling: Double = if let measuredRest {
+            Double(measuredRest) * Self.onsetRestingMultiple
+        } else {
+            Double(profile.restingHeartRate) * Self.onsetFallbackMultiple
+        }
         AppLogger.algorithms.notice("""
             Sleep staging: bands at \(restHR, privacy: .public) bpm (profile), onset ceiling \
             \(onsetCeiling, privacy: .public) bpm (measured \(measuredRest ?? -1, privacy: .public) bpm; -1 means the profile fallback)
@@ -294,13 +317,42 @@ public final class AnalyzeSleepUseCase: Sendable {
         // and `SleepViewModel` passes exactly that on a first load, so the subtraction would land
         // mid-day and miss the row the keyed lookup needs.
         let previousDay = calendar.date(byAdding: .day, value: -1, to: morningDate.startOfDay) ?? morningDate
-        let previousStrain = try await strainRepository.getStrain(for: previousDay)
 
-        // A flat `targetSleepHours` stood here, which reported every night against the same
-        // denominator while WHOOP's own need for the same nights ranged 321–650 min. See
-        // `SleepNeedMath` for the fit and for what is deliberately left out.
+        // One wide read of both tables. The personal baseline needs 28 prior **nights**, which can
+        // span more than 28 calendar days when the strap was not worn; the debt model keeps its own
+        // 30-day read by narrowing this same result rather than issuing a second query.
+        let historyDays = max(
+            SleepNeedBaselineMath.baselineHistoryLookbackDays, SleepDebtMath.historyLookbackDays)
+        let wideHistory = try await sleepRepository.getSleepHistory(
+            days: historyDays, endingOn: morningDate.startOfDay)
+        let strainHistory = try await strainRepository.getStrainHistory(
+            days: historyDays, endingOn: morningDate.startOfDay)
+        let strainByDay = Dictionary(
+            strainHistory.map { ($0.date.startOfDay, $0) }, uniquingKeysWith: { _, last in last })
+        let previousStrain = strainByDay[previousDay.startOfDay]
+
+        // The individual's own baseline, learned from their prior stored needs with the strain term
+        // removed. Age is population context only: it is the cold-start value below seven prior
+        // nights, and the floor/ceiling around the learned median. The night being scored is
+        // excluded, and so is any prior night without a strain row — its need is the bare baseline,
+        // which this estimator cannot tell apart from an unmeasured day.
+        let priorNights = wideHistory
+            .filter { $0.date.startOfDay < morningDate.startOfDay }
+            .sorted { $0.date < $1.date }
+        let baselineSeconds = SleepNeedBaselineMath.personalBaselineSeconds(
+            for: priorNights.map { prior in
+                let priorDay = calendar.date(
+                    byAdding: .day, value: -1, to: prior.date.startOfDay) ?? prior.date
+                return SleepNeedBaselineMath.NeedNight(
+                    needSeconds: prior.targetSleepNeedSeconds,
+                    previousDayStrain: strainByDay[priorDay.startOfDay]?.score)
+            },
+            age: profile.age)
+
+        // The fitted strain term is unchanged — see `SleepNeedMath`. Imported nights never reach
+        // this path; they keep WHOOP's stored need.
         let targetSleepNeedSeconds = SleepNeedMath.sleepNeedSeconds(
-            baselineSeconds: profile.targetSleepHours * 3600,
+            baselineSeconds: baselineSeconds,
             previousDayStrain: previousStrain?.score)
 
         let asleepSeconds = lightSec + deepSec + remSec
@@ -320,24 +372,26 @@ public final class AnalyzeSleepUseCase: Sendable {
                 .filter { $0.stage != .awake }
                 .map { DateInterval(start: $0.startTime, end: $0.endTime) })
 
-        // The running deficit. This is the only history read on this path, and it is anchored on the
-        // night being scored rather than on `Date()` — the night a strap recorded an hour ago and the
-        // night it recorded a week ago must walk the same series, which a `Date()` anchor would break
-        // for every night but today's.
+        // The running deficit, narrowed from the same wide read to the model's own 30-day window. It
+        // is anchored on the night being scored rather than on `Date()` — the night a strap recorded
+        // an hour ago and the night it recorded a week ago must walk the same series, which a
+        // `Date()` anchor would break for every night but today's.
         //
         // The anchor is `startOfDay`, matching the key `saveSleepSession` writes: the model compares
         // `night.day` against the priors' days, and a raw `Date()` on the day the night is keyed to
         // would be later than the night's own stored key — which is what made a day fall inside its
         // own baseline in `RecoveryScoring.baselineWindow(before:)`, so the same snap is applied here
         // rather than assumed of the caller.
-        let history = try await sleepRepository.getSleepHistory(
-            days: SleepDebtMath.historyLookbackDays, endingOn: morningDate.startOfDay)
+        let debtCutoff = calendar.date(
+            byAdding: .day, value: -SleepDebtMath.historyLookbackDays, to: morningDate.startOfDay)
+            ?? morningDate
+        let debtHistory = wideHistory.filter { $0.date >= debtCutoff }
         let sleepDebtSeconds = SleepDebtMath.sleepDebtSeconds(
             for: SleepDebtMath.Night(
                 day: morningDate.startOfDay,
                 needSeconds: targetSleepNeedSeconds,
                 asleepSeconds: asleepSeconds),
-            history: history.map {
+            history: debtHistory.map {
                 SleepDebtMath.Night(
                     day: $0.date,
                     needSeconds: $0.targetSleepNeedSeconds,

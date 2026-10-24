@@ -4,11 +4,12 @@ The bundled WHOOP export is four files. **Three of them are read** — `physiolo
 full, `sleeps.csv` for its eight nap rows alone, and `workouts.csv` for the 673 workouts. This file
 is the inventory of what each column is worth and what it would take to use the rest.
 
-**Two sections at the end are not a column inventory** — §5, the strap's own historical sync, which
-is a wire-protocol task rather than an export one, and §6, the walk to run on a sideloaded build,
-which is a device task rather than an export one. Both are here because this is the file the
-project's outstanding work is recorded in, and both are marked as sitting outside the per-column rule
-so that the invariant below still holds for everything above them.
+**Three sections at the end are not a column inventory** — §5, the strap's own historical sync, which
+is a wire-protocol task rather than an export one, §6, the walk to run on a sideloaded build, which
+is a device task rather than an export one, and **§7, the flash recorder and the step counter**, added
+2026-10-23. All three are here because this is the file the project's outstanding work is recorded in,
+and all three are marked as sitting outside the per-column rule so that the invariant below still
+holds for everything above them.
 
 **Re-measure, never trust.** Every count here is a measurement over
 `ios/Sources/Whoopsy/Data/Resources/Whoop/`, not a recollection. The `csv-field-coverage` skill owns this file
@@ -78,7 +79,7 @@ values: 909 measured wake days plus 22 fragment days.
 
 - [x] **`Sleep onset`** — 910 — → `SleepSession.startTime`
 - [x] **`Wake onset`** — 910 — **the day key**, and → `SleepSession.endTime`
-- [ ] **`Sleep performance %`** — 910 (5–100) — parsed, consumed by nothing. **Decision — do not cover.** `SleepSession.sleepPerformancePercentage` derives asleep-over-need ([SleepSession.swift:193](../ios/Sources/Whoopsy/Domain/Entities/SleepSession.swift#L193)); the two disagree on **454 of 910 nights** — but that total hides a regime change and must not be quoted alone: across the export's **137-day gap (2024-12-31 → 2025-05-17)** WHOOP's column becomes a different function, matching the app's expression on **423 of 451** pre-gap nights (MAE 0.062) and only **33 of 459** after it (MAE 7.05). So on the older half the app's derivation *is* WHOOP's, and the disagreement is entirely a post-2025 phenomenon. Re-measure era by era and by driving `sleepPerformancePercentage`, not by re-deriving the ratio — the clamp is part of the answer (dropping `min(100, …)` reports 457), and one rule is the point. **The column stays uncovered, but the derivation is now drawn**: it is the SLEEP PERFORMANCE breakdown row on the Recovery screen and, below it, the sleep-performance week chart (`MetricDay.sleepPerformance` → `WeekBarSeries(sleepPerformanceWeek:)`), and it is the ring plus the HOURS VS. NEEDED row on the sleep-performance screen Home's sleep ring pushes. So this line reads as "the export's number is not used", not "the quantity is absent from the app" — the figure on all of those is this app's own, and it will not match WHOOP's for the same night
+- [ ] **`Sleep performance %`** — 910 (5–100) — parsed, consumed by nothing. **Decision — do not cover.** `SleepSession.sleepSufficiencyPercentage` derives asleep-over-need ([SleepSession.swift:193](../ios/Sources/Whoopsy/Domain/Entities/SleepSession.swift#L193)); the two disagree on **454 of 910 nights** — but that total hides a regime change and must not be quoted alone: across the export's **137-day gap (2024-12-31 → 2025-05-17)** WHOOP's column becomes a different function, matching the app's expression on **423 of 451** pre-gap nights (MAE 0.062) and only **33 of 459** after it (MAE 7.05). So on the older half the app's derivation *is* WHOOP's, and the disagreement is entirely a post-2025 phenomenon. Re-measure era by era and by driving `sleepSufficiencyPercentage`, not by re-deriving the ratio — the clamp is part of the answer (dropping `min(100, …)` reports 457), and one rule is the point. **The column stays uncovered, but the derivation is now drawn**: it is the SLEEP PERFORMANCE breakdown row on the Recovery screen and, below it, the sleep-performance week chart (`MetricDay.sleepSufficiency` → `WeekBarSeries(sleepSufficiencyWeek:)`), and it is the HOURS VS. NEEDED row and need card on the sleep-performance screen Home's sleep ring pushes. **The ring itself is now `SleepScoreScoring`'s composite** (`MetricDay.sleepScore` → `WeekBarSeries(sleepScoreWeek:)`), which divides by the same need but adds efficiency, restorative share and timing; it is not this column either. So this line reads as "the export's number is not used", not "the quantity is absent from the app" — the figure on all of those is this app's own, and it will not match WHOOP's for the same night
 - [x] **`Respiratory rate (rpm)`** — 910 (13.5–20.2) — → `sleeps.respiratory_rate`, `recoveries.respiratory_rate` and `MetricDay.respiratoryRate` → the Recovery screen's RESPIRATORY RATE breakdown row and the Respiratory Rate week chart under it. Read to **one decimal** there, because a week spans about two units — the reference week is 14.8…16.5, which whole numbers flatten to six `15`s. **Now a two-producer column**, the same shape as `Sleep consistency %` below: stored verbatim for an imported night, computed by `RespiratoryRateMath` ([RespiratoryRateMath.swift](../ios/Sources/Whoopsy/Core/Math/RespiratoryRateMath.swift)) for a strap night, and the two are told apart only by `source`. The model is respiratory sinus arrhythmia off the R-R series — `docs/ALGORITHMS.md` §4 — and it is **unvalidatable against this app's data**, because the export carries no R-R series at all
 - [ ] **`Asleep duration (min)`** — 910 (68–940) — parsed into `WhoopExportRow.asleepMinutes` and read by **nothing**. **Redundancy**: `totalTimeAsleepSeconds` sums the three stages, and on this export the two agree **exactly on all 910 rows**
 - [ ] **`In bed duration (min)`** — 910 (87–954) — parsed into `WhoopExportRow.inBedMinutes` and read by nothing. **Redundancy, and the measurement is the interesting part**: `sleepPeriodSeconds` (asleep + awake) reproduces this column **exactly on 904 of 910 rows**, so the app already holds this number and the column has nothing to add — see the in-bed section below for the 6 that differ and why storing them would not help
@@ -339,6 +340,93 @@ Data` state on a screen a user can open, on every night the export can show. Not
 because of it: a read path does not drain anything, and the gaps in this section are exactly what
 still stand between the strap's cache and that chart. It is recorded here so the next person to read
 a screenshot of that chart knows the absence is this section's, not a chart bug.
+
+### First question: does a disconnected wear write anything?
+
+**The capacity question cannot be asked until this one is answered.** The 5.0's archive held two
+~60-record bursts stamped months earlier, and every attempt to make it grow — an overnight, a `0x1D`
+reboot, a 15-minute disconnected wear and a hard Bluetooth-off window — returned the same
+`HISTORY_END` at the drain's own instant. That is evidence that nothing is being written, not
+evidence of a small cache, and a capacity test against a non-appending archive measures nothing.
+
+**Ask the strap before spending a night.** `0x22 GET_DATA_RANGE` now decodes its 65-byte reply and
+logs the **write page** and **acknowledged page** (`WhoopDataRange`; the layout is noop's #689
+diagnostic, reported and unconfirmed on 5.0/MG, and it gates nothing). Run one drain and record the
+write page, then run another after a disconnected wear. **Write page unchanged** means nothing was
+written, and capacity is moot. **Write page moved with a backlog** means records exist and the drain's
+request or ACK is at fault. This costs minutes rather than a night.
+
+**Retention is reported rather than measured.** Current 4.0/5.0 firmware is reported at ~14 days; the
+~72-hour figure is reported to describe the **3.0 and older firmware**. Both are commercial/reference
+claims, not this unit's behaviour. `docs/BLE_PROTOCOL.md` §4 and §7 Q10 carry the sources.
+
+**The ACK and cadence are part of the mechanism.** `HISTORY_END` carries an eight-byte block whose
+first `u32` is the trim cursor; `0x17` is `[0x01] + those exact eight bytes`, written only after the
+records are stored, and it may release the strap's history. This app now writes that ACK confirmed
+and preserves the token. noop re-offloads the type-47 store **every ~15 minutes while connected**, so
+if the write page moves during a session, one drain per connection is too rare.
+
+#### Test A — does the write page move? (minutes, no night needed)
+
+**Before starting:** the build with the range log, strap worn, bonded, clock set. Keep the phone's
+Bluetooth on; force-quitting the app is what releases the strap.
+
+1. Open the app, connect, and tap `SYNC HISTORY` once.
+2. Record the log line `Data range: read=… write=… acked=… capacity=… backlog=…`. **If the line never
+   appears, that is itself a result** — the strap did not answer `GET_DATA_RANGE`.
+3. **Force-quit from the app switcher** (not merely background it). Wear the strap for **20–30
+   minutes** away from the phone, or turn the phone's Bluetooth off.
+4. Reopen the app, reconnect, and tap `SYNC HISTORY` once. Record the line again.
+5. Compare the two write pages. Repeat A once: a single pair is a lead, two identical pairs are a
+   result.
+
+| What you see | What it means | Next |
+| :--- | :--- | :--- |
+| **write unchanged**, acked unchanged, backlog 0 | Nothing was written during the disconnected window | The strap is not storing. Suspect the subscription state or firmware; Test B will not help |
+| **write moved**, acked behind it | The strap wrote and there are unread records | If the drain still returns 0 records, the **drain** is at fault — debug the request/ACK path, not storage |
+| **write moved**, acked caught up | It wrote and the app already drained it | Working; go to Test B for capacity |
+| No `Data range:` line | `GET_DATA_RANGE` is unanswered on this firmware | Fall back to Test B; the query is a lead, not a required path |
+
+**Two cautions.** The 65-byte layout is noop's unconfirmed 5.0 diagnostic: a nonsensical number means
+the layout is wrong for this firmware, not that the strap is broken. And **never send `FORCE_TRIM`
+(`0x19`)** — it is the command that wiped five hours in the 4.0 investigation.
+
+#### Test B — the disconnected wear (a night)
+
+Only needed if A is ambiguous or to confirm a pass. **It costs a night of motion, sleep and
+recovery**, so it must not be the same night the sleep model is being tested.
+
+1. Confirm the clock is set. A banked record is stamped by the strap's own RTC, and a wrong clock
+   files history onto the wrong day (`docs/BLE_PROTOCOL.md` §5, Q7).
+2. Force-quit the app and wear the strap for **4–8 hours**.
+3. Reconnect and run `SYNC HISTORY` once. Record the range line, the outcome, and every record's
+   timestamp.
+4. **Pass**: at least one record's timestamp falls inside the wear window, or the write page moved.
+   **Fail**: both the range's write page and the newest record are unchanged.
+5. Repeat once if it fails. A single window is a result only if the procedure is identical.
+
+#### Test C — capacity (only after a pass)
+
+Wear disconnected for increasing spans — **24 h → 72 h → 7 days → 14 days** — draining between each
+and recording the **oldest timestamp** the strap still returns. That is the only measurement that can
+settle the 14-day-versus-72-hour disagreement, and the point at which the oldest record starts moving
+forward is the point at which the ring overwrites.
+
+**What to record each time.**
+
+| When | write | acked | capacity | backlog | Drain outcome (records / newest stamp) | App state | Phone Bluetooth | Firmware (DIS `2A26`) |
+| :--- | ---: | ---: | ---: | ---: | :--- | :--- | :--- | :--- |
+| | | | | | | connected / force-quit / background | on / off | |
+
+**A subscription is the untested alternative explanation.** WHOOP's terms say data collected while
+the account is inactive may not be available on the device or recoverable; third-party guides say the
+strap keeps recording heart rate and R-R regardless. Test A distinguishes those on this unit. Nothing
+in this app can verify the account's side, so record it as a hypothesis, not a cause, until the same
+test runs on a strap with an active membership.
+
+**Firmware is the other variable.** noop's 5.0/MG baseline is `50.42.1.0`; record this strap's DIS
+`2A26` reading beside the result. A write-page result from one firmware is not a statement about
+another.
 
 ### The chain that exists
 
@@ -696,3 +784,97 @@ to stand on
 ([LiveSessionAccumulator.swift:85](../ios/Sources/Whoopsy/Core/Math/LiveSessionAccumulator.swift#L85)). A
 defaulted `true` is the fabrication class `WhoopDevice.batteryPercentage` already documents.
 
+
+## 7. The flash recorder and the step counter — **not a column, and not covered by the rule above**
+
+Added 2026-10-23, after the first real-hardware session with the R18 counter. The code side is done and
+green; what is open is the strap, and two questions only hardware can answer.
+
+### 7.1 What was wrong, and what is now proven
+
+Two bugs in the drain were found on the owner's 5.0, both in `HistoricalDrainSession`:
+
+- **The continuation token was read four bytes early on the 5.0.** `HISTORY_END`'s token is at
+  **payload 10** — frame 17 on the 4.0 (`inner[13:21]`) and frame **21** on the 5.0
+  (`data[10:18]`, NOOP's hardware-verified trim). This app read payload 6, so the strap accepted the
+  ACKed write and never advanced its trim: every drain replayed the same two August batches forever —
+  10,041 ticks at `12:51:13` and 10,222 at `12:57:42`, identical across connections. NOOP calls the
+  symptom the "Groundhog Day bug".
+- **The live-edge test read the marker and not the records.** `HISTORY_END`'s head is the *drain's*
+  clock (the phone's wall time), not the buffer's; the records it closed were two months old. The
+  newest record now decides, the drain-wide highest is the fallback for an empty batch, and the marker
+  is used only by a session that has seen no record at all. A batch that does not beat the drain-wide
+  highest is a **stall**, and three of those end the drain as `.idleTimeout`.
+
+With the token fixed, the drain advanced monotonically through the backlog and read **55,968 records in
+990 batches**, from `2026-08-24 12:51` to **`2026-08-26 13:40:29`** — then an empty final marker. A
+second sync returned **0 records in 1 batch**, which is the proof the cursor persists: before the fix,
+that same sync replayed the two batches.
+
+Also settled in this session:
+
+- **The R18 counter decodes on real hardware**: `value=10041 class=0 source=hardware at
+  2026-08-24 12:51:13`. NOOP's offsets are validated; the field is real.
+- **The RTC is correct now** (`Motion record clock … drift -0.0 h`). The clock was never the current
+  problem, and `SET_CLOCK` has latched at some point.
+- The counter ledger is persisted in `StepCounterStateStore` before its row, and writes are throttled
+  to **once a second per day** with a trailing flush — a per-record write flooded `cfprefsd` and SQLite
+  during the backlog.
+
+### 7.2 The open problem: the flash recorder stopped on 2026-08-26
+
+The flash holds roughly **16 hours of wear across 24–26 August** and nothing later. The strap has been
+worn since — live heart rate and motion work — but nothing is being written to flash, so the counter
+cannot cover a current day and today's steps remain detector-only. The battery read **30%**.
+
+- [ ] **Charge to 100%, reconnect, wear it disconnected for 10–15 minutes, then sync.** This is NOOP's
+      own recovery for a strap that stopped banking ("its clock has lost sync … fully charge it to
+      100%, then reconnect"). Expected: records with a stamp from today, not 0.
+- [ ] **If still 0: the persistent-policy experiment.** NOOP's 5.0 command **154 (`0x9A`)
+      `TOGGLE_PERSISTENT_R21`** takes a revision-1 boolean `[1, state]` — wire 0 explicit off, wire 1
+      on — and stores it nonvolatile; **153 (`0x99`)** is the R20/optical twin. The ACK does **not**
+      confirm the programming. This repo currently lists `0x9A` as never-send because it can keep the
+      optical engine on across reboots and burn battery; if it is tried, it must be one deliberate tap
+      with `[1, 0]` as the revert, not part of the connect sequence.
+- [ ] **Charge is the leading hypothesis, not a proven cause.** 30% is low but not empty; a full charge
+      is the cheap test that separates "battery guard" from "recorder stuck".
+
+### 7.3 Questions this session did **not** answer
+
+- [ ] **The 14-day storage claim is untested.** The drained span is only ~16 hours because the recorder
+      stopped after 26 August — not because the ring filled. A working recorder over 14+ days is what
+      would test the retention figure; the current data cannot.
+- [ ] **The subscription kill-switch hypothesis is unconfirmed.** Records continue to
+      `2026-08-26` — four days *after* the export (and the subscription) ends on 2026-08-22 — so the
+      strap kept recording past expiry. No command in the protocol references disables recording, and
+      the documented stop rule is an invalid RTC. If banking resumes after a charge, the hypothesis is
+      dead; if it never does, it stays open, not proven.
+- [ ] **Watch for a timestamp discontinuity.** A jump in `newestRecord` between consecutive batches
+      marks where `SET_CLOCK` took effect; records before it were written under a wrong clock, so their
+      apparent span is not elapsed time. The 24–26 August segment advanced smoothly, so it is real.
+
+### 7.4 Validating the two step sources
+
+- [ ] **Detector (today's source).** Walk ~1 mile with the app connected and compare the day's
+      increase against the phone's Health step count for the same window. The rhythm gate delays the
+      first two steps of every train by design; a mile should read within a few percent of the phone.
+      Record the `TrackSteps rate: +N steps in 1 measured min` lines for those minutes.
+- [ ] **Counter (waiting for a current banked day).** Once the strap banks a current R18 record, the
+      day switches to the counter and the same walk becomes the counter's test. Compare against the
+      phone, not against `2k per mile` — stride varies.
+- [ ] **Fit `stepTicksPerStep` only from a capture.** The counter is counted at **1 tick = 1 step**,
+      which is NOOP's default; a systematic factor from a real walk is the only justification for a
+      divisor, and it should be a measured constant, not a slider guessed at.
+
+### 7.5 Where the code lives, and how to re-run the gate
+
+`HistoricalDrainSession` (token, live edge, stall), `StepCounterPayloadDecoder` (R18 payload 46/52/53,
+2020 stamp floor, one-shot `step_counter` diagnostic), `StepCounterAccumulator` (the delta rule),
+`StepCounterStateStore` (the ledger), `TrackStepsUseCase` (arbitration and throttling). §16 asserts all
+of it; the suite is **24/24 sections, 3,020 assertions**.
+
+```bash
+unset DEVELOPER_DIR && make test SECTIONS=16   # the step/drain block
+unset DEVELOPER_DIR && make test              # all 24 sections
+make ipa                                      # tmp/whoopsy.ipa for Sideloadly
+```

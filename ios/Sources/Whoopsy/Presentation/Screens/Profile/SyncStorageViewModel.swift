@@ -283,6 +283,11 @@ import SwiftUI
             // a reader narrowing a range needs to know how far back it can reach.
             return "That span reaches further back than the database can read in one request — "
                 + "\(days) days is the limit. Bring SYNC FROM forward and try again."
+
+        case .outsideWindow:
+            // A rate limit, not a failure: the daily run will send the same rows at 18:00 Eastern.
+            return "The sync API is called once a day, at 6 PM Eastern. Nothing was sent; "
+                + "the data stays on this phone, and the daily run will pick it up."
         }
     }
 
@@ -300,6 +305,8 @@ import SwiftUI
             return "The database refused it (\(code)): \(message)"
         case let .malformed(message):
             return "The database's answer was not one this app could read: \(message)"
+        case .outsideWindow:
+            return "The sync API is called once a day, at 6 PM Eastern."
         }
     }
 

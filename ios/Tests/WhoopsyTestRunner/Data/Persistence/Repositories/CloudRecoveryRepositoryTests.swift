@@ -369,71 +369,37 @@ enum CloudRecoveryRepositoryTests {
             let (repository, spy, status, _) = try await make(settings: SyncSettings(destination: .cloud))
             try await repository.saveRecovery(metric(day(-45), 70), source: "whoop_export")
 
-            let written = await spy.storedRow(on: day(-45))
-            assertTest(written?.recoveryScore == 70, "Under `cloud` a day is sent to the database")
-            assertTest(written?.source == "whoop_export", "…carrying the provenance the entity cannot hold")
-            assertTest(written?.hrvValueMs == 70.5, "…and its measured fields")
+            // **A save no longer mirrors.** The database copy is sent by the once-a-day run; this is
+            // the assertion that fails if per-save mirroring returns. Step counts alone are written
+            // once a second, so the mirror was the call volume the schedule exists to remove.
+            let sent = await spy.writtenRows.count
+            assertTest(sent == 0, "Under `.cloud` a save stays on the phone; the daily run uploads")
 
-            // **The phone's copy is written too, and unconditionally.** It used to be conditional on a
-            // `localCopyPolicy` — and under `delete` a day existed only in the database, which is what
-            // the delete that policy was for left behind. Nothing purges either store now, so the
-            // phone's row is the one that is always right, because it is the one this app computed.
             let copy = try await repository.getLocalRecovery(for: day(-45))
-            assertTest(copy?.score == 70, "…and the phone's copy is written beside it, whatever the "
-                           + "destination — there is no policy left that could withhold it")
+            assertTest(copy?.score == 70, "…and the phone's copy is written, which is the whole of the write")
+            assertTest(copy?.source == "whoop_export", "…carrying the provenance the entity can hold")
+            assertTest(copy?.hrvValueMs == 70.5, "…and its measured fields")
 
-            let oneWrite = await spy.writtenRows.count
-            assertTest(oneWrite == 1, "…in one write, not a read and a write")
             let cleared = await status.unavailableDays()
-            assertTest(cleared.isEmpty, "…and the day carries no mark, because it is now in both stores")
+            assertTest(cleared.isEmpty, "…and no day carries a mark, because no request was made")
         }
 
-        // The phone's row survives a push the database refuses, and the refusal still surfaces.
-        //
-        // **The ordering is the whole point.** The local write returns before the request is made, so a
-        // failure there leaves the day exactly as it should be — saved, and not yet in the database —
-        // rather than in the state the old cloud-first order produced, where a refused upload left the
-        // day on neither store and the reader with no figure at all.
+        // **Whatever the database is doing, a save does not consult it.** This used to be the block
+        // that proved a refused push still left the phone's row; with mirroring gone the stronger
+        // property holds — there is no push, so a refusal and an outage are both inert.
         do {
             let (repository, spy, status, _) = try await make(settings: SyncSettings(destination: .cloud))
             await spy.fail(with: .rejected(code: "invalid_request", message: "The day was not sent."))
+            try await repository.saveRecovery(metric(day(-45), 70), source: nil)
+            let afterRefusal = await spy.writtenRows.count
+            assertTest(afterRefusal == 0, "A refused database is not consulted by a save")
 
-            do {
-                try await repository.saveRecovery(metric(day(-45), 70), source: nil)
-                assertTest(false, "A refused write surfaces rather than being swallowed")
-            } catch let error as CloudSyncError {
-                assertTest(error == .rejected(code: "invalid_request", message: "The day was not sent."),
-                           "…as the refusal it is")
-            } catch {
-                assertTest(false, "…as a CloudSyncError rather than something else")
-            }
-
-            let keptLocally = try await repository.getLocalRecovery(for: day(-45))
-            assertTest(keptLocally?.score == 70,
-                       "…and the phone keeps the day regardless, because it was written first — the "
-                           + "local save is never conditional on the request")
-            let unmarked = await status.unavailableDays()
-            assertTest(unmarked.isEmpty,
-                       "…and a refusal marks nothing, because a refusal is not an outage")
-
-            // An unreachable database is the one case that is swallowed, and it is swallowed *silently*
-            // — no mark at all. Every mark this app has would say something false here: a day the phone
-            // holds is not *unavailable*, and what reconciles a day the database missed is the `SYNC`
-            // button rather than a per-day record of *not pushed yet*, which would be the boundary
-            // bookkeeping this design deleted, rebuilt one row at a time.
             await spy.fail(with: .unreachable(message: "The database could not be reached."))
-            do {
-                try await repository.saveRecovery(metric(day(-44), 64), source: nil)
-                assertTest(true, "An unreachable database does not fail a write that landed on the phone")
-            } catch {
-                assertTest(false, "…and does not surface, because the local row is already saved")
-            }
+            try await repository.saveRecovery(metric(day(-44), 64), source: nil)
             let savedAnyway = try await repository.getLocalRecovery(for: day(-44))
-            assertTest(savedAnyway?.score == 64, "…which it is, holding the figure that was handed in")
+            assertTest(savedAnyway?.score == 64, "…and the phone's row is written either way")
             let stillUnmarked = await status.unavailableDays()
-            assertTest(stillUnmarked.isEmpty,
-                       "…and nothing is marked, because this day can be shown — it is on the phone, "
-                           + "which is where the read goes first")
+            assertTest(stillUnmarked.isEmpty, "…with no mark, because no request was made")
         }
     }
 }

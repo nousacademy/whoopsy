@@ -52,15 +52,29 @@ public struct HistoricalDrainSession: Sendable {
         case aborted
     }
 
-    /// `HISTORY_END`'s continuation token, in **frame-absolute** bytes — 17 through 24 inclusive.
+    /// `HISTORY_END`'s continuation token — the eight bytes the drain must echo to advance the strap's
+    /// trim cursor.
     ///
-    /// The number is not in either reference in this form; it is the reconciliation of the two forms
-    /// that are (`inner[13:21]` and payload `[6,14)`), and the suite asserts both derivations against
-    /// hand-built markers so a future edit that hardcodes one generation's payload offset fails loudly.
-    public static let continuationTokenFrameOffset = 17
+    /// **Payload 10, not payload 6.** NOOP reads the ack's `end_data` as `metadata.data[10:18]`, and
+    /// `metadata.data` begins at frame 7 on the 4.0 and frame 11 on the 5.0 — so the token is at payload
+    /// 10 on both, frame **17** on the 4.0 and frame **21** on the 5.0. This app used to read payload 6
+    /// on the 5.0 (a reconciliation of `inner[13:21]` with a `[6,14)` payload form), which is four bytes
+    /// early: the strap accepted the acknowledged write and never advanced its trim cursor, so every
+    /// drain re-sent the same two August batches for as long as it was left running — measured on the
+    /// owner's 5.0 on 2026-10-23, and NOOP's WHOOP5 slice is hardware-verified as `frame[21..25]`.
+    public static let continuationTokenPayloadOffset = 10
 
-    /// Eight bytes. The same eight on both generations, which is why one reader serves both.
+    /// Eight bytes, at `continuationTokenPayloadOffset`.
     public static let continuationTokenBytes = 8
+
+    /// The token's frame offset for a profile — the payload origin plus the payload offset.
+    ///
+    /// Exposed as a function rather than a constant because the two generations' frame offsets differ
+    /// by the four bytes their envelopes differ by, which is exactly the confusion that put the reader
+    /// four bytes early.
+    public static func continuationTokenFrameOffset(for profile: WhoopProtocolProfile) -> Int {
+        profile.innerOrigin + profile.innerPrefixBytes + continuationTokenPayloadOffset
+    }
 
     /// How close to *now* a batch's own timestamp has to be before the drain treats it as the live
     /// edge. **Two-sided on purpose**: a strap whose RTC is wrong is wrong in both directions, and a
@@ -86,6 +100,69 @@ public struct HistoricalDrainSession: Sendable {
 
     /// The last inbound frame that belonged to this drain.
     public private(set) var lastActivity: Date
+
+    /// The newest record stamp seen since the last `HISTORY_END`.
+    ///
+    /// **This, not the marker's own head, is what says whether the drain has caught up.** Measured on
+    /// the owner's 5.0 on 2026-10-23: every drain returned the same 59 `R18` records stamped
+    /// `2026-08-24 12:51:13` onward, and every `HISTORY_END` closing them carried the phone's current
+    /// time in its head — because that field is the drain's clock, not the records'. The old test read
+    /// the marker and ended the drain after one batch, leaving two months of backlog unread while
+    /// reporting `caughtUpToLiveEdge`. The records decide; the marker is only the fallback for a batch
+    /// that carried none.
+    private var newestRecordTimestamp: Date?
+
+    /// The layout selector of the record that set `newestRecordTimestamp`.
+    ///
+    /// **The buffer carries more than one layout under the same packet type**, and a drain's batches
+    /// alternate between them on this strap — so a log that shows only the newest stamp can look like
+    /// a cursor going backwards when it is two streams' cursors interleaving. This says which stream.
+    private var newestRecordLayout: UInt8?
+
+    /// The first record stamp of the batch currently being collected, for the per-batch log line.
+    ///
+    /// **The newest stamp alone cannot prove the cursor advances** when batches interleave layouts; the
+    /// pair (first, newest) can. Logged once per batch rather than once per record.
+    private var firstRecordTimestamp: Date?
+
+    /// The newest record stamp seen anywhere in this drain, for the stall guard.
+    ///
+    /// **The whole drain's maximum, not the previous batch's.** A strap with two buffered bursts
+    /// alternates them — A, B, A, B — so each batch is newer than the one immediately before it and a
+    /// pairwise comparison never sees a repeat. Measured on the owner's 5.0 on 2026-10-23: two batches
+    /// stamped `12:52:11` and `12:58:41` replayed in exactly that order for as long as the drain ran.
+    /// Against the maximum, the second pass is a stall on every batch.
+    ///
+    /// Exposed as well as used: `WhoopBLEDeviceRepositoryImpl` reports it as the drain's newest record,
+    /// which is what `RefreshStrainUseCase` backfills up to.
+    public private(set) var highestRecordTimestamp: Date?
+
+    /// The oldest record stamp seen anywhere in this drain.
+    ///
+    /// **The other half of the range, and without it a drain cannot say which days it touched.** The
+    /// strain refresh scores the days a drain delivered, and the newest stamp alone would name one end
+    /// of a span that can cover a fortnight of backlog. A 4.0's flash has no other index of it.
+    public private(set) var lowestRecordTimestamp: Date?
+
+    /// The newest stamp of a **completed** batch — the stall guard's comparison, which must not see the
+    /// batch it is judging.
+    ///
+    /// **Separate from `highestRecordTimestamp` now that the latter is per record.** Comparing a
+    /// batch's newest stamp against a drain-wide maximum that already includes that same record makes
+    /// every batch look like a repeat, and the drain then stops after three batches on a strap that was
+    /// advancing the whole time. This one advances only at `HISTORY_END`, so a batch is measured
+    /// against the batches before it — the semantics the guard was written with.
+    private var highestCompletedBatchTimestamp: Date?
+
+    /// How many consecutive batches have failed to advance the newest record stamp.
+    private var stalledBatchCount = 0
+
+    /// How many repeated batches end a drain.
+    ///
+    /// A strap that re-sends one batch forever would otherwise be a drain with no end at all: records
+    /// keep arriving, so the idle window never fires. Three is the first count at which a repeat is a
+    /// stall rather than two batches whose newest records happen to share a second.
+    public static let maximumStalledBatches = 3
 
     public private(set) var finishReason: FinishReason?
 
@@ -118,6 +195,32 @@ public struct HistoricalDrainSession: Sendable {
         if frame.type == types.historicalData {
             recordCount += 1
             lastActivity = now
+            // Every record's stamp, not only the five the log prints: the newest one is what decides
+            // whether the batch that ends after it reached the live edge. See `newestRecordTimestamp`.
+            if let stamp = Self.recordTimestamp(frame) {
+                if firstRecordTimestamp == nil { firstRecordTimestamp = stamp }
+                if let current = newestRecordTimestamp {
+                    if stamp > current {
+                        newestRecordTimestamp = stamp
+                        newestRecordLayout = frame.seq
+                    }
+                } else {
+                    newestRecordTimestamp = stamp
+                    newestRecordLayout = frame.seq
+                }
+                // The drain-wide span, updated per record rather than per batch: the stall guard rides
+                // on the maximum, and the refresh's backfill rides on both ends.
+                if let lowest = lowestRecordTimestamp {
+                    if stamp < lowest { lowestRecordTimestamp = stamp }
+                } else {
+                    lowestRecordTimestamp = stamp
+                }
+                if let highest = highestRecordTimestamp {
+                    if stamp > highest { highestRecordTimestamp = stamp }
+                } else {
+                    highestRecordTimestamp = stamp
+                }
+            }
             // **The drain's only per-record line, and it is rate-limited to the first five.** A
             // completed sync reports a count and nothing else, so "59 records" cannot say whether the
             // strap handed back heart rate, motion, or fifty-nine records of an unmapped type — the
@@ -133,15 +236,7 @@ public struct HistoricalDrainSession: Sendable {
                 // now) or a backlog (records stamped hours ago) — the two need opposite next steps.
                 // `R18`'s unix is a u32 little-endian at payload `[4]`, the field its decoder files the
                 // sample by; anything else is left as `-`.
-                var stamp = "-"
-                if frame.payload.count >= 8 {
-                    let p = [UInt8](frame.payload.prefix(8))
-                    let seconds = UInt32(p[4]) | (UInt32(p[5]) << 8)
-                        | (UInt32(p[6]) << 16) | (UInt32(p[7]) << 24)
-                    if seconds > 1_000_000_000 {
-                        stamp = Date(timeIntervalSince1970: TimeInterval(seconds)).description
-                    }
-                }
+                let stamp = Self.recordTimestamp(frame)?.description ?? "-"
                 AppLogger.ble.notice("""
                     Drain record #\(index, privacy: .public): type=0x\(type, privacy: .public) \
                     layout=\(layout, privacy: .public) payload=\(payloadBytes, privacy: .public) B \
@@ -161,24 +256,52 @@ public struct HistoricalDrainSession: Sendable {
 
         case 2:  // HISTORY_END — ack it and keep listening
             batchCount += 1
-            // **The marker's own contents, because "caught up to now" has been claimed over
-            // two-month-old records.** The live-edge test reads a u32 at the payload's head and
-            // compares it with the wall clock inside a 5 s window; if that field is not the marker's
-            // unix time, a drain ends after one batch and the rest of the buffer is never read. Logged
-            // rather than changed first: the decision is only wrong if the field is not what the test
-            // assumes, and one run answers that.
-            let payloadHex = [UInt8](frame.payload.prefix(16))
+            // **The marker's own contents, and the answer this log was built to get.** The live-edge
+            // test used to read a u32 at the payload's head and compare it with the wall clock — and
+            // that field is the *drain's* time, not the buffer's. On the owner's 5.0 on 2026-10-23
+            // every drain returned records stamped two months earlier and a marker stamped now, so
+            // the test declared the live edge after one batch and the backlog was never read. The
+            // records now decide (`isAtLiveEdge`); the marker remains the fallback for a batch with
+            // none, and both are in this line so the next run can show which answer was used.
+            let payloadHex = [UInt8](frame.payload.prefix(24))
                 .map { String(format: "%02X", $0) }
                 .joined(separator: " ")
             let markerUnix = WhoopPacketDecoder.littleEndianUInt32(in: frame.payload)
+            let batchNewest = newestRecordTimestamp
+            let batchFirst = firstRecordTimestamp
+            let batchLayout = newestRecordLayout
             let atEdge = isAtLiveEdge(frame, now: now)
             let seen = recordCount
+
+            // A batch that does not beat the drain's highest stamp is the strap re-sending, and an
+            // unguarded loop of those never idles out because the records keep arriving.
+            if let batchNewest, let highest = highestCompletedBatchTimestamp, batchNewest <= highest {
+                stalledBatchCount += 1
+            } else {
+                stalledBatchCount = 0
+                if let batchNewest { highestCompletedBatchTimestamp = batchNewest }
+            }
+            newestRecordTimestamp = nil
+            newestRecordLayout = nil
+            firstRecordTimestamp = nil
+            let stalled = stalledBatchCount
+
             AppLogger.ble.notice("""
                 HISTORY_END: payload=\(payloadHex, privacy: .public) \
                 headAsUnix=\(markerUnix, privacy: .public) liveEdge=\(atEdge, privacy: .public) \
-                recordsSoFar=\(seen, privacy: .public)
+                firstRecord=\(batchFirst?.description ?? "none", privacy: .public) \
+                newestRecord=\(batchNewest?.description ?? "none", privacy: .public) \
+                newestLayout=\(batchLayout.map { String($0) } ?? "none", privacy: .public) \
+                recordsSoFar=\(seen, privacy: .public) stalled=\(stalled, privacy: .public)
                 """)
             guard let token = continuationToken(from: frame) else { return .none }
+            if stalledBatchCount >= Self.maximumStalledBatches {
+                // Acknowledged either way — the strap is waiting — but the drain stops rather than
+                // reading one batch forever. The reason is set here so `concludeDrain(reason:)`'s
+                // relabel is a no-op.
+                finishReason = .idleTimeout
+                return .acknowledgeAndFinish(token: token)
+            }
             if atEdge {
                 finishReason = .liveEdge
                 return .acknowledgeAndFinish(token: token)
@@ -225,9 +348,9 @@ public struct HistoricalDrainSession: Sendable {
     /// padded token would be an invented eight bytes, and §4's whole point is that a **wrong** token is
     /// worse than none — it leaves the strap re-sending while this app believes it acknowledged.
     private func continuationToken(from frame: WhoopRawFrame) -> Data? {
-        let payloadOrigin = profile.innerOrigin + profile.innerPrefixBytes
-        let start = Self.continuationTokenFrameOffset - payloadOrigin
-        guard start >= 0, frame.payload.count >= start + Self.continuationTokenBytes else { return nil }
+        // Payload-relative and identical on both generations — see `continuationTokenPayloadOffset`.
+        let start = Self.continuationTokenPayloadOffset
+        guard frame.payload.count >= start + Self.continuationTokenBytes else { return nil }
         return frame.payload.subdata(in: start ..< (start + Self.continuationTokenBytes))
     }
 
@@ -241,9 +364,41 @@ public struct HistoricalDrainSession: Sendable {
     /// then ends the way it otherwise would.
     private func isAtLiveEdge(_ frame: WhoopRawFrame, now: Date) -> Bool {
         guard profile.headerChecksum == .crc16ModbusOverHeader else { return false }
-        let unix = WhoopPacketDecoder.littleEndianUInt32(in: frame.payload)
-        guard unix > 0 else { return false }
-        let stamp = Date(timeIntervalSince1970: TimeInterval(unix))
+        // **The records first, the marker only as a fallback.** The marker's head is the drain's own
+        // clock on a 5.0 — measured on the owner's strap, where it was current while the records it
+        // closed were two months old — so trusting it ends a backlog drain after one batch.
+        let stamp: Date?
+        if let newest = newestRecordTimestamp {
+            stamp = newest
+        } else if let highest = highestRecordTimestamp {
+            // **An empty batch is the end of the buffer, not the live edge.** The strap closes its
+            // last chunk with a marker carrying no records, and that marker's head is the drain's
+            // clock — now — so reading it declared a two-month-old buffer "caught up" on the owner's
+            // 5.0 on 2026-10-23. The drain-wide highest record is the honest test; the marker is only
+            // for a session that has seen no record at all.
+            stamp = highest
+        } else {
+            let unix = WhoopPacketDecoder.littleEndianUInt32(in: frame.payload)
+            stamp = unix > 1_000_000_000
+                ? Date(timeIntervalSince1970: TimeInterval(unix))
+                : nil
+        }
+        guard let stamp else { return false }
         return abs(stamp.timeIntervalSince(now)) <= Self.liveEdgeWindowSeconds
+    }
+
+    /// The record's own unix stamp: a `u32` at payload `[4]` in every historical layout this app
+    /// walks — `R18`, `R21` and the 4.0's type 24.
+    ///
+    /// `nil` when the record is too short to carry it or the value is not a real date. The `> 1e9`
+    /// floor is 2001-09-09, the same one the per-record log used before this became load-bearing: a
+    /// lost RTC's `2000-01-03` is a stamp, but it is not evidence of catching up to the present.
+    static func recordTimestamp(_ frame: WhoopRawFrame) -> Date? {
+        guard frame.payload.count >= 8 else { return nil }
+        let p = [UInt8](frame.payload.prefix(8))
+        let seconds = UInt32(p[4]) | (UInt32(p[5]) << 8)
+            | (UInt32(p[6]) << 16) | (UInt32(p[7]) << 24)
+        guard seconds > 1_000_000_000 else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(seconds))
     }
 }

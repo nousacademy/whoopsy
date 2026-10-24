@@ -4,6 +4,17 @@ import SwiftUI
 @MainActor @Observable public final class SleepViewModel {
     public var session: SleepSession?; public var isLoading = false; public var errorMessage: String?
 
+    /// The composite sleep score the ring prints, or `nil` when the night cannot produce two terms.
+    ///
+    /// **Read from the week, not computed a second time.** `MetricWeek` scores its seven days over the
+    /// same history, so the ring and the sleep page's weekly chart cannot disagree about the selected
+    /// night. The week ends on the day being shown, which is why `days.last` is the anchor.
+    ///
+    /// It is a distinct quantity from `session.sleepSufficiencyPercentage`: that is the ratio the
+    /// `HOURS VS. NEEDED` row and the Recovery input read, while this is `SleepScoreScoring`'s
+    /// weighted composite. The page draws both, deliberately.
+    public private(set) var sleepScore: Int?
+
     /// The night's Sleep Consistency, resolved on load.
     ///
     /// **Stored first, computed second, and `nil` when neither applies.** An imported night carries
@@ -128,7 +139,8 @@ import SwiftUI
     /// second consumer that justifies the change; a week hung off `window` would have inherited that
     /// guard and drawn nothing on exactly the day the chart is most worth having.
     ///
-    /// **Only `sleepPerformance` is populated, and the other fields' `nil` means *not asked for*.**
+    /// **Only `sleepSufficiency` and `sleepScore` are populated, and the other fields' `nil` means
+    /// *not asked for*.**
     /// `MetricWeek` joins three histories and this screen passes one, so `strain` and `recoveryScore`
     /// are `nil` on every slot — `RecoveryViewModel.week` carries the same narrowing and documents the
     /// trap in full: on this type `nil` is the word for *nothing was measured*, so a view handed this
@@ -137,7 +149,7 @@ import SwiftUI
     /// history rather than to read through the `nil`.
     ///
     /// `nil` from the series rather than from here is what decides the card is absent: a week holding no
-    /// classified night produces `WeekBarSeries(sleepPerformanceWeek:) == nil`, on every night this
+    /// classified night produces `WeekBarSeries(sleepSufficiencyWeek:) == nil`, on every night this
     /// machine can show for a fresh install, and the section's heading goes with it.
     public private(set) var week: MetricWeek?
 
@@ -184,18 +196,24 @@ import SwiftUI
     /// fixtures.
     private let biometricRepository: any BiometricRepository
 
+    /// The profile, read for the one field the sleep score needs — `age`. A failed read costs the
+    /// age fallback and does not raise the page's error banner; the rest of the page does not need it.
+    private let userProfileRepository: any UserProfileRepository
+
     public init(
         analyze: AnalyzeSleepUseCase,
         repository: any SleepRepository,
         napRepository: any NapRepository,
         biometricRepository: any BiometricRepository,
-        analyzeSleepStress: AnalyzeSleepStressUseCase
+        analyzeSleepStress: AnalyzeSleepStressUseCase,
+        userProfileRepository: any UserProfileRepository
     ) {
         self.analyze = analyze
         self.repository = repository
         self.napRepository = napRepository
         self.biometricRepository = biometricRepository
         self.analyzeSleepStress = analyzeSleepStress
+        self.userProfileRepository = userProfileRepository
     }
 
     /// Loads the night the screen is showing by reading it — see
@@ -219,7 +237,9 @@ import SwiftUI
         // figures whose worst stale state is a wrong number under a correct heading; this one draws
         // seven of them.
         week = nil
+        sleepScore = nil
         do {
+            async let profileRead = userProfileRepository.getUserProfile()
             var stored = try await repository.getSleepSession(for: date)
             // **A session this app classified is provisional for today, and this is the gate that
             // replaces it.** `hasWhoopSleepNeed` is the entity's one provenance bit — true for a night
@@ -241,13 +261,11 @@ import SwiftUI
                     try? await repository.deleteSleepSession(for: date)
                 }
             }
-            session = stored
-            sleepConsistency = try await resolveConsistency(for: stored)
-            // One wide read, four consumers. Both the typical-range card and the consistency card's
+            // One wide read, five consumers. Both the typical-range card and the consistency card's
             // window mean are taken over `RecoveryScoring.baselineWindow(before:in:)`, the sleep-stress
-            // model takes the same narrowed window as its baseline, and the week chart takes the read
-            // whole — and reading it more than once would be two reads that could come back describing
-            // different nights.
+            // model takes the same narrowed window as its baseline, the week chart takes the read
+            // whole, and the composite reads its four priors from it — and reading it more than once
+            // would be two reads that could come back describing different nights.
             //
             // **Unconditional, where it used to be guarded on the night.** "With no night there is
             // nothing to describe and the read would be spent for nothing" was true while the three
@@ -256,8 +274,15 @@ import SwiftUI
             // draw for. See `week`.
             let history = try await repository.getSleepHistory(
                 days: RecoveryScoring.baselineWindowLookbackDays, endingOn: date)
+            let profile = try? await profileRead
+            session = stored
+            sleepConsistency = stored.flatMap {
+                SleepScoreScoring.resolveConsistency(for: $0, history: history)
+            }
             let window = resolveWindow(for: stored, on: date, from: history)
-            week = MetricWeek(endingOn: date, sleep: history)
+            week = MetricWeek(endingOn: date, sleep: history, age: profile?.age)
+            // The week ends on the selected day, so the ring and the weekly chart read one slot.
+            sleepScore = week?.days.last?.sleepScore
             stageSummary = resolveStageSummary(from: window)
             consistencySummary = resolveConsistencySummary(from: window)
             typicalEfficiency = resolveTypicalEfficiency(from: window)
@@ -277,34 +302,13 @@ import SwiftUI
         }
     }
 
-    /// The stored figure, else one computed from the night and its four most recent predecessors, else
-    /// `nil`.
-    ///
-    /// The read is anchored on the **night's own day** and not on `Date()`, so a screen opened on an
-    /// imported night asks for the nights before *that* one — and widening it to
-    /// `SleepConsistencyMath.historyLookbackDays` is what covers a recording gap: measured on the
-    /// bundled export, four prior nights span more than five calendar days on 17 of 891 nights. The
-    /// window is a date range rather than a count, so the math truncates the list to four records
-    /// itself rather than being handed exactly four.
-    private func resolveConsistency(for session: SleepSession?) async throws -> Int? {
-        guard let session else { return nil }
-        if let stored = session.sleepConsistency { return stored }
-
-        let history = try await repository.getSleepHistory(
-            days: SleepConsistencyMath.historyLookbackDays, endingOn: session.date)
-
-        return SleepConsistencyMath.consistency(
-            for: SleepConsistencyScoring.night(from: session),
-            history: history.map(SleepConsistencyScoring.night(from:)))
-    }
-
     /// The wide read both windowed cards are taken over, and the two windows it yields.
     ///
     /// **Read once and shared, because the two cards must describe the same nights.** The
     /// typical-range card's bands and the consistency card's window mean are both taken over
     /// `RecoveryScoring.baselineWindow(before:in:)`, and a second read of the same range would be a
     /// second chance for the two to come back describing different history — the failure
-    /// `SleepStageRangeScoring` documents at `typicalPerformancePercent`. The window helper itself is
+    /// `SleepStageRangeScoring` documents at `typicalSufficiencyPercent`. The window helper itself is
     /// reused rather than re-derived for the same reason: it is the pair `RecoveryViewModel
     /// .loadBaselines` uses, so this screen's "typical" and the Recovery screen's "vs. last 30 days"
     /// cannot be taken over different nights either.

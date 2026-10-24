@@ -232,6 +232,29 @@ enum LiveSessionRecordingTests {
                 recorded.hrZonePercents == nil,
                 "…and no zone block: that column is WHOOP's own, and this app's zones are a different "
                     + "producer's answer to a different question")
+
+            // ---- The rating is a second write of the same row ----
+            //
+            // `end()` never asks the question — it stamps `endedAt` and saves — so the recorded window
+            // excludes the time a prompt is on screen. The prompt's answer is written afterwards, onto
+            // the same row, which is the only thing this assertion needs to be true: the session's
+            // figures stay and the rating joins them.
+            assertTest(
+                recorded.rpe == nil,
+                "A session ends unrated, because the rating prompt runs after `end()` returns "
+                    + "(got \(recorded.rpe.map(String.init) ?? "nil"))")
+            let rated = await session.rate(6, for: recorded)
+            assertTest(
+                rated?.rpe == 6 && rated?.id == recorded.id,
+                "Rating it writes the same session with the rating attached")
+            let reread = try await workoutRepository.getWorkouts(for: recorded.startedAt.startOfDay)
+                .first { $0.id == recorded.id }
+            assertTest(
+                reread?.rpe == 6,
+                "…and the stored row carries it, got \(reread?.rpe.map(String.init) ?? "nil")")
+            assertTest(
+                reread?.strain == recorded.strain && reread?.activityName == recorded.activityName,
+                "…without disturbing what the session measured")
             // The route half of this sentence used to read *"this build has no GPS"*, which was true when
             // nothing called the location seam and is false now that the screen has a toggle. What is
             // still true is why this route is empty: **the toggle was never touched**, and route
@@ -649,7 +672,12 @@ enum LiveSessionRecordingTests {
                         biometricRepository: EmptyBiometricStore()),
                     trackSteps: TrackStepsUseCase(
                         bleRepository: ScriptedTelemetryRepository(),
-                        stepRepository: GRDBStepRepository(db: db)))
+                        stepRepository: GRDBStepRepository(db: db),
+                        stateStore: InMemoryStepCounterStateStore()),
+                    refreshStrain: fixtureRefreshStrain(
+                        strainRepository: GRDBStrainRepository(db: db),
+                        biometricRepository: EmptyBiometricStore(),
+                        userProfileRepository: profileRepository))
             }
             await home.load(for: Date())
             let homeWorkouts = await MainActor.run { home.workouts }

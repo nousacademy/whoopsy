@@ -43,9 +43,17 @@ enum SleepViewModelTests {
                     repository: hrSleepRepository,
                     napRepository: GRDBNapRepository(db: hrDB),
                     biometricRepository: biometrics,
-                    analyzeSleepStress: AnalyzeSleepStressUseCase(biometricRepository: biometrics))
+                    analyzeSleepStress: AnalyzeSleepStressUseCase(biometricRepository: biometrics),
+                    userProfileRepository: GRDBUserProfileRepository(db: hrDB))
             }
             await readBack.load(for: day)
+
+            let readScore = await MainActor.run { readBack.sleepScore }
+            let readWeekScore = await MainActor.run { readBack.week?.days.last?.sleepScore }
+            assertTest(readScore != nil, "The night produces a composite score")
+            assertTest(
+                readScore == readWeekScore,
+                "The ring reads the same week slot the chart plots, not a second computation")
 
             let readSeries = await MainActor.run { readBack.hoursOfSleepSeries }
             assertTest(
@@ -71,7 +79,7 @@ enum SleepViewModelTests {
         // still has bars in it. A fresh install opens on exactly that day, so a chart hung off `session`
         // would be absent on the day it is most worth having.
         //
-        // The chart itself is not re-asserted here; §14 owns `WeekBarSeries(sleepPerformanceWeek:)` and
+        // The chart itself is not re-asserted here; §14 owns `WeekBarSeries(sleepSufficiencyWeek:)` and
         // its absences. What is new is the wiring: that the week is built at all on a nightless day, that
         // it ends on the day being shown, and that it and the three cards above it came off **one** read.
         do {
@@ -107,7 +115,8 @@ enum SleepViewModelTests {
                     napRepository: GRDBNapRepository(db: weekDB),
                     biometricRepository: EmptyBiometricStore(),
                     analyzeSleepStress: AnalyzeSleepStressUseCase(
-                        biometricRepository: EmptyBiometricStore()))
+                        biometricRepository: EmptyBiometricStore()),
+                    userProfileRepository: GRDBUserProfileRepository(db: weekDB))
             }
             await weekViewModel.load(for: target)
 
@@ -123,13 +132,13 @@ enum SleepViewModelTests {
                 week?.endingOn == target,
                 "…ending on the day being shown rather than on today, so the highlighted column is that day")
             assertTest(
-                week?.days.map(\.sleepPerformance) == [nil, 75, 75, 75, nil, nil, nil],
+                week?.days.map(\.sleepSufficiency) == [nil, 75, 75, 75, nil, nil, nil],
                 "…and each slot states its own night's performance, computed from the night's staged "
                     + "minutes over its need — oldest first, with the three measured nights in the middle "
                     + "and the anchor column absent (got "
-                    + "\(week.map { "\($0.days.map(\.sleepPerformance))" } ?? "nil"))")
+                    + "\(week.map { "\($0.days.map(\.sleepSufficiency))" } ?? "nil"))")
             assertTest(
-                WeekBarSeries(sleepPerformanceWeek: week ?? MetricWeek(endingOn: target))?
+                WeekBarSeries(sleepSufficiencyWeek: week ?? MetricWeek(endingOn: target))?
                     .points.map(\.slot) == [1, 2, 3],
                 "…which the bar series plots as three bars and not four: a column with no night draws no "
                     + "bar and no value label")
@@ -343,10 +352,10 @@ enum SleepViewModelTests {
                 let window = RecoveryScoring.baselineWindow(before: session.date, in: imported)
                     .filter { $0.sleepPeriodSeconds > 0 }
                 guard window.count >= RecoveryScoring.minimumBaselineDays else { return false }
-                let hand = window.map { Double($0.sleepPerformancePercentage) }.reduce(0, +)
+                let hand = window.map { Double($0.sleepSufficiencyPercentage) }.reduce(0, +)
                     / Double(window.count)
                 guard let modelled = SleepStageRangeScoring.summary(
-                    for: session, priorNights: window)?.typicalPerformancePercent else { return true }
+                    for: session, priorNights: window)?.typicalSufficiencyPercent else { return true }
                 return abs(hand - modelled) > 0.0001
             }
             assertTest(

@@ -23,7 +23,7 @@ enum HomeStepTileTests {
         let db = LocalDatabaseManager(inMemory: true)
         let stepRepository = GRDBStepRepository(db: db)
         let telemetry = ScriptedTelemetryRepository()
-        let trackSteps = TrackStepsUseCase(bleRepository: telemetry, stepRepository: stepRepository)
+        let trackSteps = TrackStepsUseCase(bleRepository: telemetry, stepRepository: stepRepository, stateStore: InMemoryStepCounterStateStore())
         let today = calendar.startOfDay(for: Date())
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
 
@@ -42,7 +42,11 @@ enum HomeStepTileTests {
                 streamUseCase: StreamBiometricsUseCase(
                     bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
                     biometricRepository: GRDBBiometricRepository(db: db)),
-                trackSteps: trackSteps)
+                trackSteps: trackSteps,
+                refreshStrain: fixtureRefreshStrain(
+                    strainRepository: GRDBStrainRepository(db: db),
+                    biometricRepository: EmptyBiometricStore(),
+                    userProfileRepository: GRDBUserProfileRepository(db: db)))
         }
 
         // The ordinary case: Home loads before the strap has moved, so the day has no row and the tile

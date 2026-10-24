@@ -23,12 +23,15 @@ enum StepTests {
         try await StepDetectionMathTests.run()
         try await MotionPayloadDecoderTests.run()
         try await HeartRatePayloadDecoderTests.run()
+        try await StepCounterPayloadDecoderTests.run()
         try await Spo2CandidateProbeTests.run()
         try await StrapEventDecoderTests.run()
         try await DiagnosticsTests.run()
         try await DeviceInformationPayloadTests.run()
         try await StepAccumulatorTests.run()
+        try await StepCounterAccumulatorTests.run()
         try await StepCountPersistenceTests.run()
+        try await StepCounterStatePersistenceTests.run()
         try await WhoopProtocolProfileTests.run()
         try await StrainPanelTests.run()
         try await WhoopPacketEncoder5Tests.run()
@@ -78,16 +81,27 @@ enum StepTests {
     static func bumpTrain(
         bumps: Int, amplitudeG: Double, periodSeconds: Double = 0.5
     ) -> [StepDetectionMath.Sample] {
+        bumpTrain(
+            offsets: (0..<bumps).map { Double($0) * periodSeconds },
+            amplitudeG: amplitudeG)
+    }
+
+    /// A bump train at explicit offsets from the end of the lead-in, for the refractory and rhythm
+    /// fixtures where even spacing is exactly what must not be assumed.
+    static func bumpTrain(
+        offsets: [Double], amplitudeG: Double
+    ) -> [StepDetectionMath.Sample] {
         let interval = 0.01
         let leadInSeconds = 2.0
         let sigma = 0.04
-        let total = leadInSeconds + Double(max(bumps - 1, 0)) * periodSeconds + 0.4
+        let lastOffset = offsets.max() ?? 0
+        let total = leadInSeconds + lastOffset + 0.4
         let count = Int((total / interval).rounded()) + 1
         return (0..<count).map { index in
             let seconds = Double(index) * interval
             var x = 1.0
-            for bump in 0..<bumps {
-                let distance = seconds - (leadInSeconds + Double(bump) * periodSeconds)
+            for offset in offsets {
+                let distance = seconds - (leadInSeconds + offset)
                 x += amplitudeG * exp(-(distance * distance) / (2 * sigma * sigma))
             }
             return StepDetectionMath.Sample(seconds: seconds, xG: x, yG: 0, zG: 0)
@@ -184,8 +198,9 @@ enum StepDetectionMathTests {
                 + "— a fixed threshold would count all of them here and none of them at 0.3 g")
         assertTest(
             StepDetectionMath.countSteps(in: StepTests.bumpTrain(bumps: 20, amplitudeG: 0.1), sampleRateHz: 100) == 20,
-            "At 0.1 g the peaks are ≈0.085 g and `mean + 1σ` has fallen under `minimumPeakAmplitudeG`, so "
-                + "the floor is what admits them — this is the assertion a floor raised too high fails")
+            "At 0.1 g the smoothed peaks are ≈0.067 g and `mean + 1σ` has fallen under "
+                + "`minimumPeakAmplitudeG`, so the floor is what admits them — this is the assertion a "
+                + "floor raised too high fails, and the reason `smoothingWindowSeconds` is not longer")
         assertTest(
             StepDetectionMath.countSteps(in: StepTests.bumpTrain(bumps: 20, amplitudeG: 0.02), sampleRateHz: 100) == 0,
             "At 0.02 g the same waveform counts nothing, and the adaptive term alone would admit it: "
@@ -200,10 +215,45 @@ enum StepDetectionMathTests {
                 + "residual rather than a signal sitting at the ±1 g full scale")
         assertTest(
             StepDetectionMath.countSteps(
-                in: StepTests.bumpTrain(bumps: 2, amplitudeG: 0.3, periodSeconds: 0.2), sampleRateHz: 100) == 1,
-            "Two genuine peaks 0.2 s apart count once — the second is inside "
-                + "`minimumStepIntervalSeconds`, so this is the refractory rejecting it rather than two "
-                + "maxima merging into one")
+                in: StepTests.bumpTrain(
+                    offsets: [0, 0.5, 0.7, 1.2, 1.7], amplitudeG: 0.3),
+                sampleRateHz: 100) == 4,
+            "Five peaks at 0, 0.5, 0.7, 1.2 and 1.7 count four — the 0.7 one is inside "
+                + "`minimumStepIntervalSeconds` from the 0.5 one and is rejected by the refractory, "
+                + "while the remaining four are regular enough to be a train")
+        assertTest(
+            StepDetectionMath.countSteps(
+                in: StepTests.bumpTrain(offsets: [0], amplitudeG: 0.3), sampleRateHz: 100) == 0,
+            "A single genuine peak counts nothing: the rhythm gate cannot confirm a train from one "
+                + "transient, which is the gesture this gate exists to refuse")
+        assertTest(
+            StepDetectionMath.countSteps(
+                in: StepTests.bumpTrain(offsets: [0, 0.5], amplitudeG: 0.3), sampleRateHz: 100) == 0,
+            "Two regular peaks count nothing either — a wrist moved once and put down is exactly two "
+                + "transients, and `minimumRhythmicPeaks` is what refuses it")
+        assertTest(
+            StepDetectionMath.countSteps(
+                in: StepTests.bumpTrain(offsets: [0, 0.5, 1.0], amplitudeG: 0.3), sampleRateHz: 100) == 3,
+            "Three regular peaks count three, and the third is the sample on which all three are "
+                + "deposited — the train is confirmed retroactively rather than losing its first two")
+        assertTest(
+            StepDetectionMath.countSteps(
+                in: StepTests.bumpTrain(offsets: [0, 0.5, 1.0, 5.5, 6.0], amplitudeG: 0.3),
+                sampleRateHz: 100) == 3,
+            "Two gestures five seconds apart do not join the first train: a gap longer than "
+                + "`maximumIntervalSeconds` closes it, and the pair counts nothing on its own")
+        assertTest(
+            StepDetectionMath.countSteps(
+                in: StepTests.bumpTrain(offsets: [0, 0.5, 1.6], amplitudeG: 0.3), sampleRateHz: 100) == 0,
+            "Three peaks whose intervals differ by more than `intervalRatioTolerance` count nothing — "
+                + "a 0.5 s step followed by a 1.1 s one is a hand moving to a task, not a stride")
+        assertTest(
+            StepDetectionMath.countSteps(
+                in: StepTests.bumpTrain(
+                    offsets: Array(stride(from: 0.0, to: 4.0, by: 0.5)), amplitudeG: 0.3),
+                sampleRateHz: 100) == 8,
+            "An open train keeps counting: once the first three confirm, every later peak in the walk "
+                + "is a step, so a steady train is not delayed by two steps per stride")
         assertTest(
             StepDetectionMath.minimumStepIntervalSeconds == 1.0 / 3.0,
             "The refractory interval is 1/3 s, a 180 step-per-minute ceiling")
@@ -226,5 +276,24 @@ enum StepDetectionMathTests {
             StepDetectionMath.minimumPeakAmplitudeG == 0.05 && StepDetectionMath.thresholdSigmas == 1.0,
             "The two constants a capture would fit are 0.05 g and 1σ — this app's own calibration, since "
                 + "WHOOP publishes no step model, so they are the pair the fixtures above straddle")
+        assertTest(
+            StepDetectionMath.smoothingWindowSeconds == 0.1,
+            "The magnitude is smoothed over 0.1 s before it is judged — a ten-sample low-pass at the "
+                + "strap's 100 Hz, long enough to remove the sample-scale ripple and short enough to "
+                + "leave the 0.1 g fixture above the floor")
+        assertTest(
+            StepDetectionMath.minimumRhythmicPeaks == 3
+                && StepDetectionMath.rhythmWindowSeconds == 3.0,
+            "A train is three peaks within three seconds: one peak or two are a gesture, and three "
+                + "give the two intervals a rhythm can be tested from")
+        assertTest(
+            StepDetectionMath.maximumIntervalSeconds == 1.0 / StepDetectionMath.cadenceBandHz.lowerBound,
+            "The longest interval a train may contain is 2 s — one period of the band's lower edge, "
+                + "derived rather than written down beside it, so the band is the only place a cadence "
+                + "is excluded")
+        assertTest(
+            StepDetectionMath.intervalRatioTolerance == 2.0,
+            "Two consecutive intervals may differ by at most a factor of two — a walk's cadence "
+                + "drifts, a hand moving to a task does not repeat")
     }
 }

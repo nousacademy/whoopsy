@@ -12,15 +12,20 @@ public struct CloudReceptiveInactivityRepository: ReceptiveInactivityRepository 
     private let local: any ReceptiveInactivityRepository
     private let cloud: any CloudSync
     private let settingsStore: any SyncSettingsRepository
+    /// Injected so the runner is not a function of the hour it runs. `DIContainer` passes
+    /// `SyncSchedule.isOpen`; the default keeps every test and preview open.
+    private let isCallWindowOpen: @Sendable () -> Bool
 
     public init(
         local: any ReceptiveInactivityRepository,
         cloud: any CloudSync,
-        settingsStore: any SyncSettingsRepository
+        settingsStore: any SyncSettingsRepository,
+        isCallWindowOpen: @escaping @Sendable () -> Bool = { true }
     ) {
         self.local = local
         self.cloud = cloud
         self.settingsStore = settingsStore
+        self.isCallWindowOpen = isCallWindowOpen
     }
 
     public func getReceptiveInactivities(for date: Date) async throws -> [ReceptiveInactivity] {
@@ -35,15 +40,9 @@ public struct CloudReceptiveInactivityRepository: ReceptiveInactivityRepository 
         try await local.delete(id)
     }
 
+    /// **Local only** — the daily run writes the database copy. See `SyncSchedule`.
     public func save(_ activity: ReceptiveInactivity) async throws {
         try await local.save(activity)
-        guard await storesInCloud() else { return }
-        do {
-            try await cloud.writeReceptiveInactivity(ReceptiveInactivitySyncRow(activity))
-        } catch let error as CloudSyncError {
-            // A failed push never fails the local write, on `CloudSleepRepository`'s argument.
-            guard case .unreachable = error else { throw error }
-        }
     }
 
     /// The two answers as one list, with the phone's entry winning on an id both hold — keyed on the id
@@ -57,6 +56,7 @@ public struct CloudReceptiveInactivityRepository: ReceptiveInactivityRepository 
     }
 
     private func storesInCloud() async -> Bool {
-        await settingsStore.load().destination == .cloud
+        guard await settingsStore.load().destination == .cloud else { return false }
+        return isCallWindowOpen()
     }
 }

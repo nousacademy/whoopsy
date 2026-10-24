@@ -44,15 +44,21 @@ enum StrainPanelTests {
                 hrZonePercents: zonePercents)
         }
 
+        let panelCalculate = CalculateStrainUseCase(
+            biometricRepository: EmptyBiometricStore(),
+            strainRepository: panelStrain,
+            userProfileRepository: GRDBUserProfileRepository(db: panelDB),
+            motionEpochRepository: FixtureMotionEpochRepository(epochs: []))
         let panelViewModel = await MainActor.run {
             StrainViewModel(
-                calculate: CalculateStrainUseCase(
-                    biometricRepository: EmptyBiometricStore(),
-                    strainRepository: panelStrain,
-                    userProfileRepository: GRDBUserProfileRepository(db: panelDB)),
                 repository: panelStrain,
                 workoutRepository: panelWorkouts,
-                stepRepository: panelSteps)
+                stepRepository: panelSteps,
+                refresh: RefreshStrainUseCase(
+                    calculate: panelCalculate,
+                    strainRepository: panelStrain,
+                    biometricRepository: EmptyBiometricStore(),
+                    motionEpochRepository: FixtureMotionEpochRepository(epochs: [])))
         }
 
         /// `StrainDetailView.formatDuration`, reproduced here because it is private to the card and the

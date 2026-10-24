@@ -51,14 +51,14 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
     /// has no classified night.
     ///
     /// **Read off the same `sleeps` row as `sleepNeedSeconds` above, and it exists because the two
-    /// durations are compared rather than only divided.** `sleepPerformance` below is their ratio, and
+    /// durations are compared rather than only divided.** `sleepSufficiency` below is their ratio, and
     /// a ratio is lossy in exactly the way that matters here: it is a whole percent of a nine-hour
     /// denominator, so recovering the duration from it lands up to three minutes out — measured over
     /// the reference week, `9:17 × 81%` gives `7:31` where the night is `7:33`. A chart drawing that
     /// derived figure would put a point under this page's own `HOURS OF SLEEP` card contradicting the
     /// figure printed on it, about the same night. So the duration is carried, not reconstructed.
     ///
-    /// **Ungated, like `respiratoryRate` and `sleepPerformance` below and unlike the need above it.**
+    /// **Ungated, like `respiratoryRate` and `sleepSufficiency` below and unlike the need above it.**
     /// The need's `> 0` guard is about the *denominator* — a row with no need stored cannot be divided
     /// by — and there is no equivalent here: `totalTimeAsleepSeconds` is a sum of stored stage
     /// durations, and a `SleepSession` is only ever built for a night the classifier could read, so a
@@ -124,7 +124,7 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
     ///
     /// The second field read off the same `sleeps` row as `sleepNeedSeconds` above, so the two are
     /// absent together and a day with a night always has both. It is **not** a column: it is computed
-    /// on read by `SleepSession.sleepPerformancePercentage` from the night's staged minutes over its
+    /// on read by `SleepSession.sleepSufficiencyPercentage` from the night's staged minutes over its
     /// need, which is why there is nothing here for a reserved zero to hide in.
     ///
     /// **Ungated, like `respiratoryRate` below and unlike every other field here.** There is no stored
@@ -138,7 +138,17 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
     /// SLEEP PERFORMANCE row on the Recovery detail screen reads the same property with no gate
     /// either, and a gate here would let this week's chart omit a bar that the row directly above it
     /// prints. The same argument, made for the same reason, as `respiratoryRate`'s.
-    public let sleepPerformance: Int?
+    public let sleepSufficiency: Int?
+
+    /// The day's composite sleep score, or nil when the night cannot produce two of its four terms.
+    ///
+    /// **Derived on read and not the same quantity as `sleepSufficiency`.** That field is the
+    /// sufficiency component — asleep over need — and is what the Recovery input and the
+    /// `HOURS VS. NEEDED` row read. This one is `SleepScoreScoring`'s weighted composite: the figure
+    /// the sleep ring and the sleep page's weekly chart print. A day can carry one and not the other
+    /// (a zero-need night has the legacy `100` sufficiency but no composite), so they are two fields
+    /// rather than one with a changed meaning.
+    public let sleepScore: Int?
 
     /// The day's HRV in milliseconds, or nil when nothing recorded one.
     public let hrvValueMs: Double?
@@ -172,7 +182,8 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
         remSleepSeconds: TimeInterval? = nil,
         sleepOnsetMinutes: Double? = nil,
         sleepWakeMinutes: Double? = nil,
-        sleepPerformance: Int? = nil,
+        sleepSufficiency: Int? = nil,
+        sleepScore: Int? = nil,
         hrvValueMs: Double? = nil,
         hrvMetric: HRVMetric? = nil,
         respiratoryRate: Double? = nil,
@@ -188,7 +199,8 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
         self.remSleepSeconds = remSleepSeconds
         self.sleepOnsetMinutes = sleepOnsetMinutes
         self.sleepWakeMinutes = sleepWakeMinutes
-        self.sleepPerformance = sleepPerformance
+        self.sleepSufficiency = sleepSufficiency
+        self.sleepScore = sleepScore
         self.hrvValueMs = hrvValueMs
         self.hrvMetric = hrvMetric
         self.respiratoryRate = respiratoryRate
@@ -216,11 +228,14 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
     /// the one field here that could make an otherwise empty day count. It must not: this is the draw
     /// test for a chart of strain and recovery, and a respiratory rate is drawn by neither.
     ///
-    /// `sleepPerformance` is excluded on the same stated intent, and its exclusion is the redundant
+    /// `sleepSufficiency` is excluded on the same stated intent, and its exclusion is the redundant
     /// kind: it is read off the same night as `sleepNeedSeconds`, which is already in the list, so a
     /// day carrying a performance necessarily carries a need. Kept for the reason the VO₂ estimate's
     /// is — the STRAIN & RECOVERY chart draws strain and recovery, and a sleep performance is drawn by
     /// neither, so it must not be able to justify either the tile's frame or its measured count.
+    ///
+    /// `sleepScore` is excluded on the same intent and by the same redundant argument — it is derived
+    /// from that same night, and it is drawn by the sleep page's chart rather than by this one.
     ///
     /// `deepSleepSeconds` and `remSleepSeconds` are excluded on that same intent and by the same
     /// redundant argument, being read off that same night as well — and the reason is worth stating
@@ -257,6 +272,17 @@ public struct MetricDay: Equatable, Sendable, Identifiable {
 public struct MetricWeek: Equatable, Sendable {
     /// How many days a week holds. Seven is the reference's own window.
     public static let dayCount = 7
+
+    /// How far back a caller must read `sleeps` to score every slot's timing term.
+    ///
+    /// **Nineteen, not seven.** Each day's composite reads its own consistency against its four
+    /// predecessors, so the oldest of the seven slots needs records from before the week — up to
+    /// `SleepConsistencyMath.historyLookbackDays` (12) before it. A caller that hands in only seven
+    /// days still draws seven slots, but the oldest ones silently lose their timing term to the age
+    /// fallback or to absence. Home reads this many and the sleep page's 180-day read is wider; the
+    /// Recovery page's chart and row stay the ratio and do not need the composite.
+    public static let sleepScoreLookbackDays =
+        dayCount + SleepConsistencyMath.historyLookbackDays
 
     /// How few measured days is not a baseline. Two measured days do have a mean, so this is a
     /// judgement rather than an arithmetic limit — the same judgement `StressMath.minimumBaselineDays`
@@ -333,7 +359,8 @@ public struct MetricWeek: Equatable, Sendable {
         strain: [StrainScore] = [],
         recovery: [RecoveryMetric] = [],
         sleep: [SleepSession] = [],
-        maxHeartRate: Int? = nil
+        maxHeartRate: Int? = nil,
+        age: Int? = nil
     ) {
         let calendar = Calendar.current
         let anchor = calendar.startOfDay(for: endingOn)
@@ -342,6 +369,9 @@ public struct MetricWeek: Equatable, Sendable {
         let strainByDay = Self.index(strain, by: \.date)
         let recoveryByDay = Self.index(recovery, by: \.date)
         let sleepByDay = Self.index(sleep, by: \.date)
+        // The composite is computed once over the whole read, so a slot's timing term can see the
+        // priors before the week. The map is keyed by start-of-day, the same frame the slots use.
+        let sleepScores = SleepScoreScoring.scores(for: sleep, age: age, calendar: calendar)
 
         // Walked backwards from the anchor so the array is built in the order the slots are, then
         // reversed once. The fallback on the day arithmetic is unreachable for a gregorian calendar
@@ -355,6 +385,7 @@ public struct MetricWeek: Equatable, Sendable {
                     strain: strainByDay[day],
                     recovery: recoveryByDay[day],
                     sleep: sleepByDay[day],
+                    sleepScore: sleepScores[day]?.value,
                     maxHeartRate: maxHeartRate,
                     calendar: calendar))
             day = calendar.date(byAdding: .day, value: -1, to: day) ?? day.addingTimeInterval(-86_400)
@@ -424,6 +455,7 @@ public struct MetricWeek: Equatable, Sendable {
         strain: StrainScore?,
         recovery: RecoveryMetric?,
         sleep: SleepSession?,
+        sleepScore: Int?,
         maxHeartRate: Int?,
         calendar: Calendar
     ) -> MetricDay {
@@ -485,7 +517,8 @@ public struct MetricWeek: Equatable, Sendable {
             // The `> 0` guard on the need is about *this slot's* denominator, and applying it here as
             // well would drop a bar the SLEEP PERFORMANCE row above the chart still prints — while
             // the case it would guard is unreachable on any stored night. See the property's comment.
-            sleepPerformance: sleep?.sleepPerformancePercentage,
+            sleepSufficiency: sleep?.sleepSufficiencyPercentage,
+            sleepScore: sleepScore,
             // The same double gate as the heart rate, for the same reason: the flag is about the row
             // and `> 0` is this column's reserved marker, so a placeholder's `0.0` ms never reaches
             // the panel. `hrvMetric` is carried only alongside a value that survived the gate, so the

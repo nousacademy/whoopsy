@@ -596,7 +596,12 @@ enum ActivityOverflowAndDeleteTests {
                         biometricRepository: GRDBBiometricRepository(db: db)),
                     trackSteps: TrackStepsUseCase(
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                        stepRepository: GRDBStepRepository(db: db)))
+                        stepRepository: GRDBStepRepository(db: db),
+                        stateStore: InMemoryStepCounterStateStore()),
+                    refreshStrain: fixtureRefreshStrain(
+                        strainRepository: GRDBStrainRepository(db: db),
+                        biometricRepository: EmptyBiometricStore(),
+                        userProfileRepository: GRDBUserProfileRepository(db: db)))
             }
             let doomed = ActivityDetailTests.session("Basketball", startOffset: 0, durationSeconds: 600)
             let survivor = ActivityDetailTests.session("Basketball", startOffset: 3600, durationSeconds: 900)
@@ -632,7 +637,7 @@ enum ActivityOverflowAndDeleteTests {
             let telemetry = ScriptedTelemetryRepository()
             let stepRepository = GRDBStepRepository(db: db)
             let workoutRepository = GRDBWorkoutRepository(db: db)
-            let trackSteps = TrackStepsUseCase(bleRepository: telemetry, stepRepository: stepRepository)
+            let trackSteps = TrackStepsUseCase(bleRepository: telemetry, stepRepository: stepRepository, stateStore: InMemoryStepCounterStateStore())
             let day = Date()
 
             let session = LiveSessionUseCase(

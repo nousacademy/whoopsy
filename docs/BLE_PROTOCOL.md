@@ -748,7 +748,9 @@ Records stream as `0x2F` punctuated by `0x31` metadata markers with a sub-type a
 * `2` = `HISTORY_END` — **ack it and keep listening.**
 * `3` = `HISTORY_COMPLETE` — **stop; do not ack.**
 
-The `HISTORY_END` marker carries an 8-byte continuation token at `inner[13:21]`. The reply is:
+The `HISTORY_END` marker carries an 8-byte continuation token at **payload 10** — frame 17 under
+the 4.0 envelope (`inner[13:21]`) and frame **21** under the 5.0's (`data[10:18]`, NOOP's
+hardware-verified trim cursor). The reply is:
 
 ```
 [0x23 COMMAND][seq][0x17 HISTORICAL_DATA_RESULT][0x01 SUCCESS] + token(8B)      # 12 bytes
@@ -774,8 +776,23 @@ measured it** — no project has drained to `HISTORY_COMPLETE` and read the olde
 against wall time — while **WHOOP's own user-facing guidance says roughly 72 hours** of offline
 storage on the 4.0. That is a five-fold disagreement with nothing in hand to break it, and the two
 reverse-engineering figures may simply be repeating each other. Design against the smaller number;
-§7 Q10 is the one drain that settles it. Two consequences hold
-whatever the true figure turns out to be. **A fresh connection is the trigger** — the right default on
+§7 Q10 is the one drain that settles it.
+
+**A commercial source now points at ~14 days, and still without a measurement.** The ~72-hour figure
+is reported to describe the **3.0 and older firmware**, while current 4.0/5.0 firmware is reported at
+two weeks [reported, commercial]. That is a lead rather than a resolution: no drain here has returned
+a record stamped inside a wear window. **The cheapest test is not a wear at all.** `GET_DATA_RANGE`'s
+65-byte reply carries a write page and an acknowledged page, so two drains either side of a
+disconnected wear show whether the write page moved. noop's #689 diagnostic gives the fields —
+`V(1)` read, `V(2)` write, `V(3)` acknowledged, `V(5)` capacity, with backlog
+`write < ack ? write + (capacity − ack) : write − ack` — marks the 5.0/MG layout **unconfirmed**, and
+uses the figure log-only. `WhoopDataRange` decodes it on the same terms. **A write page that never
+moves says the strap is not storing**, which no retention window explains. noop also re-offloads the
+type-47 store **every ~15 minutes while connected**, and preserves the exact eight-byte `HISTORY_END`
+block in a **confirmed** ACK; this app's ACK keeps the same body and now writes it confirmed. If the
+write page moves during a connected session, one drain per connection is too rare.
+
+Two consequences hold whatever the true figure turns out to be. **A fresh connection is the trigger** — the right default on
 connect is that there is something to fetch, not that there is not, which is the same "assume it is
 recording" rule §6 states for motion applied to the flash as a whole. And the drain is **additive**:
 nothing here deletes anything, so the window is a bound on how far back the strap still *has* history,
@@ -829,8 +846,12 @@ readings:
 
 **The eight-byte shape this app copied belongs to the reply, and it runs the other way.** ID 23's body
 is `01` plus the exact eight-byte `HISTORY_END` block — which noop calls **opaque** and warns against
-reconstructing ("never reconstruct the opaque second word") — and `inner[13:21]` on the 4.0 / payload
-`[6,14)` on the 5.0 is where the ACK above reads it.  **Nothing selects a
+reconstructing ("never reconstruct the opaque second word") — and `inner[13:21]` on the 4.0 /
+payload `[10,18)` on the 5.0 (frame 21) is where the ACK above reads it. **The token is at the same
+*payload* offset on both generations; a reader built on the 4.0's *frame* offset is four bytes early
+on a 5.0, the strap accepts the acknowledged write, and its trim cursor never moves** — measured on
+the owner's 5.0 on 2026-10-23, where the drain replayed the same two August batches indefinitely.
+**Nothing selects a
 range on this command**, and a window has somewhere else to live — `0x21 SET_READ_POINTER` seeks the
 read cursor and takes a **u32 offset**, not an epoch pair.
 
@@ -859,7 +880,10 @@ closes a batch and carries the continuation token, and the `HISTORY_COMPLETE` th
 plus **two of the 5.0/MG's three type-47 layouts**, selected by the layout byte at frame `9` (the byte
 `WhoopRawFrame.seq` exposes), **and the 4.0's type-24 record**: `R18` is the heart-rate record and
 `HeartRatePayloadDecoder.decodeR18Historical` walks it at payload `[11]` for the heart rate and
-`[13 + 2i]` for the R-R intervals, stamped from the record's own unix at payload `[4]`; `R21` is
+`[13 + 2i]` for the R-R intervals, stamped from the record's own unix at payload `[4]`; **the same
+record carries the strap's own pedometer at payload `[46]` and its activity class at `[52]`, walked by
+`StepCounterPayloadDecoder`** — see §6's counter subsection for the offsets, their provenance and why
+they are an unvalidated candidate; `R21` is
 §6's IMU buffer and `MotionPayloadDecoder` walks it into a `MotionBatch` for the step path. **That walk
 uses the record's own clock only because this is the banked path**: the same decoder takes a *live*
 packet 43 and keys it on the arrival instant instead, because a strap whose RTC was lost stamps every
@@ -930,14 +954,19 @@ which is what bounds the buffer without a trim rule; and the buffer is **per-con
 both connect and disconnect, since bytes held across a reconnect would be prepended to the new
 stream's first frame and shift every field in it.
 
-**The historical half has now been run too, on one 5.0.** A flash drain completed end to end
-(`caught up to now, 59 record(s) in 1 batch(es)`), every record logged as `type=0x2F layout=18
-payload=109 B` — the `R18` walk — and the samples were stored (`LAST SYNC` moved to the drain's own
-instant). The `HISTORY_END` marker's head also decodes to the drain's instant, so the live-edge rule
-is reading the field it thinks it is. What that drain did **not** establish is a multi-batch
+**The historical half has now been run too, on one 5.0, and it corrected the live-edge rule.** A flash
+drain completed end to end (`59 record(s) in 1 batch(es), ending caughtUpToLiveEdge`), every record
+logged as `type=0x2F layout=18 payload=109 B` — the `R18` walk — and the samples were stored
+(`LAST SYNC` moved to the drain's own instant). The `HISTORY_END` marker's head decodes to the
+drain's **own** instant (the phone's clock, on the 2026-10-23 run: `headAsUnix` was the wall clock
+while the five records it closed were stamped `2026-08-24 12:51:13` onward). The old rule compared
+that head with the wall clock and so declared the live edge after one batch over two months of
+unread backlog — reported as `caughtUpToLiveEdge`. **The live edge is now the newest **record's** stamp, with the **drain-wide highest record** as the fallback for a batch that carries none — and the marker is used only by a session that has seen no record at all, because the strap closes its last chunk with an empty marker stamped now over two-month-old records and a batch whose newest
+record does not advance is counted as a stall (`maximumStalledBatches = 3`) so a re-sending strap
+cannot keep the idle window armed forever. What that drain did **not** establish is a multi-batch
 archive: on this strap the buffer holds two bursts of ~60 records stamped months earlier and nothing
-later, so every drain returns those and ends at the live edge. The `R18` walk is therefore proven on
-real records; a strap that keeps writing is not.
+later, so every drain returns those. The `R18` walk is therefore proven on real records; a strap that
+keeps writing is not, and the cursor's failure to advance across connections remains open (§7).
 
 ---
 
@@ -1200,6 +1229,34 @@ in this app's coverage.
 is not connected to waits for that band's own connection. A user who rotates between three straps
 therefore has three separate backlogs rather than one, each bounded by its own retention window — which
 is the practical reason §4's retention window matters more to this app than to a single-strap one.
+
+### The R18 step counter: a pedometer field in the historical record, and the only one not captured here **[reported 5.0]**
+
+`R18` carries the strap's own pedometer beside the heart rate, and `StepCounterPayloadDecoder` reads
+three fields out of it. **All three are NOOP's reverse-engineering (`docs/PROTOCOL_SENSORS.md` in that
+project), not a capture on this strap**, and that provenance is the point: a wrong offset decodes a
+plausible number, so the decoder is guarded by the record's exact identity and the writer logs its
+first sample.
+
+| Frame offset | Payload offset | Width | Field |
+| ---: | ---: | :--- | :--- |
+| 57 | 46 | `u16` LE | cumulative "selected step/motion counter" |
+| 59 | 48 | `u16` | cadence-like raw value; **not** a steps-per-minute figure and read by nothing |
+| 61 | 50 | `u16` | the hardware counter while a software override is active; zero otherwise |
+| 63 | 52 | `u8` | activity class: `0` still, `1` walk, `2` run; other codes are `FF` and treated as unknown |
+| 64 | 53 | `u8` | `0x10` when the software counter override is active, otherwise zero |
+
+**The counter is cumulative, not a daily total.** It climbs while the strap moves, holds flat while
+still, wraps at 65,536 and can restart on a reboot — so a count is the sum of wrap-aware differences
+between consecutive records (`docs/ALGORITHMS.md` §7), never the value or a low byte. **The source
+byte exists because the firmware can change which counter `57` is**; a delta across that change is
+subtracted one instrument from another and is dropped. **Neither counter is established as equal to
+the official app's step count**, and the record's cadence byte is not a cadence.
+
+`StepCounterPayloadDecoder` requires the 5.0/MG envelope, the historical packet type, layout selector
+`18`, an exact 109-byte payload, and a stamp at or after 2020-01-01 — the `v24` cutoff, because a
+lost RTC stamps history in 2000 and a counter filed there is steps no screen can draw. The one-shot
+`step_counter` diagnostic records the first decoded sample of each connection.
 Whether a strap's retention clock advances while it is off the wrist, or only while it is recording,
 is part of what §7 Q10's capture settles; nothing in hand says.
 
@@ -1209,13 +1266,15 @@ is part of what §7 Q10's capture settles; nothing in hand says.
 producer.** `MotionPayloadDecoder` walks both layouts, dispatched by generation and never by trying
 one and falling back; the result is a `MotionBatch` — a hundred samples per axis with the record's own
 start instant — which is what `StepAccumulator` counts peaks from and what `TrackStepsUseCase` writes
-to `stepCounts` as one row per day.
+to `stepCounts` as one row per day. **The 5.0/MG's own counter is a second step source**, read from the same drain's `R18` records
+and preferred where it exists.
 
 | Generation | Transport | Record | Status |
 | :--- | :--- | :--- | :--- |
 | `.whoop4` | live | `0x2B` / 43, R10, payload 1910 | **live-only**, by design: the 4.0's flash holds the 1 Hz type-24 rollup and no high-rate buffer, so its step path runs only while the app is connected |
-| `.whoop5` / `.whoop5MG` | banked | 47, R21, payload 1229 (frame 1,244) | through §4's drain — the path that works with no phone present |
-| `.whoop5` / `.whoop5MG` | live | 43, R21, payload 1229 (frame 1,244) | the same buffer streamed |
+| `.whoop5` / `.whoop5MG` | banked | 47, R21, payload 1229 (frame 1,244) | through §4's drain — **dropped by the step writer**, which takes the day from the counter instead; `RecordMotionUseCase` still consumes it for sleep |
+| `.whoop5` / `.whoop5MG` | live | 43, R21, payload 1229 (frame 1,244) | the same buffer streamed, and the detector's only input |
+| `.whoop5` / `.whoop5MG` | banked | 47, R18, payload 109 (frame 124) | **the strap's counter at frame 57, class at 63, source at 64** — `StepCounterPayloadDecoder`, §6's counter subsection. NOOP's offsets; **not captured here** |
 
 **The two layouts are frame-absolute and the origins differ, which is the decoder's one real trap.**
 §6's `R21`/`R10` offsets are measured from the **frame's** first byte, while `WhoopRawFrame.payload`
@@ -1446,7 +1505,13 @@ deliberately ordered so the cheap, high-leverage answers come first.
    time**, the answer decides how long each band may go unvisited before its own history starts being
    overwritten rather than merely waiting to be collected. Whether the limit is strap-side retention
    or a drain-side window, and whether that clock advances while a strap is off the wrist, are part of
-   what the capture settles.
+   what the capture settles. **The ~72-hour figure is reported to be the 3.0/older-firmware number**,
+   while current 4.0/5.0 firmware is reported at two weeks [reported, commercial] — a lead, not a
+   measurement. **The cheapest capture is `GET_DATA_RANGE`, not a wear**: its 65-byte reply carries a
+   write page and an acknowledged page, so two drains either side of a disconnected wear show whether
+   the write page moved at all. noop's #689 diagnostic gives the indices and marks the 5.0/MG layout
+   unconfirmed; `WhoopDataRange` decodes it for the log only. A write page that does not move is the
+   observation that says this strap is not storing, which no retention window can explain.
 
 11. **What is the drain request's body, and does it take a window at all?** (§4) — **answered by
    three implemented clients and one captured frame, and applied.** The body is a single `00` on both

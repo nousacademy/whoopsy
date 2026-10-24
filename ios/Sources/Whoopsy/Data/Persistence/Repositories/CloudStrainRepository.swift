@@ -13,6 +13,9 @@ public struct CloudStrainRepository: StrainRepository {
     private let local: any StrainRepository
     private let cloud: any CloudSync
     private let settingsStore: any SyncSettingsRepository
+    /// Injected so the runner is not a function of the hour it runs. `DIContainer` passes
+    /// `SyncSchedule.isOpen`; the default keeps every test and preview open.
+    private let isCallWindowOpen: @Sendable () -> Bool
     private let status: any SyncStatus
     private let calendar: Calendar
 
@@ -21,13 +24,15 @@ public struct CloudStrainRepository: StrainRepository {
         cloud: any CloudSync,
         settingsStore: any SyncSettingsRepository,
         status: any SyncStatus,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        isCallWindowOpen: @escaping @Sendable () -> Bool = { true }
     ) {
         self.local = local
         self.cloud = cloud
         self.settingsStore = settingsStore
         self.status = status
         self.calendar = calendar
+        self.isCallWindowOpen = isCallWindowOpen
     }
 
     public func getStrain(for date: Date) async throws -> StrainScore? {
@@ -44,15 +49,15 @@ public struct CloudStrainRepository: StrainRepository {
         }
     }
 
+    /// **Local only and never routed.** See `StrainRepository.getLocalStrain(for:)` — this is the read a
+    /// repair decision is allowed to make.
+    public func getLocalStrain(for date: Date) async throws -> StrainScore? {
+        try await local.getLocalStrain(for: date)
+    }
+
+    /// **Local only** — the daily run writes the database copy. See `SyncSchedule`.
     public func saveStrain(_ strain: StrainScore, source: String?) async throws {
         try await local.saveStrain(strain, source: source)
-        guard await storesInCloud() else { return }
-        do {
-            try await cloud.writeStrain(StrainSyncRow(strain, source: source))
-            await status.clear(strain.date)
-        } catch let error as CloudSyncError {
-            guard case .unreachable = error else { throw error }
-        }
     }
 
     public func getStrainHistory(days: Int, endingOn: Date) async throws -> [StrainScore] {
@@ -75,7 +80,14 @@ public struct CloudStrainRepository: StrainRepository {
         return byDay.values.sorted { $0.date < $1.date }
     }
 
+    /// **Local only and never routed**, for `getLocalStrain`'s reason: which days this phone imported is
+    /// a question about its own history, and the repair rule must not depend on a reachable server.
+    public func getNewestImportedStrainDay() async throws -> Date? {
+        try await local.getNewestImportedStrainDay()
+    }
+
     private func storesInCloud() async -> Bool {
-        await settingsStore.load().destination == .cloud
+        guard await settingsStore.load().destination == .cloud else { return false }
+        return isCallWindowOpen()
     }
 }

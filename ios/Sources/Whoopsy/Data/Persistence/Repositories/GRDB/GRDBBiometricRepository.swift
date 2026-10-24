@@ -38,6 +38,10 @@ public final class GRDBBiometricRepository: BiometricRepository, Sendable {
         return Self.makeSample(from: record)
     }
 
+    public func getLatestSampleTimestamp(from startDate: Date, to endDate: Date) async throws -> Date? {
+        try await db.getLatestSampleTimestamp(from: startDate, to: endDate)
+    }
+
     /// Absent channels stay absent. Substituting a plausible default here (a 36.5 °C skin
     /// temperature, a `0` R-R interval, a `0` g accelerometer) puts invented data into the recovery
     /// and sleep math with no way downstream to tell it apart from a real reading — and the accel

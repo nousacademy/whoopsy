@@ -32,6 +32,55 @@ public struct StrainScore: Identifiable, Equatable, Sendable {
     public let maxHeartRate: Int
     public let zones: [HeartRateZone]
 
+    /// The motion term's own contribution to `rawAccumulatedLoad`, in the same weighted seconds.
+    ///
+    /// **A diagnostic component, not a second score.** It explains how much of the day the wrist
+    /// supplied on a day the heart rate missed, is stored on the day row for audit, and is never drawn
+    /// as a figure or compared against the score. `nil` on a row written before `v35` and on an
+    /// imported row, which has no components at all.
+    public let motionLoad: Double?
+
+    /// The provenance label the row was stored with — `whoop_export` for an imported day, `device`
+    /// for one this app computed.
+    ///
+    /// **The read-side bit that decides whether a row is repairable.** A day this app scored from a
+    /// partial drain may be recomputed when more samples arrive; WHOOP's own figure for the same day
+    /// must never be replaced by this app's estimate. A legacy `nil` is treated as this app's, which
+    /// is what a row written before the label existed was.
+    public let source: String?
+
+    /// The formula that produced `score` — see `StrainAlgorithm`.
+    public let algorithm: StrainAlgorithm?
+
+    /// The newest input instant the row included, as stored in `strains.scoredThrough`.
+    ///
+    /// **The refresh watermark.** A day is recomputed only when its input is newer than this, so an
+    /// unchanged day costs one cheap read per tick and does not churn the database. Local-only: it
+    /// describes what this phone has seen, not what the record says.
+    public let scoredThrough: Date?
+
+    /// The label `CalculateStrainUseCase` writes: this phone computed the row.
+    ///
+    /// `nil` on a row written before the label existed is read as the same thing — see `isDeviceScored`.
+    public static let deviceSource = "device"
+
+    /// The `strains.source` value `WhoopExportImporter` writes for WHOOP's own figure.
+    ///
+    /// Spelled here as well as on the importer because Domain may not name a Data type, and this is
+    /// the string a repair decision turns on. A suite assertion pins the two equal.
+    public static let importSource = "whoop_export"
+
+    /// Whether this app produced the row and may therefore recompute it.
+    ///
+    /// Since `v35` the writer labels every computed row, but rows from older builds carry `nil` — and
+    /// they were every one of them written by the integrator. An imported row is the only one that must
+    /// be left alone.
+    public var isDeviceScored: Bool {
+        guard source != Self.importSource else { return false }
+        guard let algorithm else { return true }
+        return algorithm.isAppComputed
+    }
+
     public init(
         id: UUID = UUID(),
         date: Date = Date(),
@@ -41,7 +90,11 @@ public struct StrainScore: Identifiable, Equatable, Sendable {
         activeCalories: Double = 0.0,
         averageHeartRate: Int = 0,
         maxHeartRate: Int = 0,
-        zones: [HeartRateZone] = []
+        zones: [HeartRateZone] = [],
+        motionLoad: Double? = nil,
+        source: String? = nil,
+        algorithm: StrainAlgorithm? = nil,
+        scoredThrough: Date? = nil
     ) {
         self.id = id
         self.date = date
@@ -52,6 +105,10 @@ public struct StrainScore: Identifiable, Equatable, Sendable {
         self.averageHeartRate = averageHeartRate
         self.maxHeartRate = maxHeartRate
         self.zones = zones
+        self.motionLoad = motionLoad
+        self.source = source
+        self.algorithm = algorithm
+        self.scoredThrough = scoredThrough
     }
 
     public var category: StrainCategory {

@@ -60,10 +60,10 @@ enum SleepEfficiencyCardTests {
                 lightSleepSeconds: 3600,
                 awakeSeconds: 0)
             assertTest(
-                short.sleepEfficiencyPercentage == 100 && short.sleepPerformancePercentage == 50,
+                short.sleepEfficiencyPercentage == 100 && short.sleepSufficiencyPercentage == 50,
                 "An hour slept through against a two-hour need is 100 percent efficiency and 50 percent "
                     + "performance — asleep over the sleep period, and asleep over the need "
-                    + "(got \(short.sleepEfficiencyPercentage) and \(short.sleepPerformancePercentage))")
+                    + "(got \(short.sleepEfficiencyPercentage) and \(short.sleepSufficiencyPercentage))")
 
             // The card's words, because there is no renderer here to look at the slots.
             assertTest(
@@ -312,7 +312,7 @@ enum SleepEfficiencyCardTests {
             // The two cards on this page print different numbers, and this is what says so: a mutation
             // pointing the efficiency card at the performance figure would agree on every night.
             let disagreeing = withPeriod.filter {
-                $0.sleepEfficiencyPercentage != $0.sleepPerformancePercentage
+                $0.sleepEfficiencyPercentage != $0.sleepSufficiencyPercentage
             }
             assertTest(
                 disagreeing.count > 800,

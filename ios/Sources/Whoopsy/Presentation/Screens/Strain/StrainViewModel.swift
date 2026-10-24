@@ -50,32 +50,61 @@ import SwiftUI
     /// are the same as far as the screen is concerned, which is the type's documented rule.
     public var stepsBaseline: Int?
 
-    private let calculate: CalculateStrainUseCase
     private let repository: any StrainRepository
     private let workoutRepository: any WorkoutRepository
     private let stepRepository: any StepRepository
+    /// The writer. This view model no longer recomputes — see `load(for:)` — but it does ask the writer
+    /// to look at the day when the page opens, and it draws what the writer publishes.
+    private let refresh: RefreshStrainUseCase
+
+    /// The day currently on screen, and how many live writes have landed for it.
+    ///
+    /// The counter is what keeps a stale `load` from overwriting a fresher published row: the read is
+    /// awaited, so a write that lands while it is in flight would be replaced by the older value the
+    /// read returned.
+    private var loadedDay: Date?
+    private var liveStrainWrites = 0
+    private var strainTask: Task<Void, Never>?
 
     public init(
-        calculate: CalculateStrainUseCase,
         repository: any StrainRepository,
         workoutRepository: any WorkoutRepository,
-        stepRepository: any StepRepository
+        stepRepository: any StepRepository,
+        refresh: RefreshStrainUseCase
     ) {
-        self.calculate = calculate
         self.repository = repository
         self.workoutRepository = workoutRepository
         self.stepRepository = stepRepository
+        self.refresh = refresh
+    }
+
+    /// Subscribes to the writer's saved rows, once per view model.
+    ///
+    /// Idempotent, on `HomeViewModel.observeSteps()`'s rule: `.task` fires per push and this view model
+    /// is built once in `MainContainerView`, so a second subscription would orphan the first stream.
+    /// Rows for another day are dropped — the screen is one day, and the writer publishes whichever day
+    /// its tick touched.
+    public func observeStrain() {
+        guard strainTask == nil else { return }
+        let stream = refresh.strainUpdates
+        strainTask = Task { [weak self] in
+            for await score in stream {
+                guard !Task.isCancelled, let self else { return }
+                guard let day = self.loadedDay, score.date.startOfDay == day else { continue }
+                self.liveStrainWrites += 1
+                self.strain = score
+            }
+        }
     }
 
     /// Loads the day the screen is showing by reading it — see
     /// `RecoveryViewModel.load(for:)` for why the read is the point.
     ///
-    /// The recompute test is the **measurement**, not the row, which is what
-    /// `RecoveryViewModel.shouldCompute` has always tested — the two tabs used to disagree.
-    /// `CalculateStrainUseCase` no longer writes a row for a day it could not measure, so a test on
-    /// `nil` would now mostly agree by accident; what it still gets wrong is a placeholder row left on
-    /// disk by an older build, which reads as a settled day and never recomputes, pinning the tab to
-    /// "No data" for the rest of the day even once samples arrive.
+    /// **The recompute moved out.** This method used to call `CalculateStrainUseCase` whenever the day
+    /// was today and had no measured row, so the score was computed once and frozen for the rest of the
+    /// day; it now reads and asks `RefreshStrainUseCase` to look at the day, and the published row
+    /// arrives through `observeStrain()`. Opening the page is still an immediate trigger, which is what
+    /// makes the first figure after a sync appear at once rather than on the next five-minute tick.
     ///
     /// **Workouts have no recompute branch, and must not grow one.** They are read from the database
     /// and from nowhere else: an imported workout comes from a CSV that is not re-read on a day
@@ -84,12 +113,14 @@ import SwiftUI
     public func load(for date: Date) async {
         isLoading = true
         defer { isLoading = false }
+        let day = date.startOfDay
+        loadedDay = day
+        let writesBefore = liveStrainWrites
         do {
-            var stored = try await repository.getStrain(for: date)
-            if Calendar.current.isDateInToday(date), stored?.hasMeasurement != true {
-                stored = try await calculate.execute(for: date)
+            let stored = try await repository.getStrain(for: date)
+            if liveStrainWrites == writesBefore, loadedDay == day {
+                strain = stored
             }
-            strain = stored
 
             async let today = workoutRepository.getWorkouts(for: date)
             async let history = workoutRepository.getWorkoutHistory(
@@ -111,6 +142,10 @@ import SwiftUI
 
             steps = try await stepsDay?.measuredStepCount
             stepsBaseline = Self.stepBaseline(from: try await stepsHistory, for: date)
+
+            if Calendar.current.isDateInToday(date) {
+                await refresh.refreshToday()
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

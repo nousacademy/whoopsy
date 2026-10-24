@@ -31,9 +31,10 @@ import Foundation
 /// **It is deliberately not the app's own `SleepNeedMath`.** That model is `baseline + 6.40 × strain`,
 /// and it is the right model for a *strap* night, whose need it produces. It is the wrong model here:
 /// its coefficient was fitted against a need that already contains the debt term (which is why it is
-/// 6.40 there and 4.05 above), and its baseline is `UserProfile.targetSleepHours` — a hard-coded
-/// constant, never edited and never persisted. Running either over an imported night would print a
-/// constant as that user's baseline and double-count the debt, under a total that is WHOOP's own.
+/// 6.40 there and 4.05 above), and its baseline is `SleepNeedBaselineMath`'s learned personal value,
+/// with the age band only as its cold-start context. Running either over an imported night would
+/// print this app's learned baseline as that user's WHOOP baseline and double-count the debt, under a
+/// total that is WHOOP's own.
 ///
 /// **And the identity runs the other way too, which is the whole reason `hasWhoopNeed` is a
 /// parameter.** `need − debt` is WHOOP's base-plus-strain only because WHOOP's need *contains* the

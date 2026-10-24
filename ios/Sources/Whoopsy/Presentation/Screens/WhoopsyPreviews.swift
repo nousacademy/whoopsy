@@ -32,7 +32,8 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 analyzeStress: container.analyzeStressUseCase,
                 manage: container.manageBLEConnectionUseCase,
                 streamUseCase: container.streamBiometricsUseCase,
-                trackSteps: container.trackStepsUseCase
+                trackSteps: container.trackStepsUseCase,
+                refreshStrain: container.refreshStrainUseCase
             ),
             recoveryViewModel: RecoveryViewModel(
                 calculate: container.calculateRecoveryUseCase,
@@ -44,17 +45,19 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 repository: container.sleepRepository,
                 napRepository: container.napRepository,
                 biometricRepository: container.biometricRepository,
-                analyzeSleepStress: container.analyzeSleepStressUseCase
+                analyzeSleepStress: container.analyzeSleepStressUseCase,
+                userProfileRepository: container.userProfileRepository
             ),
             strainViewModel: StrainViewModel(
-                calculate: container.calculateStrainUseCase,
                 repository: container.strainRepository,
                 workoutRepository: container.workoutRepository,
-                stepRepository: container.stepRepository
+                stepRepository: container.stepRepository,
+                refresh: container.refreshStrainUseCase
             ),
             deviceViewModel: DeviceViewModel(
                 manage: container.manageBLEConnectionUseCase,
                 sync: container.syncHistoricalDataUseCase,
+                refreshStrain: container.refreshStrainUseCase,
                 preferencesRepository: container.preferencesRepository,
                 strapModels: container.strapModelRepository,
                 protocols: container.protocolCatalog,

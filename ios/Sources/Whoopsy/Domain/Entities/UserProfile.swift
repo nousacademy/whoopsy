@@ -8,20 +8,22 @@ import Foundation
 /// | :--- | :--- | :--- |
 /// | Measured or modelled | `maxHeartRate`, `restingHeartRate` | The Karvonen zone table cannot be built without them, so an absence is not a dash a screen can draw — it is a table that does not exist |
 /// | Stored measurement | `weightKg` | Divides into `StrainAccumulatorMath.estimateCalories`; `nil` withholds the figure |
-/// | **Declared** | `name`, `birthDate`, `gender`, `heightCm` | Facts the user types about themselves. **None has a reader in `Sources/`** |
+/// | **Declared** | `name`, `gender`, `heightCm` | Facts the user types about themselves. **None has a reader in `Sources/`** |
+/// | **Declared, now read** | `birthDate` | Feeds `age` (never a defaulted age), which is population context for `SleepNeedBaselineMath`'s learned baseline — its cold-start value and floor — and supplies `CircadianAgeMath`'s timing prior only when a night has no consistency |
 ///
 /// **A declared fact is not a fabricated measurement, and that distinction is the whole reason these
-/// four are allowed on the entity at all.** The rule this app holds — written out in
+/// fields are allowed on the entity at all.** The rule this app holds — written out in
 /// `ui-data-provenance` and enforced everywhere from `RecoveryMetric.hasMeasurement` to
 /// `StepCount.hasMeasurement` — is that *the app must not invent a number and report it back as the
 /// user's*. A height the user typed is the opposite of that: the user is the sensor. What the app must
 /// never do is supply a plausible default for one, which is what `178.0 cm`, `"Athlete"` and a
 /// `-28`-year birth date were, and `v20` deleted all three.
 ///
-/// **The honest cost, stated rather than buried: those four fields feed no model.** They are saved and
-/// read back onto the form, and nothing else in this app consumes them. That is `ProfileViewModel`'s
-/// doc comment restated, and it is why the rule it once stated — "collect nothing unread" — is not the
-/// rule this app actually holds. The rule is "do not let the app invent a number".
+/// **The honest cost, stated rather than buried: the three unread fields feed no model.** They are
+/// saved and read back onto the form, and nothing else consumes them. `birthDate` is the exception
+/// since the sleep score gained an age prior, and `targetSleepHours` lost its last reader when the
+/// need baseline moved to `SleepNeedBaselineMath`; the field is kept for a future user-set target, not
+/// because a model still reads it.
 public struct UserProfile: Identifiable, Equatable, Sendable {
 
     /// The vocabulary of `GENDER`, nested because it is this entity's and nothing else's.
@@ -73,10 +75,10 @@ public struct UserProfile: Identifiable, Equatable, Sendable {
     /// The body weight the calorie estimate needs, or `nil` when the user has not supplied one.
     ///
     /// **Optional because it is the one profile field this app drew a figure from.** The others are
-    /// either consumed by a model that has a defined answer without them (`targetSleepHours` is a
-    /// baseline the sleep-need formula is written against, the heart rates are the inputs a Karvonen
-    /// zone table cannot be built without) or read by nothing at all (`heightCm`, `name`, `birthDate`,
-    /// the two `baseline*` fields). Weight was neither: `CalculateStrainUseCase` passed it to
+    /// either consumed by a model that has a defined answer without them (the heart rates are the
+    /// inputs a Karvonen zone table cannot be built without) or read by nothing at all (`heightCm`,
+    /// `name`, `gender`, `targetSleepHours`, the two `baseline*` fields). Weight was neither:
+    /// `CalculateStrainUseCase` passed it to
     /// `StrainAccumulatorMath.estimateCalories`, so a default here became a calorie count on a screen.
     ///
     /// A defaulted `75.0` is therefore not a neutral starting point — it is a measurement this app
@@ -127,11 +129,13 @@ public struct UserProfile: Identifiable, Equatable, Sendable {
 
     /// The user's age in whole years, or `nil` when no birth date has been supplied.
     ///
-    /// **Optional since `v20` and with no reader today** — the one would-be consumer was
-    /// `estimateCalories`' dead `age:` parameter, deleted with it. It is kept because the arithmetic is
-    /// a fact about a `Date` rather than a claim about the user, and because the `-28`-year default it
-    /// used to fall back on is gone: an absent birth date must produce no age rather than a
-    /// twenty-eight-year-old.
+    /// **The sleep score's only age reader, and population context rather than a verdict.**
+    /// `AnalyzeSleepUseCase` passes it to `SleepNeedBaselineMath`, which uses it for the learned
+    /// baseline's cold-start value and floor, not as the baseline itself; `SleepScoreScoring` passes
+    /// it to `CircadianAgeMath` only when a night has no consistency to score its timing against. It
+    /// is still optional, and an absent birth date must produce no age rather than a
+    /// twenty-eight-year-old: the need's cold-start value falls back to the adult midpoint through
+    /// `SleepNeedBaselineMath`, and the timing prior is simply unavailable.
     public var age: Int? {
         guard let birthDate else { return nil }
         let years = Calendar.current.dateComponents([.year], from: birthDate, to: Date()).year

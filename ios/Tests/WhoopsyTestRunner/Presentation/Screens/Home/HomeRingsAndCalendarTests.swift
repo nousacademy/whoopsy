@@ -424,7 +424,12 @@ enum HomeRingsAndCalendarTests {
                         biometricRepository: GRDBBiometricRepository(db: monthDB)),
                     trackSteps: TrackStepsUseCase(
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                        stepRepository: GRDBStepRepository(db: monthDB)))
+                        stepRepository: GRDBStepRepository(db: monthDB),
+                        stateStore: InMemoryStepCounterStateStore()),
+                    refreshStrain: fixtureRefreshStrain(
+                        strainRepository: GRDBStrainRepository(db: monthDB),
+                        biometricRepository: EmptyBiometricStore(),
+                        userProfileRepository: GRDBUserProfileRepository(db: monthDB)))
             }
 
             await monthViewModel.loadMonth(containing: anchor)
@@ -501,7 +506,12 @@ enum HomeRingsAndCalendarTests {
                         biometricRepository: GRDBBiometricRepository(db: db)),
                     trackSteps: TrackStepsUseCase(
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                        stepRepository: GRDBStepRepository(db: db)))
+                        stepRepository: GRDBStepRepository(db: db),
+                        stateStore: InMemoryStepCounterStateStore()),
+                    refreshStrain: fixtureRefreshStrain(
+                        strainRepository: GRDBStrainRepository(db: db),
+                        biometricRepository: EmptyBiometricStore(),
+                        userProfileRepository: GRDBUserProfileRepository(db: db)))
             }
 
             await viewModel.load(for: emptyDay)
@@ -609,7 +619,12 @@ enum HomeRingsAndCalendarTests {
                         biometricRepository: GRDBBiometricRepository(db: importedDB)),
                     trackSteps: TrackStepsUseCase(
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                        stepRepository: GRDBStepRepository(db: importedDB)))
+                        stepRepository: GRDBStepRepository(db: importedDB),
+                        stateStore: InMemoryStepCounterStateStore()),
+                    refreshStrain: fixtureRefreshStrain(
+                        strainRepository: GRDBStrainRepository(db: importedDB),
+                        biometricRepository: EmptyBiometricStore(),
+                        userProfileRepository: GRDBUserProfileRepository(db: importedDB)))
             }
 
             await home.load(for: importedDay)
@@ -617,7 +632,9 @@ enum HomeRingsAndCalendarTests {
             let imported = await MainActor.run {
                 (
                     score: home.recovery?.hasMeasurement == true ? home.recovery?.score : nil,
-                    sleep: home.sleep?.sleepPerformancePercentage,
+                    sleep: home.sleep?.sleepSufficiencyPercentage,
+                    sleepScore: home.sleepScore,
+                    weekSleepScore: home.metricWeek?.day(for: importedDay)?.sleepScore,
                     strain: home.strain?.score,
                     restorative: home.restorativeSleepSeconds,
                     steps: home.steps,
@@ -642,6 +659,15 @@ enum HomeRingsAndCalendarTests {
                 imported.sleep != nil,
                 "…and a sleep performance, so the SLEEP ring has a value ("
                     + "\(imported.sleep.map { "\($0)%" } ?? "nil"))")
+            assertTest(
+                imported.sleepScore != nil,
+                "…and the imported night produces a composite sleep score ("
+                    + "\(imported.sleepScore.map { "\($0)%" } ?? "nil"))")
+            assertTest(
+                imported.sleepScore == imported.weekSleepScore,
+                "…and the Home ring reads the same week slot the chart plots, not a second computation "
+                    + "(ring \(imported.sleepScore.map { "\($0)" } ?? "nil"), "
+                    + "slot \(imported.weekSleepScore.map { "\($0)" } ?? "nil"))")
             assertTest(imported.strain != nil, "…and WHOOP's own strain for the day")
             assertTest(
                 imported.restorative != nil,

@@ -308,6 +308,13 @@ public enum CloudSyncError: Error, LocalizedError, Equatable, Sendable {
     /// An answer this client could not read.
     case malformed(message: String)
 
+    /// The call was attempted outside the once-a-day window — before 18:00 Eastern.
+    ///
+    /// **Not an outage, and the distinction is the reason it is its own case.** A reader that degrades
+    /// over `.outsideWindow` must not mark the day unavailable: the database is reachable and the app
+    /// is simply not calling it yet. The window is a rate limit, not weather.
+    case outsideWindow
+
     /// **The reason this enum conforms to `LocalizedError`, and it is about one screen.** Every one of
     /// these carries a sentence written for a person, and every one of them reaches a reader the same
     /// way: `HomeViewModel` and its siblings put `error.localizedDescription` into an `errorMessage`
@@ -327,6 +334,8 @@ public enum CloudSyncError: Error, LocalizedError, Equatable, Sendable {
             return "\(message) (\(code))"
         case .malformed(let message):
             return message
+        case .outsideWindow:
+            return "The sync API is called once a day, at 6 PM Eastern."
         }
     }
 }

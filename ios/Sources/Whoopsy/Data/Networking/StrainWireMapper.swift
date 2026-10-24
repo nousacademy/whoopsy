@@ -51,8 +51,13 @@ public struct StrainDTO: Codable, Equatable, Sendable {
     /// Whether the three figures above are readings. Required, and never inferred by either side.
     public let hasMeasurement: Bool
 
-    /// Where the row came from — `whoop_export` for an imported day, `nil` for one this app scored.
+    /// Where the row came from — `whoop_export` for an imported day, `device` for one this app
+    /// scored, `nil` on a row written before the label existed.
     public let source: String?
+
+    /// The formula that produced `strainScore`, as `StrainAlgorithm.rawValue` — `hr-zone-v1`,
+    /// `hr-motion-v2` or `whoop-export`. Nullable, and a client older than `v35` sends `null`.
+    public let algorithm: String?
 
     public init(
         date: String,
@@ -61,7 +66,8 @@ public struct StrainDTO: Codable, Equatable, Sendable {
         averageHeartRate: Int,
         maxHeartRate: Int,
         hasMeasurement: Bool,
-        source: String?
+        source: String?,
+        algorithm: String?
     ) {
         self.date = date
         self.strainScore = strainScore
@@ -70,6 +76,7 @@ public struct StrainDTO: Codable, Equatable, Sendable {
         self.maxHeartRate = maxHeartRate
         self.hasMeasurement = hasMeasurement
         self.source = source
+        self.algorithm = algorithm
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -80,9 +87,10 @@ public struct StrainDTO: Codable, Equatable, Sendable {
         case maxHeartRate
         case hasMeasurement
         case source
+        case algorithm
     }
 
-    /// Written by hand so `source` reaches the wire as `null` rather than as nothing.
+    /// Written by hand so `source` and `algorithm` reach the wire as `null` rather than as nothing.
     ///
     /// The decoding half stays synthesised, deliberately: `decodeIfPresent` reads a `null` and a missing
     /// key alike, and being generous on the way in costs nothing while being generous on the way out
@@ -101,6 +109,7 @@ public struct StrainDTO: Codable, Equatable, Sendable {
         try container.encode(maxHeartRate, forKey: .maxHeartRate)
         try container.encode(hasMeasurement, forKey: .hasMeasurement)
         try container.encode(source, forKey: .source)
+        try container.encode(algorithm, forKey: .algorithm)
     }
 }
 
@@ -165,7 +174,8 @@ public enum StrainWireMapper {
             averageHeartRate: row.averageHeartRate,
             maxHeartRate: row.maxHeartRate,
             hasMeasurement: row.hasMeasurement,
-            source: row.source
+            source: row.source,
+            algorithm: row.algorithm
         )
     }
 
@@ -194,7 +204,8 @@ public enum StrainWireMapper {
             averageHeartRate: dto.averageHeartRate,
             maxHeartRate: dto.maxHeartRate,
             hasMeasurement: dto.hasMeasurement,
-            source: dto.source
+            source: dto.source,
+            algorithm: dto.algorithm
         )
     }
 
@@ -245,6 +256,11 @@ public enum StrainWireMapper {
         // value from some other writer — and sending it would refuse a chunk over a row nobody can see
         // anything wrong with.
         if let source = row.source, source.isEmpty { return false }
+
+        // The same rule one field over: the schema is `z.string().min(1).nullable()`, and an empty
+        // algorithm name is neither a version this app writes nor a valid `null`. Refused here so one
+        // unreadable label cannot lose the other hundred and ninety-nine rows in its chunk.
+        if let algorithm = row.algorithm, algorithm.isEmpty { return false }
 
         return true
     }

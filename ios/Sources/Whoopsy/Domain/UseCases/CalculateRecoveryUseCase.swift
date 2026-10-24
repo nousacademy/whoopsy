@@ -177,7 +177,7 @@ public final class CalculateRecoveryUseCase: Sendable {
 
         // No sleep session is not an average night. The pivot is the only value for this term that
         // adds nothing to the score, which is what "unknown" should contribute.
-        let sleepPerformance = Double(sleepSession.sleepPerformancePercentage) / 100.0
+        let sleepPerformance = Double(sleepSession.sleepSufficiencyPercentage) / 100.0
 
         let scoring: RecoveryScoring.Output? = hasBaseline
             ? RecoveryScoring.score(

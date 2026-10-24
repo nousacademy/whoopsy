@@ -168,7 +168,7 @@ public struct WeekBarChartView: View {
     private static func color(for value: Int, palette: WeekBarSeries.Palette) -> Color {
         switch palette {
         case .recoveryTier: return RecoveryMetric.RecoveryState(score: value).color
-        case .sleepPerformance: return Theme.sleepPerformance
+        case .sleepSufficiency, .sleepScore: return Theme.sleepPerformance
         }
     }
 }

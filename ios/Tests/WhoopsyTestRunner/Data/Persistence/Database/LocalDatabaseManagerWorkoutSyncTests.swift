@@ -346,8 +346,11 @@ enum LocalDatabaseManagerWorkoutSyncTests {
                 "id", "date", "started_at", "ended_at", "strain", "average_heart_rate",
                 "max_heart_rate", "source", "activity_name", "hr_zone_percents", "steps",
                 "offline_region_id",
-                "offline_region_center_latitude", "offline_region_center_longitude"
-            ], "The parent's columns are the record's own fourteen, spelled in snake case")
+                "offline_region_center_latitude", "offline_region_center_longitude",
+                // `v36`'s local-only rating. A single word, so its property name and its column name
+                // agree and it is asserted here once rather than in the two-name block below.
+                "rpe"
+            ], "The parent's columns are the record's own fifteen, spelled in snake case")
 
             // The names the record spells differently from its properties are named here, because a
             // camelCase column would mean the record's mapping and the table had drifted and every read
@@ -411,7 +414,7 @@ enum LocalDatabaseManagerWorkoutSyncTests {
             try await db.saveWorkout(
                 WorkoutRecord(id: "sleep-nap-2026-08-21", date: day(-500), startedAt: start,
                               endedAt: start.addingTimeInterval(1800),
-                              strain: 2.2, averageHeartRate: 118, maxHeartRate: 152),
+                              strain: 2.2, averageHeartRate: 118, maxHeartRate: 152, rpe: nil),
                 route: [WorkoutRoutePointRecord(id: UUID().uuidString, workoutId: "sleep-nap-2026-08-21",
                                                 latitude: 51.5074, longitude: -0.1278,
                                                 timestamp: start, heartRate: 118)],
@@ -421,7 +424,7 @@ enum LocalDatabaseManagerWorkoutSyncTests {
                 WorkoutRecord(id: validID.uuidString, date: day(-500),
                               startedAt: start.addingTimeInterval(3600),
                               endedAt: start.addingTimeInterval(5400),
-                              strain: 3.3, averageHeartRate: 124, maxHeartRate: 165),
+                              strain: 3.3, averageHeartRate: 124, maxHeartRate: 165, rpe: nil),
                 route: [WorkoutRoutePointRecord(id: UUID().uuidString, workoutId: validID.uuidString,
                                                 latitude: 51.508, longitude: -0.128,
                                                 timestamp: start.addingTimeInterval(3600), heartRate: 124)],

@@ -211,6 +211,18 @@ public struct WorkoutSession: Identifiable, Equatable, Hashable, Sendable {
     /// `nil` on every session recorded with the switch off and on every row written before `v23`.
     public let offlineRegionCenter: OfflineMapCenter?
 
+    /// The session's perceived exertion, 0–10, or `nil` when the user never rated it.
+    ///
+    /// **The one field on this entity the user authored rather than the strap measured**, and the only
+    /// one a sync must not erase: there is no way to clear a rating, so an incoming `nil` means *the
+    /// sender had nothing to say* rather than *clear it*. `LocalDatabaseManager.writeWorkout` is what
+    /// keeps the stored value across a synced row.
+    ///
+    /// Defaulted, unlike the three measured fields above and for `offlineRegionID`'s reason — an
+    /// unrated session is the ordinary case, and a rating is not a measurement whose default would
+    /// turn a reading into an absence.
+    public let rpe: Int?
+
     public init(
         id: UUID = UUID(),
         startedAt: Date,
@@ -225,7 +237,8 @@ public struct WorkoutSession: Identifiable, Equatable, Hashable, Sendable {
         hrZonePercents: [Double]? = nil,
         steps: Int? = nil,
         offlineRegionID: String? = nil,
-        offlineRegionCenter: OfflineMapCenter? = nil
+        offlineRegionCenter: OfflineMapCenter? = nil,
+        rpe: Int? = nil
     ) {
         self.id = id; self.startedAt = startedAt; self.endedAt = endedAt; self.strain = strain
         self.averageHeartRate = averageHeartRate; self.maxHeartRate = maxHeartRate
@@ -234,6 +247,16 @@ public struct WorkoutSession: Identifiable, Equatable, Hashable, Sendable {
         self.steps = steps
         self.offlineRegionID = offlineRegionID
         self.offlineRegionCenter = offlineRegionCenter
+        self.rpe = rpe
+    }
+
+    /// The session's perceived training load in arbitrary units, or `nil` when it was never rated.
+    ///
+    /// `WorkoutRPE.perceivedLoad`'s forward, here so the screen and the edit sheet cannot compute it
+    /// two ways.
+    public var perceivedLoad: Double? {
+        guard let rpe else { return nil }
+        return WorkoutRPE.perceivedLoad(rpe: rpe, durationSeconds: durationSeconds)
     }
 
     /// The workout's own length, in seconds — the scale every zone figure is a share of.

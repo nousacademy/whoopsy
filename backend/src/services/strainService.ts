@@ -62,7 +62,17 @@ export const MAX_BATCH_STRAINS = 200;
  * the wire without a line of code naming it: it is a stored field like any other, and nothing in this
  * layer is entitled to decide whether it may be omitted.
  */
-export type StrainInput = Omit<Strain, "userId" | "date">;
+export type StrainInput = Omit<Strain, "userId" | "date" | "algorithm"> & {
+  /**
+   * The formula the client computed the row with, or `null` when it did not say.
+   *
+   * **Optional on the input and required on the stored record**, and the difference is the wire's:
+   * a client older than the field sends no key at all, while every row this Worker writes carries a
+   * value or an explicit `null`. `writeDay`/`writeMany` normalize the absence — that is the one
+   * default this layer applies, and it defaults to *unknown* rather than to a guessed version.
+   */
+  readonly algorithm?: string | null;
+};
 
 /**
  * One row of a bulk write: the same stored fields, plus the day each row is filed under.
@@ -171,7 +181,13 @@ export class StrainService {
    * taken, and would do it invisibly, since the round trip would still look like a strain.
    */
   async writeDay(userId: string, date: string, input: StrainInput): Promise<Strain> {
-    return this.repository.upsert({ userId, date, ...input });
+    return this.repository.upsert({
+      userId,
+      date,
+      ...input,
+      // Absent means *this client does not know the version*, not *the version is the current one*.
+      algorithm: input.algorithm ?? null,
+    });
   }
 
   /**
@@ -226,6 +242,12 @@ export class StrainService {
     // `date` is spread back on rather than passed separately, because for a batch the day is part of
     // the payload — which is the one place this differs from `writeDay`, where the path supplies it
     // and the body is forbidden from carrying it.
-    return this.repository.upsertMany(entries.map((entry) => ({ userId, ...entry })));
+    return this.repository.upsertMany(
+      entries.map((entry) => ({
+        userId,
+        ...entry,
+        algorithm: entry.algorithm ?? null,
+      })),
+    );
   }
 }

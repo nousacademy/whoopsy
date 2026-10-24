@@ -54,6 +54,9 @@ import SwiftUI
 
     private let manage: ManageBLEConnectionUseCase
     private let sync: SyncHistoricalDataUseCase
+    /// The drain's other half — see `syncNow()`. Handed in rather than reached for, on the rule that a
+    /// view model is constructed in `MainContainerView` and nowhere else.
+    private let refreshStrain: RefreshStrainUseCase
     private let preferencesRepository: any AppPreferencesRepository
     private let strapModels: any StrapModelRepository
     private let protocols: any WhoopProtocolProviding
@@ -64,6 +67,7 @@ import SwiftUI
     public init(
         manage: ManageBLEConnectionUseCase,
         sync: SyncHistoricalDataUseCase,
+        refreshStrain: RefreshStrainUseCase,
         preferencesRepository: any AppPreferencesRepository,
         strapModels: any StrapModelRepository,
         protocols: any WhoopProtocolProviding,
@@ -71,6 +75,7 @@ import SwiftUI
     ) {
         self.manage = manage
         self.sync = sync
+        self.refreshStrain = refreshStrain
         self.preferencesRepository = preferencesRepository
         self.strapModels = strapModels
         self.protocols = protocols
@@ -191,8 +196,16 @@ import SwiftUI
             // The drain is the app's one producer of stored samples on a strap that has been off the
             // wrist for a while, so this is the read most likely to move the header's LAST SYNC row.
             await refreshLastSync()
+            // **The records are on disk; the days they cover are not scored until this runs.** A
+            // backlog drain can deliver a fortnight, and the foreground loop would reach each past day
+            // only on a later tick — with no screen ever opening one, the strain would stay absent.
+            await refreshStrain.refresh(from: outcome.oldestRecord, to: outcome.newestRecord)
         } catch {
             status = error.localizedDescription
+            // A drain that stopped early still wrote what it read — see `WhoopSyncError.recordRange`.
+            if let range = (error as? WhoopSyncError)?.recordRange {
+                await refreshStrain.refresh(from: range.oldest, to: range.newest)
+            }
         }
     }
 

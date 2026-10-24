@@ -6,8 +6,9 @@ import Foundation
 ///
 /// This type used to carry three fields, and its doc comment argued that the mockup's other rows were
 /// **left off deliberately** under the repo's no-control-without-a-destination rule: `heightCm`,
-/// `birthDate`, `name` and `gender` have no reader in `Sources/`, so collecting them would be a promise
-/// the app does not keep.
+/// `name` and `gender` have no reader in `Sources/`, so collecting them would be a promise the app
+/// does not keep. `birthDate` has since gained one — it computes `age`, which is population context
+/// for the learned need baseline and, when a night has no consistency, the cold-start timing prior.
 ///
 /// **That rule was mis-stated, and this page is where the correction is written down.** The rule the app
 /// actually holds is not *collect nothing unread* — it is **do not let the app invent a number and report

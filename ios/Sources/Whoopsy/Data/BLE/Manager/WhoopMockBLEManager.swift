@@ -13,6 +13,7 @@ public final class WhoopMockBLEManager: @unchecked Sendable {
     private var deviceContinuations: [UUID: AsyncStream<WhoopDevice>.Continuation] = [:]
     private var telemetryContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
     private var motionContinuations: [UUID: AsyncStream<MotionBatch>.Continuation] = [:]
+    private var stepCounterContinuations: [UUID: AsyncStream<StepCounterSample>.Continuation] = [:]
     private var historicalTelemetryContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
 
     private var currentDevice: WhoopDevice
@@ -104,6 +105,30 @@ public final class WhoopMockBLEManager: @unchecked Sendable {
     private func removeHistoricalTelemetryContinuation(_ id: UUID) {
         continuationLock.lock()
         historicalTelemetryContinuations[id] = nil
+        continuationLock.unlock()
+    }
+
+    /// Empty, deliberately — the mock has no flash to drain and no pedometer counter.
+    ///
+    /// `motionStream`'s rule, applied to the other step source: a synthetic counter would be a
+    /// fabricated step total on every simulator run. The stream is registered and pruned like its
+    /// siblings so `TrackStepsUseCase` behaves identically under the mock, and simply never receives
+    /// a sample.
+    public var stepCounterStream: AsyncStream<StepCounterSample> {
+        AsyncStream { continuation in
+            let id = UUID()
+            continuationLock.lock()
+            stepCounterContinuations[id] = continuation
+            continuationLock.unlock()
+            continuation.onTermination = { [weak self] _ in
+                self?.removeStepCounterContinuation(id)
+            }
+        }
+    }
+
+    private func removeStepCounterContinuation(_ id: UUID) {
+        continuationLock.lock()
+        stepCounterContinuations[id] = nil
         continuationLock.unlock()
     }
 

@@ -120,7 +120,7 @@ ambiguous. Revisit only after the never-mix rule is replaced.
 
 ## 2. Daily & Activity Strain (0.0 – 21.0 Scale)
 
-Strain is a continuous, non-linear metric reflecting both cardiovascular and muscular load. Whoopsy uses a modified **Borg-scale exponential integration model**, over the cardiovascular term alone:
+Strain is a continuous, non-linear metric reflecting both cardiovascular and muscular load. Whoopsy's day model is a modified **Borg-scale exponential integration** over a **heart-rate term** and, since `hr-motion-v2`, a **wrist-motion term** combined with it per 30-second window (§2.a):
 
 $$\text{Total Load} = \underbrace{\sum_{z=1}^5 w_z \Delta t_z}_{\text{five zones}} \;+\; \underbrace{w_0 \, \Delta t_{\text{above rest, below zone 1}}}_{\text{low-intensity band, } w_0 = 1}$$
 
@@ -128,7 +128,7 @@ The low-intensity band is **not a sixth zone**: it credits a heart rate above re
 floor at weight 1.0 — WHOOP's disclosed weight-1 floor (`docs/PATENTS.md` §1) — while adding no zone
 time, so the five band percentages still sum to at most 100. Time at or below resting adds nothing.
 
-**There is no muscular second term.** WHOOP's muscular load lives in a separate granted patent family (`docs/PATENTS.md` §1.4) and nothing here computes it: no `V_normalized`, no `w_muscular`, and no `w_cardio` either, since a single summed term needs no weight. Total Load is the cardiovascular integral and nothing else.
+**There is no muscular second term in the heart-rate model.** WHOOP's muscular load lives in a separate granted patent family (`docs/PATENTS.md` §1.4) and nothing here computes it: no `V_normalized`, no `w_muscular`, and no `w_cardio` either, since a single summed term needs no weight. What the day model *does* now add is a **wrist-motion term** (§2.a below), which is a different quantity: it is this app's own substitution for muscular work and is calibrated, not recovered.
 
 **Load is scored through two curves, one per timescale.** A day spans ~16 waking hours and a session
 spans minutes, so one scaling constant cannot put both a quiet day near WHOOP's no-workout mean and a
@@ -144,6 +144,130 @@ second. `k_day` is calibrated so a 16-hour quiet day (`57,600` weighted seconds)
 no-workout `Day Strain` mean; `k_session` and `p` are a grid fit to the 673 workouts in the bundled
 export (RMSE ≈ 2.17), and the sub-linear power `L^0.55` is what keeps a 20-minute light walk (load
 `≈ 1,200`) scoring `≈ 4.6` rather than the `≈ 0.3` the day's `k` would give it.
+
+### 2.a The motion term, and the per-window maximum
+
+**Why it exists.** The heart-rate integral cannot see work that does not raise the rate. Eight hours at
+a bench, carrying boxes, or standing in a cold room can keep a wrist below zone 1's floor all day, and
+the day then scores what a day on the sofa scores. The strap already measures that work with its
+accelerometer — `RecordMotionUseCase` reduces it to one 30-second window per row — so the missing term
+is a translation, not a sensor.
+
+**ENMO.** `MotionLoadMath` takes a window's mean magnitude, subtracts gravity and clamps at zero:
+$\text{ENMO} = \max(0, \overline{|a|} - 1)$. A still worn strap reads ≈1.0 g because gravity is inside
+the vector, and sensor noise below it clamps rather than becoming negative — a negative weight would
+subtract load from the day.
+
+**The weight table is this app's calibration, not WHOOP's.** WHOOP publishes neither its all-day motion
+weighting nor any non-exercise strain term.
+
+| ENMO | Weight | Typical |
+| :--- | ---: | :--- |
+| `< 0.02 g` | 0 | still |
+| `0.02 – 0.05 g` | 1 | fidgeting, light movement |
+| `0.05 – 0.10 g` | 2 | walking, manual work |
+| `0.10 – 0.20 g` | 3 | brisk walk, lifting |
+| `≥ 0.20 g` | 4 | running, vigorous work |
+
+A window contributes `weight × min(30, sampleCount / 100)` weighted seconds — both motion layouts run
+at 100 Hz, so a full window is 3,000 samples and a partial one is credited only for the seconds it
+covers. **A weight above 1 is the point**: a table that mapped every moving window to 1 could never beat
+the heart-rate low band's `1 × duration`, so the term would be a no-op on every window it was combined
+with.
+
+The scale was chosen against one target: a hard eight-hour manual day — 960 windows at 0.05–0.10 g,
+weight 2 — is `57,600` weighted seconds, which on the day curve is about **+3 ring points** over a quiet
+day already near 9.8. That is the calibration this table is; retuning it means a new algorithm version.
+
+**The combination is a partition, not a sum.** Heart-rate load and motion load use the same unit, and
+adding them would charge the same minute twice — a run raises the rate *and* moves the wrist, so
+`hr + motion` would score a vigorous hour as though it were two. Over each 30-second window:
+
+$$\text{dayLoad} = \sum_{\text{windows}} \begin{cases} \max(\text{hrLoad}, \text{motionLoad}) & \text{an epoch exists} \\ \text{hrLoad} & \text{no epoch} \end{cases}$$
+
+The maximum rather than the sum, and the window rather than the day: a day-level maximum would let a
+hard run cover an afternoon of low-HR manual work. Per window, an elevated heart rate wins its own
+window (exercise is measured better by HR) and a still rate loses to a moving wrist (manual work is
+measured only by motion). HR intervals are credited to the **earlier** sample's window — where the time
+elapsed — so a straddling interval is off by at most its own length and is never double-counted.
+
+**The heart-rate guard stays.** A day with no HR samples returns `nil` and writes no row, however much
+motion it holds. Motion modulates a day that has a heart-rate record; it never invents one, because
+`averageHeartRate = 0` is not an absence but a rate no worn strap can produce.
+
+**A day with no motion epochs is bit-identical to the old algorithm**, including the order the floats
+are summed in — §25 pins the `Double` equality against a verbatim copy of the pre-change loop, so a
+refactor that re-associates the sum fails rather than rounds the same.
+
+**What it cannot see.** Wrist motion is not load in the sense the heart is: carrying a heavy bag with a
+still arm, cycling with the hands on the bars, and a stationary bike all read much lower than the work
+done. The term is an addition that lifts the low end, not a replacement for the cardiovascular
+integral, and a day whose only activity is leg work against a fixed wrist still under-scores.
+
+**The pathological ceiling.** Every window of a full day at running weight is
+`2,880 × 4 × 30 = 345,600` weighted seconds, which the day curve takes to **20.5 of 21**; a full day at
+light-movement weight (`86,400`) is **12.8**. Both are pinned in §25, so the table's reach is a stated
+fact rather than a surprise at the top of the ring.
+
+### 2.b Algorithm versions — a row records the formula that produced it
+
+A stored score without its formula is a number nobody can explain later. Every `strains` row now names
+the model that wrote it (`strains.algorithm`), and the constants of each model are stored **in the
+database** (`strainAlgorithms` locally, `strain_algorithms` on the Worker) as well as here. The wire
+carries the name too, because the app computes the row and the server cannot know which formula ran.
+
+**A parameter change is a new version string, a new seed row and a new enum case — never an edit.**
+Editing a weight in place would leave every historical row claiming a formula it was not computed with,
+which is worse than no provenance at all.
+
+| Version | Formula | Applies to |
+| :--- | :--- | :--- |
+| `hr-zone-v1` | $L = \sum w_z \Delta t_z + w_0 \Delta t_{\text{low}}$; five zone weights `1 / 2 / 4.5 / 9 / 16`, low-band weight `1`, $k_{\text{day}} = 1.085\times10^{-5}$, first sample `1 s`, gap clamp `5 s`; score $= 21(1-e^{-k_{\text{day}}L})$ | Every row this app computed before the motion term |
+| `hr-motion-v2` | The v1 integral + the motion term of §2.a, combined per 30-second window by `max` | The current writer (`StrainAlgorithm.current`) |
+| `whoop-export` | WHOOP's own `Day Strain`, stored verbatim | Every imported row (`WhoopExportImporter`) |
+
+**These constants are recorded twice on purpose** — in the catalogue tables and in this section — and a
+§25 assertion pins `StrainAlgorithm.current` against the newest catalogue row, so the writer, the
+database and this table cannot come to describe three different models.
+
+**A stored row is refreshed only when its input advances.** `strains.scoredThrough` holds the newest
+input instant a row included (the later of the newest sample and the newest motion window's measured
+edge). `RefreshStrainUseCase` ticks every five minutes, on foreground, and after a drain; it recomputes
+a day only when the newest input is later than that watermark, so an unchanged day costs one indexed
+read and no write. A day is never frozen at the moment its page was first opened — which is what the
+old recompute-on-open rule did — and the last minutes of every day are finalised by the tick that
+follows midnight, which revisits yesterday as well as today.
+
+**Imported rows are never refreshed.** `StrainScore.isDeviceScored` is false for a `whoop-export` row,
+and the backfill additionally stops at the newest imported day: the export is a contiguous span, so a
+day before it is WHOOP's territory even where the export carried no strain for that day. Filling such
+a gap with this app's estimate would be the same crossing between a computed and an imported need that
+`AnalyzeSleepUseCase` refuses.
+
+### 2.c Session-RPE — the user's own figure
+
+The heart-rate model cannot see heat, a heavy carry that never raised the rate, or an emotional day the
+user trained through. `WorkoutSession.rpe` is a 0–10 perceived exertion, entered from a prompt after the
+session ends and editable afterwards, and the sheet offers five words rather than a slider because a
+number nobody can reproduce a week later is not a measurement:
+
+| Word | Value |
+| :--- | ---: |
+| `EASY` | 2 |
+| `MODERATE` | 4 |
+| `HARD` | 6 |
+| `VERY HARD` | 8 |
+| `MAX` | 10 |
+
+The value is **local-only** — the wire has no field for it — and it is **never converted onto the 0–21
+strain scale or compared with a strain score**: the two are different quantities, and any conversion
+between them would be an invented calibration. The one arithmetic is the session-RPE training load,
+`RPE × minutes`, shown in arbitrary units on the detail page.
+
+The rating is written by a **second write of the same session** after `end()` has stamped `endedAt`, so
+the recorded window never includes the time spent answering the prompt. There is no clear path: `nil`
+means *never rated*, and a synced row that arrives without one must not erase a stored value — which is
+why `LocalDatabaseManager.writeWorkout` preserves it.
 
 ### Zone Weights ($w_z$)
 Heart rate is classified into 5 personalized zones based on Heart Rate Reserve ($\text{HRR} = \text{Max HR} - \text{Resting HR}$):
@@ -410,7 +534,7 @@ is taken over **measured** days only — the placeholder filter, since a legacy 
 otherwise drag every mean toward zero. Respiratory rate is a mean over the days carrying one (it is
 optional and only now produced on both paths, so a window can hold thirty days and no rate at all),
 and sleep performance is a mean over the nights handed in, in the **printed** integer percentage —
-`SleepSession.sleepPerformancePercentage` is an `Int`, so 5 h of an 8 h need is 63, not 62.5.
+`SleepSession.sleepSufficiencyPercentage` is an `Int`, so 5 h of an 8 h need is 63, not 62.5.
 
 ### Imported days are scored by this same formula
 
@@ -508,9 +632,10 @@ This is a **display** statistic and nothing scores from it, which is why it is n
 `Core`: `Domain` imports only `Foundation` and cannot name `StressMath`. The two constants are
 deliberately equal and separately documented for that reason.
 
-The baseline is also **not** `UserProfile.targetSleepHours`. That field is a hard-coded $8.0$ that is
-never editable and never persisted, so comparing a real imported night against it would be comparing
-WHOOP's own need to a constant this app wrote down.
+The baseline is also **not** a constant from the profile. The strap path learns it from the person's
+prior stored needs (`SleepNeedBaselineMath`), with the age band as cold-start/floor context;
+`UserProfile.targetSleepHours` is no longer read, and comparing a real imported night against a
+profile constant would be comparing WHOOP's own need to a number this app invented.
 
 **On the strap path, no classified night is no recovery at all**: `CalculateRecoveryUseCase` refuses a
 day whose session is absent, because the HRV window is the night and an arbitrary eight hours would be
@@ -577,8 +702,15 @@ zero.
 
 **Onset is a motion decision, and the stage bands are not consulted for it.** The analyzer calls an
 epoch asleep only when its mean magnitude is below 1.05 G **and** its mean heart rate is below the
-night's measured ceiling — the lowest third's resting rate × 1.25, the estimator
-`CalculateRecoveryUseCase` already applies. Sleep is the first sustained ten-minute run of such
+night's measured ceiling — the lowest third's resting rate × **1.10**, the estimator
+`CalculateRecoveryUseCase` already applies. **The multiple is smaller than the stage bands' 1.25
+because it multiplies a different rate**: 1.25 is a band around the profile's *awake* baseline, while
+this ceiling is a small margin above the night's own *sleeping* rate. Measured on a real night, 1.25
+put the ceiling at 63.75 inside an awake 58–61 plateau and reported a 21:27 onset for a 22:30
+bedtime; 1.10 put it at 56.1 and the onset at 22:44, with everything from 1.04 to 1.18 landing in the
+same window. **When the window is too thin to measure a rate, the fallback keeps the stage bands'
+1.25**: the profile's value is an *awake* baseline, so it is on the other scale — `onsetRestingMultiple`
+(1.10) and `onsetFallbackMultiple` (1.25) are separate constants for exactly that reason. Sleep is the first sustained ten-minute run of such
 epochs; wake is the end of the last. **A window with no motion epochs is an absent night**: a heart
 rate alone cannot separate sleep from lying still awake, so the app reports no night rather than
 guessing one, and a night whose motion never settles is absent for the same reason. This replaced an
@@ -727,7 +859,7 @@ because fifteen nights on this export carry more stage time than need at all —
 2024-12-10 at `940 / 415` minutes. Dropping it moves the whole-file disagreement count from 454 to
 **457**, and the three nights in between are 2026-07-22 (`485 / 463`), 2026-02-21 (`490 / 476`) and
 2024-12-10, which WHOOP scores exactly `100` and an unclamped ratio rounds to `105`, `103` and `227`.
-Re-measure through `SleepSession.sleepPerformancePercentage` when this changes, not by re-deriving the
+Re-measure through `SleepSession.sleepSufficiencyPercentage` when this changes, not by re-deriving the
 ratio — the clamp is part of the answer, and the era decides what the answer is being compared to.
 
 ### Nights with no measurement
@@ -758,7 +890,26 @@ with no sleep session contributes the sleep pivot above, which is a defined valu
 $$\text{Sleep Need} = \text{Baseline Need} + \text{Previous Day's Strain} \times 6.40 \text{ minutes}$$
 
 Implemented in `Core/Math/SleepNeedMath.swift`, and applied to **strap nights only** — see the last
-subsection below. The baseline is `UserProfile.targetSleepHours`, which defaults to 8.0 h.
+subsection below. **The baseline is learned from the individual, and age is population context
+rather than the answer.** `SleepNeedBaselineMath.personalBaselineSeconds(for:age:)` inverts the model
+for each prior night that carries a strain row — `need − clamp(strain, 0…21) × 6.40 min` — and takes
+the **median of the last 28** such implied baselines, once there are **seven**. The age band
+contributes three things and nothing else: the cold-start value until seven nights exist (9.0 h under
+18, 8.0 h for adults, 7.5 h at 65+), a floor at the band's lower bound (7 h adults and older adults,
+8 h teens), and a 9.5-hour ceiling. A missing birth date takes the adult cold-start midpoint.
+
+**The estimator reads stored needs, not achieved sleep, and that distinction is load-bearing.** The
+person's actual hours are below their need while they carry a deficit; learning a baseline from
+achieved sleep would slowly lower the target toward the deficit and erase the very thing the need
+exists to express. This is the self-referential trap the debt model documents, applied to the
+baseline.
+
+Over the export's 902 nights carrying a preceding strain day and at least seven priors, the
+median-of-28 learner scores **MAE 24.89 min** against WHOOP's own `Sleep need (min)`, where a fixed
+480-minute baseline scores **26.74**; the learned baseline averages **479.9 min** — this history sits
+near the population midpoint, which is the expected result and not a reason to keep a constant. A
+different history is free to move. `UserProfile.targetSleepHours` lost its last reader when the
+baseline became learned.
 
 The *shape* is WHOOP's. Its developer API publishes `sleep_needed` as an additive breakdown —
 `baseline_milli` + `need_from_sleep_debt_milli` + `need_from_recent_strain_milli` −
@@ -770,18 +921,21 @@ constants.
 `Day Strain`, taken from the *previous* day, over the 909 nights of the bundled export that carry a
 preceding strain day, with the intercept pinned to the 8-hour baseline, gives **6.40 minutes of
 additional need per strain point**. Leaving the intercept free puts it at 478 minutes — within two
-minutes of the profile's 8 hours — which is why pinning it costs nothing.
+minutes of the adult 8 hours — which is why pinning it costs nothing. **The learned baseline now
+supplies that intercept**; the coefficient and the learner are one calibration, fitted and validated
+separately, and neither is WHOOP's function.
 
 Scored by 5-fold cross-validation — the model fitted on four fifths of the series and its error
 measured on the held-out fifth, five times over — against the sleep performance WHOOP's *own* need
 implies (`asleep / their need`), so the figure isolates error in the need rather than in the
-four-component performance composite this app does not reproduce:
+four-component performance composite, which this app approximates with a different fourth term
+(restorative share for sleep stress — see "The composite sleep score"):
 
 | model | mean sleep-performance error |
 |---|---|
 | flat 480 min, no strain term | 10.06 |
 | $480 + 4.5 \times \text{strain}$ | 4.64 |
-| $480 + 6.40 \times \text{strain}$ — **implemented** | **3.77** |
+| $480 + 6.40 \times \text{strain}$ — the coefficient chosen | **3.77** |
 | refitting the coefficient on each fold's own four fifths | 3.87 |
 | … plus a fitted 7-night deficit term | 3.41 |
 | $480 + \text{strain} \times 4.5 + \text{7-night deficit} \times 0.20$ | 18.44 |
@@ -1045,6 +1199,87 @@ and is refused, and a fifteen-hour mis-keyed row is refused by the same comparis
 own gate this is a corrupt row rather than an absence, so the figure above the chart is drawn either
 way.
 
+### The composite sleep score
+
+The ring on the Sleep detail screen and Home's sleep ring print **`SleepScoreScoring`'s composite**,
+not `asleep ÷ need`. The ratio is still on the page — the `HOURS VS. NEEDED` row, the need card and
+the Recovery page's `SLEEP PERFORMANCE` row read it — but it is the **sufficiency component** of the
+score rather than the score itself.
+
+| Component | Source | Weight | Full marks |
+| :--- | :--- | ---: | :--- |
+| Sufficiency | `asleep ÷ targetSleepNeedSeconds` | 45 | asleep ≥ need |
+| Efficiency | `asleep ÷ sleepPeriodSeconds` | 20 | 100% |
+| Restorative | `(deep + REM) ÷ asleep`, normalised against 50% | 20 | ≥ 50% of asleep |
+| Timing | resolved `SleepConsistencyMath`, else `CircadianAgeMath` | 15 | 100 consistency, or midpoint at the age target |
+
+Each component is an integer 0–100, rounded once; the score is
+`round(Σ wᵢcᵢ ÷ Σ wᵢ)` over the components that have a denominator, clamped 0–100. A term with no
+denominator is **absent**, not zero and not 100: a night with no stored need has no sufficiency even
+though the legacy `SleepSession.sleepSufficiencyPercentage` answers `100` for it. Fewer than two
+available terms is no score at all, and a night with three terms is renormalised over their 85
+points rather than being counted as a night that failed a fourth.
+
+**The weights are this app's calibration, not WHOOP's.** WHOOP publishes the post-2025 column's
+components — sufficiency, efficiency, sleep stress and consistency — and none of its weights. This
+app has no producer for sleep stress, so the restorative share stands in for that term, and the
+45/20/20/15 split is chosen to keep duration the largest single term while giving the quality terms
+half the score. The comparison is against WHOOP's **post-gap** column only: over the 459 nights after
+2025-05-17 the composite has **MAE 4.27, bias +3.46, r 0.833, 79.5% within ±5 and 93.9% within ±10**.
+The pre-gap column is the duration ratio and is not a comparison target. This is a calibration that
+reproduces the shape of WHOOP's score, not a recovery of its function.
+
+**The need baseline is learned from the individual; age is population context.** The median-of-28
+learner described under "Sleep Need Calculation" supplies the baseline `SleepNeedMath` adds strain
+to. The age band supplies only the cold-start value, the floor and the cap:
+
+| Age | NSF band | Cold-start midpoint |
+| :--- | :--- | ---: |
+| < 18 | teens 8–10 h | 9.0 h |
+| 18–64 | 7–9 h | 8.0 h |
+| ≥ 65 | 7–8 h | 7.5 h |
+| no birth date | — | 8.0 h (adult midpoint) |
+
+It is written by `AnalyzeSleepUseCase` when a strap night is analysed. The learner reads prior
+stored needs, so a birthday entered later changes the cold-start value and floor for future strap
+nights and does not re-score past ones; imported nights keep WHOOP's stored `Sleep need (min)` and
+never reach this path. `UserProfile.targetSleepHours` lost its last reader when the baseline became
+learned.
+
+**The timing term has two sources, and the age one is a prior.** With four prior nights it is
+`SleepConsistencyMath`'s boundary-consistency score — a measure of **regularity**, not circadian
+phase. That score is resolved against a `SleepConsistencyMath.historyLookbackDays` (12-day) window
+even when the week is built from a wider read, because the model takes the four most recent prior
+records it is handed and the read width is the only guard against scoring across a recording gap.
+Without four, and with an age, it is `CircadianAgeMath`'s alignment of the night's circular
+midpoint to an age-typical free-day mid-sleep:
+
+| Age | Target mid-sleep | Between-person SD |
+| :--- | ---: | ---: |
+| 20 | 4:30 | 150 min |
+| 25 | 3:58 | 149 min |
+| 65 | 2:58 | 119 min |
+| 70 | 2:49 | 110 min |
+| 75+ | 2:49 | 100 min |
+
+The anchors are Fischer et al. 2017's US MSF-by-age bins, pooled across the sexes the paper reports
+and linearly interpolated; the app has no sex field. A midpoint on the target scores 100, one SD 50,
+two SD 0. A span shorter than two hours, longer than sixteen, or crossing noon returns `nil`: the
+export's `Sleep onset` is unreliable on some rows, and this is a prior rather than something the app
+measures. **The age prior never overrides a personal consistency score**; it fills the gap before
+four priors exist, which is why `Score.timingSource` records which model produced the term.
+
+**The UI shape did not move.** The ring keeps its `SLEEP PERFORMANCE` label and the breakdown card
+keeps its four rows; the composite does not add a row, a caption or a timing-source label. The sleep
+page's weekly chart plots the composite so it cannot disagree with the ring, while the Recovery
+page's chart and `SLEEP PERFORMANCE` row stay the ratio. The same four words therefore mean the
+composite on the sleep page and the sufficiency component on the Recovery page; the difference is
+recorded here rather than papered over with a rename.
+
+Calibrated over the bundled export's 910 classified nights, the composite has p25 **76**, p50 **81**
+and p75 **85**. The 60/85 band pair files **12** nights Poor, **637** Sufficient and **261** Optimal;
+the ratio's 70/95 would leave almost nothing in the middle.
+
 ### Sleep bands, and the rows that take no band
 
 The Sleep detail screen draws **up to four rows, and they are two kinds of thing**: three banded
@@ -1052,7 +1287,7 @@ readings, and one unbanded one that is absent more often than it is present.
 
 | Row | Source | Rendered |
 | :--- | :--- | :--- |
-| Hours vs. Needed | `SleepSession.sleepPerformancePercentage` | banded |
+| Hours vs. Needed | `SleepSession.sleepSufficiencyPercentage` | banded |
 | Sleep Consistency | `sleeps.sleep_consistency`, else `SleepConsistencyMath` | banded |
 | Sleep Efficiency | `SleepSession.sleepEfficiencyPercentage` | banded |
 | Nap | `naps`, when the day holds one | plain, and the row is **absent** when it does not |
@@ -1068,19 +1303,21 @@ and is discussed below. `docs/TODO.md` §1 records the readers against both colu
 The three banded rows take their colours from one rule, `SleepBand.band(for:metric:)`.
 Thresholds are this app's own calibration, anchored on WHOOP's published numbers where they exist:
 
-| Band | Hours vs. Needed | Consistency | Efficiency |
-| :--- | :--- | :--- | :--- |
-| Poor | $< 70$ | $< 60$ | $< 80$ |
-| Sufficient | $70$–$94$ | $60$–$89$ | $80$–$89$ |
-| Optimal | $\geq 95$ | $\geq 90$ | $\geq 90$ |
+| Band | Hours vs. Needed | Consistency | Efficiency | Sleep Score |
+| :--- | :--- | :--- | :--- | :--- |
+| Poor | $< 70$ | $< 60$ | $< 80$ | $< 60$ |
+| Sufficient | $70$–$94$ | $60$–$89$ | $80$–$89$ | $60$–$84$ |
+| Optimal | $\geq 95$ | $\geq 90$ | $\geq 90$ | $\geq 85$ |
 
 Hours vs. Needed's anchors are WHOOP's: the metric is $(\text{Actual Sleep} / \text{Sleep Need})
 \times 100$, with "95–100% fully met" and "below 70% significant deficits". Consistency's are
 WHOOP's too: "90% or higher indicates a highly consistent schedule, while scores below 60% suggest
 significant drift". **Efficiency's 80/90 has no published anchor and is this app's own**, like every
-constant in §5's stress model. The three rows of the reference screen's card — 55, 73, 94 — fall
-poor / sufficient / optimal under it, which is a validation rather than a coincidence and is why one
-rule covers all three rather than three tuned per row.
+constant in §5's stress model. **The Sleep Score pair is this app's own too** — the ring's composite,
+not a card row — and its 60/85 is the distribution calibrated in "The composite sleep score". The
+three rows of the reference screen's card — 55, 73, 94 — fall poor / sufficient / optimal under it,
+which is a validation rather than a coincidence and is why one rule covers all three rather than three
+tuned per row.
 
 One calibration note belongs with the table rather than being discovered later: over the export's
 **892 scored nights the anchors put 62 in Poor, 805 in Sufficient and 25 in Optimal**. The bands are
@@ -1910,7 +2147,7 @@ Two limits on the model this app *does* now ship, stated here so they are not di
   guard rather than being folded in here.
 ---
 
-## 7. Steps, from the strap's own accelerometer
+## 7. Steps: the strap's counter first, and a rhythm-gated detector where there is none
 
 WHOOP publishes no step model — `docs/PATENTS.md` records no step algorithm among the filings, and the
 export carries no step column either, so there is nothing here to recover and nothing to fit against.
@@ -1919,7 +2156,59 @@ sleep need and §5's stress thresholds: the shape follows the conventional pedom
 the two fitted constants are this app's own. **This app's step count will not agree with the WHOOP
 app's**, and a disagreement is not evidence that either is wrong.
 
-### The input, and why it is not the raw magnitude
+**There are two producers, and which one a day uses is not a preference — it is what the strap can
+supply.** A 5.0/MG banks an `R18` record about once a second carrying the firmware's own cumulative
+pedometer and its activity class; where a drain supplies those records, that counter is the day's
+source. A 4.0 has no counter field, and a 5.0/MG that has never been drained has no history to read,
+so a peak detector over the live 100 Hz motion remains for those cases. **The two never both count the
+same window**: banked motion is refused by the step writer (see "Two sources over one day"), because a
+drain's `R21` motion and its `R18` counter describe the same span.
+
+### The counter path (5.0/MG, from the drain)
+
+The field map is **NOOP's reverse-engineering, not this project's capture** — `R18` frame offset `57`
+is a `u16` cumulative "selected step/motion counter", `63` the activity class (`0` still, `1` walk,
+`2` run), `61` the hardware counter while a software override is active, and `64` is `0x10` when that
+override is on. `docs/BLE_PROTOCOL.md` §6 carries the offsets and their provenance; no strap on this
+machine has produced one yet, and §7 of that file is the capture that would settle it.
+
+A count is the sum of **wrap-aware differences**, not the counter itself:
+
+```
+delta    = (current − previous) & 0xFFFF
+counted  = delta   when 1 ≤ delta < 512, the source did not change,
+                   and delta ≤ 4 × elapsedSeconds      (511 across a gap ≥ 128 s)
+                    and the record's activity class is walk or run,
+                        once any record in the process has carried a class
+coverage = min(elapsedSeconds, 5)   for a trustworthy interval, otherwise 0
+```
+
+Five rules sit in that expression, and each is a different way a difference is not a step:
+
+- **The class.** The counter climbs for movement that is not locomotion. Once a record carries a
+  class, only walk and run deltas count; a stream that never carries one falls back to counting every
+  plausible delta, which is the legacy firmware's rule.
+- **The absolute guard.** `512` is the wrap/reboot boundary. A wrap is small (`65,535 → 2` is three
+  ticks); a reboot is not. NOOP drops the delta rather than crediting a capped 511.
+- **The rate.** Four steps a second is 240 a minute, above a sprint. A 598-tick jump is a
+  discontinuity whatever the class says.
+- **The source.** At `64 == 0x10` the value at `57` is the software count and the hardware pedometer
+  has moved to `61`. Subtracting one from the other invents steps, so a switch contributes nothing.
+- **Time.** A repeated or out-of-order record is dropped **without advancing the continuation**, so
+  the next genuine delta is measured from the last good record.
+
+**Coverage is a separate answer from ticks.** A still-classed interval with a delta of zero is a
+measured day of no walking — a real `0`, not a dash — while a gap earns no coverage at all. That is
+why the accumulator returns both figures and why `measuredSeconds` is the absence gate every reader
+already uses.
+
+**The counter is counted as one tick per step, with no divisor.** NOOP offers a per-user
+`stepTicksPerStep` because its own comment calls `@57` a motion-tick counter; its default is `1.0` and
+its changelog records the full-`u16` fix as the change that made the figure sane. This app has no
+capture to fit a divisor against, so it takes the default and says so. A scale invented here would be
+a fabricated constant; a walk on hardware is what would justify another.
+
+### The fallback detector, and why it is not the raw magnitude
 
 The strap gives three axes in g at 100 Hz (`docs/BLE_PROTOCOL.md` §6, layouts R10 and R21). A wrist at rest
 reads **≈1.0 g on whichever axis gravity happens to point down** — so a threshold on `|a|` measures
@@ -1939,14 +2228,18 @@ rather than one per strap.
 
 ### The rule
 
-A step is a **local maximum** of `magnitude` that clears an adaptive level:
+The magnitude is smoothed first, then a step is a **local maximum** of the smoothed signal that clears
+an adaptive level and belongs to a rhythm:
 
 ```
-level   = max(minimumPeakAmplitudeG, mean(magnitude) + thresholdSigmas × sd(magnitude))
-accepted = peak > magnitude before it
-        && peak > magnitude after it
-        && peak > level
-        && seconds − lastStepSeconds >= minimumStepIntervalSeconds
+smoothed = mean(magnitude over smoothingWindowSeconds)
+level    = max(minimumPeakAmplitudeG, mean(smoothed) + thresholdSigmas × sd(smoothed))
+candidate = smoothed peak > the sample before and after it
+          && peak > level
+          && seconds − lastCandidateSeconds >= minimumStepIntervalSeconds
+step      = a candidate counted once it belongs to a train of minimumRhythmicPeaks
+            candidates within rhythmWindowSeconds whose consecutive intervals
+            differ by no more than intervalRatioTolerance
 ```
 
 Two properties of that level are the design rather than a detail:
@@ -1958,19 +2251,63 @@ Two properties of that level are the design rather than a detail:
   noise has a mean and a spread of the same order — so a purely adaptive rule would accept the
   largest excursions of a resting wrist's sensor noise. `minimumPeakAmplitudeG` is what refuses them.
 
+**The smoothing and the rhythm gate are the two rules that stop one stride counting several times.**
+A one-sample peak test at 100 Hz sees the sensor's own ripple, and a stride's magnitude lobe can carry
+several such maxima; a 0.1 s mean removes them. More importantly, a footfall and a wrist flick are the
+same transient, and no amplitude threshold separates them — only their *sequence* differs. So a
+candidate is not counted when it is found. It joins a train, and the train is counted when it is three
+peaks with consistent intervals; a lone peak, or a pair, is a hand moving and counts zero. Once a train
+is open, each subsequent candidate counts immediately, so a steady walk is not delayed after its first
+two steps. A gap longer than `maximumIntervalSeconds`, or two intervals that differ by more than
+`intervalRatioTolerance`, closes the train.
+
+**The cost is stated rather than hidden**: a walk of fewer than three steps counts zero, and a cadence
+below roughly 40 steps/minute cannot establish a train. That is the specificity every wrist-worn
+pedometer trades for not counting its wearer's hands, and it is why the figure is an estimate.
+
 ### Constants
 
 | Constant | Value | Basis |
 | :--- | :--- | :--- |
-| `cadenceBandHz` | `0.5...3.0` | Conventional walking and running cadence: 30–180 steps/min. The other two are derived from it |
+| `cadenceBandHz` | `0.5...3.0` | Conventional walking and running cadence: 30–180 steps/min. Three others are derived from it |
 | `minimumStepIntervalSeconds` | `1/3` s | `1 / cadenceBandHz.upperBound` — a **180 step-per-minute ceiling**. Derived rather than written beside it, so a cadence the band admits cannot be refused by an interval outside it |
 | `thresholdWindowSeconds` | `2.0` s | `1 / cadenceBandHz.lowerBound` — one period of the slowest cadence the band admits, so the window always spans a complete stride |
+| `maximumIntervalSeconds` | `2.0` s | The same lower edge, used as the longest interval a train may contain and the gap that closes it |
 | `gravityWindowSeconds` | `1.0` s | Long enough to average out a stride, short enough to follow a turning arm |
+| `smoothingWindowSeconds` | `0.1` s | A ten-sample low-pass at 100 Hz. Takes a σ = 0.04 s bump to ≈79 % of its peak, leaving the 0.1 g fixture 34 % above the floor |
+| `minimumRhythmicPeaks` | `3` | Two transients are a wrist moved once and put down; three give two intervals a rhythm can be tested from |
+| `rhythmWindowSeconds` | `3.0` s | Two periods of the band's lower edge plus a margin — a shuffle at the slowest admitted cadence can still establish a train |
+| `intervalRatioTolerance` | `2.0` | `max/min ≤ 2`: a walk's cadence drifts, a hand moving to a task does not repeat |
 | `thresholdSigmas` | `1.0` | **This app's own** — one of the two a capture would fit |
 | `minimumPeakAmplitudeG` | `0.05` g | **This app's own** — the other. A bump train's peak is attenuated by roughly `0.85 ×` its amplitude by the gravity window, so 0.05 g admits a genuine ~0.06 g arm swing and refuses a resting wrist |
 
 The two fitted constants are the ones a capture against a real wrist would move. The band and the
-interval ceiling are conventional figures, not measurements this app made.
+intervals derived from it are conventional figures, not measurements this app made.
+
+### Two sources over one day
+
+The counter arrives in a drain (historical, batched, possibly spanning days); the detector runs live.
+They overlap in time, so the writer has one rule and a ledger:
+
+- **Banked motion never reaches the detector.** `MotionPayloadDecoder` accepts a drained `R21` record
+  as readily as a live one, and a drain's motion and its `R18` counter describe the same span.
+  `TrackStepsUseCase.ingest` refuses any batch whose timestamp came off the strap, so the counter owns
+  all history and the detector sees only live motion. `RecordMotionUseCase` still consumes the banked
+  batch for sleep epochs — this is one consumer's rule, not the stream's.
+- **The first counter record for a day replaces that day's detector total.** From that moment the day
+  has a ledger — counter ticks, counter coverage, and a live tail — and the detector accumulator is
+  dropped. The row is replaced, not added to, which is the double count this rule exists to prevent.
+- **A counter record overtaking the live tail drops the tail.** The record says the strap has counted
+  up to its instant; live steps the detector counted before that instant are about to be counted
+  again. The few seconds of lag between the drain and the live edge cost their detector steps once and
+  come back in the counter's next interval.
+- **The ledger is persisted before the row.** `stepCounts` has no provenance column, so a stored total
+  cannot be split into counter and detector contributions. `StepCounterStateStore` holds the split (and
+  the counter continuation), and on a relaunch the ledger is the truth the row is recomputed from.
+  Writing the row first would be a total nothing could reproduce.
+- **A day's stored seed is dropped when its counter coverage begins.** Steps from earlier in the day
+  that the drain does not cover are lost once, at the moment the counter takes over. That is the
+  migration cost of a source change; the alternative is keeping a total that cannot be attributed.
 
 ### Why the count is accumulated and not computed on read
 
@@ -1985,18 +2322,22 @@ has.
 **Filter state is per-process and is not persisted.** A relaunch starts the gravity and threshold
 windows empty, so the first second of motion after a relaunch is judged against a partial window and
 can miss a step that a continuous process would have counted. That is the honest cost of not
-persisting filter state, and it is bounded by the two windows above.
+persisting filter state, and it is bounded by the two windows above. **The counter's continuation is
+the exception and is persisted**, because a counter is meaningless without its previous value: losing
+it would lose a real delta rather than one second of warm-up.
 
 ### Where the samples come from, and why the day key differs per transport
 
 One `MotionBatch` type carries the motion from both generations and both transports, so the
-accumulator and the detector have one input and no per-strap branch:
+accumulator and the detector have one input and no per-strap branch. The counter is a second stream,
+`StepCounterStream`, decoded from R18:
 
-| Frame | Generation | Layout | Transport |
-| :--- | :--- | :--- | :--- |
-| `0x2B` / 43 | 4.0 | R10, 1910 bytes | **live only** |
-| 43 | 5.0 / MG | R21, payload 1229 (frame 1244) | live |
-| 47 | 5.0 / MG | R21, payload 1229 (frame 1244) | **banked** (drained from flash) |
+| Frame | Generation | Layout | Transport | Feeds |
+| :--- | :--- | :--- | :--- | :--- |
+| `0x2B` / 43 | 4.0 | R10, 1910 bytes | **live only** | detector |
+| 43 | 5.0 / MG | R21, payload 1229 (frame 1244) | live | detector |
+| 47 | 5.0 / MG | R21, payload 1229 (frame 1244) | **banked** | dropped by the step writer; `RecordMotionUseCase` still uses it |
+| 47 | 5.0 / MG | R18, payload 109 (frame 124) | **banked** | counter, activity class, source |
 
 The layouts are in `docs/BLE_PROTOCOL.md` §6 and are **frame-absolute**; the decoder subtracts the
 profile's payload origin. Only R21 carries the strap's own clock, which `MotionBatch.timestampIsFromStrap`
@@ -2026,12 +2367,20 @@ does not prove about them is the paragraph below.
 ### What this model cannot do
 
 It counts **steps**, and nothing else — there is no stride length, no distance and no cadence
-estimate. It has been exercised against hardware **once**: a counted walk read within a few percent and a
-resting wrist read 0 for two minutes, which is the first evidence this detector is in the right
-place — and it is one walk on one wrist, not a calibration. The export carries no motion at all, the
-suite still asserts the arithmetic against synthetic waveforms with known counts, and **a passing run
-is still not evidence that a real wrist's motion matches a pedometer**, so no screenshot should be
-offered as such.
+estimate. The detector has been exercised against hardware **once**: a counted walk read within a few
+percent and a resting wrist read 0 for two minutes, which is the first evidence the old peak rule is in
+the right place — and it is one walk on one wrist, not a calibration. The export carries no motion at
+all, the suite still asserts the arithmetic against synthetic waveforms with known counts, and **a
+passing run is still not evidence that a real wrist's motion matches a pedometer**, so no screenshot
+should be offered as such.
+
+**The counter has never been read from a strap at all.** Its offsets are NOOP's finding, its two
+semantics (a motion-tick counter, and an activity class that is the strap's own guess) are unverified
+here, and its one-tick-per-step scale is NOOP's default rather than this app's fit. The one-shot
+`step_counter` diagnostic records the first sample of a connection so a sideloaded run can show the
+bytes before anyone trusts the number. Until that runs, the honest summary is: the counter is the
+better source *if* the field is where the reference says it is, and the fallback detector is the one
+with hardware evidence behind it.
 
 ## 8. The activity detail page: an activity's own history, and its five zone rows
 

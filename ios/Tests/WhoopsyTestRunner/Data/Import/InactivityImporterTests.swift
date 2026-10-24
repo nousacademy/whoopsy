@@ -252,7 +252,12 @@ enum InactivityImporterTests {
                 // here only because the initialiser requires it. §14 is where the live tile is driven.
                 trackSteps: TrackStepsUseCase(
                     bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                    stepRepository: GRDBStepRepository(db: db)))
+                    stepRepository: GRDBStepRepository(db: db),
+                    stateStore: InMemoryStepCounterStateStore()),
+                refreshStrain: fixtureRefreshStrain(
+                    strainRepository: GRDBStrainRepository(db: db),
+                    biometricRepository: EmptyBiometricStore(),
+                    userProfileRepository: GRDBUserProfileRepository(db: db)))
         }
         await viewModel.load(for: proseDay)
         let card = await MainActor.run { viewModel.receptiveInactivities }

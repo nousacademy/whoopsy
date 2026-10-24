@@ -34,7 +34,10 @@ public struct SleepDTO: Codable, Equatable, Sendable {
     public let startTime: String
     public let endTime: String
 
-    /// Sleep performance as a whole-scale percentage — this app's own figure, clamped before storage.
+    /// The **sufficiency component** of the sleep score — `asleep ÷ need` — as a whole-scale
+    /// percentage, clamped before storage. This app's own figure, not WHOOP's column, and not the
+    /// ring's composite: the wire field keeps the ratio's meaning because Recovery and the backend
+    /// are calibrated on it. See `docs/ALGORITHMS.md` §4.
     public let sleepPerformance: Double
 
     /// The night's requirement, in seconds.

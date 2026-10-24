@@ -1,17 +1,18 @@
 import Foundation
 import Whoopsy
 
-// MARK: - 22.3b The six sibling decorators: write-through for all, read-back for the two that can
+// MARK: - 22.3b The six sibling decorators: no mirroring, and read-back for the two that can
 
-/// **The write-through half of `CloudRecoveryRepository`, carried across the other six resources**, and
-/// the read-back for the two of them whose `CloudSync` port has a read.
+/// **The no-write-through half of `CloudRecoveryRepository`, carried across the other six resources**,
+/// and the read-back for the two of them whose `CloudSync` port has a read.
 ///
 /// `CloudRecoveryRepositoryTests` drives the routing in full — local-first, one fallback request,
 /// `.unreachable` degradation, the `.rejected`/`.malformed` propagation — because it is the reference
-/// decorator. What this file adds is the *coverage*: that a save of any of the seven resources mirrors
-/// to the database under `.cloud` and stays on the phone under `.device`, and that a missed strain or
-/// workout day is fetched back. The four write-only resources (sleeps, steps, entries, the profile)
-/// have no read to fall back to, so their blocks assert only the write.
+/// decorator. What this file adds is the *coverage*: that **a save of any of the seven resources never
+/// touches the database**, whatever the destination, because the once-a-day run is the only uploader;
+/// and that a missed strain or workout day is still fetched back. The four write-only resources
+/// (sleeps, steps, entries, the profile) have no read to fall back to, so their blocks assert only
+/// the absence of a write.
 enum CloudSyncRepositoriesTests {
 
     static func run() async throws {
@@ -21,7 +22,7 @@ enum CloudSyncRepositoriesTests {
             calendar.startOfDay(for: calendar.date(byAdding: .day, value: offset, to: today) ?? today)
         }
 
-        // MARK: Write-through — one single-row write under `.cloud` per resource
+        // MARK: No write-through — a save stays on the phone under `.cloud`
 
         do {
             let db = LocalDatabaseManager(inMemory: true)
@@ -33,9 +34,10 @@ enum CloudSyncRepositoriesTests {
             try await repo.saveSleepSession(
                 SleepSession(date: day(-3), startTime: day(-3), endTime: day(-3).addingTimeInterval(7 * 3600)),
                 source: "whoop_export")
-            let written = await spy.writtenSleeps
-            assertTest(written.count == 1, "Under `.cloud` a saved night is written through")
-            assertTest(written.first?.date == day(-3), "…on its wake day, not a recomputed one")
+            let sent = await spy.writtenSleeps
+            assertTest(sent.isEmpty, "A save stays on the phone; the daily run is the only uploader")
+            let stored = try await GRDBSleepRepository(db: db).getSleepSession(for: day(-3))
+            assertTest(stored != nil, "…and the night is on the phone, which is where it was going")
         }
 
         do {
@@ -49,10 +51,8 @@ enum CloudSyncRepositoriesTests {
                 StrainScore(date: day(-3), score: 8.0, hasMeasurement: true, activeCalories: 100,
                             averageHeartRate: 70, maxHeartRate: 110),
                 source: "whoop_export")
-            let written = await spy.writtenStrains
-            assertTest(written.count == 1, "Under `.cloud` a saved strain is written through")
-            assertTest(abs((written.first?.kilojoules ?? 0) - 418.4) < 0.001,
-                       "…in kilojoules — 100 kcal × 4.184 — not the entity's kcal figure")
+            let sent = await spy.writtenStrains
+            assertTest(sent.isEmpty, "A save stays on the phone; the daily run is the only uploader")
         }
 
         do {
@@ -67,9 +67,8 @@ enum CloudSyncRepositoriesTests {
                 endedAt: day(-3).addingTimeInterval(3600 + 1200),
                 strain: 5.0, averageHeartRate: 120, maxHeartRate: 150,
                 route: [], splits: [], source: "whoop_export"))
-            let written = await spy.writtenWorkouts
-            assertTest(written.count == 1, "Under `.cloud` a saved session is written through")
-            assertTest(written.first?.date == day(-3), "…filed on its start day")
+            let sent = await spy.writtenWorkouts
+            assertTest(sent.isEmpty, "A save stays on the phone; the daily run is the only uploader")
         }
 
         do {
@@ -80,9 +79,10 @@ enum CloudSyncRepositoriesTests {
                 settingsStore: InMemorySyncSettingsRepository(SyncSettings(destination: .cloud)),
                 status: SyncStatusLog())
             try await repo.saveStepCount(StepCount(date: day(-3), stepCount: 5000, measuredSeconds: 3600))
-            let written = await spy.writtenStepCounts
-            assertTest(written.count == 1, "Under `.cloud` a saved step count is written through")
-            assertTest(written.first?.stepCount == 5000, "…with its count intact")
+            // This is the row that made the rule: a count is saved once a second while the strap
+            // moves, so a mirror here is the call volume the daily schedule exists to remove.
+            let sent = await spy.writtenStepCounts
+            assertTest(sent.isEmpty, "A save stays on the phone; the daily run is the only uploader")
         }
 
         do {
@@ -92,9 +92,8 @@ enum CloudSyncRepositoriesTests {
                 local: GRDBReceptiveInactivityRepository(db: db), cloud: spy,
                 settingsStore: InMemorySyncSettingsRepository(SyncSettings(destination: .cloud)))
             try await repo.save(ReceptiveInactivity(date: day(-3), name: "Dream", note: "long"))
-            let written = await spy.writtenInactivities
-            assertTest(written.count == 1, "Under `.cloud` a saved entry is written through")
-            assertTest(written.first?.name == "Dream", "…with its name intact")
+            let sent = await spy.writtenInactivities
+            assertTest(sent.isEmpty, "A save stays on the phone; the daily run is the only uploader")
         }
 
         do {
@@ -104,9 +103,8 @@ enum CloudSyncRepositoriesTests {
                 local: GRDBUserProfileRepository(db: db), cloud: spy,
                 settingsStore: InMemorySyncSettingsRepository(SyncSettings(destination: .cloud)))
             try await repo.saveUserProfile(UserProfile(maxHeartRate: 190, restingHeartRate: 60, weightKg: 75))
-            let written = await spy.writtenProfiles
-            assertTest(written.count == 1, "Under `.cloud` a saved profile is written through")
-            assertTest(written.first?.weightKg == 75, "…with its body facts intact")
+            let sent = await spy.writtenProfiles
+            assertTest(sent.isEmpty, "A save stays on the phone; the daily run is the only uploader")
         }
 
         // MARK: Under `.device` nothing leaves the phone
@@ -125,7 +123,7 @@ enum CloudSyncRepositoriesTests {
             assertTest(untouched, "Under `.device` a save reaches the phone and nothing else")
         }
 
-        // MARK: The write degrades over `.unreachable` and surfaces `.rejected`, on the shared rule
+        // MARK: A save does not consult the database, so neither failure reaches it
 
         do {
             let db = LocalDatabaseManager(inMemory: true)
@@ -138,17 +136,16 @@ enum CloudSyncRepositoriesTests {
             try await repo.saveStepCount(StepCount(date: day(-3), stepCount: 5000, measuredSeconds: 3600))
             let saved = try await GRDBStepRepository(db: db).getStepCount(for: day(-3))
             assertTest(saved?.stepCount == 5000,
-                       "An unreachable database does not fail a write that landed on the phone")
+                       "An unreachable database does not fail a local write")
 
             await spy.fail(with: .rejected(code: "bad", message: "refused"))
-            do {
-                try await repo.saveStepCount(StepCount(date: day(-2), stepCount: 1, measuredSeconds: 60))
-                assertTest(false, "A refused write surfaces rather than being swallowed")
-            } catch let error as CloudSyncError {
-                assertTest(error == .rejected(code: "bad", message: "refused"), "…as the refusal")
-            } catch {
-                assertTest(false, "…as a CloudSyncError")
-            }
+            try await repo.saveStepCount(StepCount(date: day(-2), stepCount: 1, measuredSeconds: 60))
+            let second = try await GRDBStepRepository(db: db).getStepCount(for: day(-2))
+            assertTest(second?.stepCount == 1,
+                       "…and neither does a refusing one, because the save makes no request")
+
+            let calls = await spy.calls.count
+            assertTest(calls == 0, "…which is the assertion that fails if mirroring comes back")
         }
 
         // MARK: Read-back — a missed strain day is the database's, fetched once and not cached

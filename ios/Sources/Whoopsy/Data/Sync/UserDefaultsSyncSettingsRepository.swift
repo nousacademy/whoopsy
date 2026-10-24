@@ -57,7 +57,8 @@ public final class UserDefaultsSyncSettingsRepository: SyncSettingsRepository, @
         SyncSettings(
             destination: await destination(),
             range: range(),
-            uploadsBiometricSamples: defaults.bool(forKey: Self.namespace + ".uploadsBiometricSamples")
+            uploadsBiometricSamples: defaults.bool(forKey: Self.namespace + ".uploadsBiometricSamples"),
+            lastDailySyncDay: date(forKey: Self.namespace + ".lastDailySyncDay")
         )
     }
 
@@ -67,6 +68,7 @@ public final class UserDefaultsSyncSettingsRepository: SyncSettingsRepository, @
         write(settings.range?.from, forKey: Self.namespace + ".rangeFrom")
         write(settings.range?.to, forKey: Self.namespace + ".rangeTo")
         defaults.set(settings.uploadsBiometricSamples, forKey: Self.namespace + ".uploadsBiometricSamples")
+        write(settings.lastDailySyncDay, forKey: Self.namespace + ".lastDailySyncDay")
     }
 
     // MARK: - The three values

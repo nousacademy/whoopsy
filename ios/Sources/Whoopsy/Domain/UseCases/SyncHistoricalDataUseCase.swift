@@ -106,8 +106,14 @@ public final class SyncHistoricalDataUseCase: Sendable {
             switch error {
             case .noCommandPath:
                 persistence.cancel()
-            case .endedWithoutConfirmation:
-                break
+            case .endedWithoutConfirmation(let records, let batches, let oldest, let newest):
+                AppLogger.ble.warning("""
+                    Drain ended without confirmation: \(records, privacy: .public) record(s) in \
+                    \(batches, privacy: .public) batch(es), spanning \
+                    \(oldest?.description ?? "none", privacy: .public) → \
+                    \(newest?.description ?? "none", privacy: .public). The records were saved; the \
+                    strain refresh will score the days they cover.
+                    """)
             }
             await persistence.value
             throw error

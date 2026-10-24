@@ -53,6 +53,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     private var deviceContinuations: [UUID: AsyncStream<WhoopDevice>.Continuation] = [:]
     private var telemetryContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
     private var motionContinuations: [UUID: AsyncStream<MotionBatch>.Continuation] = [:]
+    private var stepCounterContinuations: [UUID: AsyncStream<StepCounterSample>.Continuation] = [:]
     private var historicalTelemetryContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
 
     private var currentDeviceState: WhoopDevice?
@@ -137,6 +138,13 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     /// summary says the strap sent records — the summary counts them, this names the type, sequence
     /// and payload length. `routeToDrain` runs per record, so it cannot be a line per frame.
     private var hasReportedHistoricalRecord = false
+
+    /// Whether the first decoded step counter has been recorded for this connection.
+    ///
+    /// **The offsets are NOOP's finding and this app has not captured them**, so the first sample is
+    /// the evidence that the walk is reading a counter rather than a coincidence in the bytes. One per
+    /// link, because `routeToDrain` runs per record and a counter line per record would bury it.
+    private var hasReportedStepCounter = false
 
     /// Whether the one-shot command-response diagnostic has been logged for this connection.
     ///
@@ -557,6 +565,38 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         continuationLock.unlock()
     }
 
+    /// The strap's own pedometer, decoded from drained R18 records.
+    ///
+    /// Registered exactly as `motionStream` is, and **never finished**: the consumer is
+    /// `TrackStepsUseCase`, which is attached for the life of the process, and a stream that ended
+    /// with a drain would have to be re-attached before the next one. A drain that returns no R18
+    /// records simply yields nothing, which is the same empty answer a strap without the field gives.
+    public var stepCounterStream: AsyncStream<StepCounterSample> {
+        AsyncStream { continuation in
+            let id = UUID()
+            continuationLock.lock()
+            stepCounterContinuations[id] = continuation
+            continuationLock.unlock()
+            continuation.onTermination = { [weak self] _ in
+                self?.removeStepCounterContinuation(id)
+            }
+        }
+    }
+
+    private func removeStepCounterContinuation(_ id: UUID) {
+        continuationLock.lock()
+        stepCounterContinuations[id] = nil
+        continuationLock.unlock()
+    }
+
+    /// Fans a decoded counter sample out to every live subscriber. See `yieldTelemetry`.
+    private func yieldStepCounter(_ sample: StepCounterSample) {
+        continuationLock.lock()
+        let targets = Array(stepCounterContinuations.values)
+        continuationLock.unlock()
+        for continuation in targets { continuation.yield(sample) }
+    }
+
     private func removeHistoricalTelemetryContinuation(_ id: UUID) {
         continuationLock.lock()
         historicalTelemetryContinuations[id] = nil
@@ -740,6 +780,17 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     /// validate their inbound frames, so a guard on `currentProfile != nil` would have opened the wire
     /// to a strap this build has no command for. A generation that can be read is not a generation
     /// that can be written to.
+    /// Sends a command the strap must not miss — the drain's ACK is the caller.
+    ///
+    /// **Confirmed first, because the reference writes its ACK that way.** `HISTORICAL_DATA_RESULT`
+    /// is what advances the strap's trim cursor; a write dropped without a response leaves history
+    /// un-reclaimed and the next drain asking for the same records. The fallback keeps a characteristic
+    /// that only advertises `writeWithoutResponse` working rather than dropping the ACK outright.
+    private func sendReliableCommand(_ data: Data) {
+        if sendConfirmedCommand(data) { return }
+        sendCommand(data)
+    }
+
     public func sendCommand(_ data: Data) {
         guard let profile = currentProfile, profile.canTransmitCommands else {
             let reason = currentProfile == nil ? "no envelope" : "no command opcode set"
@@ -1078,6 +1129,30 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             yieldHistoricalTelemetry(sample)
         }
 
+        // **The strap's own pedometer, decoded for the same reason and from the same record.** R18 is
+        // historical-only, so this is the one place a counter sample can arrive; the decoder refuses
+        // anything that is not an exact 109-byte R18 under this generation's envelope and refuses a
+        // stamp before 2020, and `TrackStepsUseCase` decides what the delta is worth. The one-shot
+        // line is what a sideloaded run reads to prove the offsets before trusting them.
+        if let counter = StepCounterPayloadDecoder.decode(frame: frame) {
+            if !hasReportedStepCounter {
+                hasReportedStepCounter = true
+                AppLogger.ble.notice("""
+                    Step counter: value=\(counter.counter, privacy: .public) \
+                    class=\(counter.activityClass.map(String.init) ?? "none", privacy: .public) \
+                    source=\(counter.counterIsSoftware ? "software" : "hardware", privacy: .public) \
+                    at \(counter.timestamp.description, privacy: .public)
+                    """)
+                Diagnostics.record("step_counter", [
+                    "counter": "\(counter.counter)",
+                    "activityClass": counter.activityClass.map(String.init) ?? "none",
+                    "source": counter.counterIsSoftware ? "software" : "hardware",
+                    "timestamp": ISO8601DateFormatter().string(from: counter.timestamp)
+                ])
+            }
+            yieldStepCounter(counter)
+        }
+
         switch action {
         case .none:
             break
@@ -1086,7 +1161,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             if let profile = currentProfile,
                let ack = WhoopCommandFrames.historicalDataAck(
                    profile: profile, seq: sequence.next(), token: token) {
-                sendCommand(ack)
+                sendReliableCommand(ack)
             }
 
         case .acknowledgeAndFinish(let token):
@@ -1095,7 +1170,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             if let profile = currentProfile,
                let ack = WhoopCommandFrames.historicalDataAck(
                    profile: profile, seq: sequence.next(), token: token) {
-                sendCommand(ack)
+                sendReliableCommand(ack)
             }
             concludeDrain(reason: .liveEdge)
 
@@ -1180,6 +1255,24 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             seq=\(frame.seq) cmd=0x\(String(frame.cmd, radix: 16, uppercase: true), privacy: .public) \
             payload=\(self.hexPreview(frame.payload), privacy: .public)
             """)
+
+        // **The one reply worth decoding is the data range, and only for the log.** Its write page
+        // answers whether the strap is storing history at all: two drains either side of a wear with
+        // the same write page is evidence that nothing was written, which no amount of draining can
+        // fix. The layout is reported and unconfirmed on 5.0/MG, so this changes no behaviour — see
+        // `WhoopDataRange`.
+        if frame.cmd == profile.commandOpcodes?.getDataRange
+            || frame.cmd == profile.syncOpcodes?.getDataRange,
+            let range = WhoopDataRange.decode(payload: frame.payload)
+        {
+            AppLogger.ble.notice("""
+                Data range: read=\(range.readPage, privacy: .public) \
+                write=\(range.writePage, privacy: .public) \
+                acked=\(range.acknowledgedPage, privacy: .public) \
+                capacity=\(range.capacity, privacy: .public) \
+                backlog=\(range.backlog, privacy: .public) (reported layout, unconfirmed)
+                """)
+        }
 
         // **The clock is deliberately not decoded from this reply.** A best-effort read of it was
         // tried and removed: the `GET_CLOCK` payload is undocumented, and once the RTC was actually
@@ -1444,6 +1537,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         hasLoggedProprietaryFrame = false
         hasLoggedCommandResponse = false
         hasReportedHistoricalRecord = false
+        hasReportedStepCounter = false
         deviceInformationCharacteristics.removeAll()
         hasRequestedDeviceInformationRead = false
         // A link that has gone away is not a link that is bonded, and iOS exposes no bond state to

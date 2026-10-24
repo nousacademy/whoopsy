@@ -154,8 +154,9 @@ func testSections() -> [TestSection] {
             body: TypicalRangeTests.run),
         TestSection(
             id: 16,
-            title: "Testing the pedometer, both motion layouts, the step accumulator, the strap's "
-                + "step storage and the writer's hand-off to a screen that is already open...",
+            title: "Testing the pedometer and its rhythm gate, both motion layouts, the strap's "
+                + "R18 counter and activity class, both accumulators, the strap's step storage, the "
+                + "counter/detector arbitration and the writer's hand-off to a screen that is already open...",
             body: StepTests.run),
         TestSection(
             id: 17,
@@ -198,6 +199,11 @@ func testSections() -> [TestSection] {
             title: "Testing the keep-alive: a 30 s tick, a minute-floored battery read, a silent-"
                 + "stream re-send at each generation's threshold, and a family-sized liveness fuse...",
             body: { KeepAlivePolicyTests.run() }),
+        TestSection(
+            id: 25,
+            title: "Testing the Strain day model with its motion term, the refresh watermark and "
+                + "backfill, the formula catalogue every row now records, and the session-RPE rating...",
+            body: StrainTests.run),
     ]
 }
 
@@ -236,7 +242,7 @@ func runSynchronousSections(_ ids: [Int]) {
     }
 }
 
-/// Runs §6–§24, awaited inside the `Task`, and closes the run.
+/// Runs §6–§25, awaited inside the `Task`, and closes the run.
 ///
 /// `throws` even though no section body currently throws: the `Task` in `main.swift` wraps this in a
 /// `do`/`catch`, and an unobserved throw would otherwise idle out the `RunLoop` and exit **0** over a

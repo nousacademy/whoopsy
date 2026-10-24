@@ -444,7 +444,12 @@ enum WorkoutZoneTests {
                         biometricRepository: GRDBBiometricRepository(db: homeDB)),
                     trackSteps: TrackStepsUseCase(
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                        stepRepository: GRDBStepRepository(db: homeDB)))
+                        stepRepository: GRDBStepRepository(db: homeDB),
+                        stateStore: InMemoryStepCounterStateStore()),
+                    refreshStrain: fixtureRefreshStrain(
+                        strainRepository: GRDBStrainRepository(db: homeDB),
+                        biometricRepository: EmptyBiometricStore(),
+                        userProfileRepository: GRDBUserProfileRepository(db: homeDB)))
             }
             await home.load(for: stepDay)
             let steps = await MainActor.run { home.steps }

@@ -36,7 +36,10 @@ public struct SleepSyncRow: Equatable, Sendable {
     public let startTime: Date
     public let endTime: Date
 
-    /// Sleep performance as a whole-scale percentage — **this app's own figure**, not WHOOP's column.
+    /// The **sufficiency component** of the sleep score — `asleep ÷ need` — as a whole-scale
+    /// percentage. This app's own figure, not WHOOP's column, and **not the ring's composite**: the
+    /// composite is local and derived, and this field keeps the ratio's meaning because Recovery and
+    /// the backend are calibrated on it. See `docs/ALGORITHMS.md` §4.
     public let sleepPerformance: Double
 
     /// The night's requirement, in **seconds**.
@@ -114,7 +117,7 @@ public struct SleepSyncRow: Equatable, Sendable {
 
     /// The row a night would be stored as, with its provenance supplied by the caller.
     ///
-    /// `sleepPerformance` is `SleepSession.sleepPerformancePercentage` widened to the `Double` the
+    /// `sleepPerformance` is `SleepSession.sleepSufficiencyPercentage` widened to the `Double` the
     /// record stores. `sleepConsistency` is WHOOP's own figure, which the entity never carries on a
     /// strap night, so it rides through as whatever the entity holds — `nil` for a night this app
     /// classified, exactly as `GRDBSleepRepository` stores.
@@ -123,7 +126,7 @@ public struct SleepSyncRow: Equatable, Sendable {
             date: session.date,
             startTime: session.startTime,
             endTime: session.endTime,
-            sleepPerformance: Double(session.sleepPerformancePercentage),
+            sleepPerformance: Double(session.sleepSufficiencyPercentage),
             totalSleepNeeded: session.targetSleepNeedSeconds,
             lightSleep: session.lightSleepSeconds,
             deepSleep: session.deepSleepSeconds,

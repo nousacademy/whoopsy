@@ -151,5 +151,8 @@ enum PacketDecoderTests {
                 one?.rrIntervalsMs == [(Double(904) / 1024.0) * 1000.0],
                 "0x2A37 with one interval returns a one-element series")
         }
+
+        // The data-range reply is the diagnostic that tells "nothing to give" from "not writing".
+        WhoopDataRangeTests.run()
     }
 }

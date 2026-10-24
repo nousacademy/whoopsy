@@ -62,8 +62,15 @@ public struct StrainSyncRow: Equatable, Sendable {
     /// unmeasured row a thing the sync carries rather than a thing it skips.
     public let hasMeasurement: Bool
 
-    /// Where the row came from — `whoop_export` for an imported day, `nil` for one this app scored.
+    /// Where the row came from — `whoop_export` for an imported day, `device` for one this app scored.
     public let source: String?
+
+    /// The formula that produced `strainScore`, as `StrainAlgorithm.rawValue`.
+    ///
+    /// **The app's own statement about the row, carried on the wire because the Worker cannot know
+    /// it.** The server stores what it is given and never invents a version; a row from a client older
+    /// than `v35` arrives without one and is stored with a NULL.
+    public let algorithm: String?
 
     public init(
         date: Date,
@@ -72,7 +79,8 @@ public struct StrainSyncRow: Equatable, Sendable {
         averageHeartRate: Int,
         maxHeartRate: Int,
         hasMeasurement: Bool,
-        source: String? = nil
+        source: String? = nil,
+        algorithm: String? = nil
     ) {
         self.date = date
         self.strainScore = strainScore
@@ -81,6 +89,7 @@ public struct StrainSyncRow: Equatable, Sendable {
         self.maxHeartRate = maxHeartRate
         self.hasMeasurement = hasMeasurement
         self.source = source
+        self.algorithm = algorithm
     }
 
     /// The row a day would be stored as, with its provenance supplied by the caller.
@@ -96,16 +105,18 @@ public struct StrainSyncRow: Equatable, Sendable {
             averageHeartRate: strain.averageHeartRate,
             maxHeartRate: strain.maxHeartRate,
             hasMeasurement: strain.hasMeasurement,
-            source: source
+            source: source,
+            algorithm: strain.algorithm?.rawValue
         )
     }
 
     /// The entity a screen would draw, rebuilt from the stored fields.
     ///
-    /// `rawAccumulatedLoad` and `zones` have no columns and never did, so they come back at their
-    /// defaults — the same shape `GRDBStrainRepository.makeScore` produces when it reads a record, and
-    /// for the same reason: a strain read from disk or from the wire knows nothing about heart-rate
-    /// zones.
+    /// `rawAccumulatedLoad`, `zones`, `motionLoad` and `scoredThrough` have no wire fields and never
+    /// did, so they come back at their defaults — the same shape `GRDBStrainRepository.makeScore`
+    /// produces when it reads a record. **`source` and `algorithm` do ride the wire and are passed
+    /// through**, because dropping them here is what would turn a cloud-read imported day into one the
+    /// refresh would happily overwrite.
     public var score: StrainScore {
         StrainScore(
             date: date,
@@ -113,7 +124,9 @@ public struct StrainSyncRow: Equatable, Sendable {
             hasMeasurement: hasMeasurement,
             activeCalories: kilojoules / 4.184,
             averageHeartRate: averageHeartRate,
-            maxHeartRate: maxHeartRate
+            maxHeartRate: maxHeartRate,
+            source: source,
+            algorithm: algorithm.flatMap(StrainAlgorithm.init(rawValue:))
         )
     }
 }

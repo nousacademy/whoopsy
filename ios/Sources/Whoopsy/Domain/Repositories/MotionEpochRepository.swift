@@ -13,4 +13,14 @@ public protocol MotionEpochRepository: Sendable {
 
     /// Epochs whose **start** falls in `[from, to)`.
     func getMotionEpochs(from: Date, to: Date) async throws -> [MotionEpoch]
+
+    /// The newest epoch whose `start` falls in `[from, to)`, or `nil` — the motion half of the strain
+    /// watermark, read for `BiometricRepository.getLatestSampleTimestamp`'s reason.
+    func getLatestMotionEpoch(from: Date, to: Date) async throws -> MotionEpoch?
+}
+
+extension MotionEpochRepository {
+    public func getLatestMotionEpoch(from startDate: Date, to endDate: Date) async throws -> MotionEpoch? {
+        try await getMotionEpochs(from: startDate, to: endDate).last
+    }
 }

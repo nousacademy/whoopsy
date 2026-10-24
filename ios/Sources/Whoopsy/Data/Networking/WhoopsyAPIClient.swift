@@ -52,6 +52,13 @@ public struct WhoopsyAPIClient: Sendable {
     private let keyStore: any SyncKeyStore
     private let session: URLSession
 
+    /// Whether a request may be made right now.
+    ///
+    /// **Defaulted to always-open, and that is the test seam rather than production policy.**
+    /// `DIContainer` passes `SyncSchedule.isOpen`, so the app calls its API only from 18:00 Eastern;
+    /// the host runner and every spy use the default so a test is not a function of the hour it runs.
+    private let isCallWindowOpen: @Sendable () -> Bool
+
     /// - Parameter keyStore: **the store rather than the key, and that is a constraint rather than a
     ///   preference.** `SyncKeyStore` is an actor whose one door is `async`, while `DIContainer.init` —
     ///   the only place this client is built — is synchronous, because a `DIContainer` is constructed
@@ -71,11 +78,18 @@ public struct WhoopsyAPIClient: Sendable {
     ///   cannot build a client that would send no credential. The failure that produces is a `401` on
     ///   every read with nothing at the call site to suggest why; `DIContainer` is the only caller and
     ///   it holds both halves.
-    public init(baseURL: URL, token: String, keyStore: any SyncKeyStore, session: URLSession = .shared) {
+    public init(
+        baseURL: URL,
+        token: String,
+        keyStore: any SyncKeyStore,
+        session: URLSession = .shared,
+        isCallWindowOpen: @escaping @Sendable () -> Bool = { true }
+    ) {
         self.baseURL = baseURL
         self.token = token
         self.keyStore = keyStore
         self.session = session
+        self.isCallWindowOpen = isCallWindowOpen
     }
 
     /// The base URL this build was configured with, or `nil` when it was configured with none.
@@ -633,6 +647,10 @@ public struct WhoopsyAPIClient: Sendable {
     // MARK: - The transport
 
     private func perform(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        // **The one gate every call passes through.** A closed window throws before a socket is
+        // opened, so no read, write or retry can spend a request outside 18:00–midnight Eastern.
+        guard isCallWindowOpen() else { throw CloudSyncError.outsideWindow }
+
         let data: Data
         let response: URLResponse
         do {

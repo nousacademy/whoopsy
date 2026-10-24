@@ -116,6 +116,7 @@ public struct MainContainerView: View {
         self.deviceViewModel = DeviceViewModel(
             manage: container.manageBLEConnectionUseCase,
             sync: container.syncHistoricalDataUseCase,
+            refreshStrain: container.refreshStrainUseCase,
             preferencesRepository: container.preferencesRepository,
             strapModels: container.strapModelRepository,
             protocols: container.protocolCatalog,
@@ -142,7 +143,8 @@ public struct MainContainerView: View {
                     analyzeStress: container.analyzeStressUseCase,
                     manage: container.manageBLEConnectionUseCase,
                     streamUseCase: container.streamBiometricsUseCase,
-                    trackSteps: container.trackStepsUseCase),
+                    trackSteps: container.trackStepsUseCase,
+                    refreshStrain: container.refreshStrainUseCase),
                 recoveryViewModel: RecoveryViewModel(
                     calculate: container.calculateRecoveryUseCase,
                     repository: container.recoveryRepository,
@@ -156,15 +158,16 @@ public struct MainContainerView: View {
                     repository: container.sleepRepository,
                     napRepository: container.napRepository,
                     biometricRepository: container.biometricRepository,
-                    analyzeSleepStress: container.analyzeSleepStressUseCase),
+                    analyzeSleepStress: container.analyzeSleepStressUseCase,
+                    userProfileRepository: container.userProfileRepository),
                 // A third second-instance view model, on the same reasoning as the two above: Home's
                 // strain ring pushes a copy seeded with the day on screen, and the Strain tab's own
                 // `StrainViewModel` below keeps a private day it would otherwise share.
                 strainViewModel: StrainViewModel(
-                    calculate: container.calculateStrainUseCase,
                     repository: container.strainRepository,
                     workoutRepository: container.workoutRepository,
-                    stepRepository: container.stepRepository),
+                    stepRepository: container.stepRepository,
+                    refresh: container.refreshStrainUseCase),
                 // The one device view model, built in `init` above and shared with More → Device, so
                 // pushing the page from either route reaches the same instance. See its declaration
                 // for why it is stored rather than computed.
@@ -243,7 +246,16 @@ public struct MainContainerView: View {
         // than `.background` because a link is only worth re-arming when someone can see the result.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
-            Task { await container.manageBLEConnectionUseCase.rearmConnection() }
+            Task {
+                await container.manageBLEConnectionUseCase.rearmConnection()
+                // **The catch-up that makes the schedule reliable.** A suspended app's 18:00 timer
+                // does not fire; opening the app after the window on an unmarked day runs it once,
+                // and `lastDailySyncDay` prevents a second run the same evening.
+                await container.dailySyncUseCase.runIfDue()
+                // A foreground is the moment a day that changed while the app was suspended gets
+                // scored, without waiting for the five-minute tick.
+                await container.refreshStrainUseCase.refreshToday()
+            }
         }
         // The strap's step counter, started once for the life of the app.
         //
@@ -277,9 +289,13 @@ public struct MainContainerView: View {
             // alive together on the same multicast stream; neither steals the other's batches.
             let steps = container.trackStepsUseCase
             let motion = container.recordMotionUseCase
+            let dailySync = container.dailySyncUseCase
+            let strain = container.refreshStrainUseCase
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await steps.start() }
                 group.addTask { await motion.start() }
+                group.addTask { await dailySync.runLoop() }
+                group.addTask { await strain.start() }
             }
         }
     }
@@ -318,10 +334,22 @@ extension MainContainerView {
                             \(outcome.batchCount, privacy: .public) batch(es), ending \
                             \(String(describing: outcome.ending), privacy: .public)
                             """)
+                        // **The drain's other half.** The records are on disk and would otherwise go
+                        // unscored until each day's own page happened to be opened — which on a
+                        // backlog is never. The range comes off the drain's own stamps, so a drain
+                        // that carried none asks for nothing.
+                        await container.refreshStrainUseCase.refresh(
+                            from: outcome.oldestRecord, to: outcome.newestRecord)
                     } catch {
                         AppLogger.ble.warning("""
                             Auto-sync failed: \(error.localizedDescription, privacy: .public)
                             """)
+                        // A drain that stopped early still wrote what it read — `endedWithoutConfirmation`
+                        // carries the range for exactly this.
+                        if let range = (error as? WhoopSyncError)?.recordRange {
+                            await container.refreshStrainUseCase.refresh(
+                                from: range.oldest, to: range.newest)
+                        }
                     }
                 case .syncing:
                     continue

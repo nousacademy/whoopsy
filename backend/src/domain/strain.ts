@@ -45,6 +45,15 @@ export interface Strain {
   readonly hasMeasurement: boolean;
   /** Provenance (`whoop_export`, …). NULL when this app measured it, and on every pre-column row. */
   readonly source: string | null;
+  /**
+   * The formula that produced `strainScore` — `hr-zone-v1`, `hr-motion-v2`, `whoop-export`.
+   *
+   * **The client's own statement and not something this Worker can know.** It stores what it is given
+   * and never invents a version for a row that lacks one, so `null` here means the sending client is
+   * older than the field rather than that the day had no formula. Nullable and undefaulted for the
+   * same reason `source` is: absence has a spelling already.
+   */
+  readonly algorithm: string | null;
 }
 
 /**

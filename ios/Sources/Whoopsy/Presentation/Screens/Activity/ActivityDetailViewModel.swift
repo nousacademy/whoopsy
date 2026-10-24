@@ -119,6 +119,27 @@ import SwiftUI
 
     public var errorMessage: String?
 
+    /// The session's perceived training load in arbitrary units, or `nil` when it was never rated.
+    ///
+    /// **Deliberately not compared with `strainText`.** The rating is the user's own answer and the
+    /// strain is the heart-rate model's; they measure different things, and a delta or a ratio between
+    /// them would be a conversion neither produces. The row exists so a reader can see both numbers and
+    /// judge, not so the app can claim one predicts the other.
+    public var perceivedLoadText: String? {
+        session.perceivedLoad?.formattedOneDecimal()
+    }
+
+    /// The rating itself, as `"6/10 · Hard"` — the figure and the word the control offered.
+    ///
+    /// A stored value outside the five buckets is the figure with no word rather than a snapped
+    /// neighbour: `WorkoutRPE.Bucket.forValue` answers `nil` there, and inventing a word would
+    /// misreport an answer the user gave.
+    public var rpeText: String? {
+        guard let rpe = session.rpe else { return nil }
+        guard let label = WorkoutRPE.Bucket.forValue(rpe)?.label else { return "\(rpe)/10" }
+        return "\(rpe)/10 · \(label)"
+    }
+
     /// Which map the route card draws with, resolved once per load.
     ///
     /// **Resolved here rather than inside the view's `body`**, because the drawing must not be able to

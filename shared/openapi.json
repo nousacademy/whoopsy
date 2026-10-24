@@ -1685,6 +1685,15 @@
             "minLength": 1,
             "description": "Provenance — which producer wrote the row (`whoop_export`, …). `null` means this app measured it, or that the row predates the column. An empty string is refused: it is a value nobody supplied, and the whole point of the column being nullable is that absence has a spelling already. Every strain row the bundled WHOOP export produces carries `whoop_export`; the column matters more here than it does on `recoveries`, because an imported strain is WHOOP's own figure rather than this app's.",
             "example": "whoop_export"
+          },
+          "algorithm": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "**The formula that produced `strainScore`** — the client's own statement about how it computed the row, because this API cannot know it. Known versions: `hr-zone-v1` (the five-zone heart-rate integral), `hr-motion-v2` (the same integral combined with the wrist-motion term), and `whoop-export` (WHOOP's own `Day Strain`, stored verbatim). The formula and every constant behind each version are recorded in the app's `strainAlgorithms` table, in this database's `strain_algorithms` table, and in the app's `docs/ALGORITHMS.md` § 2; the app treats a parameter change as a new version string, so a stored row always names the formula it was actually computed with. On a response the key is always present. On a write, `null` means the client has no version to report, and an **absent** key (accepted for clients older than the field) means the same thing: this Worker stores `null` rather than inventing a version, and does not clear a stored one when a later row omits it.",
+            "example": "hr-motion-v2"
           }
         },
         "required": [
@@ -1694,7 +1703,8 @@
           "averageHeartRate",
           "maxHeartRate",
           "hasMeasurement",
-          "source"
+          "source",
+          "algorithm"
         ],
         "description": "One day's strain. A day with no row at all is a 404; a row that exists but carries `hasMeasurement: false` is a `200`, because that row is real and the flag is how it is told apart from a reading."
       },
@@ -1739,6 +1749,15 @@
             "minLength": 1,
             "description": "Provenance — which producer wrote the row (`whoop_export`, …). `null` means this app measured it, or that the row predates the column. An empty string is refused: it is a value nobody supplied, and the whole point of the column being nullable is that absence has a spelling already. Every strain row the bundled WHOOP export produces carries `whoop_export`; the column matters more here than it does on `recoveries`, because an imported strain is WHOOP's own figure rather than this app's.",
             "example": "whoop_export"
+          },
+          "algorithm": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "**The formula that produced `strainScore`** — the client's own statement about how it computed the row, because this API cannot know it. Known versions: `hr-zone-v1` (the five-zone heart-rate integral), `hr-motion-v2` (the same integral combined with the wrist-motion term), and `whoop-export` (WHOOP's own `Day Strain`, stored verbatim). The formula and every constant behind each version are recorded in the app's `strainAlgorithms` table, in this database's `strain_algorithms` table, and in the app's `docs/ALGORITHMS.md` § 2; the app treats a parameter change as a new version string, so a stored row always names the formula it was actually computed with. On a response the key is always present. On a write, `null` means the client has no version to report, and an **absent** key (accepted for clients older than the field) means the same thing: this Worker stores `null` rather than inventing a version, and does not clear a stored one when a later row omits it.",
+            "example": "hr-motion-v2"
           }
         },
         "required": [
@@ -1813,6 +1832,15 @@
             "minLength": 1,
             "description": "Provenance — which producer wrote the row (`whoop_export`, …). `null` means this app measured it, or that the row predates the column. An empty string is refused: it is a value nobody supplied, and the whole point of the column being nullable is that absence has a spelling already. Every strain row the bundled WHOOP export produces carries `whoop_export`; the column matters more here than it does on `recoveries`, because an imported strain is WHOOP's own figure rather than this app's.",
             "example": "whoop_export"
+          },
+          "algorithm": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "**The formula that produced `strainScore`** — the client's own statement about how it computed the row, because this API cannot know it. Known versions: `hr-zone-v1` (the five-zone heart-rate integral), `hr-motion-v2` (the same integral combined with the wrist-motion term), and `whoop-export` (WHOOP's own `Day Strain`, stored verbatim). The formula and every constant behind each version are recorded in the app's `strainAlgorithms` table, in this database's `strain_algorithms` table, and in the app's `docs/ALGORITHMS.md` § 2; the app treats a parameter change as a new version string, so a stored row always names the formula it was actually computed with. On a response the key is always present. On a write, `null` means the client has no version to report, and an **absent** key (accepted for clients older than the field) means the same thing: this Worker stores `null` rather than inventing a version, and does not clear a stored one when a later row omits it.",
+            "example": "hr-motion-v2"
           }
         },
         "required": [

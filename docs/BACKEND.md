@@ -59,6 +59,18 @@ loosens, when a route is added, when a service or a query is rewritten behind an
 a comment moves. **A change that leaves the wire's names, types, requiredness, formats and bounds alone is
 not a version event**, however large it is.
 
+**`strains.algorithm` is the worked example of that rule, and it is recorded here because it is the
+first field added under it.** `0009_add_strain_algorithm.sql` adds a nullable column, a
+`strain_algorithms` reference table seeded with the three versions and their constants, and the wire
+gains `algorithm` on both the response and the write bodies — **optional as well as nullable on a
+write**, because a client older than the field sends no key at all and refusing it would break every
+older install on its first upload. Nothing a conforming client already sends changes meaning, its
+bodies still validate, and its responses gain a key it is free to ignore — so this is
+**not a version event** despite being a schema change. The app's own client always sends the key
+(`null` when it has no version), so both spellings are exercised. The same judgement would move if the
+field were ever made **required**: that is the row in the bump list above, and it would be a minor
+under the pre-1.0 rule.
+
 **Deprecation is announced, served, watched, and only then removed.** A change that does force a bump
 leaves the old shape answering for a span written down before the new one ships: the docs say what is
 going and when, both shapes are served, the old one's use is watched for as long as that takes, and it is
@@ -186,6 +198,19 @@ The D1 database and R2 bucket are created once per account; a fresh clone needs 
 `wrangler d1 create` nor `wrangler r2 bucket create` — only `wrangler d1 migrations apply
 whoopsy-sync --remote` if it wants the remote schema, `--local` for `wrangler dev`, and its **own**
 `SYNC_API_TOKEN`. Two deployments sharing one secret would share rows.
+
+## Calling cadence
+
+**The app calls this Worker once a day, at or after 6 PM Eastern.** Local writes never mirror: a save
+writes this phone and nothing else, and `DailySyncUseCase` uploads the span since the last successful
+run. Every decorated read is local-first and is gated to the same window, so a local miss outside it
+returns nothing rather than spending a request. A manual `SYNC` outside the window is refused with a
+sentence naming 6 PM Eastern.
+
+**Why the window exists.** Step counts alone are written once a second while the strap moves; a
+per-save mirror put the deployment's call budget at 78% used. The window is a rate limit, not an
+outage — the database is reachable, the app is simply not calling it yet, and nothing is marked
+unavailable.
 
 ## Configuring the app
 

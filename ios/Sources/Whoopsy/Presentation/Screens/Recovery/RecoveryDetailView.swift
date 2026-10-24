@@ -466,10 +466,10 @@ public struct RecoveryDetailView: View {
                     // because a night's performance is a percentage of a need, exactly as a recovery
                     // score is a percentage of `RecoveryScoring`'s scale — the two are the same
                     // drawing with different answers to "which slots" and "what colour".
-                    if let series = WeekBarSeries(sleepPerformanceWeek: week) {
+                    if let series = WeekBarSeries(sleepSufficiencyWeek: week) {
                         barWeekCard(
                             week, series: series, title: "Sleep Performance",
-                            caption: sleepPerformanceWeekDescription(week))
+                            caption: sleepSufficiencyWeekDescription(week))
                     }
                 }
             }
@@ -485,7 +485,7 @@ public struct RecoveryDetailView: View {
             || WeekLineSeries(hrvWeek: week) != nil
             || WeekLineSeries(restingHeartRateWeek: week) != nil
             || WeekLineSeries(respiratoryRateWeek: week) != nil
-            || WeekBarSeries(sleepPerformanceWeek: week) != nil
+            || WeekBarSeries(sleepSufficiencyWeek: week) != nil
     }
 
     /// One of the two bar cards, which are the same card around the same chart.
@@ -550,8 +550,8 @@ public struct RecoveryDetailView: View {
     /// chart says days. That is not decoration — the two charts are on one page and a reader comparing
     /// their captions should be able to tell which of them counts nights and which counts days, since
     /// a day with no score and a night with no session are different absences.
-    private func sleepPerformanceWeekDescription(_ week: MetricWeek) -> String {
-        guard let series = WeekBarSeries(sleepPerformanceWeek: week) else {
+    private func sleepSufficiencyWeekDescription(_ week: MetricWeek) -> String {
+        guard let series = WeekBarSeries(sleepSufficiencyWeek: week) else {
             return "Sleep performance for the last seven days, no measurement"
         }
         return series.spokenSentence(subject: "Sleep performance", counted: "nights")
@@ -683,10 +683,11 @@ public struct RecoveryDetailView: View {
     /// the whole absence rule.
     ///
     /// The SLEEP PERFORMANCE week chart below reads the same night through
-    /// `MetricDay.sleepPerformance`, which is ungated for this reason — so the row and the bars cannot
-    /// come to describe different sets of nights.
+    /// `MetricDay.sleepSufficiency`, which is ungated for this reason — so the row and the bars cannot
+    /// come to describe different sets of nights. This page's figure is the sufficiency ratio, not the
+    /// sleep ring's composite; `docs/ALGORITHMS.md` §4 records why the label is shared.
     private var sleepPerformance: Double? {
-        viewModel.sleepSession.map { Double($0.sleepPerformancePercentage) }
+        viewModel.sleepSession.map { Double($0.sleepSufficiencyPercentage) }
     }
 
     /// The night's respiratory rate.

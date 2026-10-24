@@ -14,19 +14,19 @@ import SwiftUI
 /// (*"the sleep ring will link to same page that sleep shows on activity sleep tile"*) — so what
 /// that page is cannot be changed for one call site and missed at the other.
 ///
-/// **It is the sleep *performance* page, and the reference calls it that.** The ring prints
-/// `sleepPerformancePercentage` — asleep over need — which is exactly the figure Home's sleep ring
-/// prints, so tapping a 55% ring opens a ring that still says 55%. The `HOURS VS. NEEDED` row beneath
-/// it prints the same digits, and the duplication is the honest state of an app that has one sleep
-/// figure where the reference's app has two: WHOOP's ring is a composite of performance, consistency,
-/// efficiency and respiratory rate, and this app does not reproduce that composite. It prints the
-/// figure it has rather than inventing a second one to put under the same word.
+/// **It is the sleep *performance* page, and the ring now means the composite.** The ring prints
+/// `SleepScoreScoring`'s value — sufficiency, efficiency, restorative share and timing, weighted —
+/// which is exactly the figure Home's sleep ring prints, so tapping a 72% ring opens a ring that
+/// still says 72%. The `HOURS VS. NEEDED` row beneath it prints the sufficiency component, asleep over
+/// need, and the `needCard` at the bottom heads itself with the same ratio. Those two remain the
+/// entity's single `sleepSufficiencyPercentage`; the row, the card and the ring are therefore two
+/// quantities rather than three names for one, and the labels say which is which.
 ///
-/// **That figure is now on the page three times**, because `needCard` at the bottom heads itself with
-/// it as well — the ring, the breakdown row and the card. The card is the reference's own composition
-/// for the figure (a percentage over the need that produced it), and the user asked for it on top of
-/// the row rather than in place of it. The three cannot disagree, since all three read the entity's
-/// single `sleepPerformancePercentage` property rather than recomputing the ratio.
+/// **The composite's UI shape is the reference's.** The extra terms do not add rows or captions: the
+/// breakdown card keeps the four rows it had, the typical-range card keeps the restorative share it
+/// already drew, and the week chart below now plots the same composite as the ring. A night with a
+/// missing term is renormalized rather than shown as a partial card; the score records what it was
+/// built from for the tests, not for the screen.
 ///
 /// **The rows are three readings, and one more on a day that had a nap.** Hours vs. Needed, Sleep
 /// Consistency and Sleep Efficiency are percentages and each take a band from `SleepBand`. `NAP` is
@@ -388,7 +388,7 @@ public struct SleepDetailView: View {
     /// performance percentage are readings every stored night carries, while the window's mean needs
     /// `RecoveryScoring.minimumBaselineDays` nights. A thin window prints the headline alone rather
     /// than a comparison against zero — and the mean it prints is
-    /// `SleepStageRangeScoring.Summary.typicalPerformancePercent`, taken over the *usable* nights of the
+    /// `SleepStageRangeScoring.Summary.typicalSufficiencyPercent`, taken over the *usable* nights of the
     /// same window this page's typical-range card bands, so the two cards cannot come to describe
     /// different histories.
     @ViewBuilder
@@ -398,8 +398,8 @@ public struct SleepDetailView: View {
                 asleepSeconds: session.totalTimeAsleepSeconds,
                 needSeconds: session.targetSleepNeedSeconds,
                 breakdown: viewModel.needBreakdown,
-                performancePercent: session.sleepPerformancePercentage,
-                typicalPerformancePercent: viewModel.stageSummary?.typicalPerformancePercent)
+                sufficiencyPercent: session.sleepSufficiencyPercentage,
+                typicalSufficiencyPercent: viewModel.stageSummary?.typicalSufficiencyPercent)
         }
     }
 
@@ -496,11 +496,11 @@ public struct SleepDetailView: View {
     /// **It is the Recovery detail page's section, drawn again**, and that is deliberate rather than a
     /// copy that drifted: the same `WeekBarChartView` around the same `WeekBarSeries`, the same
     /// `SectionLabel` in the card's caption position, the same 17pt section heading. The two screens
-    /// already share the quantity — `SleepSession.sleepPerformancePercentage` is what this page's ring
+    /// already share the quantity — `SleepSession.sleepSufficiencyPercentage` is what this page's ring
     /// prints and what the last chart on that page plots — so a second drawing of it here would be two
     /// pictures of one figure.
     ///
-    /// **The gate is the series, not the night.** `WeekBarSeries(sleepPerformanceWeek:)` is `nil` for a
+    /// **The gate is the series, not the night.** `WeekBarSeries(sleepScoreWeek:)` is `nil` for a
     /// week holding no classified night, and the heading is inside that condition rather than above it,
     /// because a title with no section under it is the same empty-grid fabrication the charts refuse to
     /// draw one level down. That is also why this section does **not** take `hasNight`: a day with no
@@ -517,7 +517,7 @@ public struct SleepDetailView: View {
     /// the same reasoning that omits the `i` beside the reference's ring on this page.
     @ViewBuilder
     private var weeklyTrendsSection: some View {
-        if let week = viewModel.week, let series = WeekBarSeries(sleepPerformanceWeek: week) {
+        if let week = viewModel.week, let series = WeekBarSeries(sleepScoreWeek: week) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Weekly Trends")
                     .font(.system(size: 17, weight: .bold))
@@ -880,12 +880,13 @@ public struct SleepDetailView: View {
     private var dash: String { "—" }
     private var hasNight: Bool { viewModel.session != nil }
 
-    /// Asleep over need. The ring's figure and the `HOURS VS. NEEDED` row's, deliberately — see the
-    /// type's doc comment for why they are the same number.
+    /// Asleep over need. The `HOURS VS. NEEDED` row's figure, and the sufficiency component of the
+    /// ring's composite — **not** the ring's own number. The ring reads `viewModel.sleepScore`; this
+    /// ratio remains the card's row, the need card's headline and the Recovery input.
     ///
     /// No gate beyond the optional: an unclassifiable night has no row at all, so `viewModel.session`
     /// being `nil` is the whole absence rule, exactly as it is on Home's sleep ring.
-    private var hoursVsNeeded: Int? { viewModel.session.map(\.sleepPerformancePercentage) }
+    private var hoursVsNeeded: Int? { viewModel.session.map(\.sleepSufficiencyPercentage) }
 
     /// Asleep over the sleep period. Same absence rule.
     private var sleepEfficiency: Int? { viewModel.session.map(\.sleepEfficiencyPercentage) }
@@ -907,19 +908,20 @@ public struct SleepDetailView: View {
         return .plain(text: "\(minutes) min", spoken: "\(minutes) minutes asleep")
     }
 
-    /// The band the ring's own figure fell in, which the segment bar lights. `nil` on a night with no
-    /// figure, which is also when the bar is not drawn.
+    /// The band the ring's own composite fell in, which the segment bar lights. `nil` on a night with
+    /// no score, which is also when the bar is not drawn. The `HOURS VS. NEEDED` row keeps its own
+    /// `.hoursVsNeeded` band.
     private var ringBand: SleepBand? {
-        guard let value = hoursVsNeeded else { return nil }
-        return SleepBand.band(for: Double(value), metric: .hoursVsNeeded)
+        guard let value = viewModel.sleepScore else { return nil }
+        return SleepBand.band(for: Double(value), metric: .sleepScore)
     }
 
     private var gaugeProgress: Double {
-        hasNight ? Double(hoursVsNeeded ?? 0) / 100 : 0
+        hasNight ? Double(viewModel.sleepScore ?? 0) / 100 : 0
     }
 
     private var gaugeText: String {
-        guard let value = hoursVsNeeded else { return dash }
+        guard let value = viewModel.sleepScore else { return dash }
         return "\(value)%"
     }
 

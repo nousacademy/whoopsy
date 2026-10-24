@@ -82,7 +82,10 @@ public struct StrainDetailView: View {
         // the simulator: 666px of 1206 at 3x, exactly the ring plus the stack's padding.
         .frame(maxWidth: .infinity)
         .background(Theme.backgroundDark)
-        .task { await viewModel.load(for: date) }
+        .task {
+            viewModel.observeStrain()
+            await viewModel.load(for: date)
+        }
         .preferredColorScheme(.dark)
     }
 

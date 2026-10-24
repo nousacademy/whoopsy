@@ -16,14 +16,14 @@ enum MetricWeekTests {
             let lossyDay = lossyWeek.days.last
             assertTest(
                 lossyDay?.asleepSeconds == 27180 && lossyDay?.sleepNeedSeconds == 33420
-                    && lossyDay?.sleepPerformance == 81,
+                    && lossyDay?.sleepSufficiency == 81,
                 "A night's asleep total is read off the same `sleeps` row as its need and its "
                     + "performance — 7h33m against 9h17m reads back as 27180 seconds, 33420 seconds and "
                     + "81 percent, which are the reference's own figures (got "
                     + "\(lossyDay?.asleepSeconds ?? -1) / \(lossyDay?.sleepNeedSeconds ?? -1) / "
-                    + "\(lossyDay?.sleepPerformance ?? -1))")
+                    + "\(lossyDay?.sleepSufficiency ?? -1))")
             if let asleep = lossyDay?.asleepSeconds, let need = lossyDay?.sleepNeedSeconds,
-               let performance = lossyDay?.sleepPerformance {
+               let performance = lossyDay?.sleepSufficiency {
                 assertTest(
                     Int((need * Double(performance) / 100).rounded()) == 27070 && asleep == 27180,
                     "…and the ratio cannot give that total back: 81 percent of the same need is 27070 "

@@ -96,6 +96,15 @@ public struct ActivityEditSheet: View {
     public nonisolated static let startTimeLabel = "Start Time"
     public nonisolated static let endTimeLabel = "End Time"
 
+    /// The heading over the perceived-exertion control, and the sentence under it.
+    ///
+    /// The caption says *not compared with the strain score* because that is the honest relationship:
+    /// `WorkoutRPE`'s figure is the user's own answer and the session's strain is the heart-rate model's,
+    /// and two numbers side by side on one page invite a comparison that neither produces.
+    public nonisolated static let effortSectionTitle = "EFFORT"
+    public nonisolated static let effortCaption =
+        "How hard the session felt, from easy to maximal. Your own answer — it is not compared with the heart-rate score."
+
     /// The button's title.
     public nonisolated static let saveTitle = "SAVE"
 
@@ -108,6 +117,13 @@ public struct ActivityEditSheet: View {
                 VStack(alignment: .leading, spacing: 22) {
                     activityRow
                     timeSection
+                    // **A fast is never rated**, and this is the one route that could reach one: the
+                    // end-of-session prompt only appears on `LiveSessionView`, which a fast never
+                    // pushes. A fast measures nothing — it is time held rather than work done — so an
+                    // exertion rating would be a figure about a session that has no exertion in it.
+                    if !ActivityFigure.isFast(draft.original) {
+                        effortSection
+                    }
                 }
                 .padding(.horizontal, Self.gutter)
                 .padding(.top, 8)
@@ -229,6 +245,46 @@ public struct ActivityEditSheet: View {
                 .overlay(Theme.cardBorder)
 
             timeRow(label: Self.endTimeLabel, instant: draft.end, selection: endBinding)
+        }
+    }
+
+    // MARK: - The effort section
+
+    /// `EFFORT`, and the five-way control that is the only route to changing a rating.
+    ///
+    /// **It edits an existing answer; the end-of-session prompt is what creates one.** A session rated at
+    /// the prompt can be re-rated here, and a session skipped there can be rated late — which is the
+    /// point of the row existing at all: a user who taps SKIP because they are walking is not a user who
+    /// never wants a rating.
+    ///
+    /// **There is no clear control, deliberately.** A rating is user-authored data on this phone and
+    /// there is no column path that means *unrate* — a `nil` written to `workouts.rpe` is
+    /// indistinguishable from a row that predates the column, and `writeWorkout` refuses to treat an
+    /// incoming `nil` as a clear for exactly that reason. Re-rating is the way to change an answer.
+    private var effortSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel(Self.effortSectionTitle)
+
+            Divider()
+                .overlay(Theme.cardBorder)
+
+            Text(Self.effortCaption)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            SegmentedPillControl(
+                titles: WorkoutRPE.Bucket.allCases.map(\.shortLabel),
+                // No pill on an unrated session: nothing has been chosen yet, and pre-selecting a
+                // bucket would show the user an answer they did not give. A stored value outside the
+                // five buckets — a row a future control wrote — likewise selects nothing rather than
+                // snapping to a neighbour and misreporting the answer.
+                selectedIndex: draft.rpe.flatMap { value in
+                    WorkoutRPE.Bucket.allCases.firstIndex { $0.value == value }
+                } ?? -1,
+                onSelect: { index in
+                    draft.setRpe(WorkoutRPE.Bucket.allCases[index].value)
+                })
         }
     }
 

@@ -32,7 +32,9 @@ import Whoopsy
 /// and spy dependencies, so no block below needs the main actor to reach it.
 enum SyncSectionTests {
     static func run() async throws {
-        // 22.1 — the destination, the span, its snap and its day count. No database.
+        // 22.1 — the destination, the span, its snap and its day count, and the once-a-day window
+        // that decides when any of it may leave the phone. No database.
+        SyncScheduleTests.run()
         try await SyncSettingsTests.run()
 
         // 22.2 — a row on the wire, for all seven resources: the day key and the instant in both

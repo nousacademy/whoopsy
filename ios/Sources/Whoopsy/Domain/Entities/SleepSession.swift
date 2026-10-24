@@ -190,7 +190,14 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
         totalTimeAsleepSeconds + awakeSeconds
     }
 
-    public var sleepPerformancePercentage: Int {
+    /// Asleep over need — the **sufficiency component** of `SleepScoreScoring`'s composite.
+    ///
+    /// This is what the `HOURS VS. NEEDED` row, the need card and Recovery's sleep input read. The
+    /// sleep ring prints the composite instead, and the wire field `sleepPerformance` carries this
+    /// ratio; see `docs/ALGORITHMS.md` §4 for the distinction. The zero-need guard returns `100` for
+    /// a night with no denominator, while the composite treats that same night as having no
+    /// sufficiency at all — a divergence pinned by the tests rather than shared.
+    public var sleepSufficiencyPercentage: Int {
         guard targetSleepNeedSeconds > 0 else { return 100 }
         let score = (totalTimeAsleepSeconds / targetSleepNeedSeconds) * 100.0
         return max(0, min(100, Int(score.rounded())))

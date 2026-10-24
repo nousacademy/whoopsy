@@ -30,8 +30,9 @@ import SwiftUI
 /// panels and the STRAIN & RECOVERY chart are views of the same seven days, so they read through one
 /// value rather than five separate reads — see
 /// `HomeViewModel.metricWeek`. Each panel's small number is a **7-day mean of its own metric**, which
-/// is what the reference's figures are; it is not the previous day, and not
-/// `UserProfile.targetSleepHours`, which is a hard-coded `8.0` that nothing ever persists.
+/// is what the reference's figures are; it is not the previous day, and not this app's own learned
+/// need baseline (whose cold-start value is a population midpoint), which is a different quantity
+/// from the export's stored `Sleep need (min)`.
 ///
 /// **One of the five panels prints a model's output beside four measurements, and its label is the
 /// only thing that says so.** Nothing this app can read produces a VO₂ max — the export has no column
@@ -387,6 +388,10 @@ public struct HomeDashboardView: View {
                     // and this follows the ones written while the screen is up, which is the only
                     // way the `STEPS` tile populates without the user changing day.
                     viewModel.observeSteps()
+                    // The ring's live feed, on the same argument: `load` reads the day's stored score
+                    // once, and the score is rewritten as the day is scored — so without this the ring
+                    // holds whatever it read at launch for as long as Home stays up.
+                    viewModel.observeStrain()
                     await viewModel.load(for: selectedDate)
                 }
                 .onChange(of: selectedDate) { _, newDate in
@@ -1175,18 +1180,18 @@ public struct HomeDashboardView: View {
     // ignores: it draws no fill at all when its `value` is `nil`, so the arc and the figure cannot
     // disagree about whether the day has one.
     private var sleepProgress: Double {
-        Double(viewModel.sleep?.sleepPerformancePercentage ?? 0) / 100.0
+        Double(viewModel.sleepScore ?? 0) / 100.0
     }
 
     private var recoveryProgress: Double { Double(viewModel.recovery?.score ?? 0) / 100.0 }
 
     private var strainProgress: Double { (viewModel.strain?.score ?? 0) / 21.0 }
 
-    /// A night the classifier could not read is never written, so `nil` is the whole test. The score
-    /// is 0–100, hence the percent sign.
+    /// The ring's composite, or nil when the night cannot produce two of its four terms. The score is
+    /// 0–100, hence the percent sign.
     private var sleepValue: String? {
-        guard let sleep = viewModel.sleep else { return nil }
-        return "\(sleep.sleepPerformancePercentage)%"
+        guard let score = viewModel.sleepScore else { return nil }
+        return "\(score)%"
     }
 
     /// A day the strap recorded nothing for now stores no row at all, so `nil` is the ordinary case —
@@ -1834,9 +1839,9 @@ public struct HomeDashboardView: View {
     /// The night's need over the week's mean.
     ///
     /// `targetSleepNeedSeconds` rather than a profile constant: an imported night carries WHOOP's own
-    /// `Sleep need (min)`, so this panel is comparing like with like, and `UserProfile.targetSleepHours`
-    /// — a hard-coded `8.0` that is never persisted and never editable — would put this app's default
-    /// against the export's measurement.
+    /// `Sleep need (min)`, so this panel is comparing like with like, and this app's learned need
+    /// baseline — whose cold-start value is a population midpoint, never persisted per night and
+    /// never editable — would put this app's estimate against the export's measurement.
     private var sleepNeededPanel: some View {
         let baseline = viewModel.metricWeek?.sleepNeedBaselineSeconds
         let change = MetricChange.between(

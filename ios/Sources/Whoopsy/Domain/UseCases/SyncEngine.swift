@@ -103,12 +103,21 @@ public struct SyncEngine: Sendable {
 
     private let settingsStore: any SyncSettingsRepository
 
+    /// Whether the once-a-day window is open. Defaulted open for the runner; `DIContainer` injects
+    /// `SyncSchedule.isOpen`, and this guard is what refuses a manual press before 18:00 Eastern.
+    private let isCallWindowOpen: @Sendable () -> Bool
+
     /// The resources to move, in the order the pane lists them.
     private let resources: [SyncResource]
 
-    public init(resources: [SyncResource], settingsStore: any SyncSettingsRepository) {
+    public init(
+        resources: [SyncResource],
+        settingsStore: any SyncSettingsRepository,
+        isCallWindowOpen: @escaping @Sendable () -> Bool = { true }
+    ) {
         self.resources = resources
         self.settingsStore = settingsStore
+        self.isCallWindowOpen = isCallWindowOpen
     }
 
     /// What the engine covers, for the assertion that it covers everything the pane draws.
@@ -172,9 +181,13 @@ public struct SyncEngine: Sendable {
     /// server applies to a window of the same span, and the same one the read path asks it for: a run
     /// that reported a span complete while the app could not read that span back would be reporting a
     /// transfer it cannot honour.
-    public func run() async throws -> [SyncResult] {
+    /// - Parameter explicitRange: the daily run's window, or `nil` for the pane's drawn span.
+    public func run(over explicitRange: SyncSettings.SyncRange? = nil) async throws -> [SyncResult] {
+        guard isCallWindowOpen() else { throw SyncError.outsideWindow }
         let settings = await settingsStore.load()
-        guard let range = settings.range, !range.isEmpty else { throw SyncError.nothingToDo }
+        guard let range = explicitRange ?? settings.range, !range.isEmpty else {
+            throw SyncError.nothingToDo
+        }
 
         var results: [SyncResult] = []
         for resource in resources {
@@ -680,4 +693,12 @@ public enum SyncError: Error, Equatable, Sendable {
     /// nothing downstream could tell. The associated value is the resource's own ceiling, so the
     /// sentence can name it, and it is the same number the Worker applies to a window of that width.
     case rangeTooWide(days: Int)
+
+    /// `SYNC` was pressed outside the once-a-day window.
+    ///
+    /// **A refusal rather than a deferred run.** The engine cannot queue a manual press for later
+    /// without inventing a second span and a second "last run" marker; the daily schedule already
+    /// covers the evening, and the next 18:00 will send the same rows. The pane shows the sentence
+    /// and the data stays on the phone.
+    case outsideWindow
 }

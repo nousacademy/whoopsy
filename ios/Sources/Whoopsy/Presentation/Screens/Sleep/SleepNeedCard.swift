@@ -39,23 +39,23 @@ public struct SleepNeedCard: View {
     public let breakdown: SleepNeedBreakdown.Breakdown?
 
     /// Asleep over need, the figure the ring and the breakdown row both print.
-    public let performancePercent: Int
+    public let sufficiencyPercent: Int
 
     /// The window's mean performance, or `nil` below `RecoveryScoring.minimumBaselineDays`.
-    public let typicalPerformancePercent: Double?
+    public let typicalSufficiencyPercent: Double?
 
     public init(
         asleepSeconds: TimeInterval,
         needSeconds: TimeInterval,
         breakdown: SleepNeedBreakdown.Breakdown?,
-        performancePercent: Int,
-        typicalPerformancePercent: Double?
+        sufficiencyPercent: Int,
+        typicalSufficiencyPercent: Double?
     ) {
         self.asleepSeconds = asleepSeconds
         self.needSeconds = needSeconds
         self.breakdown = breakdown
-        self.performancePercent = performancePercent
-        self.typicalPerformancePercent = typicalPerformancePercent
+        self.sufficiencyPercent = sufficiencyPercent
+        self.typicalSufficiencyPercent = typicalSufficiencyPercent
     }
 
     /// The card's title, which is the reference's own and is the name of the comparison it draws.
@@ -115,12 +115,12 @@ public struct SleepNeedCard: View {
     /// a night that met more of its need is the better night.
     private var headline: some View {
         let change = MetricChange.between(
-            current: Double(performancePercent),
-            previous: typicalPerformancePercent,
+            current: Double(sufficiencyPercent),
+            previous: typicalSufficiencyPercent,
             higherIsBetter: true,
             formatted: { "\(Int($0.rounded()))%" })
 
-        return MetricHeadline(text: "\(performancePercent)%", change: change)
+        return MetricHeadline(text: "\(sufficiencyPercent)%", change: change)
     }
 
     // MARK: - The two measures
@@ -230,8 +230,8 @@ public struct SleepNeedCard: View {
     /// listener, and `7h 33m` is a duration. The split is read after the figure it is a split of, so a
     /// listener hears what the parts are parts of before hearing them.
     private var spoken: String {
-        var spoken = "\(Self.title), \(performancePercent) percent"
-        if let typical = typicalPerformancePercent {
+        var spoken = "\(Self.title), \(sufficiencyPercent) percent"
+        if let typical = typicalSufficiencyPercent {
             spoken += ", typical \(Int(typical.rounded())) percent"
         }
 

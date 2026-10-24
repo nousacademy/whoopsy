@@ -199,8 +199,19 @@ performance normalisation) to **0–21**.
 > due to muscle exertion as well as cardiovascular exertion."
 
 No combination equation, no `w_cardio`, no `w_muscular`, and no statement of whether the combination is
-additive or saturating. This app has nothing to combine: it implements the cardiovascular term alone,
-so the muscular term is **absent from its code** rather than present with a weight of its own.
+additive or saturating.
+
+**This app does not implement this term, and what it added instead is not it.** `hr-motion-v2` adds a
+wrist-motion term — ENMO from the strap's 3-axis accelerometer, weighted and combined with the
+heart-rate integral per 30-second window by `max` (`docs/ALGORITHMS.md` §2.a) — but the filing's model
+is per-repetition `(V_rep / V_max) × (I_rep / I_max)` from fused accelerometer **and gyroscope** data,
+normalised per exercise and then by performance. This app has no repetition segmentation, no
+`V_max`, no exercise-specific normalisation and no gyroscope, so its term is an **ENMO proxy for
+non-cardiovascular work**, calibrated so a hard manual day moves the ring about three points — not a
+reproduction of the musculoskeletal score and not a substitute that could be validated against one.
+What the filing does establish is negative and useful: **the patent family does not disclose how the
+two terms are combined**, so any combination this app chose would have been this app's. The per-window
+maximum is that choice, and it is recorded as such.
 
 ### 1.5 Grounding measurement
 
@@ -335,8 +346,11 @@ inference that WHOOP's *export* is RMSSD remains an inference, because the expor
 > "if a user sleeps six hours and needed eight hours of sleep, then the sleep performance may be
 > calculated as 75%" [described]
 
-That is this app's `clamp(asleep ÷ need × 100, 0, 100)`. It is the one recovery input the patents
-corroborate outright.
+That is this app's `clamp(asleep ÷ need × 100, 0, 100)` — now its **sufficiency component**, not the
+sleep ring's composite. The ring adds efficiency, restorative share and timing at weights this app
+chose, and the restorative term stands in for WHOOP's sleep-stress input, which the export does not
+carry. The patent discloses none of those terms or weights; its worked example is the ratio, and the
+composite is this app's departure rather than a reproduction of the disclosed score.
 
 **The disclosed HRV *comparison* is a different shape.** `[0161]`: "the magnitude of the differences
 between **7-day moving averages and 3-day moving averages** of these readings for a given day"
@@ -408,8 +422,10 @@ US20250380880A1.
 | The accumulation window | **[not disclosed]** |
 
 **This is the one constant this app has never seen and could test.** `SleepNeedMath` fits a **straight
-line** — `480 + 6.40 × strain` — where WHOOP describes a **saturating sigmoid**. That is not a different
-coefficient; it is a different functional form. And the disclosed form is **bounded by construction**
+line** — a learned baseline plus `6.40 × strain` — where WHOOP describes a **saturating sigmoid**. That
+is not a different coefficient; it is a different functional form. The baseline is not a constant
+either: `SleepNeedBaselineMath` learns it from the individual's prior stored needs, with the age band
+supplying only its cold-start value, floor and cap. And the disclosed form is **bounded by construction**
 (asymptote 102 min read as hours), while the app's linear term is unbounded and needs an explicit strain
 clamp — the clamp exists to paper over the form.
 
@@ -418,12 +434,15 @@ repo's own way (implied sleep performance, MAE):
 
 | model | contiguous folds | random folds |
 | :--- | ---: | ---: |
-| `480 + 6.40 × strain` (shipped) | 3.522 | 3.525 |
+| fixed `480 + 6.40 × strain` (the form tested) | 3.522 | 3.525 |
 | disclosed sigmoid, free scale | 3.700 | 3.594 |
 
 The gap (0.07–0.18 of a point) is **smaller than the spread between fold constructions**, and smaller
 than the gap between this measurement and the 3.77 `docs/ALGORITHMS.md` §4 publishes. So the export cannot
-choose between them, and the app's linear form is not refuted — it is simply not WHOOP's.
+choose between them, and the app's linear form is not refuted — it is simply not WHOOP's. The baseline in
+the first row is the pinned 480; the shipped model learns it per individual
+(`SleepNeedBaselineMath`), which scores MAE **24.89 min** against WHOOP's need where the fixed baseline
+scores 26.74. That is a different metric and does not change the form comparison.
 
 **The disclosure explains an anomaly the doc recorded but could not account for.** §4 notes that
 "WHOOP's own API example shows its strain term contributing single-digit minutes where 6.40 implies far

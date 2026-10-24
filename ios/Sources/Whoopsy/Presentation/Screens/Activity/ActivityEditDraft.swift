@@ -70,6 +70,15 @@ public struct ActivityEditDraft: Equatable, Identifiable, Sendable {
     public private(set) var start: Date
     public private(set) var end: Date
 
+    /// The perceived exertion the user has selected, or `nil` for *no rating*.
+    ///
+    /// **`nil` here is a real answer and the sheet has no clear control**, which is why a draft is
+    /// initialised from the stored value and only ever moves it *to* a rating: there is no path that
+    /// clears one, so a `nil` in a draft always means "the session was never rated" rather than "erase
+    /// the rating". That is also why `LocalDatabaseManager.writeWorkout` preserves a stored value
+    /// against an incoming `nil`.
+    public private(set) var rpe: Int?
+
     /// The shortest window an edit may produce.
     ///
     /// **`min(60, original.durationSeconds)` and not a flat 60.** With an original shorter than a minute,
@@ -107,6 +116,7 @@ public struct ActivityEditDraft: Equatable, Identifiable, Sendable {
         self.activityName = session.activityName
         self.start = session.startedAt
         self.end = session.endedAt
+        self.rpe = session.rpe
         self.minimumDuration = max(0, min(60, session.durationSeconds))
     }
 
@@ -161,6 +171,18 @@ public struct ActivityEditDraft: Equatable, Identifiable, Sendable {
         end = Self.clamped(candidate, low: earliestEnd, high: original.endedAt)
     }
 
+    /// Selects a perceived exertion, or `nil` to leave the session unrated.
+    ///
+    /// A write naming the value already held is dropped, on `setName(_:)`'s rule: the guard and
+    /// `hasChanges` must not be two opinions about what counts as a change. The value is clamped rather
+    /// than trusted, because the control offers five buckets but the storage is a 0–10 scale and a
+    /// caller with a different control should not be able to store 11.
+    public mutating func setRpe(_ value: Int?) {
+        let clamped = value.map(WorkoutRPE.clamped)
+        guard clamped != rpe else { return }
+        rpe = clamped
+    }
+
     // MARK: - What the chart draws
 
     /// Where the start handle sits across the plot, `0` at the original start and `1` at the original end.
@@ -204,16 +226,25 @@ public struct ActivityEditDraft: Equatable, Identifiable, Sendable {
     public var hasChanges: Bool {
         start != original.startedAt
             || end != original.endedAt
+            || rpe != original.rpe
             || !ActivityName.matches(activityName, original.activityName)
     }
 
     /// The session this draft describes, given the row it is to be written over.
     ///
-    /// **It replaces exactly three fields and passes everything else through from `base`**: the name and the
-    /// two instants are the draft's, and the id, source, strain, the two heart rates, the route, the splits,
-    /// the step count and `hrZonePercents` are the session's. The pass-through is the point — a trim is not a
-    /// re-measurement, and a draft that rebuilt a session from its own fields would zero a strain, drop a
-    /// route and lose the zone block on an edit that touched only a name.
+    /// **It replaces exactly four fields and passes everything else through from `base`**: the name,
+    /// the two instants and the rating are the draft's, and the id, source, strain, the two heart
+    /// rates, the route, the splits, the step count, `hrZonePercents` and the offline-map pair are the
+    /// session's. The pass-through is the point — a trim is not a re-measurement, and a draft that
+    /// rebuilt a session from its own fields would zero a strain, drop a route and lose the zone block
+    /// on an edit that touched only a name.
+    ///
+    /// **`offlineRegionID` and `offlineRegionCenter` are passed through explicitly, and that is a fix
+    /// rather than a formality.** They were omitted from this initialiser, so every save through this
+    /// sheet wrote `nil` for both and silently wiped a session's downloaded map region — a real edit to
+    /// a field nobody was editing, and invisible because the detail page falls back to Apple's map.
+    /// The `v19`/`v23` columns exist for a session that asked for a region, and an edit is not a
+    /// request to stop having one.
     ///
     /// **`hrZonePercents` travelling through unchanged is what the page's five rows depend on.**
     /// `WorkoutSession.zoneSeconds(_:)` derives a row's time as `share × durationSeconds`, so the percentages
@@ -238,7 +269,10 @@ public struct ActivityEditDraft: Equatable, Identifiable, Sendable {
             source: base.source,
             activityName: activityName,
             hrZonePercents: base.hrZonePercents,
-            steps: base.steps)
+            steps: base.steps,
+            offlineRegionID: base.offlineRegionID,
+            offlineRegionCenter: base.offlineRegionCenter,
+            rpe: rpe)
     }
 
     // MARK: - Arithmetic

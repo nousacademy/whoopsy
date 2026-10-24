@@ -91,6 +91,14 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
     public let offlineRegionCenterLatitude: Double?
     public let offlineRegionCenterLongitude: Double?
 
+    /// The session's perceived exertion, 0–10, or `NULL` when the user never rated it.
+    ///
+    /// **Local-only, and the one column on this table holding user-authored data.** The wire carries no
+    /// field for it, so `WorkoutRecord+SyncRow` drops it on the way out and a synced row arrives with
+    /// `nil` — which `LocalDatabaseManager.writeWorkout` refuses to interpret as *clear*, because
+    /// there is no clear path. `var` rather than `let` for exactly that preservation.
+    public var rpe: Int?
+
     public init(
         id: String,
         date: Date,
@@ -105,7 +113,8 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         steps: Int? = nil,
         offlineRegionID: String? = nil,
         offlineRegionCenterLatitude: Double? = nil,
-        offlineRegionCenterLongitude: Double? = nil
+        offlineRegionCenterLongitude: Double? = nil,
+        rpe: Int?
     ) {
         self.id = id
         self.date = date
@@ -121,6 +130,7 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         self.offlineRegionID = offlineRegionID
         self.offlineRegionCenterLatitude = offlineRegionCenterLatitude
         self.offlineRegionCenterLongitude = offlineRegionCenterLongitude
+        self.rpe = rpe
     }
 
     enum CodingKeys: String, CodingKey {
@@ -138,6 +148,7 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         case offlineRegionID = "offline_region_id"
         case offlineRegionCenterLatitude = "offline_region_center_latitude"
         case offlineRegionCenterLongitude = "offline_region_center_longitude"
+        case rpe
     }
 }
 

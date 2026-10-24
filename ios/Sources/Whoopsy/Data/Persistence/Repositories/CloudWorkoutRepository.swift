@@ -14,29 +14,28 @@ public struct CloudWorkoutRepository: WorkoutRepository {
     private let local: any WorkoutRepository
     private let cloud: any CloudSync
     private let settingsStore: any SyncSettingsRepository
+    /// Injected so the runner is not a function of the hour it runs. `DIContainer` passes
+    /// `SyncSchedule.isOpen`; the default keeps every test and preview open.
+    private let isCallWindowOpen: @Sendable () -> Bool
     private let calendar: Calendar
 
     public init(
         local: any WorkoutRepository,
         cloud: any CloudSync,
         settingsStore: any SyncSettingsRepository,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        isCallWindowOpen: @escaping @Sendable () -> Bool = { true }
     ) {
         self.local = local
         self.cloud = cloud
         self.settingsStore = settingsStore
         self.calendar = calendar
+        self.isCallWindowOpen = isCallWindowOpen
     }
 
+    /// **Local only** — the daily run writes the database copy. See `SyncSchedule`.
     public func save(_ workout: WorkoutSession) async throws {
         try await local.save(workout)
-        guard await storesInCloud() else { return }
-        do {
-            try await cloud.writeWorkout(WorkoutSyncRow(workout, calendar: calendar))
-        } catch let error as CloudSyncError {
-            // A failed push never fails the local write, on `CloudSleepRepository`'s argument.
-            guard case .unreachable = error else { throw error }
-        }
     }
 
     public func latest() async throws -> WorkoutSession? {
@@ -80,6 +79,7 @@ public struct CloudWorkoutRepository: WorkoutRepository {
     }
 
     private func storesInCloud() async -> Bool {
-        await settingsStore.load().destination == .cloud
+        guard await settingsStore.load().destination == .cloud else { return false }
+        return isCallWindowOpen()
     }
 }

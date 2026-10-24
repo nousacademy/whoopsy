@@ -87,6 +87,14 @@ public struct SyncSettings: Equatable, Sendable {
     /// The span `SYNC` walks. `nil` until the user draws one, and a fresh install draws none.
     public var range: SyncRange?
 
+    /// The Eastern day of the last automatic upload, or `nil` before the first one.
+    ///
+    /// **The once-a-day marker, and the only state the schedule keeps.** `SyncSchedule.isDue` compares
+    /// it with today in `America/New_York`; a successful run saves today's key, so a later launch in
+    /// the same evening finds nothing owed. A run that fails does **not** mark the day, which is what
+    /// makes the next launch retry rather than silently skip.
+    public var lastDailySyncDay: Date?
+
     /// **Stored now, drawn by nothing in this pass, and that is deliberate.**
     ///
     /// Biometric samples are the eighth resource and the only one whose read window is measured in
@@ -100,10 +108,12 @@ public struct SyncSettings: Equatable, Sendable {
     public init(
         destination: Destination = .device,
         range: SyncRange? = nil,
-        uploadsBiometricSamples: Bool = false
+        uploadsBiometricSamples: Bool = false,
+        lastDailySyncDay: Date? = nil
     ) {
         self.destination = destination
         self.range = range
         self.uploadsBiometricSamples = uploadsBiometricSamples
+        self.lastDailySyncDay = lastDailySyncDay
     }
 }

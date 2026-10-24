@@ -138,5 +138,7 @@ enum TypicalRangeTests {
         try await MetricWeekTests.run()
         try await RestorativeSleepWeekTests.run()
         try await TimeInBedWeekTests.run()
+        try await CircadianAgeMathTests.run()
+        try await SleepScoreScoringTests.run()
     }
 }

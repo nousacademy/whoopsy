@@ -20,6 +20,22 @@ public struct StrainRecord: Codable, FetchableRecord, PersistableRecord, Sendabl
     /// `source` is a single word that maps identically either way.
     public var source: String?
 
+    /// The motion term's weighted seconds, from `StrainDayMath.Day.motionLoad`. **Local-only** — it is
+    /// an audit component of this phone's computation, not a field the wire carries.
+    public var motionLoad: Double?
+
+    /// The newest input instant this row's score included, and therefore the refresh watermark. See
+    /// `StrainScore.scoredThrough`. **Local-only**: it describes what this phone has read, not what
+    /// the day holds.
+    public var scoredThrough: Date?
+
+    /// The formula that produced `strainScore`, as `StrainAlgorithm.rawValue`.
+    ///
+    /// **Synced**, unlike the two fields above: it is this app's statement about the row, and every
+    /// consumer of a stored score needs to know what the number means. `nil` on a row synced from a
+    /// client older than `v35`; preserved rather than cleared when one arrives.
+    public var algorithm: String?
+
     public init(
         date: Date,
         strainScore: Double,
@@ -27,7 +43,10 @@ public struct StrainRecord: Codable, FetchableRecord, PersistableRecord, Sendabl
         averageHeartRate: Int,
         maxHeartRate: Int,
         hasMeasurement: Bool,
-        source: String? = nil
+        source: String? = nil,
+        motionLoad: Double?,
+        scoredThrough: Date?,
+        algorithm: String?
     ) {
         self.date = date
         self.strainScore = strainScore
@@ -36,5 +55,8 @@ public struct StrainRecord: Codable, FetchableRecord, PersistableRecord, Sendabl
         self.maxHeartRate = maxHeartRate
         self.hasMeasurement = hasMeasurement
         self.source = source
+        self.motionLoad = motionLoad
+        self.scoredThrough = scoredThrough
+        self.algorithm = algorithm
     }
 }

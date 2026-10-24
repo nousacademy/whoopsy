@@ -169,15 +169,21 @@ enum DaySelectionTests {
                 loadedWeek?.days.allSatisfy { $0.strain == nil } == true,
                 "The Recovery page's week carries no strain on any slot — it is built from one history, and that `nil` is 'not asked for', not 'not measured'")
 
+            let strainCalculate = CalculateStrainUseCase(
+                biometricRepository: strapThatRecordedNothing,
+                strainRepository: strainRepository,
+                userProfileRepository: profile,
+                motionEpochRepository: FixtureMotionEpochRepository(epochs: []))
             let strainViewModel = await MainActor.run {
                 StrainViewModel(
-                    calculate: CalculateStrainUseCase(
-                        biometricRepository: strapThatRecordedNothing,
-                        strainRepository: strainRepository,
-                        userProfileRepository: profile),
                     repository: strainRepository,
                     workoutRepository: GRDBWorkoutRepository(db: db),
-                    stepRepository: GRDBStepRepository(db: db))
+                    stepRepository: GRDBStepRepository(db: db),
+                    refresh: RefreshStrainUseCase(
+                        calculate: strainCalculate,
+                        strainRepository: strainRepository,
+                        biometricRepository: strapThatRecordedNothing,
+                        motionEpochRepository: FixtureMotionEpochRepository(epochs: [])))
             }
             await strainViewModel.load(for: lastStrainDay)
 
@@ -193,7 +199,8 @@ enum DaySelectionTests {
                     napRepository: napRepository,
                     biometricRepository: strapThatRecordedNothing,
                     analyzeSleepStress: AnalyzeSleepStressUseCase(
-                        biometricRepository: strapThatRecordedNothing))
+                        biometricRepository: strapThatRecordedNothing),
+                    userProfileRepository: profile)
             }
             await sleepViewModel.load(for: lastSleepDay)
 
@@ -233,7 +240,7 @@ enum DaySelectionTests {
                     && sleepAfter?.deepSleepSeconds == sleepBefore?.deepSleepSeconds
                     && sleepAfter?.remSleepSeconds == sleepBefore?.remSleepSeconds
                     && sleepAfter?.awakeSeconds == sleepBefore?.awakeSeconds
-                    && sleepAfter?.sleepPerformancePercentage == sleepBefore?.sleepPerformancePercentage,
+                    && sleepAfter?.sleepSufficiencyPercentage == sleepBefore?.sleepSufficiencyPercentage,
                 "Loading the day left its sleep session alone")
 
             // The view models must also be *showing* what was read — a guard that protects the row by

@@ -13,6 +13,12 @@ public final class GRDBStrainRepository: StrainRepository, Sendable {
         try await db.getStrain(for: date).map(Self.makeScore)
     }
 
+    /// The stored row and nothing else — the read a repair decision makes. See
+    /// `StrainRepository.getLocalStrain(for:)`.
+    public func getLocalStrain(for date: Date) async throws -> StrainScore? {
+        try await db.getStrain(for: date).map(Self.makeScore)
+    }
+
     public func saveStrain(_ strain: StrainScore, source: String?) async throws {
         let record = StrainRecord(
             date: strain.date,
@@ -24,7 +30,10 @@ public final class GRDBStrainRepository: StrainRepository, Sendable {
             averageHeartRate: strain.averageHeartRate,
             maxHeartRate: strain.maxHeartRate,
             hasMeasurement: strain.hasMeasurement,
-            source: source
+            source: source,
+            motionLoad: strain.motionLoad,
+            scoredThrough: strain.scoredThrough,
+            algorithm: strain.algorithm?.rawValue
         )
         try await db.saveStrain(record)
     }
@@ -33,10 +42,17 @@ public final class GRDBStrainRepository: StrainRepository, Sendable {
         try await db.getStrainHistory(days: days, endingOn: endingOn).map(Self.makeScore)
     }
 
+    public func getNewestImportedStrainDay() async throws -> Date? {
+        try await db.getNewestImportedStrainDay()
+    }
+
     /// `rawAccumulatedLoad` and `zones` have no columns and never did, so they come back at their
     /// defaults. That is honest for the load figure, but it means a `StrainScore` read from disk
     /// knows nothing about heart-rate zones — see `StrainDetailView`, which must say so rather
     /// than render a stand-in.
+    ///
+    /// **`source`, `algorithm`, `motionLoad` and `scoredThrough` are read**, because the refresh
+    /// decides from the first two whether a day is repairable and from the last whether it needs to be.
     private static func makeScore(from record: StrainRecord) -> StrainScore {
         StrainScore(
             date: record.date,
@@ -47,7 +63,11 @@ public final class GRDBStrainRepository: StrainRepository, Sendable {
             hasMeasurement: record.hasMeasurement,
             activeCalories: record.kilojoules / kilojoulesPerKilocalorie,
             averageHeartRate: record.averageHeartRate,
-            maxHeartRate: record.maxHeartRate
+            maxHeartRate: record.maxHeartRate,
+            motionLoad: record.motionLoad,
+            source: record.source,
+            algorithm: record.algorithm.flatMap(StrainAlgorithm.init(rawValue:)),
+            scoredThrough: record.scoredThrough
         )
     }
 

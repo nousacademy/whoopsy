@@ -24,7 +24,9 @@ import Foundation
 /// ## The two rules are a construction, and the screen says so
 ///
 /// WHOOP draws the pair as `OPTIMAL BED/WAKETIME`. Nothing in this app produces a recommendation —
-/// there is no circadian-phase model and no sleep-need-derived target in any column — so what is
+/// there is no circadian-phase model and no sleep-need-derived target in any column (the sleep score's
+/// `CircadianAgeMath` is a population timing prior used when this card has no score, not a phase
+/// measurement) — so what is
 /// computed here is the **average** of the same four nights the score already reads, and
 /// `SleepConsistencyMath.typicalBoundaries` carries the argument. The legend names it `AVG
 /// BED/WAKETIME` rather than borrowing a word this app cannot honour.
@@ -86,7 +88,7 @@ public enum SleepConsistencyScoring {
         /// scored nights.
         ///
         /// A `Double` rather than the `Int` a night's own score is, for
-        /// `SleepStageRangeScoring.Summary.typicalPerformancePercent`'s reason: it is a mean of the
+        /// `SleepStageRangeScoring.Summary.typicalSufficiencyPercent`'s reason: it is a mean of the
         /// window, and rounding each night before averaging would move the mean by up to half a point
         /// on every window. `MetricChange` then decides "these print alike" on the formatted pair,
         /// which is where the rounding belongs.

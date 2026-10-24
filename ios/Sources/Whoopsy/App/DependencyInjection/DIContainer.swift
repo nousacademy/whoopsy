@@ -24,6 +24,9 @@ public final class DIContainer: @unchecked Sendable {
     public let streamBiometricsUseCase: StreamBiometricsUseCase
     public let calculateRecoveryUseCase: CalculateRecoveryUseCase
     public let calculateStrainUseCase: CalculateStrainUseCase
+    /// Keeps the day's Strain current and repairs the days a late drain delivers. Built here rather
+    /// than per screen, on `trackStepsUseCase`'s rule — one process-lifetime owner of the loop.
+    public let refreshStrainUseCase: RefreshStrainUseCase
     public let analyzeSleepUseCase: AnalyzeSleepUseCase
     public let analyzeStressUseCase: AnalyzeStressUseCase
     public let analyzeSleepStressUseCase: AnalyzeSleepStressUseCase
@@ -102,6 +105,9 @@ public final class DIContainer: @unchecked Sendable {
     /// that carries every stored column and round-trips — `RecoveryMetric` has read-time derivations
     /// with no column, so a push built on the entity would invent them.
     public let syncEngine: SyncEngine
+    /// The once-a-day upload. Long-running (`runLoop` sleeps until 18:00 Eastern), so it is started
+    /// from `MainContainerView`'s app-level task like the step counter and the motion recorder.
+    public let dailySyncUseCase: DailySyncUseCase
 
     /// The `Info.plist` key this build is missing, or `nil` when it has both.
     ///
@@ -258,16 +264,23 @@ public final class DIContainer: @unchecked Sendable {
         // client, so handing the same value to both costs nothing and — the point — leaves one instance
         // of the key store and one base URL behind every request the app makes. Two constructions would
         // be two `WhoopsyAPIClient`s reading the same Keychain.
+        // **The once-a-day gate, injected at the one seam every decorator shares.** Outside
+        // 18:00–midnight Eastern a decorated read answers from this phone and never opens a socket;
+        // the client repeats the guard as a safety net for the engine's own run.
+        let cloudWindow: @Sendable () -> Bool = { SyncSchedule.isOpen() }
         let cloud: any CloudSync
         if let apiBaseURL, let apiToken {
             let http = HTTPCloudSync(
-                client: WhoopsyAPIClient(baseURL: apiBaseURL, token: apiToken, keyStore: syncKeyStore))
+                client: WhoopsyAPIClient(
+                    baseURL: apiBaseURL, token: apiToken, keyStore: syncKeyStore,
+                    isCallWindowOpen: cloudWindow))
             cloud = http
             self.recoveryRepository = CloudRecoveryRepository(
                 local: GRDBRecoveryRepository(db: db),
                 cloud: http,
                 settingsStore: syncSettings,
-                status: syncStatus)
+                status: syncStatus,
+                isCallWindowOpen: cloudWindow)
             self.missingCloudKey = nil
         } else {
             // **The key named is the half that is actually absent**, and it is named once: the object
@@ -296,6 +309,10 @@ public final class DIContainer: @unchecked Sendable {
                 stepCountStore: db,
                 strainStore: db,
                 workoutStore: db),
+            settingsStore: syncSettings,
+            isCallWindowOpen: cloudWindow)
+        self.dailySyncUseCase = DailySyncUseCase(
+            engine: syncEngine,
             settingsStore: syncSettings)
         // The other six resources get the same local-first treatment as recovery: a decorator on the
         // configured branch, the bare GRDB repository otherwise. Strains and workouts add the read-back
@@ -305,26 +322,34 @@ public final class DIContainer: @unchecked Sendable {
         let configured = self.missingCloudKey == nil
         self.strainRepository = configured
             ? CloudStrainRepository(
-                local: GRDBStrainRepository(db: db), cloud: cloud, settingsStore: syncSettings, status: syncStatus)
+                local: GRDBStrainRepository(db: db), cloud: cloud, settingsStore: syncSettings,
+                status: syncStatus, isCallWindowOpen: cloudWindow)
             : GRDBStrainRepository(db: db)
         self.sleepRepository = configured
             ? CloudSleepRepository(
-                local: GRDBSleepRepository(db: db), cloud: cloud, settingsStore: syncSettings, status: syncStatus)
+                local: GRDBSleepRepository(db: db), cloud: cloud, settingsStore: syncSettings,
+                status: syncStatus, isCallWindowOpen: cloudWindow)
             : GRDBSleepRepository(db: db)
         self.napRepository = GRDBNapRepository(db: db)
         self.userProfileRepository = configured
-            ? CloudUserProfileRepository(local: GRDBUserProfileRepository(db: db), cloud: cloud, settingsStore: syncSettings)
+            ? CloudUserProfileRepository(
+                local: GRDBUserProfileRepository(db: db), cloud: cloud, settingsStore: syncSettings,
+                isCallWindowOpen: cloudWindow)
             : GRDBUserProfileRepository(db: db)
         self.workoutRepository = configured
-            ? CloudWorkoutRepository(local: GRDBWorkoutRepository(db: db), cloud: cloud, settingsStore: syncSettings)
+            ? CloudWorkoutRepository(
+                local: GRDBWorkoutRepository(db: db), cloud: cloud, settingsStore: syncSettings,
+                isCallWindowOpen: cloudWindow)
             : GRDBWorkoutRepository(db: db)
         self.receptiveInactivityRepository = configured
             ? CloudReceptiveInactivityRepository(
-                local: GRDBReceptiveInactivityRepository(db: db), cloud: cloud, settingsStore: syncSettings)
+                local: GRDBReceptiveInactivityRepository(db: db), cloud: cloud,
+                settingsStore: syncSettings, isCallWindowOpen: cloudWindow)
             : GRDBReceptiveInactivityRepository(db: db)
         self.stepRepository = configured
             ? CloudStepRepository(
-                local: GRDBStepRepository(db: db), cloud: cloud, settingsStore: syncSettings, status: syncStatus)
+                local: GRDBStepRepository(db: db), cloud: cloud, settingsStore: syncSettings,
+                status: syncStatus, isCallWindowOpen: cloudWindow)
             : GRDBStepRepository(db: db)
         self.motionEpochRepository = GRDBMotionEpochRepository(db: db)
         self.streamBiometricsUseCase = StreamBiometricsUseCase(
@@ -342,7 +367,15 @@ public final class DIContainer: @unchecked Sendable {
         self.calculateStrainUseCase = CalculateStrainUseCase(
             biometricRepository: biometricRepository,
             strainRepository: strainRepository,
-            userProfileRepository: userProfileRepository
+            userProfileRepository: userProfileRepository,
+            motionEpochRepository: motionEpochRepository
+        )
+
+        self.refreshStrainUseCase = RefreshStrainUseCase(
+            calculate: calculateStrainUseCase,
+            strainRepository: strainRepository,
+            biometricRepository: biometricRepository,
+            motionEpochRepository: motionEpochRepository
         )
 
         self.analyzeSleepUseCase = AnalyzeSleepUseCase(
@@ -395,7 +428,8 @@ public final class DIContainer: @unchecked Sendable {
         self.saveWorkoutUseCase = SaveWorkoutUseCase(repository: workoutRepository)
         self.trackStepsUseCase = TrackStepsUseCase(
             bleRepository: bleRepository,
-            stepRepository: stepRepository
+            stepRepository: stepRepository,
+            stateStore: UserDefaultsStepCounterStateStore()
         )
         self.recordMotionUseCase = RecordMotionUseCase(
             bleRepository: bleRepository,

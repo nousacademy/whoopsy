@@ -13,8 +13,17 @@ import Foundation
 /// Least squares of WHOOP's own `Sleep need (min)` on its own `Day Strain`, taken from the *previous*
 /// day, with the intercept pinned to the 8-hour baseline: **6.40 minutes of additional need per strain
 /// point** over the 909 nights that carry a preceding strain day. Leaving the intercept free moves it
-/// to 478 minutes — within two minutes of the profile's 8 hours — which is why pinning it costs
-/// nothing and keeps `UserProfile.targetSleepHours` as the one knob for the baseline.
+/// to 478 minutes — within two minutes of the adult 8 hours — which is why pinning it costs nothing.
+///
+/// **The intercept is no longer the answer.** The baseline comes from
+/// `SleepNeedBaselineMath.personalBaselineSeconds(for:age:)`, which learns it from this person's
+/// prior stored needs (the median of `need − 6.4 × strain` over 28 nights, at least seven) and uses
+/// the National Sleep Foundation's age bands only as the cold-start value, a floor and a cap. Over
+/// the export that pair scores **MAE 24.89 min** against WHOOP's own need where the pinned 480-minute
+/// intercept scores 26.74, and the learned baseline averages 479.9 — close to the constant, because
+/// this export is one person whose history sits near the population midpoint. A different history is
+/// free to move. This type owns the fitted strain term and deliberately does not own a second table
+/// of who needs how much.
 ///
 /// Scored by 5-fold cross-validation — the model fitted on four fifths of the series, its error
 /// measured on the held-out fifth, five times over — against the sleep performance WHOOP's *own* need
@@ -84,7 +93,9 @@ public enum SleepNeedMath {
     /// The sleep a night required.
     ///
     /// - Parameters:
-    ///   - baselineSeconds: The personal baseline need, from `UserProfile.targetSleepHours`.
+    ///   - baselineSeconds: The baseline need, from
+    ///     `SleepNeedBaselineMath.personalBaselineSeconds(for:age:)` — the learned value, or its
+    ///     age-band cold-start fallback when there are fewer than seven prior nights.
     ///   - previousDayStrain: The Strain of the cycle that preceded the night, or `nil` when no such
     ///     row is stored.
     /// - Returns: The baseline plus the strain adjustment. A `nil` strain returns the baseline

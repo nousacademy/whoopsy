@@ -15,6 +15,15 @@ import Foundation
 /// | Hours vs. Needed | < 70 | 70–94 | ≥ 95 | WHOOP: "95–100% fully met, below 70% significant deficits" |
 /// | Sleep Consistency | < 60 | 60–89 | ≥ 90 | WHOOP: "90%+ highly consistent, below 60% significant drift" |
 /// | Sleep Efficiency | < 80 | 80–89 | ≥ 90 | **no published anchor — this app's own** |
+/// | Sleep Score | < 60 | 60–84 | ≥ 85 | **no published anchor — this app's own**, calibrated against the export's composite distribution |
+///
+/// The Sleep Score pair is the one row with no external anchor at all, so its evidence is the
+/// distribution rather than a citation. Over the bundled export's 910 classified nights the
+/// 45/20/20/15 composite has p25 **76**, p50 **81** and p75 **85**; the 60/85 pair files **12**
+/// nights Poor, **637** Sufficient and **261** Optimal. The ratio's 70/95 would have filed almost
+/// every night Poor or Optimal, because the composite is compressed around 80 by the two quality
+/// terms. The pair is kept at 60/85 — the same provisional values the calibration started from —
+/// because the distribution leaves all three bands populated, not because it is WHOOP's.
 ///
 /// Efficiency's pair is the one row here with nothing to cite, and it is written down as a
 /// calibration rather than presented as a measurement. It sits at 80/90 because those are the round
@@ -52,12 +61,14 @@ public enum SleepBand: String, CaseIterable, Identifiable, Sendable {
 
     /// Which banded figure a value is being read for. The scale is shared; the boundaries are not.
     public enum Metric: Sendable, CaseIterable {
-        /// Asleep over need — the ring's figure and the reference's `HOURS VS. NEEDED` row.
+        /// Asleep over need — the `HOURS VS. NEEDED` row and Recovery's sleep term.
         case hoursVsNeeded
         /// `SleepConsistencyMath`, imported or computed.
         case consistency
         /// Asleep over sleep period.
         case efficiency
+        /// `SleepScoreScoring`'s composite — the sleep ring and the sleep page's week chart.
+        case sleepScore
 
         /// The bottom of the middle band. Below it is Poor.
         public var sufficientLowerBound: Double {
@@ -65,6 +76,7 @@ public enum SleepBand: String, CaseIterable, Identifiable, Sendable {
             case .hoursVsNeeded: return 70
             case .consistency: return 60
             case .efficiency: return 80
+            case .sleepScore: return 60
             }
         }
 
@@ -74,6 +86,7 @@ public enum SleepBand: String, CaseIterable, Identifiable, Sendable {
             case .hoursVsNeeded: return 95
             case .consistency: return 90
             case .efficiency: return 90
+            case .sleepScore: return 85
             }
         }
     }

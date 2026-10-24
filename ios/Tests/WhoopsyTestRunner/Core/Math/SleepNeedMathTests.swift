@@ -23,6 +23,7 @@ enum SleepNeedTests {
         try await SleepExportProvenanceTests.run()
         try await RespiratoryRateMathTests.run()
         try await SleepDebtMathTests.run()
+        try await SleepNeedBaselineMathTests.run()
         // Appended: this one is new rather than moved out of this section's original body.
         try await AnalyzeSleepUseCaseTests.run()
     }
@@ -181,18 +182,73 @@ enum SleepNeedMathTests {
 
             let profile = try await profileRepository.getUserProfile()
             assertTest(
-                profile.targetSleepHours * 3600 == baseline,
-                "The night's baseline is the profile's 8 hours (got \(profile.targetSleepHours) h)")
+                SleepNeedBaselineMath.baselineSeconds(forAge: profile.age) == baseline,
+                "With no birth date the baseline is the adult 8-hour midpoint (got "
+                    + "\(SleepNeedBaselineMath.baselineSeconds(forAge: profile.age) / 3600) h)")
 
             // Read back through the repository rather than trusting the returned session: the stored
             // value is what every later reader — sleep performance, the Recovery sleep term — consumes.
             let stored = try await sleepRepository.getSleepSession(for: morning)
-            let expected = profile.targetSleepHours * 3600 + strain * SleepNeedMath.strainMinutesPerPoint * 60
+            let expected = SleepNeedBaselineMath.baselineSeconds(forAge: profile.age)
+                + strain * SleepNeedMath.strainMinutesPerPoint * 60
             assertTest(
                 stored?.targetSleepNeedSeconds == expected,
                 "A strain of \(strain) on the previous day stores "
                     + "\(Int(expected / 60)) min of need, not a flat 480 "
                     + "(got \(Int((stored?.targetSleepNeedSeconds ?? 0) / 60)) min)")
+
+            // The age band is population context, and with no prior nights it is the cold-start value:
+            // the same night analysed for a 70-year-old stores the older-adult 7.5-hour midpoint.
+            let olderBirthDate = Calendar.current.date(byAdding: .year, value: -70, to: Date())!
+            try await profileRepository.saveUserProfile(UserProfile(birthDate: olderBirthDate))
+            _ = try await AnalyzeSleepUseCase(
+                biometricRepository: night,
+                sleepRepository: sleepRepository,
+                strainRepository: strainRepository,
+                userProfileRepository: profileRepository,
+                motionRepository: FixtureMotionEpochRepository()
+            ).execute(for: morning)
+            let olderStored = try await sleepRepository.getSleepSession(for: morning)
+            let olderExpected = SleepNeedBaselineMath.baselineSeconds(forAge: 70)
+                + strain * SleepNeedMath.strainMinutesPerPoint * 60
+            assertTest(
+                olderStored?.targetSleepNeedSeconds == olderExpected,
+                "With no prior nights, a 70-year-old's cold-start value is the 7.5-hour midpoint plus "
+                    + "strain (got \(Int((olderStored?.targetSleepNeedSeconds ?? 0) / 60)) min)")
+
+            // Once the person has seven prior nights, their own stored needs decide and the age band
+            // becomes only a floor. The seven priors below imply a 9-hour baseline (a 9-hour need with
+            // zero previous-day strain), so the learned value is 9 hours even for the 70-year-old.
+            for offset in 1 ... 7 {
+                let priorDay = Calendar.current.date(
+                    byAdding: .day, value: -offset, to: morning.startOfDay)!
+                let priorPrevious = Calendar.current.date(
+                    byAdding: .day, value: -1, to: priorDay)!
+                try await strainRepository.saveStrain(
+                    StrainScore(date: priorPrevious, score: 0, hasMeasurement: true))
+                try await sleepRepository.saveSleepSession(
+                    SleepSession(
+                        date: priorDay,
+                        startTime: priorDay.addingTimeInterval(-4.5 * 3600),
+                        endTime: priorDay.addingTimeInterval(4.5 * 3600),
+                        targetSleepNeedSeconds: 9 * 3600,
+                        lightSleepSeconds: 9 * 3600))
+            }
+            _ = try await AnalyzeSleepUseCase(
+                biometricRepository: night,
+                sleepRepository: sleepRepository,
+                strainRepository: strainRepository,
+                userProfileRepository: profileRepository,
+                motionRepository: FixtureMotionEpochRepository()
+            ).execute(for: morning)
+            let personalStored = try await sleepRepository.getSleepSession(for: morning)
+            let personalExpected = 9 * 3600
+                + strain * SleepNeedMath.strainMinutesPerPoint * 60
+            assertTest(
+                personalStored?.targetSleepNeedSeconds == personalExpected,
+                "Seven prior nights at a 9-hour implied baseline store the learned 9 hours plus "
+                    + "strain, with the 70-year-old's 7.5-hour band no longer deciding "
+                    + "(got \(Int((personalStored?.targetSleepNeedSeconds ?? 0) / 60)) min)")
 
             // The same night, for the two values this turn gave a strap producer. The fixture's samples
             // carry no R-R series at all, so neither has anything to be computed from and both must be

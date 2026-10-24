@@ -24,14 +24,14 @@ enum SleepNeedCardTests {
         if let performanceSummary = SleepStageRangeScoring.summary(
             for: needTarget, priorNights: needlessPriors) {
             assertTest(
-                performanceSummary.typicalPerformancePercent.map { abs($0 - 236.0 / 3.0) < 0.0001 }
+                performanceSummary.typicalSufficiencyPercent.map { abs($0 - 236.0 / 3.0) < 0.0001 }
                     == true,
                 "The window's mean performance is the mean of the nights' own rounded figures — 88, 78 "
                     + "and 70 — which is 78.67, and not the 78.43 an average of the exact ratios gives "
-                    + "(got \(performanceSummary.typicalPerformancePercent.map { String(format: "%.2f", $0) } ?? "nil"))")
+                    + "(got \(performanceSummary.typicalSufficiencyPercent.map { String(format: "%.2f", $0) } ?? "nil"))")
 
             assertTest(
-                performanceSummary.typicalPerformancePercent.map {
+                performanceSummary.typicalSufficiencyPercent.map {
                     abs($0 - 78.4259) > 0.1
                 } == true,
                 "…asserted against the wrong answer too, so the assertion above cannot pass by agreeing "
@@ -47,7 +47,7 @@ enum SleepNeedCardTests {
         if let withEmptyPerformance = SleepStageRangeScoring.summary(
             for: TypicalRangeTests.target, priorNights: TypicalRangeTests.priors + [TypicalRangeTests.empty]) {
             assertTest(
-                withEmptyPerformance.typicalPerformancePercent.map { abs($0 - 100) < 0.0001 } == true,
+                withEmptyPerformance.typicalSufficiencyPercent.map { abs($0 - 100) < 0.0001 } == true,
                 "A stored night with no sleep period contributes no performance either — its `0` is a "
                     + "night that was not slept rather than a night that scored nothing, and an "
                     + "unfiltered mean over the same five nights reads 80")
@@ -60,7 +60,7 @@ enum SleepNeedCardTests {
         if let twoPriorsPerformance = SleepStageRangeScoring.summary(
             for: TypicalRangeTests.target, priorNights: Array(TypicalRangeTests.priors.suffix(2))) {
             assertTest(
-                twoPriorsPerformance.typicalPerformancePercent == nil
+                twoPriorsPerformance.typicalSufficiencyPercent == nil
                     && twoPriorsPerformance.typicalAsleepSeconds == nil
                     && twoPriorsPerformance.typicalRestorativeSeconds == nil
                     && twoPriorsPerformance.nightCount == 0

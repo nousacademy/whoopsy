@@ -19,8 +19,8 @@ enum HistoricalDrainSessionTests {
         let oldEpoch: UInt32 = 1_700_000_000
 
         /// A 5.0 metadata marker of `payloadBytes` bytes: `unix` at payload 0 (frame 11), a zero subsecond
-        /// at payload 4, and the token at payload 6 — which is **frame 17**, the offset §4 writes as
-        /// payload `[6,14)` for this generation.
+        /// at payload 4, and the token at payload **10** — frame **21** under this envelope, the slice
+        /// NOOP hardware-verified as the trim cursor.
         ///
         /// Built by the real encoder and read back through the real decoder, so the session is fed a frame
         /// this app actually produced. A `WhoopRawFrame` assembled by hand would let the token's offset and
@@ -31,8 +31,8 @@ enum HistoricalDrainSessionTests {
             payload[1] = UInt8((unix >> 8) & 0xFF)
             payload[2] = UInt8((unix >> 16) & 0xFF)
             payload[3] = UInt8((unix >> 24) & 0xFF)
-            for (offset, byte) in token.enumerated() where 6 + offset < payload.count {
-                payload[6 + offset] = byte
+            for (offset, byte) in token.enumerated() where 10 + offset < payload.count {
+                payload[10 + offset] = byte
             }
             guard let framed = WhoopPacketEncoder5.buildPacket(
                 profile: .whoop5, type: WhoopProtocolProfile.whoop5.packetTypes.metadata, seq: 0x01,
@@ -60,22 +60,27 @@ enum HistoricalDrainSessionTests {
             return decoder.decodeProprietaryFrame(data: framed, profile: .whoop4)
         }
 
-        // **§4 states the token twice and the two statements are one field**, which is the whole reason a
-        // single session type serves both generations. The assertion is on the derivation rather than on
-        // the number, so an edit that hardcodes either generation's payload offset fails here.
+        // **The token is at payload 10 on both generations**, which is frame 17 on the 4.0 and frame 21
+        // on the 5.0 because their payload origins are four bytes apart. The assertion is on the
+        // derivation rather than on a literal, so an edit that hardcodes one generation's frame offset
+        // fails here — which is exactly the failure that made every drain replay the same batch.
         assertTest(
-            HistoricalDrainSession.continuationTokenFrameOffset == 17
-                && WhoopProtocolProfile.whoop4.innerOrigin + 13 == 17
+            HistoricalDrainSession.continuationTokenPayloadOffset == 10
+                && HistoricalDrainSession.continuationTokenFrameOffset(for: .whoop4) == 17
+                && HistoricalDrainSession.continuationTokenFrameOffset(for: .whoop5) == 21
+                && WhoopProtocolProfile.whoop4.innerOrigin
+                    + WhoopProtocolProfile.whoop4.innerPrefixBytes + 10 == 17
                 && WhoopProtocolProfile.whoop5.innerOrigin
-                    + WhoopProtocolProfile.whoop5.innerPrefixBytes + 6 == 17,
-            "The token is frame byte 17 on both generations — the 4.0's `inner[13:21]` is 4 + 13 and the "
-                + "5.0's payload `[6,14)` is 11 + 6 — because the two payload origins are four bytes "
-                + "apart. A reader built on either offset literally is correct for exactly one strap")
+                    + WhoopProtocolProfile.whoop5.innerPrefixBytes + 10 == 21,
+            "The token is payload 10 on both generations — frame 17 on the 4.0 and frame 21 on the 5.0 — "
+                + "because the payload origins are four bytes apart. A reader built on one generation's "
+                + "frame offset is four bytes early on the other, and the strap accepts the write and "
+                + "never advances")
 
         do {
-            let start = fiveMarker(cmd: 1, unix: oldEpoch, payloadBytes: 14)
-            let end = fiveMarker(cmd: 2, unix: oldEpoch, payloadBytes: 14)
-            let complete = fiveMarker(cmd: 3, unix: oldEpoch, payloadBytes: 14)
+            let start = fiveMarker(cmd: 1, unix: oldEpoch, payloadBytes: 18)
+            let end = fiveMarker(cmd: 2, unix: oldEpoch, payloadBytes: 18)
+            let complete = fiveMarker(cmd: 3, unix: oldEpoch, payloadBytes: 18)
             assertTest(
                 start != nil && end != nil && complete != nil,
                 "The three 5.0 metadata markers frame and decode — a failure here would make every "
@@ -98,8 +103,9 @@ enum HistoricalDrainSessionTests {
                 let t2 = drainNow.addingTimeInterval(6)
                 assertTest(
                     session.accept(end, now: t2) == .acknowledge(token: token) && session.batchCount == 1,
-                    "HISTORY_END asks for the token back: the action carries the eight bytes at frame 17 "
-                        + "and nothing else, and it is the only frame in the loop that is answered")
+                    "HISTORY_END asks for the token back: the action carries the eight token bytes at "
+                        + "payload 10 — frame 21 under this envelope — and nothing else, and it is the "
+                        + "only frame in the loop that is answered")
                 assertTest(
                     session.recordCount == 0,
                     "…and it is not a record, so the batch count and the record count are separate "
@@ -149,16 +155,72 @@ enum HistoricalDrainSessionTests {
         }
 
         do {
+            // ---- The record range the strain refresh backfills ----
+            //
+            // **The oldest stamp is the half a count cannot supply.** A backlog drain covers a span,
+            // and the refresh scores the days between these two instants; without the minimum a
+            // drain could only say how far forward it reached, and every day behind the newest would
+            // go unscored. The stamp sits at payload `[4]` on both generations, which is frame 15
+            // under the 5.0 envelope (payload origin 11).
+            func stampedRecord(_ unix: UInt32) -> WhoopRawFrame? {
+                var bytes = StepTests.fiveFrame(
+                    type: WhoopProtocolProfile.whoop5.packetTypes.historicalData, payloadBytes: 64)
+                let origin = 11
+                bytes[origin + 4] = UInt8(unix & 0xFF)
+                bytes[origin + 5] = UInt8((unix >> 8) & 0xFF)
+                bytes[origin + 6] = UInt8((unix >> 16) & 0xFF)
+                bytes[origin + 7] = UInt8((unix >> 24) & 0xFF)
+                StepTests.sealFive(&bytes)
+                return decoder.decodeProprietaryFrame(data: Data(bytes), profile: .whoop5)
+            }
+
+            var ranged = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            assertTest(
+                ranged.lowestRecordTimestamp == nil && ranged.highestRecordTimestamp == nil,
+                "A drain that has carried no record has no range — nil, not the start instant")
+
+            // Out of order on purpose: the drain's batches alternate streams, so the minimum and the
+            // maximum are drain-wide rather than first-and-last.
+            let middle: UInt32 = 1_700_000_400
+            let oldest: UInt32 = 1_700_000_100
+            if let newestFrame = stampedRecord(middle), let oldestFrame = stampedRecord(oldest),
+               let unstamped = stampedRecord(0) {
+                _ = ranged.accept(newestFrame, now: drainNow)
+                _ = ranged.accept(oldestFrame, now: drainNow)
+                _ = ranged.accept(unstamped, now: drainNow)
+
+                assertTest(
+                    ranged.lowestRecordTimestamp == Date(timeIntervalSince1970: TimeInterval(oldest)),
+                    "The range's oldest stamp is the drain's minimum, got "
+                        + "\(ranged.lowestRecordTimestamp?.description ?? "nil")")
+                assertTest(
+                    ranged.highestRecordTimestamp == Date(timeIntervalSince1970: TimeInterval(middle)),
+                    "…and its newest is the maximum, got "
+                        + "\(ranged.highestRecordTimestamp?.description ?? "nil")")
+            }
+
+            var unstampedOnly = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            if let unstamped = stampedRecord(0) {
+                _ = unstampedOnly.accept(unstamped, now: drainNow)
+                assertTest(
+                    unstampedOnly.lowestRecordTimestamp == nil
+                        && unstampedOnly.highestRecordTimestamp == nil,
+                    "A stamp that is not a real date is not evidence for any day — the range stays nil "
+                        + "rather than filing the record on 1970")
+            }
+        }
+
+        do {
             // A marker one byte short of holding a token. §4's point is that a *wrong* token is worse
             // than none — it leaves the strap re-sending while this app believes it answered — so a short
             // marker must produce no acknowledgement at all rather than a padded or truncated one.
-            let shortFive = fiveMarker(cmd: 2, unix: oldEpoch, payloadBytes: 13)
+            let shortFive = fiveMarker(cmd: 2, unix: oldEpoch, payloadBytes: 17)
             let shortFour = fourMarker(cmd: 2, payloadBytes: 17)
             assertTest(
                 shortFive != nil && shortFour != nil,
-                "A 13-byte 5.0 marker and a 17-byte 4.0 one each frame and decode — one byte short of the "
-                    + "14 and 18 their tokens need, which is what makes the pair below about the token "
-                    + "rather than about a frame that failed to validate")
+                "A 17-byte marker on either generation frames and decodes — one byte short of the 18 "
+                    + "its token needs, which is what makes the pair below about the token rather than "
+                    + "about a frame that failed to validate")
             if let shortFive, let shortFour {
                 var five = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
                 var four = HistoricalDrainSession(profile: .whoop4, startedAt: drainNow)
@@ -182,9 +244,10 @@ enum HistoricalDrainSessionTests {
                 var session = HistoricalDrainSession(profile: .whoop4, startedAt: drainNow)
                 assertTest(
                     session.accept(fourEnd, now: drainNow) == .acknowledge(token: token),
-                    "…and its token comes back from the same eight frame bytes the 5.0's does, though §4 "
-                        + "writes one as `inner[13:21]` and the other as payload `[6,14)`: this is the "
-                        + "assertion that fails if anyone re-derives the offset per generation")
+                    "…and its token comes back from the same eight **payload** bytes the 5.0's does — "
+                        + "payload 10 on both, frame 17 here and frame 21 there. This is the assertion "
+                        + "that fails if anyone builds the reader on a frame offset instead: four bytes "
+                        + "early on the other strap, and its cursor never advances")
 
                 // The 4.0's live edge. §4 publishes this generation's marker layout no further than the
                 // token, so the field the 5.0 reads is not a timestamp here — and the marker below
@@ -212,7 +275,7 @@ enum HistoricalDrainSessionTests {
             func liveEdge(_ offset: TimeInterval) -> HistoricalDrainSession.DrainAction? {
                 var session = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
                 guard let marker = fiveMarker(
-                    cmd: 2, unix: UInt32(Int64(epochs) + Int64(offset)), payloadBytes: 14)
+                    cmd: 2, unix: UInt32(Int64(epochs) + Int64(offset)), payloadBytes: 18)
                 else { return nil }
                 return session.accept(marker, now: drainNow)
             }
@@ -234,6 +297,94 @@ enum HistoricalDrainSessionTests {
             assertTest(
                 liveEdge(4) != liveEdge(6),
                 "The two verdicts above are genuinely different actions rather than two spellings of one")
+        }
+
+        do {
+            /// One R18 record carrying `unix` at payload `[4]`, built through the real encoder and
+            /// decoder so the session is fed a frame this app produced.
+            func r18Record(unix: UInt32) -> WhoopRawFrame? {
+                var payload = [UInt8](repeating: 0, count: HeartRatePayloadDecoder.r18PayloadBytes)
+                payload[4] = UInt8(unix & 0xFF)
+                payload[5] = UInt8((unix >> 8) & 0xFF)
+                payload[6] = UInt8((unix >> 16) & 0xFF)
+                payload[7] = UInt8((unix >> 24) & 0xFF)
+                guard let framed = WhoopPacketEncoder5.buildPacket(
+                    profile: .whoop5,
+                    type: WhoopProtocolProfile.whoop5.packetTypes.historicalData,
+                    seq: HeartRatePayloadDecoder.historicalLayout,
+                    cmd: 0,
+                    payload: Data(payload))
+                else { return nil }
+                return decoder.decodeProprietaryFrame(data: framed, profile: .whoop5)
+            }
+
+            let nowEpoch = UInt32(drainNow.timeIntervalSince1970)
+            let nowMarker = fiveMarker(cmd: 2, unix: nowEpoch, payloadBytes: 18)
+
+            // **The owner's real drain, in miniature.** On 2026-10-23 every drain returned the same
+            // 59 records stamped 2026-08-24 and a marker stamped now; the old rule read the marker and
+            // ended the drain after one batch, reporting `caughtUpToLiveEdge` over two months of
+            // unread backlog. These three assertions are the difference.
+            var backlog = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            _ = r18Record(unix: oldEpoch).map { backlog.accept($0, now: drainNow) }
+            assertTest(
+                nowMarker.map { backlog.accept($0, now: drainNow) } == .acknowledge(token: token),
+                "A batch whose records are two months old is not the live edge even though its "
+                    + "HISTORY_END is stamped now — the marker's head is the drain's clock, not the "
+                    + "records', and trusting it stopped every real drain after one batch")
+
+            var caughtUp = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            _ = r18Record(unix: nowEpoch).map { caughtUp.accept($0, now: drainNow) }
+            assertTest(
+                nowMarker.map { caughtUp.accept($0, now: drainNow) } == .acknowledgeAndFinish(token: token),
+                "…and a batch whose newest record is stamped now does finish, so the marker's fallback "
+                    + "is a belt and not the rule")
+
+            var stalled = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            var actions: [HistoricalDrainSession.DrainAction?] = []
+            for _ in 0..<4 {
+                _ = r18Record(unix: oldEpoch).map { stalled.accept($0, now: drainNow) }
+                actions.append(nowMarker.map { stalled.accept($0, now: drainNow) })
+            }
+            assertTest(
+                actions.prefix(3).allSatisfy { $0 == .acknowledge(token: token) }
+                    && actions[3] == .acknowledgeAndFinish(token: token)
+                    && stalled.finishReason == .idleTimeout,
+                "The same batch four times is a stall, not a backlog: the first three are acknowledged "
+                    + "and the fourth ends the drain as `.idleTimeout` — without the guard a re-sending "
+                    + "strap never idles out, because its records keep the window armed")
+
+            // **The owner's strap's actual pattern.** Two buffered bursts from 2026-08-24 alternated
+            // for as long as the drain ran: `firstRecord` 12:51:13 / newest 12:52:11, then 12:57:42 /
+            // 12:58:41, then the first again. A pairwise guard sees every batch as newer than the one
+            // before it; only the drain-wide maximum sees the second pass.
+            var alternating = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            var alternatingActions: [HistoricalDrainSession.DrainAction?] = []
+            for unix in [oldEpoch, oldEpoch + 360, oldEpoch, oldEpoch + 360, oldEpoch] {
+                _ = r18Record(unix: unix).map { alternating.accept($0, now: drainNow) }
+                alternatingActions.append(nowMarker.map { alternating.accept($0, now: drainNow) })
+            }
+            assertTest(
+                alternatingActions.prefix(4).allSatisfy { $0 == .acknowledge(token: token) }
+                    && alternatingActions[4] == .acknowledgeAndFinish(token: token)
+                    && alternating.finishReason == .idleTimeout,
+                "Two bursts alternating forever stall on their second pass: the first four batches are "
+                    + "acknowledged and the fifth ends the drain — each batch beats the one before it, "
+                    + "and the drain-wide maximum is what catches the repeat")
+
+            // **The owner's drain ended here on 2026-10-23.** The last batch carried no records at
+            // all, and its marker was stamped now — so the marker fallback declared "caught up" over a
+            // buffer whose newest record was 2026-08-26. An empty batch is the end of the buffer, not
+            // the present.
+            var endOfBuffer = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            _ = r18Record(unix: oldEpoch).map { endOfBuffer.accept($0, now: drainNow) }
+            let firstEnd = nowMarker.map { endOfBuffer.accept($0, now: drainNow) }
+            let emptyEnd = nowMarker.map { endOfBuffer.accept($0, now: drainNow) }
+            assertTest(
+                firstEnd == .acknowledge(token: token) && emptyEnd == .acknowledge(token: token),
+                "An empty HISTORY_END at the end of the buffer is not the live edge: its marker is "
+                    + "stamped now while the newest record the drain has seen is two months old, so the "
+                    + "drain keeps listening and ends on the idle window rather than claiming it caught up")
         }
 
         do {
@@ -289,7 +440,7 @@ enum HistoricalDrainSessionTests {
             // session's own reason wins, because a completed sync reported as an interrupted one prints
             // its record count as what was fetched before giving up.
             var finished = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
-            if let complete = fiveMarker(cmd: 3, unix: oldEpoch, payloadBytes: 14) {
+            if let complete = fiveMarker(cmd: 3, unix: oldEpoch, payloadBytes: 18) {
                 _ = finished.accept(complete, now: drainNow)
             }
             finished.abort()

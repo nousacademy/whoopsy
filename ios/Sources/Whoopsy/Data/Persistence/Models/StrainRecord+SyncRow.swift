@@ -31,7 +31,8 @@ extension StrainRecord {
             averageHeartRate: averageHeartRate,
             maxHeartRate: maxHeartRate,
             hasMeasurement: hasMeasurement,
-            source: source
+            source: source,
+            algorithm: algorithm
         )
     }
 
@@ -43,6 +44,11 @@ extension StrainRecord {
     /// device's own zone — and `LocalDatabaseManager.saveSyncStrainRows` snaps it again on the way in,
     /// because that is where every other writer in this app snaps it and a row written at a raw instant
     /// is inserted rather than updated, which no keyed read can find again.
+    ///
+    /// **`motionLoad` and `scoredThrough` are explicitly `nil`.** They are this phone's audit fields,
+    /// not the record's, and a sync must not be able to write a watermark that would stop this device
+    /// from ever recomputing a day it has not actually read. Written out rather than defaulted so the
+    /// next local-only column is a compile error here.
     init(_ row: StrainSyncRow) {
         self.init(
             date: row.date,
@@ -51,7 +57,10 @@ extension StrainRecord {
             averageHeartRate: row.averageHeartRate,
             maxHeartRate: row.maxHeartRate,
             hasMeasurement: row.hasMeasurement,
-            source: row.source
+            source: row.source,
+            motionLoad: nil,
+            scoredThrough: nil,
+            algorithm: row.algorithm
         )
     }
 }

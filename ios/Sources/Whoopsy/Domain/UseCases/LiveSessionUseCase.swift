@@ -407,6 +407,11 @@ public final class LiveSessionUseCase {
     /// has no stored row to resume from — it does not exist until `end()` — so this always starts from
     /// zero, and the rate is pinned by whichever batch arrived first exactly as the day's is.
     private func ingestMotion(_ batch: MotionBatch) {
+        // **A banked record is history, and a session is what is happening now.** A drain that runs
+        // during a recording delivers `R21` records from before it started, stamped with their own
+        // instants; counting those would fold last night's walking into this session's step total.
+        // `TrackStepsUseCase` refuses the same batches for the same reason, from the other side.
+        guard !batch.timestampIsFromStrap else { return }
         // A non-positive interval is not a rate, and `StepAccumulator.accept` refuses such a batch
         // anyway — but the accumulator would already have been built with the bad rate, so the guard
         // belongs here rather than only there.
@@ -955,6 +960,42 @@ public final class LiveSessionUseCase {
         }
 
         return Summary(workout: workout, calories: snapshot.calories)
+    }
+
+    /// Records how hard the session felt, on the row `end()` already wrote.
+    ///
+    /// **A second write, not a prompt inside `end()`.** The end press is what stamps `endedAt`, and
+    /// asking the question before that would hold the session open for however long the sheet is up —
+    /// a recorded window that includes the time spent rating it. So `end()` writes unrated and this
+    /// annotates the same row afterwards; a skipped or failed rating leaves it unrated, which is honest.
+    ///
+    /// Returns the updated session so the caller can hand it to the screen behind, or `nil` when the
+    /// save failed — in which case nothing was changed and the session stays unrated.
+    public func rate(_ rpe: Int, for workout: WorkoutSession) async -> WorkoutSession? {
+        let rated = WorkoutSession(
+            id: workout.id,
+            startedAt: workout.startedAt,
+            endedAt: workout.endedAt,
+            strain: workout.strain,
+            averageHeartRate: workout.averageHeartRate,
+            maxHeartRate: workout.maxHeartRate,
+            route: workout.route,
+            splits: workout.splits,
+            source: workout.source,
+            activityName: workout.activityName,
+            hrZonePercents: workout.hrZonePercents,
+            steps: workout.steps,
+            offlineRegionID: workout.offlineRegionID,
+            offlineRegionCenter: workout.offlineRegionCenter,
+            rpe: WorkoutRPE.clamped(rpe)
+        )
+        do {
+            try await saveWorkoutUseCase.execute(rated)
+            return rated
+        } catch {
+            AppLogger.database.error("Failed saving session RPE: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     /// What the session's motion amounts to, as a value to store — or `nil` when there was none.

@@ -19,7 +19,7 @@ public enum RecoveryScoring {
         public let todayHrvValueMs: Double
         public let todayHrvMetric: HRVMetric
         public let todayRestingHeartRate: Int
-        /// Actual / needed, as a fraction. See `SleepSession.sleepPerformancePercentage`.
+        /// Actual / needed, as a fraction. See `SleepSession.sleepSufficiencyPercentage`.
         public let sleepPerformance: Double
         /// Cold-start values, used only when the history has nothing to learn from.
         public let fallbackRestingHeartRateBaseline: Double
@@ -258,7 +258,7 @@ public enum RecoveryScoring {
 
         // Sleep performance is derived on read from a night's own asleep-over-need, so the nights
         // handed in are already the nights the classifier could read — no separate absence rule.
-        let sleepPerformances = sleepingNights.map { Double($0.sleepPerformancePercentage) / 100.0 }
+        let sleepPerformances = sleepingNights.map { Double($0.sleepSufficiencyPercentage) / 100.0 }
 
         func displayMean(_ values: [Double]) -> Double? {
             values.count >= minimumBaselineDays ? BaselineStatisticsMath.mean(values) : nil

@@ -13,7 +13,8 @@ import SwiftUI
 ///
 /// **The legend says `AVG` where the reference says `OPTIMAL`, and that is a correction rather than a
 /// preference.** Nothing in this app produces a recommendation: there is no circadian-phase model and
-/// no sleep-need-derived target in any column, so what the two rules are is the average of the same
+/// no sleep-need-derived target in any column (the sleep score's `CircadianAgeMath` is a population
+/// timing prior used only when this card has no score, not a phase measurement), so what the two rules are is the average of the same
 /// four nights the score already reads. WHOOP's word for the pair is a claim about what the user
 /// *should* do, and this app cannot make it — the same judgement that keeps the estimate on Home's
 /// VO₂ panel labelled `(EST.)`. `SleepConsistencyMath.typicalBoundaries` is where the arithmetic and

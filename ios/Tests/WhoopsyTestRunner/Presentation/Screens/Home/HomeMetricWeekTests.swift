@@ -288,7 +288,7 @@ enum HomeMetricWeekTests {
                     && WeekLineSeries(restingHeartRateWeek: blankWeek) == nil
                     && WeekLineSeries(respiratoryRateWeek: blankWeek) == nil
                     && WeekBarSeries(recoveryWeek: blankWeek) == nil
-                    && WeekBarSeries(sleepPerformanceWeek: blankWeek) == nil,
+                    && WeekBarSeries(sleepSufficiencyWeek: blankWeek) == nil,
                 "A week with no reading in it has no series rather than an empty one, for any of the "
                     + "five charts, so every card is omitted instead of drawn empty")
 
@@ -464,7 +464,7 @@ enum HomeMetricWeekTests {
                     (0, 0.81), (1, 0.30), (2, 0.81), (3, 0.82), (4, 0.82), (5, 0.76), (6, 0.81),
                 ].map { offset, fraction in night(offset, fraction: fraction) })
 
-            if let performance = WeekBarSeries(sleepPerformanceWeek: sleepWeek) {
+            if let performance = WeekBarSeries(sleepSufficiencyWeek: sleepWeek) {
                 assertTest(
                     performance.points.map(\.slot) == [0, 1, 2, 3, 4, 5, 6],
                     "The sleep-performance bars cover every classified night, so a full week is seven "
@@ -478,7 +478,7 @@ enum HomeMetricWeekTests {
                 assertTest(false, "A week of seven classified nights yields no sleep bar series")
             }
             assertTest(
-                WeekBarSeries(sleepPerformanceWeek: sleepWeek)?.palette == .sleepPerformance,
+                WeekBarSeries(sleepSufficiencyWeek: sleepWeek)?.palette == .sleepSufficiency,
                 "The sleep bars are one flat colour rather than tiered: the quantity *is* banded, but the "
                     + "band is not what this chart is about — tiering would say the bars are a grade "
                     + "rather than a week of hours, and the reference draws every one of them flat")
@@ -490,14 +490,22 @@ enum HomeMetricWeekTests {
             // a chart gridding at one pair while the row bands at another is two boundaries for one
             // quantity, which is the drift `recoveryTierEdges` above exists to prevent.
             assertTest(
-                WeekBarSeries(sleepPerformanceWeek: sleepWeek)?.gridEdges == [0.70, 0.95],
+                WeekBarSeries(sleepSufficiencyWeek: sleepWeek)?.gridEdges == [0.70, 0.95],
                 "…and they grid at 70% and 95%, read off `SleepBand.Metric.hoursVsNeeded` rather than "
                     + "typed, so the bars and the `HOURS VS. NEEDED` row that colours the same night "
                     + "cannot come to disagree about where the bands are (got "
-                    + "\((WeekBarSeries(sleepPerformanceWeek: sleepWeek)?.gridEdges ?? []).map { "\($0)" })). "
+                    + "\((WeekBarSeries(sleepSufficiencyWeek: sleepWeek)?.gridEdges ?? []).map { "\($0)" })). "
                     + "The literal is what makes this discriminating: `SleepBand` carries three band pairs "
                     + "on one shared 0–100 scale and they differ only in their bounds, so a chart pointed "
                     + "at the consistency metric would grid at 60/90")
+            assertTest(
+                WeekBarSeries(sleepScoreWeek: sleepWeek)?.palette == .sleepScore,
+                "The sleep page's own chart plots the composite, not the ratio: a night's ring and the "
+                    + "bars under it are one quantity")
+            assertTest(
+                WeekBarSeries(sleepScoreWeek: sleepWeek)?.gridEdges == [0.60, 0.85],
+                "…and grids at the composite's own provisional boundaries, not the ratio's 70/95 (got "
+                    + "\((WeekBarSeries(sleepScoreWeek: sleepWeek)?.gridEdges ?? []).map { "\($0)" }))")
 
             // ---- The fifth chart is omitted on its own data, and it is the one that can be alone ----
             //
@@ -510,17 +518,17 @@ enum HomeMetricWeekTests {
                     && WeekLineSeries(hrvWeek: sleepWeek) == nil
                     && WeekLineSeries(restingHeartRateWeek: sleepWeek) == nil
                     && WeekLineSeries(respiratoryRateWeek: sleepWeek) == nil
-                    && WeekBarSeries(sleepPerformanceWeek: sleepWeek) != nil,
+                    && WeekBarSeries(sleepSufficiencyWeek: sleepWeek) != nil,
                 "A week whose only data is its nights draws the sleep-performance chart and none of the "
                     + "other four, rather than omitting the whole section or drawing four empty frames")
             assertTest(
-                WeekBarSeries(sleepPerformanceWeek: mixed) == nil
+                WeekBarSeries(sleepSufficiencyWeek: mixed) == nil
                     && WeekBarSeries(recoveryWeek: mixed) != nil,
                 "…and the omissions are independent the other way: a week of recovery rows with no "
                     + "nights draws the recovery bars and no sleep chart")
             assertTest(
                 sleepWeek.days.last?.recoveryScore == nil
-                    && sleepWeek.days.last?.sleepPerformance == 81
+                    && sleepWeek.days.last?.sleepSufficiency == 81
                     && sleepWeek.days.last?.hasAnyMeasurement == true,
                 "A slot can hold a night and no recovery row at all, and still count as measured — "
                     + "through the night's need, which is the field `hasAnyMeasurement` already reads. "
@@ -528,7 +536,7 @@ enum HomeMetricWeekTests {
                     + "load-bearing")
 
             // The one path by which a bar could state a figure with no measurement behind it, asserted as
-            // the trap it is rather than as a behaviour. `SleepSession.sleepPerformancePercentage` guards
+            // the trap it is rather than as a behaviour. `SleepSession.sleepSufficiencyPercentage` guards
             // `targetSleepNeedSeconds > 0` with a hard `100`, and `sleepNeedSeconds` on the same slot is
             // gated to `nil` — so the pair disagree, which is only visible when they are asserted
             // together. The chart plots the 100 because the SLEEP PERFORMANCE row above it prints the same
@@ -543,14 +551,17 @@ enum HomeMetricWeekTests {
                         date: anchor, startTime: anchor, endTime: anchor, targetSleepNeedSeconds: 0)
                 ])
             assertTest(
-                needlessNight.days.last?.sleepPerformance == 100
-                    && needlessNight.days.last?.sleepNeedSeconds == nil,
+                needlessNight.days.last?.sleepSufficiency == 100
+                    && needlessNight.days.last?.sleepNeedSeconds == nil
+                    && needlessNight.days.last?.sleepScore == nil,
                 "A night stored with no need states a performance of exactly 100 — the guard inside "
-                    + "`SleepSession.sleepPerformancePercentage` standing in for a denominator that was "
+                    + "`SleepSession.sleepSufficiencyPercentage` standing in for a denominator that was "
                     + "not there — while the need on the same slot is nil, and the chart draws that 100 "
-                    + "because the row above it prints it (got performance "
-                    + "\(needlessNight.days.last?.sleepPerformance.map { "\($0)" } ?? "nil"), need "
-                    + "\(needlessNight.days.last?.sleepNeedSeconds.map { "\($0)" } ?? "nil"))")
+                    + "because the row above it prints it. The composite has no such guard: this night "
+                    + "has no staged minutes either, so it has no score at all (got performance "
+                    + "\(needlessNight.days.last?.sleepSufficiency.map { "\($0)" } ?? "nil"), need "
+                    + "\(needlessNight.days.last?.sleepNeedSeconds.map { "\($0)" } ?? "nil"), score "
+                    + "\(needlessNight.days.last?.sleepScore.map { "\($0)" } ?? "nil"))")
 
             // ---- The fitted axis ----
             //
@@ -606,7 +617,8 @@ enum HomeMetricWeekTests {
             let emptyBranch = try await CalculateStrainUseCase(
                 biometricRepository: EmptyBiometricStore(),
                 strainRepository: emptyBranchRepository,
-                userProfileRepository: GRDBUserProfileRepository(db: emptyBranchDB)
+                userProfileRepository: GRDBUserProfileRepository(db: emptyBranchDB),
+                motionEpochRepository: FixtureMotionEpochRepository(epochs: [])
             ).execute(for: anchor)
             assertTest(
                 emptyBranch == nil,

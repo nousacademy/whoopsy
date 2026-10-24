@@ -13,15 +13,20 @@ public struct CloudUserProfileRepository: UserProfileRepository {
     private let local: any UserProfileRepository
     private let cloud: any CloudSync
     private let settingsStore: any SyncSettingsRepository
+    /// Injected so the runner is not a function of the hour it runs. `DIContainer` passes
+    /// `SyncSchedule.isOpen`; the default keeps every test and preview open.
+    private let isCallWindowOpen: @Sendable () -> Bool
 
     public init(
         local: any UserProfileRepository,
         cloud: any CloudSync,
-        settingsStore: any SyncSettingsRepository
+        settingsStore: any SyncSettingsRepository,
+        isCallWindowOpen: @escaping @Sendable () -> Bool = { true }
     ) {
         self.local = local
         self.cloud = cloud
         self.settingsStore = settingsStore
+        self.isCallWindowOpen = isCallWindowOpen
     }
 
     public func getUserProfile() async throws -> UserProfile {
@@ -44,18 +49,13 @@ public struct CloudUserProfileRepository: UserProfileRepository {
         try await local.getLocalUserProfile()
     }
 
+    /// **Local only** — the daily run writes the database copy. See `SyncSchedule`.
     public func saveUserProfile(_ profile: UserProfile) async throws {
         try await local.saveUserProfile(profile)
-        guard await storesInCloud() else { return }
-        do {
-            try await cloud.writeProfile(UserProfileSyncRow(profile))
-        } catch let error as CloudSyncError {
-            // A failed push never fails the local write, on `CloudSleepRepository`'s argument.
-            guard case .unreachable = error else { throw error }
-        }
     }
 
     private func storesInCloud() async -> Bool {
-        await settingsStore.load().destination == .cloud
+        guard await settingsStore.load().destination == .cloud else { return false }
+        return isCallWindowOpen()
     }
 }

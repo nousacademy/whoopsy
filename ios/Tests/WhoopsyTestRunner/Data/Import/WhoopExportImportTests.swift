@@ -215,6 +215,19 @@ enum WhoopExportImportTests {
             assertTest(
                 strains.allSatisfy { $0.date == dayCalendar.startOfDay(for: $0.date) },
                 "Every strain day key is a startOfDay")
+            // **The import records WHOOP's formula, not this app's.** The export carries no R-R series,
+            // so recomputing would feed this app's integrator a different population; the row says
+            // `whoop-export` and the refresh will not touch it — `StrainScore.isDeviceScored` is the
+            // read that decision turns on.
+            assertTest(
+                strains.allSatisfy { $0.algorithm == .whoopExport },
+                "Every imported strain row names WHOOP's formula")
+            assertTest(
+                strains.allSatisfy { $0.source == WhoopExportImporter.sourceLabel },
+                "…and carries the importer's provenance label")
+            assertTest(
+                strains.allSatisfy { !$0.isDeviceScored },
+                "…which together make every imported day unrepairable by the strain refresh")
 
             // The summary's span must describe everything written, across all three tables — the earliest
             // day of all is 2023-07-22, a strain-only cycle with no recovery and no night, so checking it
@@ -266,9 +279,9 @@ enum WhoopExportImportTests {
             assertTest(knownSleep?.lightSleepSeconds == 105 * 60, "Light sleep became seconds (105 min)")
             assertTest((knownSleep?.lightSleepSeconds ?? 0) > 3600, "Light sleep is in seconds, not minutes")
             assertTest(
-                knownSleep?.sleepPerformancePercentage == 50,
+                knownSleep?.sleepSufficiencyPercentage == 50,
                 "Sleep performance is derived from asleep-over-need, not copied from the export "
-                    + "(got \(knownSleep?.sleepPerformancePercentage ?? -1), export says 30)")
+                    + "(got \(knownSleep?.sleepSufficiencyPercentage ?? -1), export says 30)")
             assertTest(knownSleep?.respiratoryRate == 16.5, "Respiratory rate round-trips as 16.5 rpm")
             assertTest(
                 knownSleep?.sleepDebtSeconds == 77 * 60,
@@ -276,6 +289,22 @@ enum WhoopExportImportTests {
                     + "debt on a row that reads in minutes (got \(knownSleep?.sleepDebtSeconds ?? -1))")
             assertTest(knownSleep?.disturbanceCount == nil, "No disturbance count is invented")
             assertTest(knownSleep?.sleepStages.isEmpty == true, "No stage timeline is invented")
+
+            if let knownSleep {
+                let sleepScore = SleepScoreScoring.score(
+                    for: knownSleep, consistency: knownSleep.sleepConsistency, age: nil)
+                assertTest(
+                    sleepScore?.coverage.isComplete == true,
+                    "An imported night carries all four composite terms: stage totals, WHOOP's need and "
+                        + "WHOOP's consistency")
+                assertTest(
+                    sleepScore?.components[.sufficiency] == 50,
+                    "…with the sufficiency component equal to the export-era ratio")
+                assertTest(
+                    sleepScore?.value != 50,
+                    "…and the ring's composite is not that ratio "
+                        + "(got \(sleepScore.map { "\($0.value)" } ?? "nil"))")
+            }
 
             let knownStrain = try await strainRepository.getStrain(for: knownDay)
             assertTest(knownStrain?.score == 5.4, "That day's strain round-trips as 5.4")

@@ -22,7 +22,11 @@ public actor RecordMotionUseCase {
     /// The window length the sleep classifier consumes, and therefore the only grid this writer
     /// produces. Changing it here without changing `AnalyzeSleepUseCase` would feed the detector
     /// windows it does not expect.
-    public static let epochSeconds: TimeInterval = 30
+    ///
+    /// **Forwarded to `MotionEpochGrid` rather than restated**, because the strain model buckets the
+    /// heart-rate intervals onto the same windows from the other side. Two copies of the floor are how
+    /// a written epoch and a read one come to disagree about which window an instant belongs to.
+    public static let epochSeconds: TimeInterval = MotionEpochGrid.epochSeconds
 
     private struct Accumulator {
         var sum: Double = 0
@@ -96,8 +100,7 @@ public actor RecordMotionUseCase {
     /// The 30-second boundary containing `date`, on a fixed epoch grid so a window written from two
     /// overlapping batches lands on one row.
     public static func epochStart(for date: Date) -> Date {
-        let seconds = date.timeIntervalSince1970
-        return Date(timeIntervalSince1970: (seconds / epochSeconds).rounded(.down) * epochSeconds)
+        MotionEpochGrid.start(for: date)
     }
 
     /// Two days is more than the classifier ever asks for and keeps a long-lived process from

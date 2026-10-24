@@ -41,6 +41,14 @@ public final class WhoopBLEDeviceRepositoryImpl: WhoopBLEDeviceRepository, @unch
         }
     }
 
+    public var stepCounterStream: AsyncStream<StepCounterSample> {
+        if isMockMode {
+            return mockBleManager!.stepCounterStream
+        } else {
+            return realBleManager!.stepCounterStream
+        }
+    }
+
     public var historicalTelemetryStream: AsyncStream<BiometricSample> {
         if isMockMode {
             return mockBleManager!.historicalTelemetryStream
@@ -163,15 +171,21 @@ public final class WhoopBLEDeviceRepositoryImpl: WhoopBLEDeviceRepository, @unch
         let outcome = HistoricalSyncOutcome(
             recordCount: session.recordCount,
             batchCount: session.batchCount,
-            ending: Self.ending(for: session.finishReason)
+            ending: Self.ending(for: session.finishReason),
+            oldestRecord: session.lowestRecordTimestamp,
+            newestRecord: session.highestRecordTimestamp
         )
 
         // An ending this side caused is thrown rather than returned, because the two callers that
         // exist both want the same thing from it: a sentence saying the sync did not finish. The
-        // counts travel with the error so the message can say how far it got.
+        // counts travel with the error so the message can say how far it got — and so does the record
+        // range, because the records were written and the strain refresh must still score their days.
         guard outcome.ending.isStrapConfirmed else {
             throw WhoopSyncError.endedWithoutConfirmation(
-                records: outcome.recordCount, batches: outcome.batchCount)
+                records: outcome.recordCount,
+                batches: outcome.batchCount,
+                oldestRecord: outcome.oldestRecord,
+                newestRecord: outcome.newestRecord)
         }
         return outcome
     }

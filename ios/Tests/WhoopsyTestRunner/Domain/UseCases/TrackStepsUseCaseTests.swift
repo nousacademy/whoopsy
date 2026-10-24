@@ -26,7 +26,7 @@ enum TrackStepsUseCaseTests {
         let db = LocalDatabaseManager(inMemory: true)
         let stepRepository = GRDBStepRepository(db: db)
         let telemetry = ScriptedTelemetryRepository()
-        let useCase = TrackStepsUseCase(bleRepository: telemetry, stepRepository: stepRepository)
+        let useCase = TrackStepsUseCase(bleRepository: telemetry, stepRepository: stepRepository, stateStore: InMemoryStepCounterStateStore())
         let calendar = Calendar.current
         let day = calendar.startOfDay(for: Date())
 
@@ -51,7 +51,8 @@ enum TrackStepsUseCaseTests {
 
         assertTest(
             await waitUntil { telemetry.motionSubscriberCount == 1 },
-            "The writer attaches to the strap's motion stream, which is the only input the count has")
+            "The writer attaches to the strap's motion stream — the detector's input, and one of the "
+                + "count's two")
 
         // Two batches on one day, so the second total is cumulative — 12 then 24 — rather than a
         // replacement that happens to look the same.
@@ -88,6 +89,65 @@ enum TrackStepsUseCaseTests {
             "What the stream carries is exactly what the store holds — the hand-off is a copy of the "
                 + "saved row rather than a second computation that could disagree with it "
                 + "(published \(String(describing: published.last)), stored \(String(describing: stored)))")
+
+        // ---- The strap's counter and the live detector over one day ----
+        //
+        // The counter arrives in a drain and covers a window the detector may already have counted.
+        // These four assertions are the arbitration in miniature: the counter replaces the detector's
+        // total rather than adding to it, live motion after coverage still counts, a still-classed
+        // record adds no steps, and a counter record overtaking the live tail drops steps the counter
+        // is about to count again.
+
+        assertTest(
+            await waitUntil { telemetry.stepCounterSubscriberCount == 1 },
+            "The writer attaches to the counter stream as well — a second consumer of a *different* "
+                + "stream, which is what makes the drain's R18 records reach the day at all")
+
+        let firstCounter = day.addingTimeInterval(10 * 3600)
+        telemetry.yieldStepCounter(stepCounterSample(at: firstCounter, counter: 1_000))
+        telemetry.yieldStepCounter(stepCounterSample(at: firstCounter.addingTimeInterval(1), counter: 1_002))
+        telemetry.yieldStepCounter(stepCounterSample(at: firstCounter.addingTimeInterval(2), counter: 1_004))
+
+        let replaced = await waitUntil {
+            ((try? await stepRepository.getStepCount(for: day)) ?? nil)?.stepCount == 4
+        }
+        let afterCounter = try await stepRepository.getStepCount(for: day)
+        assertTest(
+            replaced && afterCounter?.stepCount == 4,
+            "Three counter records contribute four ticks and the day's row becomes four — **not** "
+                + "sixteen. The counter covers the window the detector counted at 09:00, so its total "
+                + "replaces that row rather than adding to it, which is the double count this ledger "
+                + "exists to prevent (\(String(describing: afterCounter?.stepCount)))")
+
+        telemetry.yieldMotion(motionBatch(startingAt: day.addingTimeInterval(10 * 3600 + 300), bumps: 3))
+        let tailAdded = await waitUntil {
+            ((try? await stepRepository.getStepCount(for: day)) ?? nil)?.stepCount == 7
+        }
+        assertTest(
+            tailAdded,
+            "A live batch after the counter's coverage adds its three steps on top of the counter's "
+                + "four — live walking after a drain still moves the tile")
+
+        telemetry.yieldStepCounter(stepCounterSample(
+            at: day.addingTimeInterval(10 * 3600 + 360), counter: 1_008, activityClass: 0))
+        let tailDropped = await waitUntil {
+            ((try? await stepRepository.getStepCount(for: day)) ?? nil)?.stepCount == 4
+        }
+        assertTest(
+            tailDropped,
+            "A counter record overtaking the live tail drops its three steps and adds none of its own "
+                + "— the record is still-classed, so it is coverage with no steps, and the counter is "
+                + "about to count the tail again")
+
+        telemetry.yieldStepCounter(stepCounterSample(
+            at: day.addingTimeInterval(10 * 3600 + 420), counter: 1_010, activityClass: 1))
+        let walkedAgain = await waitUntil {
+            ((try? await stepRepository.getStepCount(for: day)) ?? nil)?.stepCount == 6
+        }
+        assertTest(
+            walkedAgain,
+            "…and the next walk-classed record adds its two ticks, so the day resumes counting from "
+                + "the counter rather than staying frozen at the drop")
     }
 }
 

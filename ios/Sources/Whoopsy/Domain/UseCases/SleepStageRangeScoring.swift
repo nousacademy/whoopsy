@@ -80,7 +80,7 @@ public enum SleepStageRangeScoring {
     ///
     /// **One condition, five carriers.** `nightCount == 0` ⟺ every `row.typical == nil` ⟺
     /// `typicalRestorativeSeconds == nil` ⟺ `typicalAsleepSeconds == nil` ⟺
-    /// `typicalPerformancePercent == nil`. They are the same fact — the window held fewer than
+    /// `typicalSufficiencyPercent == nil`. They are the same fact — the window held fewer than
     /// `minimumBaselineDays` usable nights — seen from five places, and the equivalence is asserted
     /// rather than assumed so a sixth carrier cannot be added without one of them disagreeing.
     public struct Summary: Equatable, Sendable {
@@ -138,7 +138,7 @@ public enum SleepStageRangeScoring {
         /// the card** for `typicalAsleepSeconds`' reason: it is a mean over the *usable* nights, so the
         /// filter `summary(for:priorNights:)` applies — a stored row with no sleep period cannot be a
         /// night and must not be averaged in — has to be the same one. A card averaging
-        /// `priorNights.map(\.sleepPerformancePercentage)` itself would be a second window definition,
+        /// `priorNights.map(\.sleepSufficiencyPercentage)` itself would be a second window definition,
         /// and this screen already has exactly one.
         ///
         /// **It is the same ratio the need card's headline prints**, `asleep ÷ need`, taken over the
@@ -152,7 +152,7 @@ public enum SleepStageRangeScoring {
         /// `typicalAsleepSeconds` and `typicalRestorativeSeconds` in the equivalence that doc comment
         /// records: below `RecoveryScoring.minimumBaselineDays` usable nights there is no comparison to
         /// draw, and the headline prints alone.
-        public let typicalPerformancePercent: Double?
+        public let typicalSufficiencyPercent: Double?
 
         public init(
             rows: [Row],
@@ -161,7 +161,7 @@ public enum SleepStageRangeScoring {
             typicalRestorativeSeconds: TimeInterval?,
             asleepSeconds: TimeInterval,
             typicalAsleepSeconds: TimeInterval?,
-            typicalPerformancePercent: Double?
+            typicalSufficiencyPercent: Double?
         ) {
             self.rows = rows
             self.nightCount = nightCount
@@ -169,7 +169,7 @@ public enum SleepStageRangeScoring {
             self.typicalRestorativeSeconds = typicalRestorativeSeconds
             self.asleepSeconds = asleepSeconds
             self.typicalAsleepSeconds = typicalAsleepSeconds
-            self.typicalPerformancePercent = typicalPerformancePercent
+            self.typicalSufficiencyPercent = typicalSufficiencyPercent
         }
 
         /// The card's `DURATION` figure: the four rows added up.
@@ -231,10 +231,10 @@ public enum SleepStageRangeScoring {
             typicalAsleepSeconds: bands.isEmpty
                 ? nil
                 : BaselineStatisticsMath.mean(window.map(\.totalTimeAsleepSeconds)),
-            typicalPerformancePercent: bands.isEmpty
+            typicalSufficiencyPercent: bands.isEmpty
                 ? nil
                 : BaselineStatisticsMath.mean(
-                    window.map { Double($0.sleepPerformancePercentage) }))
+                    window.map { Double($0.sleepSufficiencyPercentage) }))
     }
 
     /// Whole percents for a set of durations, **summing to exactly 100**, or `nil` when there is no

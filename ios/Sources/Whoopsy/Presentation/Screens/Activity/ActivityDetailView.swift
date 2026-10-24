@@ -216,6 +216,15 @@ public struct ActivityDetailView: View {
                     statsRow
                         .padding(.horizontal, Self.gutter)
 
+                    // **Absent, not dashed, when the session was never rated.** A rating is the user's
+                    // answer and there is no measurement to miss — an absence row would read as data
+                    // that failed to load, which is a different claim. Placed under the two stat
+                    // columns because it is a third figure about the same session.
+                    if let load = viewModel.perceivedLoadText {
+                        perceivedLoadRow(load: load, rpe: viewModel.rpeText)
+                            .padding(.horizontal, Self.gutter)
+                    }
+
                     heartRateSection
 
                     typicalRangeHeader
@@ -660,6 +669,45 @@ public struct ActivityDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The session's perceived load and the rating behind it — drawn only on a rated session.
+    ///
+    /// **Arbitrary units, and the caption says so.** The figure is `RPE × minutes` (session-RPE, the
+    /// method's own training-load product) and it is deliberately not plotted against strain or scaled
+    /// onto the 0–21 ring: the two are different quantities, and any conversion between them would be
+    /// invented. Its use is comparing one session with another under the same rating method, which is
+    /// what the units word is there to say.
+    private func perceivedLoadRow(load: String, rpe: String?) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(load)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+
+                Text("AU")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+
+                Spacer(minLength: 8)
+
+                if let rpe {
+                    Text(rpe)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Text("PERCEIVED LOAD")
+                .font(.system(size: 11, weight: .bold))
+                .tracking(1.1)
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     /// One figure, its badge and its caption.

@@ -37,7 +37,7 @@ enum DIContainerTests {
         // rule is asserted in §10, where the database is in memory and the sample source is empty.
         let sleep = try await container.analyzeSleepUseCase.execute()
         if let sleep {
-            assertTest(sleep.sleepPerformancePercentage >= 0 && sleep.sleepPerformancePercentage <= 100, "Sleep UseCase returned valid performance: \(sleep.sleepPerformancePercentage)%")
+            assertTest(sleep.sleepSufficiencyPercentage >= 0 && sleep.sleepSufficiencyPercentage <= 100, "Sleep UseCase returned valid performance: \(sleep.sleepSufficiencyPercentage)%")
         } else {
             assertTest(true, "Sleep UseCase reported no session: no classifiable samples for today")
         }

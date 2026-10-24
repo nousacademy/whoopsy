@@ -75,6 +75,40 @@ const strainFields = {
 };
 
 /**
+ * The algorithm field, built fresh for each schema because **it is the one field whose requiredness
+ * differs between the response and a write.**
+ *
+ * `source` above is the rule this breaks, deliberately and only here. On a response the key is
+ * always present — the mapper writes it from the stored column — so it is declared nullable and
+ * **required**, the ordinary shape. On a write it must also be **optional**, because a client older
+ * than the field sends no key at all, and refusing that body would break every older install on its
+ * first upload after the deployment. Splitting the field out of `strainFields` is what lets the two
+ * be stated instead of one weaker shape serving both; the comment above the shared object is still
+ * the rule for every other field.
+ */
+function algorithmField() {
+  return z
+    .string()
+    .min(1)
+    .nullable()
+    .openapi({
+      description:
+        "**The formula that produced `strainScore`** — the client's own statement about how it computed the row, because this API cannot know it. Known versions: `hr-zone-v1` (the five-zone heart-rate integral), `hr-motion-v2` (the same integral combined with the wrist-motion term), and `whoop-export` (WHOOP's own `Day Strain`, stored verbatim). The formula and every constant behind each version are recorded in the app's `strainAlgorithms` table, in this database's `strain_algorithms` table, and in the app's `docs/ALGORITHMS.md` § 2; the app treats a parameter change as a new version string, so a stored row always names the formula it was actually computed with. On a response the key is always present. On a write, `null` means the client has no version to report, and an **absent** key (accepted for clients older than the field) means the same thing: this Worker stores `null` rather than inventing a version, and does not clear a stored one when a later row omits it.",
+      example: "hr-motion-v2",
+    });
+}
+
+/**
+ * A write's spelling of the algorithm field: the same value, and also omissible.
+ *
+ * See `algorithmField` for why the two requirednesses exist. `null` and absence are the same claim —
+ * *this client does not know the version* — and both are stored as `null`.
+ */
+function optionalAlgorithmField() {
+  return algorithmField().optional();
+}
+
+/**
  * One stored day, as the API returns it.
  *
  * The response is the **row read back from the database**, not the request echoed. That is what lets
@@ -99,6 +133,7 @@ export const StrainSchema = z
   .object({
     date: DayKeySchema,
     ...strainFields,
+    algorithm: algorithmField(),
   })
   .openapi("Strain", {
     description:
@@ -133,7 +168,7 @@ export type StrainWire = z.infer<typeof StrainSchema>;
  * making the same claim, and this API must not hold a third answer for either.
  */
 export const StrainWriteSchema = z
-  .object(strainFields)
+  .object({ ...strainFields, algorithm: optionalAlgorithmField() })
   .strict()
   .openapi("StrainWrite", {
     description: "The fields of a strain reading, less its day — the day comes from the path.",
@@ -163,6 +198,7 @@ export const StrainBatchRowSchema = z
   .object({
     date: DayKeySchema,
     ...strainFields,
+    algorithm: optionalAlgorithmField(),
   })
   .strict()
   .openapi("StrainBatchRow", {

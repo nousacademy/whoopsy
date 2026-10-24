@@ -34,6 +34,9 @@ public struct CloudRecoveryRepository: RecoveryRepository {
     private let local: any RecoveryRepository
     private let cloud: any CloudSync
     private let settingsStore: any SyncSettingsRepository
+    /// Injected so the runner is not a function of the hour it runs. `DIContainer` passes
+    /// `SyncSchedule.isOpen`; the default keeps every test and preview open.
+    private let isCallWindowOpen: @Sendable () -> Bool
     private let status: any SyncStatus
     private let calendar: Calendar
 
@@ -46,13 +49,15 @@ public struct CloudRecoveryRepository: RecoveryRepository {
         cloud: any CloudSync,
         settingsStore: any SyncSettingsRepository,
         status: any SyncStatus,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        isCallWindowOpen: @escaping @Sendable () -> Bool = { true }
     ) {
         self.local = local
         self.cloud = cloud
         self.settingsStore = settingsStore
         self.status = status
         self.calendar = calendar
+        self.isCallWindowOpen = isCallWindowOpen
     }
 
     // MARK: - One day
@@ -128,18 +133,11 @@ public struct CloudRecoveryRepository: RecoveryRepository {
         try await local.deleteRecovery(for: date)
     }
 
+    /// **Local only.** The database copy is written by the once-a-day run, not by every save: a step
+    /// row is written once a second while the strap moves, so a mirror per save is what exhausted the
+    /// deployment's call budget. See `DailySyncUseCase` and `SyncSchedule`.
     public func saveRecovery(_ recovery: RecoveryMetric, source: String?) async throws {
         try await local.saveRecovery(recovery, source: source)
-
-        guard await storesInCloud() else { return }
-
-        do {
-            try await cloud.writeRecovery(RecoverySyncRow(recovery, source: source))
-            // The day is now in the database, so whatever was recorded about it is no longer true.
-            await status.clear(recovery.date)
-        } catch let error as CloudSyncError {
-            guard case .unreachable = error else { throw error }
-        }
     }
 
     // MARK: - A range
@@ -226,6 +224,7 @@ public struct CloudRecoveryRepository: RecoveryRepository {
     /// `STORAGE` — reaches `local` on every call and never constructs a request. There is no third arm and
     /// no *both*: the destination is one switch, and a day is read from the phone first whatever it says.
     private func storesInCloud() async -> Bool {
-        await settingsStore.load().destination == .cloud
+        guard await settingsStore.load().destination == .cloud else { return false }
+        return isCallWindowOpen()
     }
 }

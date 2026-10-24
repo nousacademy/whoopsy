@@ -883,6 +883,86 @@ public actor LocalDatabaseManager {
                 .deleteAll(db)
         }
 
+        // **`v34` clears the current day's step row, because the algorithm that wrote it is gone.**
+        // `TrackStepsUseCase` now takes a 5.0/MG day from the strap's own counter where a drain
+        // supplies one, and gates the fallback detector on rhythm — so the count this app produced
+        // before was accumulated by a rule that no longer exists. A stored step count cannot be
+        // recomputed (the ~26M samples a day are never kept), so leaving the row would make the fixed
+        // algorithm look as wrong as the old one until midnight.
+        //
+        // **It deletes today and nothing else.** Prior days are real measurements by the standard of
+        // the code that made them; dropping a fortnight of history to make one screen agree would be
+        // the destructive half of this same mistake. `v25` is the precedent and it carries the caveat:
+        // under the `.cloud` destination a local delete is a cache eviction, and the next read-through
+        // can resurrect the row from D1 until the next write — clearing it with the destination on
+        // `DEVICE STORAGE` is what makes the delete final.
+        migrator.registerMigration("v34_clear_step_day_for_source_change") { db in
+            try StepCountRecord
+                .filter(Column("date") == Date().startOfDay)
+                .deleteAll(db)
+        }
+
+        // **`v35` gives every strain row the formula that produced it, and puts the formulas in the
+        // database.** `strains` held a score and no record of how it was computed, so a row written
+        // before the motion term existed and one written after were indistinguishable — and a reader
+        // cannot tell which figures would move if the model were tuned again. This migration adds the
+        // name to the row and a reference table that defines each name, so the file carrying the data
+        // also carries the explanation of what the data means.
+        //
+        // **A parameter change is a new version string, a new seed row and a new enum case.** Editing
+        // a weight in place would leave every historical row claiming a formula it was not computed
+        // with, which is worse than no provenance at all. The seed rows below are therefore literal and
+        // frozen: a later tune appends a row, it never edits one.
+        //
+        // **The columns are camelCase because `StrainRecord` declares no `CodingKeys`** — see
+        // `MotionEpochRecord`'s note. `motion_load` here would be `no such column` at launch, and a
+        // failing migration `fatalError`s.
+        migrator.registerMigration("v35_strain_provenance") { db in
+            try db.create(table: "strainAlgorithms", ifNotExists: true) { t in
+                t.primaryKey("version", .text)
+                t.column("formula", .text).notNull()
+                t.column("parameters", .text).notNull()
+                t.column("notes", .text)
+                t.column("createdAt", .datetime).notNull()
+            }
+
+            try Self.addMissingColumns(
+                to: StrainRecord.databaseTableName,
+                columns: [
+                    ("motionLoad", .double),
+                    ("scoredThrough", .datetime),
+                    ("algorithm", .text),
+                ],
+                in: db)
+
+            // **The backfill is deterministic because only two formulas have ever written this table.**
+            // A `whoop_export` row holds WHOOP's own `Day Strain` verbatim; every other row was written
+            // by this app's heart-rate integrator, and `hr-zone-v1` is by definition what that was. The
+            // second statement catches the import's rows too, so it is `algorithm IS NULL` rather than
+            // a positive list and a row of unknown descent still gets the honest answer.
+            try db.execute(sql: """
+                UPDATE strains SET algorithm = 'whoop-export' WHERE source = 'whoop_export'
+                """)
+            try db.execute(sql: """
+                UPDATE strains SET algorithm = 'hr-zone-v1' WHERE algorithm IS NULL
+                """)
+
+            try Self.seedStrainAlgorithms(in: db)
+        }
+
+        // **`v36` stores the session-RPE rating.** The heart-rate model cannot see heat, a heavy carry
+        // or a day the user trained through, so the post-session prompt is the only measurement of them
+        // — and the value has to survive a relaunch to be worth asking for. Nullable and undefaulted:
+        // NULL is *never rated*, which is the ordinary case, and a `0` would claim the user answered
+        // "no exertion at all".
+        //
+        // **Local-only, and the wire has no field for it**, which is why `writeWorkout` preserves a
+        // stored value when a synced row arrives without one.
+        migrator.registerMigration("v36_workout_rpe") { db in
+            try Self.addMissingColumns(
+                to: WorkoutRecord.databaseTableName, columns: [("rpe", .integer)], in: db)
+        }
+
         try migrator.migrate(queue)
     }
 
@@ -944,6 +1024,106 @@ public actor LocalDatabaseManager {
                 t.add(column: name, type)
             }
         }
+    }
+
+    // MARK: - The Strain algorithm catalogue
+
+    /// Every formula that can have produced a `strains` row, oldest first.
+    ///
+    /// Exposed the way `columnNames(in:)` is: so the suite can assert that the newest catalogued
+    /// version is the one `StrainAlgorithm.current` names. Without that assertion the catalogue could
+    /// silently stop describing the code — a parameter would be tuned, the writer would keep stamping
+    /// the old name, and every row would claim a formula it was not computed with.
+    public func strainAlgorithmCatalogue() throws -> [StrainAlgorithmRecord] {
+        try dbQueue.read { db in
+            try StrainAlgorithmRecord.order(Column("createdAt").asc).fetchAll(db)
+        }
+    }
+
+    /// The seed rows `v35` writes. **Literal and frozen** — a later version appends a row, never edits
+    /// one, because an edit would rewrite what historical rows claim they were computed by.
+    ///
+    /// Every constant that defines a row is in `parameters`, so the formula can be reproduced from the
+    /// database alone. The same numbers are prose in `docs/ALGORITHMS.md` §2 and code in
+    /// `StrainAccumulatorMath` / `MotionLoadMath`; the suite pins the current constant against this
+    /// table rather than trusting three copies to stay in step.
+    private static func seedStrainAlgorithms(in db: Database) throws {
+        let shared = """
+            "zoneWeights":{"1":1,"2":2,"3":4.5,"4":9,"5":16},
+            "zoneReserveFractions":[[0.5,0.6],[0.6,0.7],[0.7,0.8],[0.8,0.9],[0.9,1.0]],
+            "lowIntensityBandWeight":1,
+            "dayStrainScalingFactor":0.00001085,
+            "firstSampleDurationSeconds":1,
+            "maximumSampleGapSeconds":5
+            """
+
+        let rows = [
+            StrainAlgorithmRecord(
+                version: StrainAlgorithm.whoopExport.rawValue,
+                formula: "WHOOP's own Day Strain, read from the bundled export and stored verbatim.",
+                parameters: "{}",
+                notes: """
+                    Not this app's computation. The export carries no R-R series, so feeding it to the \
+                    integrator would produce a different quantity wearing the same name.
+                    """,
+                createdAt: seedDate(2026, 1, 1)),
+            StrainAlgorithmRecord(
+                version: StrainAlgorithm.hrZoneV1.rawValue,
+                formula: """
+                    L = Σ over samples of weight(bpm) × duration; score = 21·(1 − e^(−k_day·L)), \
+                    where weight is the five-zone table for a rate in a band, 1 for a rate above \
+                    resting but below zone 1, and 0 at or below resting.
+                    """,
+                parameters: "{\(shared)}",
+                notes: """
+                    The heart-rate integral, with five Karvonen reserve bands and the weight-1 \
+                    low-intensity band. Everything this app computed before hr-motion-v2.
+                    """,
+                createdAt: seedDate(2026, 1, 1)),
+            StrainAlgorithmRecord(
+                version: StrainAlgorithm.hrMotionV2.rawValue,
+                formula: """
+                    For each 30-second window: max(hrLoad, motionLoad), where hrLoad is v1's \
+                    weighted seconds and motionLoad = motionWeight(ENMO) × min(30, samples/100); \
+                    dayLoad = Σ over windows with an epoch of that maximum and over windows without \
+                    one of hrLoad alone; score = 21·(1 − e^(−k_day·dayLoad)). A day with no HR \
+                    samples scores nothing.
+                    """,
+                parameters: """
+                    {\(shared),
+                    "motionCombination":"per-30s-window-max",
+                    "motionEpochSeconds":30,
+                    "motionReferenceGravityG":1,
+                    "motionSamplesPerSecond":100,
+                    "motionWeightTable":[
+                        {"enmoBelowG":0.02,"weight":0},
+                        {"enmoBelowG":0.05,"weight":1},
+                        {"enmoBelowG":0.1,"weight":2},
+                        {"enmoBelowG":0.2,"weight":3},
+                        {"enmoBelowG":null,"weight":4}
+                    ]}
+                    """,
+                notes: """
+                    Adds the wrist-motion term so work that does not raise the heart rate counts. \
+                    The weight table is this app's calibration, not WHOOP's: a hard 8-hour manual day \
+                    is about +3 ring points over a quiet one.
+                    """,
+                createdAt: seedDate(2026, 10, 23)),
+        ]
+
+        for row in rows {
+            try row.insert(db)
+        }
+    }
+
+    private static func seedDate(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        return calendar.date(from: components) ?? Date(timeIntervalSince1970: 0)
     }
 
     /// Names of the tables the migrations actually created. Exposed for schema assertions, which
@@ -1293,6 +1473,17 @@ public actor LocalDatabaseManager {
         }
     }
 
+    /// The newest day this phone holds a WHOOP-imported strain for. See
+    /// `StrainRepository.getNewestImportedStrainDay()`.
+    public func getNewestImportedStrainDay() throws -> Date? {
+        try dbQueue.read { db in
+            try StrainRecord
+                .filter(Column("source") == StrainScore.importSource)
+                .order(Column("date").desc)
+                .fetchOne(db)?.date
+        }
+    }
+
     /// See `getRecoveryHistory(days:endingOn:)`.
     public func getStrainHistory(days: Int, endingOn: Date = Date()) throws -> [StrainRecord] {
         let window = Self.historyWindow(days: days, endingOn: endingOn)
@@ -1346,12 +1537,23 @@ public actor LocalDatabaseManager {
     /// `saveSyncWorkoutRows`: there is nothing filed under a strain, so there is no child to clear and
     /// no order to restore. The `hasMeasurement` flag and the `source` string ride through unchanged,
     /// because they are the whole reason the sync speaks the record rather than `StrainScore`.
+    ///
+    /// **An arriving row with no `algorithm` keeps the stored one.** A client older than `v35` does not
+    /// send the field, and that client's row does not mean "this day's formula is now unknown" — it
+    /// means the sender had nothing to say. There is no clear path, so a nil here cannot mean clear.
+    /// `motionLoad` and `scoredThrough` are this phone's audit fields and are written as NULL, which is
+    /// what the record initialiser supplies; a watermark arriving from another device would stop this
+    /// one ever recomputing a day it has not actually read.
     public func saveSyncStrainRows(_ rows: [StrainSyncRow]) throws {
         guard !rows.isEmpty else { return }
         try dbQueue.write { db in
             for row in rows {
                 var record = StrainRecord(row)
                 record.date = row.date.startOfDay
+                if record.algorithm == nil,
+                   let existing = try StrainRecord.fetchOne(db, key: ["date": record.date]) {
+                    record.algorithm = existing.algorithm
+                }
                 try record.save(db)
             }
         }
@@ -1463,6 +1665,30 @@ public actor LocalDatabaseManager {
         }
     }
 
+    /// The newest sample instant in `[from, to)` — the strain watermark's heart-rate half.
+    ///
+    /// **Half-open and `LIMIT 1`**, where `getSamples` is inclusive and reads everything: the refresh
+    /// asks this on every tick, and the bound is the one its caller means — the next day's samples are
+    /// not this day's input.
+    public func getLatestSampleTimestamp(from startDate: Date, to endDate: Date) throws -> Date? {
+        try dbQueue.read { db in
+            try BiometricSampleRecord
+                .filter(Column("timestamp") >= startDate && Column("timestamp") < endDate)
+                .order(Column("timestamp").desc)
+                .fetchOne(db)?.timestamp
+        }
+    }
+
+    /// The newest motion window whose `start` falls in `[from, to)` — the watermark's motion half.
+    public func getLatestMotionEpoch(from startDate: Date, to endDate: Date) throws -> MotionEpochRecord? {
+        try dbQueue.read { db in
+            try MotionEpochRecord
+                .filter(Column("start") >= startDate && Column("start") < endDate)
+                .order(Column("start").desc)
+                .fetchOne(db)
+        }
+    }
+
     public func clearAllSamples() throws {
         try dbQueue.write { db in
             _ = try BiometricSampleRecord.deleteAll(db)
@@ -1504,6 +1730,15 @@ public actor LocalDatabaseManager {
     ) throws {
         var snapped = record
         snapped.date = record.date.startOfDay
+        // **A rating is never erased by a write that did not carry one.** Since `v36` this is also the
+        // sync's write path, and a synced row has no `rpe` field — so without this the first upload
+        // followed by the first download would silently delete every rating the user had entered.
+        // There is no clear path, so `nil` here cannot mean "clear": a user who wants a rating gone
+        // re-rates the session.
+        if snapped.rpe == nil,
+           let existing = try WorkoutRecord.fetchOne(db, key: snapped.id) {
+            snapped.rpe = existing.rpe
+        }
         try snapped.save(db)
         _ = try WorkoutRoutePointRecord
             .filter(Column("workout_id") == snapped.id).deleteAll(db)

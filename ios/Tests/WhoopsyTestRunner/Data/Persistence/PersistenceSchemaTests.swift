@@ -125,7 +125,8 @@ enum PersistenceSchemaTests {
             try await db.saveStrain(
                 StrainRecord(
                     date: wallClock, strainScore: 12.4, kilojoules: 1800, averageHeartRate: 62,
-                    maxHeartRate: 158, hasMeasurement: true))
+                    maxHeartRate: 158, hasMeasurement: true,
+                    motionLoad: 120, scoredThrough: wallClock, algorithm: "hr-motion-v2"))
             assertTest(
                 try await db.getStrain(for: wallClock) != nil, "A strain written at 09:37 is readable")
         } catch {

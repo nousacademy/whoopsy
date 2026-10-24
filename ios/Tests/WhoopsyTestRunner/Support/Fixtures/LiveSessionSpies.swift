@@ -27,6 +27,7 @@ final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Se
     private let lock = NSLock()
     private var continuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
     private var motionContinuations: [UUID: AsyncStream<MotionBatch>.Continuation] = [:]
+    private var stepCounterContinuations: [UUID: AsyncStream<StepCounterSample>.Continuation] = [:]
     private var historicalContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
 
     /// Registers one telemetry continuation under a fresh `UUID` and arranges for its removal.
@@ -69,6 +70,37 @@ final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Se
 
     var motionStream: AsyncStream<MotionBatch> {
         AsyncStream { continuation in register(continuation) }
+    }
+
+    private func register(_ continuation: AsyncStream<StepCounterSample>.Continuation) {
+        let id = UUID()
+        lock.lock()
+        stepCounterContinuations[id] = continuation
+        lock.unlock()
+        continuation.onTermination = { [weak self] _ in
+            guard let self else { return }
+            self.lock.lock()
+            self.stepCounterContinuations[id] = nil
+            self.lock.unlock()
+        }
+    }
+
+    var stepCounterStream: AsyncStream<StepCounterSample> {
+        AsyncStream { continuation in register(continuation) }
+    }
+
+    /// How many readers the counter stream has — the second attachment `TrackStepsUseCase` makes.
+    var stepCounterSubscriberCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return stepCounterContinuations.count
+    }
+
+    /// Delivers one counter record to every attached reader.
+    func yieldStepCounter(_ sample: StepCounterSample) {
+        lock.lock()
+        let readers = Array(stepCounterContinuations.values)
+        lock.unlock()
+        for reader in readers { reader.yield(sample) }
     }
 
     /// The drain's stream, registered like the other two and **finished by `requestHistoricalSync`** —
@@ -154,7 +186,8 @@ final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Se
         historicalContinuations.removeAll()
         lock.unlock()
         for reader in readers { reader.finish() }
-        return HistoricalSyncOutcome(recordCount: 0, batchCount: 0, ending: .aborted)
+        return HistoricalSyncOutcome(
+            recordCount: 0, batchCount: 0, ending: .aborted, oldestRecord: nil, newestRecord: nil)
     }
 }
 
@@ -561,4 +594,43 @@ func motionBatch(startingAt start: Date, bumps: Int) -> MotionBatch {
         sampleIntervalSeconds: interval,
         accelerometerG: MotionAxes(x: x, y: still, z: still),
         gyroscopeDps: nil)
+}
+
+/// An in-memory `StepCounterStateStore`, so a use case under test never touches the developer's
+/// `UserDefaults`.
+///
+/// The runner already has this shape for a stored preference — the point is the same: a test that
+/// wrote to `.standard` would both pollute the machine and pass or fail on what was left there.
+final class InMemoryStepCounterStateStore: StepCounterStateStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var state: StepCounterState?
+
+    init(state: StepCounterState? = nil) { self.state = state }
+
+    func load() -> StepCounterState? {
+        lock.lock(); defer { lock.unlock() }
+        return state
+    }
+
+    func save(_ state: StepCounterState) {
+        lock.lock(); self.state = state; lock.unlock()
+    }
+
+    func clear() {
+        lock.lock(); state = nil; lock.unlock()
+    }
+}
+
+/// A live or banked counter record, for the two values the real decoder cannot supply in a fixture.
+func stepCounterSample(
+    at date: Date,
+    counter: UInt16,
+    activityClass: UInt8? = 1,
+    software: Bool = false
+) -> StepCounterSample {
+    StepCounterSample(
+        timestamp: date,
+        counter: counter,
+        activityClass: activityClass,
+        counterIsSoftware: software)
 }

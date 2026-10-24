@@ -349,7 +349,12 @@ enum HomeReceptiveInactivitiesTests {
                         biometricRepository: GRDBBiometricRepository(db: db)),
                     trackSteps: TrackStepsUseCase(
                         bleRepository: WhoopBLEDeviceRepositoryImpl(useMock: true),
-                        stepRepository: GRDBStepRepository(db: db)))
+                        stepRepository: GRDBStepRepository(db: db),
+                        stateStore: InMemoryStepCounterStateStore()),
+                    refreshStrain: fixtureRefreshStrain(
+                        strainRepository: GRDBStrainRepository(db: db),
+                        biometricRepository: EmptyBiometricStore(),
+                        userProfileRepository: GRDBUserProfileRepository(db: db)))
             }
 
             // The reader half: a row written straight to storage reaches the property the card draws

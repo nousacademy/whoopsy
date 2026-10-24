@@ -192,6 +192,6 @@ public struct HealthKitImporter: Sendable {
         guard let session = try? await sleepRepository.getSleepSession(for: day) else {
             return BaselineStatisticsMath.sleepPerformancePivot
         }
-        return Double(session.sleepPerformancePercentage) / 100.0
+        return Double(session.sleepSufficiencyPercentage) / 100.0
     }
 }

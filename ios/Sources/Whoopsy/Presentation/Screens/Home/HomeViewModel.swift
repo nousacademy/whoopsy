@@ -5,6 +5,15 @@ import SwiftUI
     public var recovery: RecoveryMetric?
     public var strain: StrainScore?
     public var sleep: SleepSession?
+
+    /// The composite sleep score Home's ring prints, or `nil` when the night cannot produce two terms.
+    ///
+    /// Read from the same `MetricWeek` the tiles and the week chart are built from — the week ends on
+    /// the selected day, so `days.last` is the anchor — which is what keeps this ring and the sleep
+    /// page's ring on one figure. It is not `sleep.sleepSufficiencyPercentage`: that ratio is the
+    /// `HOURS VS. NEEDED` row and the Recovery input.
+    public private(set) var sleepScore: Int?
+
     public var heartRate = 0
     public var isLoading = false
     public var errorMessage: String?
@@ -236,9 +245,18 @@ import SwiftUI
     /// "saved row is not a drawn one" failure this subscription exists to close.
     private let trackSteps: TrackStepsUseCase
 
+    /// The day's strain writer, read for the same one output `trackSteps` provides: rows it saves as
+    /// the day is scored.
+    ///
+    /// Handed in and required for `trackSteps`' reason — without it Home's ring would hold whatever
+    /// `strains` held when the day was tapped, and the ring is the figure the whole model exists to
+    /// move.
+    private let refreshStrain: RefreshStrainUseCase
+
     private var task: Task<Void, Never>?
     private var deviceTask: Task<Void, Never>?
     private var stepsTask: Task<Void, Never>?
+    private var strainTask: Task<Void, Never>?
 
     /// The day `load(for:)` last read, so a live write can be matched against the day on screen.
     private var loadedDay: Date?
@@ -246,6 +264,10 @@ import SwiftUI
     /// How many live writes for `loadedDay` have been folded in since the last `load`, which is what
     /// lets the load refuse to overwrite one it did not see.
     private var liveStepWrites = 0
+
+    /// The same counter for the day's strain, kept separate from the step one because the two writers
+    /// flush on different schedules and one must not be able to excuse the other's stale read.
+    private var liveStrainWrites = 0
 
     public init(
         recoveryRepository: any RecoveryRepository,
@@ -258,7 +280,8 @@ import SwiftUI
         analyzeStress: AnalyzeStressUseCase,
         manage: ManageBLEConnectionUseCase,
         streamUseCase: StreamBiometricsUseCase,
-        trackSteps: TrackStepsUseCase
+        trackSteps: TrackStepsUseCase,
+        refreshStrain: RefreshStrainUseCase
     ) {
         self.recoveryRepository = recoveryRepository
         self.sleepRepository = sleepRepository
@@ -270,6 +293,7 @@ import SwiftUI
         self.analyzeStress = analyzeStress
         self.manage = manage
         self.trackSteps = trackSteps
+        self.refreshStrain = refreshStrain
         self.streamUseCase = streamUseCase
     }
 
@@ -335,12 +359,42 @@ import SwiftUI
         steps = written.measuredStepCount
     }
 
+    /// Follows the day's Strain as `RefreshStrainUseCase` writes it.
+    ///
+    /// `observeSteps()`'s sibling and for its reason: `load(for:)` reads `strains` once per day
+    /// selection, and the day's score is rewritten as samples arrive — so without this the ring shows
+    /// whatever it read when the day was tapped, which on a morning open is `—` and stays `—`.
+    ///
+    /// Idempotent, on `observeDevice()`'s rule.
+    public func observeStrain() {
+        guard strainTask == nil else { return }
+        let stream = refreshStrain.strainUpdates
+        strainTask = Task { [weak self] in
+            for await written in stream {
+                guard !Task.isCancelled else { return }
+                self?.applyLiveStrain(written)
+            }
+        }
+    }
+
+    /// Folds one written row into the ring, if it belongs to the day on screen.
+    ///
+    /// A row for another day is dropped rather than queued: the screen draws one day, and yesterday's
+    /// score is not a stale version of today's. `liveStrainWrites` is bumped here and only here, so it
+    /// counts exactly the writes `load(for:)` could otherwise undo.
+    private func applyLiveStrain(_ written: StrainScore) {
+        guard let loadedDay, written.date.startOfDay == loadedDay else { return }
+        liveStrainWrites += 1
+        strain = written
+    }
+
     public func load(for date: Date) async {
         isLoading = true
         defer { isLoading = false }
 
         // Cleared first so a failure on one day does not outlive the day it describes.
         errorMessage = nil
+        sleepScore = nil
         let previousDay = Calendar.current.date(byAdding: .day, value: -1, to: date) ?? date
 
         // The day is recorded **before** the reads, so a step total written while they are in flight
@@ -351,6 +405,7 @@ import SwiftUI
         let day = date.startOfDay
         loadedDay = day
         let stepWritesBefore = liveStepWrites
+        let strainWritesBefore = liveStrainWrites
 
         do {
             // The VO₂ estimate's only non-per-day input, started with the other reads so it overlaps
@@ -383,19 +438,25 @@ import SwiftUI
             // for a day the strap never measured, which is a state it can be in and this is not.
             async let stepsToday = stepRepository.getStepCount(for: date)
             async let stepsYesterday = stepRepository.getStepCount(for: previousDay)
-            // Seven days ending on the selected one. The history window is inclusive at both ends and
-            // runs from `endingOn - days`, so these come back holding up to eight days; `MetricWeek`
-            // keeps the seven slots it was asked for and ignores the rest rather than being handed a
-            // window it has to trust.
+            // Seven days ending on the selected one, for the strain and recovery slots. The sleep
+            // read is wider — `MetricWeek.sleepScoreLookbackDays` — because each slot's composite
+            // needs four prior nights for its consistency term, and the oldest of the seven slots
+            // needs records from before the week. `MetricWeek` keeps the seven slots it was asked
+            // for and ignores the rest rather than being handed a window it has to trust.
             async let strainHistory = strainRepository.getStrainHistory(
                 days: MetricWeek.dayCount, endingOn: date)
             async let recoveryHistory = recoveryRepository.getRecoveryHistory(
                 days: MetricWeek.dayCount, endingOn: date)
             async let sleepHistory = sleepRepository.getSleepHistory(
-                days: MetricWeek.dayCount, endingOn: date)
+                days: MetricWeek.sleepScoreLookbackDays, endingOn: date)
 
             recovery = try await r
-            strain = try await s
+            let readStrain = try await s
+            // **The same yield the step read makes, one writer over.** `s` was started before the
+            // other reads and awaited here, so a score saved in that window is newer than this answer
+            // and has already been folded in by `applyLiveStrain`. Assigning would put the older
+            // figure back under a ring the user just watched move.
+            if liveStrainWrites == strainWritesBefore, loadedDay == day { strain = readStrain }
             sleep = try await sl
             previousDaySleep = try await slPrevious
             workouts = try await w
@@ -415,12 +476,15 @@ import SwiftUI
             // while this one was awaiting.
             if liveStepWrites == stepWritesBefore, loadedDay == day { steps = readSteps }
             previousDaySteps = try await stepsYesterday.flatMap(Self.measuredSteps)
+            let profile = try? await profileRead
             metricWeek = MetricWeek(
                 endingOn: date,
                 strain: try await strainHistory,
                 recovery: try await recoveryHistory,
                 sleep: try await sleepHistory,
-                maxHeartRate: (try? await profileRead)?.maxHeartRate)
+                maxHeartRate: profile?.maxHeartRate,
+                age: profile?.age)
+            sleepScore = metricWeek?.days.last?.sleepScore
         } catch {
             errorMessage = error.localizedDescription
         }

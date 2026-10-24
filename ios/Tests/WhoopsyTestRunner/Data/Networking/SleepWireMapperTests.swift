@@ -85,6 +85,28 @@ enum SleepWireMapperTests {
         assertTest(try SleepWireMapper.row(for: dto) == night,
                    "All fifteen fields and both stage segments survive row → wire → row")
 
+        // The wire's `sleepPerformance` is the sufficiency ratio, not the ring's composite. A future
+        // reader must not repoint it at `SleepScoreScoring`, because the backend and Recovery are both
+        // calibrated on the ratio's distribution.
+        let session = SleepSession(
+            date: day(-1),
+            startTime: instant(-28_800),
+            endTime: instant(-100),
+            targetSleepNeedSeconds: 28_800,
+            lightSleepSeconds: 14_400,
+            deepSleepSeconds: 5_400,
+            remSleepSeconds: 7_200,
+            awakeSeconds: 1_800,
+            sleepConsistency: 71)
+        let sessionRow = SleepSyncRow(session, source: nil)
+        assertTest(
+            sessionRow.sleepPerformance == Double(session.sleepSufficiencyPercentage),
+            "The wire field is the sufficiency ratio")
+        assertTest(
+            sessionRow.sleepPerformance
+                != Double(SleepScoreScoring.score(for: session, consistency: 71, age: nil)?.value ?? -1),
+            "…not the ring's composite, which is a different figure for this night")
+
         // MARK: The timeline is opaque, and an empty one is an absence
 
         // `GRDBSleepRepository.saveSleepSession` writes `nil` for an empty timeline, on the argument that

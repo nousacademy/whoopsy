@@ -25,9 +25,11 @@ public final class GRDBSleepRepository: SleepRepository, Sendable {
             date: session.date,
             startTime: session.startTime,
             endTime: session.endTime,
-            // Derived from the session rather than a literal: the column is not read back today, but
-            // a fixed 0.85 lying in the table is a fabricated measurement waiting for a reader.
-            sleepPerformance: Double(session.sleepPerformancePercentage) / 100.0,
+            // The sufficiency component, derived from the session rather than a literal: the column
+            // is not read back today, but a fixed 0.85 lying in the table is a fabricated
+            // measurement waiting for a reader. It carries the ratio, **not** the ring's composite —
+            // do not repoint it, because the backend and Recovery are calibrated on this one.
+            sleepPerformance: Double(session.sleepSufficiencyPercentage) / 100.0,
             totalSleepNeeded: session.targetSleepNeedSeconds,
             lightSleep: session.lightSleepSeconds,
             deepSleep: session.deepSleepSeconds,

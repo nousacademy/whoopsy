@@ -84,7 +84,13 @@ extension WorkoutRecord {
             activityName: row.activityName,
             hrZonePercents: row.hrZonePercents,
             steps: row.steps,
-            offlineRegionID: row.offlineRegionID
+            offlineRegionID: row.offlineRegionID,
+            // **`nil`, and it does not mean *clear*.** A rating is user-authored data on this phone
+            // and the wire carries no field for it — the treatment `offlineRegionCenter` gets one
+            // column over. `LocalDatabaseManager.writeWorkout` keeps the stored value when this is
+            // nil, because there is no path that clears a rating and a synced row that happened to
+            // arrive without one must not silently drop it.
+            rpe: nil
         )
     }
 }

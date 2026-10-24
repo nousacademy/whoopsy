@@ -40,7 +40,13 @@ public struct WeekBarSeries: Equatable, Sendable {
         /// Every bar in one colour. The quantity *is* banded — see `gridEdges` — but the band is not
         /// what this chart is about, and colouring by it would say the bars are a grade rather than a
         /// week of hours. The gridlines carry the thresholds instead.
-        case sleepPerformance
+        ///
+        /// Used by the Recovery page, whose chart stays the `asleep ÷ need` ratio.
+        case sleepSufficiency
+        /// The same one-colour treatment for `SleepScoreScoring`'s composite, used by the sleep page
+        /// so its `SLEEP PERFORMANCE` chart matches the ring above it. The edges are the composite's
+        /// own; the colour token is the same.
+        case sleepScore
     }
 
     /// The plotted days, in slot order.
@@ -102,19 +108,39 @@ public struct WeekBarSeries: Equatable, Sendable {
     /// drawn while the other is absent.
     ///
     /// Nil covers a week with no classified night in it. It does **not** cover a night whose need was
-    /// zero, which `SleepSession.sleepPerformancePercentage` answers with a hard `100` — see
-    /// `MetricDay.sleepPerformance` for why that path is unreachable on stored nights and why the
+    /// zero, which `SleepSession.sleepSufficiencyPercentage` answers with a hard `100` — see
+    /// `MetricDay.sleepSufficiency` for why that path is unreachable on stored nights and why the
     /// honest handling is to leave it ungated rather than to drop a bar the row above prints.
-    public init?(sleepPerformanceWeek week: MetricWeek) {
+    public init?(sleepSufficiencyWeek week: MetricWeek) {
         let points = week.days.enumerated().compactMap { slot, day -> Point? in
-            guard let performance = day.sleepPerformance else { return nil }
-            return Point(slot: slot, value: performance)
+            guard let sufficiency = day.sleepSufficiency else { return nil }
+            return Point(slot: slot, value: sufficiency)
         }
         guard !points.isEmpty else { return nil }
 
         self.points = points
-        self.palette = .sleepPerformance
-        self.gridEdges = Self.sleepPerformanceTierEdges
+        self.palette = .sleepSufficiency
+        self.gridEdges = Self.sleepSufficiencyTierEdges
+    }
+
+    /// The week's composite sleep scores, one bar per night that produced one.
+    ///
+    /// This is the sleep detail page's chart; it reads `MetricDay.sleepScore`, the same field the
+    /// ring above it reads, so the bars and the ring are one quantity. The Recovery page keeps
+    /// `sleepSufficiencyWeek` — its chart and its row stay the ratio, which is the Recovery input.
+    ///
+    /// `nil` for a week with no scored night. A night with fewer than two composite terms is simply
+    /// absent from the bars, the same absence `MetricDay.sleepScore` records.
+    public init?(sleepScoreWeek week: MetricWeek) {
+        let points = week.days.enumerated().compactMap { slot, day -> Point? in
+            guard let score = day.sleepScore else { return nil }
+            return Point(slot: slot, value: score)
+        }
+        guard !points.isEmpty else { return nil }
+
+        self.points = points
+        self.palette = .sleepScore
+        self.gridEdges = Self.sleepScoreTierEdges
     }
 
     /// The week in one sentence: how many of its columns carry a bar, and the span they cover.
@@ -154,15 +180,26 @@ public struct WeekBarSeries: Equatable, Sendable {
         Double(RecoveryMetric.RecoveryState.greenRange.lowerBound) / 100,
     ]
 
-    /// The sleep chart's two interior lines: the Poor/Sufficient and Sufficient/Optimal boundaries.
+    /// The Recovery page's sleep chart: the Poor/Sufficient and Sufficient/Optimal boundaries for
+    /// `asleep ÷ need`.
     ///
     /// Read through `SleepBand.Metric.hoursVsNeeded`'s own bounds rather than typed as `0.70` and
     /// `0.95`, for `recoveryTierEdges`' reason exactly: the same page colours a row by these numbers,
     /// and a chart gridding at 70/95 while the row banded at 65/90 would be two boundaries for one
-    /// quantity. Note the metric is named explicitly — `SleepBand` carries three different pairs and
+    /// quantity. Note the metric is named explicitly — `SleepBand` carries several different pairs and
     /// the scale is shared, so a bare `SleepBand.band(for:)` call elsewhere is not enough to say which.
-    static let sleepPerformanceTierEdges: [Double] = [
+    static let sleepSufficiencyTierEdges: [Double] = [
         SleepBand.Metric.hoursVsNeeded.sufficientLowerBound / 100,
         SleepBand.Metric.hoursVsNeeded.optimalLowerBound / 100,
+    ]
+
+    /// The sleep page's chart: the same two boundaries for the composite.
+    ///
+    /// Read through `.sleepScore`'s bounds, which are this app's calibration rather than WHOOP's — the
+    /// ring above the chart bands on the same pair, so the two cannot disagree about a night near an
+    /// edge.
+    static let sleepScoreTierEdges: [Double] = [
+        SleepBand.Metric.sleepScore.sufficientLowerBound / 100,
+        SleepBand.Metric.sleepScore.optimalLowerBound / 100,
     ]
 }

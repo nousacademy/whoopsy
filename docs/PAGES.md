@@ -234,3 +234,26 @@ build them.
 
 
 **The rows are not the same kind of thing, and `ActivityMenu.Entry.Action` is what records it.** The action is a case and not a `() -> Void`, for the reason the type's doc comment gives: a closure stored in a static list cannot be asserted, cannot be `Equatable`, and can capture anything. §18 asserts that **exactly one** row carries `.startSession`, and `HomeDashboardView`'s switch over the case is exhaustive, so a fourth action is a compile error at the one call site rather than a silent no-op. **A second input rides beside it as a second case-shaped enum, `ActivityMenu.Recording`, and it is what makes the availability rule assertable rather than a read inside a `body`.** The three cases carry the three answers the screen can be in — `none`, `activity`, `fast` — and the asymmetry between the last two is the user's rule rather than an implementation detail: `.activity` withholds `START ACTIVITY`, `.fast` leaves the list byte-identical to `.none`. Three cases rather than a `Bool` for `Recording`'s own reason, which is `ActivityFigure`'s: a fast and an activity are not two spellings of "busy", and a single flag could not hold both answers. The menu rows are anchored to the `+` by a `PreferenceKey` rather than a `padding(.top, N)` constant, because the button's y moves with the top bar's height — `ActivityMenuAnchorKey` mirrors `RingsBottomKey` and obeys the same two rules (a `static let` default, and no `@State` written by the transform).
+
+### A session ends in two writes, and the second one is the question
+
+`LiveSessionView`'s `END` used to write a row and pop. It now writes the row, then asks one question —
+*how hard did that feel?* — in a sheet over the page, and pops when the sheet closes. **The order is
+the whole decision**: `LiveSessionUseCase.end()` stamps `endedAt` at the press and saves, and only
+then does `SessionRatingPrompt` offer five words. Asking first would hold the session open for however
+long the sheet is up, and the recorded window would include the time spent rating it — a session that
+grew while nobody was moving. So `rate(_:for:)` is a **second write of the same session**, with the
+rating added; SKIP writes nothing and leaves it unrated, which is honest rather than a zero.
+
+**Five words, not a slider.** `WorkoutRPE.Bucket` maps `EASY/MODERATE/HARD/VERY HARD/MAX` to
+`2/4/6/8/10`, and the control draws the short labels because `SegmentedPillControl` gives five
+segments an equal share of the phone's width and does not shrink its title — `VERY HARD` runs into
+its neighbours at ~70 pt. The detail page's row prints the long word beside the figure.
+
+**The same five words appear in `EDIT ACTIVITY`, and that is not a duplicate route to the same
+answer.** The prompt exists at the one moment the user remembers the session; the sheet exists so a
+rating can be added later or corrected, on a session the prompt was skipped for and on every imported
+session (which never had a prompt). There is deliberately **no clear control**: `nil` means *never
+rated* and there is no column path that means *unrate*, so re-rating is how an answer changes. The
+detail row is drawn only when a rating exists — an unrated session shows nothing rather than a dash,
+because the absence is the user's and not a measurement that failed to load.

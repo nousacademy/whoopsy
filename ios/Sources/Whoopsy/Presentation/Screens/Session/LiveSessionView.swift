@@ -72,6 +72,13 @@ public struct LiveSessionView: View {
     /// row. This flag is what keeps the button from being tappable during that window.
     @State private var isEnding = false
 
+    /// The session END wrote and the rating prompt is asking about.
+    ///
+    /// **The prompt is a second step, not a field on the session.** `end()` has already stamped
+    /// `endedAt` and saved the row by the time this is set, so the recorded window excludes every second
+    /// the user spends answering — which is the whole reason the question is asked afterwards.
+    @State private var pendingRating: WorkoutSession?
+
     public init(
         useCase: LiveSessionUseCase,
         offlineMaps: any OfflineMapRendering,
@@ -118,6 +125,25 @@ public struct LiveSessionView: View {
         // a second session, and must not be a no-op either when the first `start()` never landed.
         .task { await useCase.start() }
         .preferredColorScheme(.dark)
+        // The rating prompt, over the session page rather than after the pop — the page is still here
+        // because END no longer dismisses on its own. A fast is never rated: it measures nothing, so
+        // there is no exertion to ask about.
+        .sheet(item: $pendingRating) { workout in
+            SessionRatingPrompt(
+                onRate: { rpe in
+                    Task {
+                        let rated = await useCase.rate(rpe, for: workout)
+                        pendingRating = nil
+                        onEnded(rated ?? workout)
+                        dismiss()
+                    }
+                },
+                onSkip: {
+                    pendingRating = nil
+                    onEnded(workout)
+                    dismiss()
+                })
+        }
     }
 
     // MARK: - Header
@@ -473,8 +499,15 @@ public struct LiveSessionView: View {
                 // **before** the pop, so the screen behind this one is already drawing it when the
                 // dismissal animation finishes. `nil` is a session that measured nothing — the
                 // documented absence rule, not a save that failed.
-                if let summary = await useCase.end() { onEnded(summary.workout) }
-                dismiss()
+                if let summary = await useCase.end() {
+                    // **The prompt, and then the pop.** `end()` is unchanged: it stamped `endedAt` at
+                    // the press, so the recorded window is the session and not the session plus a
+                    // question. Answering writes the rating onto the same row; skipping dismisses
+                    // without a second write. A measured session is the only one that gets here.
+                    pendingRating = summary.workout
+                } else {
+                    dismiss()
+                }
             }
         } label: {
             Text("END")

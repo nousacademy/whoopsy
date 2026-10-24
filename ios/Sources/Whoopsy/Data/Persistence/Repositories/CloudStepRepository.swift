@@ -12,6 +12,9 @@ public struct CloudStepRepository: StepRepository {
     private let local: any StepRepository
     private let cloud: any CloudSync
     private let settingsStore: any SyncSettingsRepository
+    /// Injected so the runner is not a function of the hour it runs. `DIContainer` passes
+    /// `SyncSchedule.isOpen`; the default keeps every test and preview open.
+    private let isCallWindowOpen: @Sendable () -> Bool
     private let status: any SyncStatus
     private let calendar: Calendar
 
@@ -20,13 +23,15 @@ public struct CloudStepRepository: StepRepository {
         cloud: any CloudSync,
         settingsStore: any SyncSettingsRepository,
         status: any SyncStatus,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        isCallWindowOpen: @escaping @Sendable () -> Bool = { true }
     ) {
         self.local = local
         self.cloud = cloud
         self.settingsStore = settingsStore
         self.status = status
         self.calendar = calendar
+        self.isCallWindowOpen = isCallWindowOpen
     }
 
     public func getStepCount(for date: Date) async throws -> StepCount? {
@@ -53,16 +58,11 @@ public struct CloudStepRepository: StepRepository {
         return Self.merged(cloud: fetched, local: stored)
     }
 
+    /// **Local only, and this is the row that made the rule necessary.** A step count is saved once
+    /// a second while the strap moves; mirroring each one is what exhausted the call budget. The
+    /// daily run writes the database copy. See `SyncSchedule`.
     public func saveStepCount(_ stepCount: StepCount) async throws {
         try await local.saveStepCount(stepCount)
-        guard await storesInCloud() else { return }
-        do {
-            try await cloud.writeStepCount(StepCountSyncRow(stepCount))
-            await status.clear(stepCount.date)
-        } catch let error as CloudSyncError {
-            // A failed push never fails the local write, on `CloudSleepRepository`'s argument.
-            guard case .unreachable = error else { throw error }
-        }
     }
 
     /// The two answers as one ascending window, with the phone's day winning on a day both hold.
@@ -74,6 +74,7 @@ public struct CloudStepRepository: StepRepository {
     }
 
     private func storesInCloud() async -> Bool {
-        await settingsStore.load().destination == .cloud
+        guard await settingsStore.load().destination == .cloud else { return false }
+        return isCallWindowOpen()
     }
 }

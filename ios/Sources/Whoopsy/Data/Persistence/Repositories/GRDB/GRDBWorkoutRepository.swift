@@ -34,7 +34,8 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
             // Two columns, one value. `OfflineMapCenter`'s pair travels together, so writing one
             // without the other would make the read side's both-non-nil rule silently drop it.
             offlineRegionCenterLatitude: workout.offlineRegionCenter?.latitude,
-            offlineRegionCenterLongitude: workout.offlineRegionCenter?.longitude
+            offlineRegionCenterLongitude: workout.offlineRegionCenter?.longitude,
+            rpe: workout.rpe
         )
         let route = workout.route.map {
             WorkoutRoutePointRecord(
@@ -146,7 +147,8 @@ public final class GRDBWorkoutRepository: WorkoutRepository, Sendable {
                     offlineRegionID: record.offlineRegionID,
                     // Both columns or no centre: one column alone is not a point, and `v23` only
                     // ever writes the pair, so a lone value is a row from a probe or a hand edit.
-                    offlineRegionCenter: Self.makeOfflineRegionCenter(from: record)
+                    offlineRegionCenter: Self.makeOfflineRegionCenter(from: record),
+                    rpe: record.rpe
                 )
             )
         }

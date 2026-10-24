@@ -79,6 +79,7 @@ interface StrainWire {
   maxHeartRate: number;
   hasMeasurement: boolean;
   source: string | null;
+  algorithm: string | null;
 }
 
 interface ErrorWire {
@@ -101,6 +102,7 @@ function measuredDay(overrides: Partial<Omit<StrainWire, "date">> = {}): Omit<St
     maxHeartRate: 151,
     hasMeasurement: true,
     source: null,
+    algorithm: "hr-motion-v2",
     ...overrides,
   };
 }
@@ -311,6 +313,77 @@ describe("NULL is not 0", () => {
     // producer" on one column and no reader could tell which was meant.
     expect(response.status).toBe(400);
     expect((await response.json() as ErrorWire).error.code).toBe("invalid_request");
+  });
+
+  it("carries the algorithm the client computed the row with", async () => {
+    await put("2026-08-24", measuredDay({ algorithm: "hr-zone-v1" }));
+
+    const stored = await day(ALICE, "2026-08-24");
+    // The version is the *client's* statement: this Worker cannot re-derive it, and the whole reason
+    // the field exists is that a stored score without its formula cannot be explained later.
+    expect(stored.algorithm).toBe("hr-zone-v1");
+    expect(Object.hasOwn(stored, "algorithm")).toBe(true);
+  });
+
+  it("stores a missing algorithm as null rather than inventing one", async () => {
+    await put("2026-08-24", measuredDay({ algorithm: null }));
+
+    // An older client does not send the field. Guessing the current version here would label that
+    // client's rows with a formula they demonstrably did not run.
+    expect((await day(ALICE, "2026-08-24")).algorithm).toBeNull();
+  });
+
+  it("accepts a body from a client older than the field", async () => {
+    // The key absent, not present-and-null: that is what a build before the field sends, and refusing
+    // it would break every older client on the first upload after this deployment.
+    const older: Record<string, unknown> = { ...measuredDay() };
+    delete older.algorithm;
+    const response = await put("2026-08-25", older);
+
+    expect(response.status).toBe(200);
+    expect((await response.json() as StrainWire).algorithm).toBeNull();
+  });
+
+  it("refuses an empty algorithm as it refuses an empty provenance", async () => {
+    const response = await put("2026-08-24", measuredDay({ algorithm: "" }));
+
+    expect(response.status).toBe(400);
+    expect((await response.json() as ErrorWire).error.code).toBe("invalid_request");
+  });
+
+  it("documents every algorithm in its own database", async () => {
+    // The reference table, read straight from D1. It exposes no route — it is documentation that
+    // travels with the data, and this is the assertion that the seed survived the migration runner.
+    const { results } = await env.DB.prepare(
+      "SELECT version FROM strain_algorithms ORDER BY version",
+    ).all<{ version: string }>();
+
+    expect(results.map((row) => row.version).sort()).toEqual([
+      "hr-motion-v2",
+      "hr-zone-v1",
+      "whoop-export",
+    ]);
+  });
+
+  it("writes one catalogue row per version with its formula and parameters", async () => {
+    const { results } = await env.DB.prepare(
+      "SELECT version, formula, parameters FROM strain_algorithms",
+    ).all<{ version: string; formula: string; parameters: string }>();
+
+    expect(results.length).toBe(3);
+    for (const row of results) {
+      expect(row.formula.length).toBeGreaterThan(0);
+      expect(row.parameters.length).toBeGreaterThan(0);
+    }
+    // The current model's constants are the ones the app's `StrainAccumulatorMath` and
+    // `MotionLoadMath` hold, recorded here so the database can explain a row without the source.
+    const motion = results.find((row) => row.version === "hr-motion-v2");
+    const parameters = JSON.parse(motion?.parameters ?? "{}") as {
+      dayStrainScalingFactor?: number;
+      motionCombination?: string;
+    };
+    expect(parameters.dayStrainScalingFactor).toBeCloseTo(0.00001085, 12);
+    expect(parameters.motionCombination).toBe("per-30s-window-max");
   });
 
   it("refuses a body that carries a date of its own rather than stripping it", async () => {

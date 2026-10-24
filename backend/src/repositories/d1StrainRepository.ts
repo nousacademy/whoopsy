@@ -40,6 +40,7 @@ interface StrainRow {
   readonly max_heart_rate: number;
   readonly has_measurement: number;
   readonly source: string | null;
+  readonly algorithm: string | null;
 }
 
 /**
@@ -56,6 +57,7 @@ const COLUMNS = [
   "max_heart_rate",
   "has_measurement",
   "source",
+  "algorithm",
 ].join(", ");
 
 /**
@@ -82,6 +84,7 @@ function toStrain(row: StrainRow): Strain {
     maxHeartRate: row.max_heart_rate,
     hasMeasurement: parseHasMeasurement(row.has_measurement),
     source: row.source,
+    algorithm: row.algorithm,
   };
 }
 
@@ -108,14 +111,15 @@ function parseHasMeasurement(value: number): boolean {
 
 const UPSERT = `
   INSERT INTO strains (${COLUMNS})
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT (user_id, date) DO UPDATE SET
     strain_score        = excluded.strain_score,
     kilojoules          = excluded.kilojoules,
     average_heart_rate  = excluded.average_heart_rate,
     max_heart_rate      = excluded.max_heart_rate,
     has_measurement     = excluded.has_measurement,
-    source              = excluded.source
+    source              = excluded.source,
+    algorithm           = excluded.algorithm
 `;
 
 const SELECT_DAY = `SELECT ${COLUMNS} FROM strains WHERE user_id = ? AND date = ?`;
@@ -242,5 +246,6 @@ function bindings(strain: Strain): (string | number | null)[] {
     strain.maxHeartRate,
     strain.hasMeasurement ? 1 : 0,
     strain.source,
+    strain.algorithm,
   ];
 }
