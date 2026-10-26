@@ -101,6 +101,41 @@ public final class AnalyzeSleepUseCase: Sendable {
     /// that never came off the charger produced a plausible-looking, permanently stored 8h session
     /// that every later reader (sleep debt, sleep performance, the importer's precedence check)
     /// treated as a measurement. An absent night has to stay absent.
+    /// The newest instant of input this app holds for a night's window, or `nil` with none.
+    ///
+    /// **The watermark the sleep page reads before deciding to re-classify**, and the reason it no
+    /// longer recomputes on every open: a drain can deliver the rest of a night after its row was
+    /// written, so "is there input the stored night has not seen?" is a question two indexed reads can
+    /// answer. It is deliberately the same pair `RefreshStrainUseCase` asks of a day.
+    public func inputEdge(for morningDate: Date = Date()) async throws -> Date? {
+        let window = Self.readWindow(for: morningDate, calendar: Calendar.current)
+        var edge: Date?
+        if let sample = try await biometricRepository.getLatestSampleTimestamp(
+            from: window.from, to: window.to) {
+            edge = sample
+        }
+        if let epoch = try await motionRepository.getLatestMotionEpoch(
+            from: window.from, to: window.to) {
+            let end = epoch.start.addingTimeInterval(
+                MotionLoadMath.coveredSeconds(sampleCount: epoch.sampleCount))
+            if end > (edge ?? .distantPast) { edge = end }
+        }
+        return edge
+    }
+
+    /// The newest instant the classified arrays actually reach.
+    ///
+    /// Static and taking its two arrays so `execute` records what it *saw* rather than what a second
+    /// read would say a moment later — the same reason `StrainDayMath` returns its own `scoredThrough`
+    /// rather than letting the caller look one up.
+    public static func inputEdge(samples: [BiometricSample], epochs: [MotionEpoch]) -> Date? {
+        var edge = samples.last?.timestamp
+        if let epochEnd = epochs.map(\.end).max(), epochEnd > (edge ?? .distantPast) {
+            edge = epochEnd
+        }
+        return edge
+    }
+
     public func execute(for morningDate: Date = Date()) async throws -> SleepSession? {
         let profile = try await userProfileRepository.getUserProfile()
 
@@ -413,7 +448,13 @@ public final class AnalyzeSleepUseCase: Sendable {
             disturbanceCount: disturbances,
             respiratoryRate: respiratoryRate,
             sleepDebtSeconds: sleepDebtSeconds,
-            sleepStages: stages
+            sleepStages: stages,
+            // **The decision records itself.** The version is what the sleep page compares against to
+            // decide whether a re-classification is owed, and the watermark is the newest input this
+            // run actually saw — both taken from the arrays it just classified rather than re-read,
+            // so they cannot describe a different window than the night does.
+            algorithm: .current,
+            scoredThrough: Self.inputEdge(samples: samples, epochs: motionEpochs)
         )
 
         try await sleepRepository.saveSleepSession(session)

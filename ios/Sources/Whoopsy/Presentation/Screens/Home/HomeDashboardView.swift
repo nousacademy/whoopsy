@@ -1010,9 +1010,13 @@ public struct HomeDashboardView: View {
             // three-way `linkColor` rule) and **how big** it is, because the badge is read at 12 pt against a
             // 7 pt dot and the device page badges a 13 pt plus on a 22 pt mark.
             StrapGlyph(size: 12, surface: Theme.homeCard) {
-                Circle()
-                    .fill(linkState.linkColor)
-                    .frame(width: 7, height: 7)
+                // The dot and the charging bolt are one component, because the rule between them is
+                // not styling: a bolt may only stand in for a **linked** strap's dot, and that is
+                // asserted in §14 rather than left to two screens to remember.
+                StrapLinkBadge(
+                    state: linkState,
+                    isCharging: viewModel.device?.isCharging == true,
+                    surface: Theme.homeCard)
             }
             // **A dash rather than an empty slot, and the history matters.** The slot used to hold
             // `ActivityFigure.dash`; the user read that dash as a battery *bar* (measured: 9.7 × 1.3 pt
@@ -1056,7 +1060,9 @@ public struct HomeDashboardView: View {
 
     private var connectionLabel: String {
         switch viewModel.device?.connectionState {
-        case .connected: return "Strap connected, battery \(viewModel.device?.batteryPercentage ?? 0) percent"
+        case .connected:
+            let charging = viewModel.device?.isCharging == true ? ", charging" : ""
+            return "Strap connected\(charging), battery \(viewModel.device?.batteryPercentage ?? 0) percent"
         case .scanning: return "Scanning for strap"
         case .connecting: return "Connecting to strap"
         case .syncing: return "Syncing strap history"

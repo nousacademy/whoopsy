@@ -6,7 +6,7 @@ import type { Env } from "./env";
  *
  * This file exists because the contract has **one source and two readings**: the Worker serves the
  * document live at `GET /openapi.json`, and `scripts/export-openapi.ts` writes the same document to
- * `shared/openapi.json` for the iOS client to read. Both call `getOpenAPI31Document(openApiConfig)`
+ * `shared/`, one file per resource, for the iOS client to read. Both call `getOpenAPI31Document(openApiConfig)`
  * with the config below and both serialise it with `serialiseOpenApiDocument`, so the two readings
  * cannot differ — not in the paths, and not in the pretty-printing either.
  *
@@ -23,8 +23,8 @@ import type { Env } from "./env";
  *
  * **The prose lives here and nowhere else.** The document's `info` block is the one part of the
  * contract that is not generated from the routes, and a copy of it in the script would be a second
- * source for the same sentences. `shared/openapi.json`'s checked-in description and this one are the
- * same string because the file is written from this config, not because someone kept them in step.
+ * source for the same sentences. Each slice's checked-in description and this one are the same
+ * string because the files are written from this config, not because someone kept them in step.
  * `info.version` is the one field in that block that is not prose: it is `API_VERSION` below.
  *
  * **Nothing here may import from `routes/`.** `routes/health.ts` reads `SERVICE_NAME` and `API_VERSION`
@@ -71,8 +71,8 @@ type OpenApiDocumentConfig = Parameters<
  * OpenAPI 3.1 defines a **relative** `servers[].url` as resolving against the location the document
  * itself was served from, so `/` reads as *the origin this document was fetched from* — which is
  * exactly right for an API whose contract is committed and whose deployments are not. A hostname
- * would be one operator's subdomain, and `shared/openapi.json` is read by everyone who opens the
- * repository and rewritten by everyone who runs `make backend-check`.
+ * would be one operator's subdomain, and the files under `shared/` are read by everyone who opens
+ * the repository and rewritten by everyone who runs `make backend-check`.
  *
  * It is a **constant rather than a default somebody may override**, and that is the whole point: an
  * env var a clone could set would put a hostname back into that file, which is the one thing this
@@ -176,15 +176,15 @@ export function openApiConfig(origin: string): OpenApiDocumentConfig {
  * The one way this document becomes text.
  *
  * **There is deliberately no second one.** `app.doc31()` exists and would serve the document in a
- * line, but it serialises compactly — one long line — while `shared/openapi.json` is a reviewed,
- * committed, diffed file that has to be readable and has to produce a small diff when one route
+ * line, but it serialises compactly — one long line — while the files under `shared/` are reviewed,
+ * committed, diffed files that have to be readable and has to produce a small diff when one route
  * changes. A route mounted through `doc31` would therefore be a second serialiser, and the served
  * document and the checked-in one would stop being the same bytes the moment anyone used it. So the
  * server handler and the export script both call this.
  *
  * The trailing newline is not cosmetic: it is what stops `git diff` from reporting `\ No newline at
- * end of file` on every regeneration, and what lets the shell gate (`curl … | diff - shared/openapi.json`)
- * compare two files that both end the way a text file should.
+ * end of file` on every regeneration, and what lets a generated slice and the served document both
+ * end the way a text file should.
  */
 export function serialiseOpenApiDocument(document: unknown): string {
   return `${JSON.stringify(document, null, 2)}\n`;

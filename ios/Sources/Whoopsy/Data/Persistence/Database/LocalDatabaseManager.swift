@@ -963,6 +963,34 @@ public actor LocalDatabaseManager {
                 to: WorkoutRecord.databaseTableName, columns: [("rpe", .integer)], in: db)
         }
 
+        // **What a night was classified by, and from how much input.** A sleep row is a decision this
+        // app made rather than a reading, so without this pair the only way to know whether a stored
+        // night met the current stager was to recompute it — which the sleep page did on every open,
+        // and which could answer "no night" over an unfinished drain and delete a real row. The two
+        // columns are `strains.algorithm` and `strains.scoredThrough` applied to the other decision
+        // table; see `SleepAlgorithm`.
+        //
+        // **The backfill names the imported nights and leaves the rest NULL.** `whoop_export` is
+        // WHOOP's own night, never reclassified; a NULL is a row from before this column and is
+        // answered by one re-classification, which then writes the version. An app-classified row
+        // cannot be labelled after the fact — the version it was computed under is exactly what
+        // nobody recorded — so guessing `stager-v1` for it would be the fabricated provenance this
+        // column exists to make impossible.
+        migrator.registerMigration("v37_sleep_provenance") { db in
+            try Self.addMissingColumns(
+                to: SleepRecord.databaseTableName,
+                // **`scored_through`, not `scoredThrough`.** Unlike `StrainRecord`, `SleepRecord`
+                // declares `CodingKeys`, so its column names are the snake_case spellings it maps to;
+                // a camelCase column here would be created and then never written — the insert names
+                // `scored_through` and fails with `no such column`, at launch, on every install.
+                columns: [("algorithm", .text), ("scored_through", .datetime)],
+                in: db)
+            try db.execute(sql: """
+                UPDATE \(SleepRecord.databaseTableName) SET algorithm = ?
+                WHERE source = ?
+                """, arguments: [SleepAlgorithm.whoopExport.rawValue, WhoopExportImporter.sourceLabel])
+        }
+
         try migrator.migrate(queue)
     }
 

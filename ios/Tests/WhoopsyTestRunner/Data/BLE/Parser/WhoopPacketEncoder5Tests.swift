@@ -201,5 +201,103 @@ enum WhoopPacketEncoder5Tests {
                 && WhoopCommandFrames.hapticsPattern(profile: .whoop5, seq: 0x30, pattern: 2, loops: 0) == nil,
             "A zero loop count is refused on both: `overallLoop = loops − 1` would underflow to 255 and "
                 + "ask for 256 plays where the caller asked for none")
+
+        // ---- 0x9A: the one opcode that is in no table and has a builder of its own ----
+        //
+        // `WhoopProtocolProfileTests` sweeps both opcode tables for 0x9A and fails if it appears; this
+        // block is the other half — the deliberate tap, and the only path to the byte. The two are
+        // meant to be read together: the sweep proves nothing sends it by accident, and this proves
+        // the one thing that sends it on purpose builds the body the reference names.
+        let persistentOn = WhoopCommandFrames.persistentR21(
+            profile: .whoop5, seq: 0x40, enabled: true)
+        let persistentOff = WhoopCommandFrames.persistentR21(
+            profile: .whoop5, seq: 0x41, enabled: false)
+        assertTest(
+            persistentOn != nil && persistentOff != nil,
+            "The 5.0 frames the persistent-recording toggle")
+        if let persistentOn, let persistentOff {
+            assertTest(
+                persistentOn[10] == 0x9A && persistentOff[10] == 0x9A,
+                "…with opcode 0x9A at the 5.0's inner cmd byte, frame 10")
+            assertTest(
+                Array(persistentOn[11..<13]) == [0x01, 0x01]
+                    && Array(persistentOff[11..<13]) == [0x01, 0x00],
+                "…and a revision-1 body `[01, state]`: on is `[01, 01]`, the revert is `[01, 00]`")
+            let decodedOn = decoder.decodeProprietaryFrame(data: Data(persistentOn), profile: .whoop5)
+            assertTest(
+                decodedOn?.cmd == 0x9A
+                    && Array((decodedOn?.payload ?? Data()).prefix(2)) == [0x01, 0x01],
+                "…which round-trips through the real decoder, so the body is where a reader of the "
+                    + "frame will find it")
+        }
+        assertTest(
+            WhoopCommandFrames.persistentR21(profile: .whoop4, seq: 0x40, enabled: true) == nil,
+            "The 4.0 is refused: its reference lists the byte, but no body has been captured for that "
+                + "envelope and the two command bodies are not interchangeable")
+        assertTest(
+            WhoopCommandFrames.persistentR21(profile: .whoop5MG, seq: 0x40, enabled: true) != nil,
+            "…while the MG shares the 5.0's envelope and is accepted")
+
+        // ---- The advertising name: two generations, two bodies, one limit ----
+
+        // `SET_ADVERTISING_NAME` is how a strap is renamed at all — GAP's `0x2A00` is hidden from
+        // every third-party app, so the name is a proprietary command. The two generations take
+        // different bodies and the same 15 bytes, and neither write is confirmed by the strap.
+        let named = WhoopCommandFrames.setAdvertisingName(
+            profile: .whoop5, seq: 0x50, name: "Alex WHOOP")
+        let name5 = Array("Alex WHOOP".utf8)
+        assertTest(
+            named.map { Array($0[10..<(13 + name5.count)]) } == [0x8C, 0x01, 0x0A] + name5,
+            "A 5.0 sends **ID 140** with `[revision=1][length][name…]` — the length in bytes and the "
+                + "revision byte first (\(named.map { Array($0[10..<(13 + name5.count)]) } ?? []))")
+        let namedFour = WhoopCommandFrames.setAdvertisingName(
+            profile: .whoop4, seq: 0x50, name: "Alex")
+        assertTest(
+            namedFour.map { $0[6] } == 0x4D
+                && namedFour.map { Array($0[7..<25]) } == [0x00, 0x00]
+                    + Array("Alex".utf8) + Array(repeating: 0, count: 12),
+            "…and a 4.0 sends **ID 77** with two reserved bytes then a NUL-terminated 16-byte field — "
+                + "a different body under the other envelope, not the same one renumbered")
+
+        assertTest(
+            WhoopCommandFrames.clampedAdvertisingName(String(repeating: "a", count: 20)).utf8.count == 15,
+            "A name longer than 15 bytes is clamped, not refused: the strap stores 15 and the rest is "
+                + "silently dropped, so the app must drop it deliberately")
+        assertTest(
+            WhoopCommandFrames.clampedAdvertisingName(String(repeating: "é", count: 8)).utf8.count == 14,
+            "…and the clamp is on a **scalar boundary**: eight `é` are sixteen UTF-8 bytes, and cutting "
+                + "the eighth would store half a character the strap would advertise as mojibake "
+                + "(got \(WhoopCommandFrames.clampedAdvertisingName(String(repeating: "é", count: 8)).utf8.count) bytes)")
+        assertTest(
+            WhoopCommandFrames.setAdvertisingName(profile: .whoop5, seq: 1, name: "   ") == nil,
+            "An empty or whitespace-only name frames nothing — a strap with no name cannot be picked "
+                + "out of a scan list")
+
+        // The read's reply, decoded from the bytes this strap actually sent on 2026-10-25.
+        let capturedNameReply = Data([
+            0x14, 0x01, 0x01, 0x01, 0x0C,
+            0x57, 0x68, 0x6F, 0x6F, 0x70, 0x73, 0x79, 0x20, 0x35, 0x2E, 0x30,
+            0x00, 0x00, 0x00, 0x00, 0x00,
+        ])
+        let decodedName = AdvertisingNamePayload.decode(payload: capturedNameReply)
+        assertTest(
+            decodedName?.value == "Whoopsy 5.0" && decodedName?.source == .custom,
+            "The captured `0x8D` reply decodes to the name this app sent — with the envelope's "
+                + "leading length byte tolerated, which the reference's 19-byte body does not mention "
+                + "(\(String(describing: decodedName?.value)))")
+        let bodyOnly = capturedNameReply.dropFirst()
+        assertTest(
+            AdvertisingNamePayload.decode(payload: bodyOnly).map(\.value) == "Whoopsy 5.0",
+            "…and the same reply without that byte decodes identically, so the tolerance is a "
+                + "tolerance rather than a second required layout")
+        assertTest(
+            AdvertisingNamePayload.decode(
+                payload: Data([0x01, 0x01, 0x02, 0x02, 0x41, 0x00]))?.source == .fallback,
+            "…while source `2` is the strap's own word for *no custom name*, which the manager reads "
+                + "as no name at all rather than printing an empty or stale one")
+        assertTest(
+            AdvertisingNamePayload.decode(payload: Data([0x14, 0x09, 0x01, 0x01, 0x0C, 0x41])) == nil,
+            "…and a reply that is not the shape answers `nil`: a name decoded from the wrong offset "
+                + "would be printed back at the owner as though the strap had said it")
     }
 }

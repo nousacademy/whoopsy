@@ -12,12 +12,17 @@ import Whoopsy
 /// working and each one's list is internally consistent.
 ///
 /// **The document is read rather than a literal being typed twice.** `allCases` is asserted against the
-/// paths the file actually holds, in the order the file holds them — which is why the parse below is a
+/// paths the contract actually holds, in the order it holds them — which is why the parse below is a
 /// line scan of the `paths` object rather than a `JSONSerialization` call: that would hand back a
 /// dictionary, and a dictionary has no order, so the very property under test would be discarded by the
 /// tool used to read it.
 ///
-/// It needs no database, no socket and no fixture. Everything here is two files of text and one enum.
+/// **The contract is read as its per-resource slices**, one folder each, in folder-name order — which is
+/// the same order the whole document wrote them in, because both are sorted by path segment (`health`
+/// before the `/v1` resources, then alphabetical). The whole document is no longer committed; the Worker
+/// serves it at `GET /openapi.json` and `shared/` holds the readings.
+///
+/// It needs no database, no socket and no fixture. Everything here is a folder of files and one enum.
 enum SyncedResourceTests {
 
     static func run() async throws {
@@ -105,19 +110,51 @@ enum SyncedResourceTests {
 
 // MARK: - Reading the contract
 
-/// The committed contract, from the repo root beside the package.
+/// The committed contract, from the repo root beside the package: every slice, in folder order.
 ///
-/// `packageRoot()` is `ios/`, so the document is one directory up — the same climb
-/// `docs/BACKEND.md`'s readers make, and the reason this file needs no fixture: `shared/` is not inside
-/// the SwiftPM package and a resource bundle would not carry it.
+/// `packageRoot()` is `ios/`, so the folder is one directory up — the same climb `docs/BACKEND.md`'s
+/// readers make, and the reason this file needs no fixture: `shared/` is not inside the SwiftPM package
+/// and a resource bundle would not carry it.
+///
+/// **The slices are joined rather than one document read**, and the folder names are what restore the
+/// document's order: `health` sorts before `profile`, and the eight resource folders sort exactly as
+/// their paths do. A folder added beside them with no `openapi.json` would fail the read rather than
+/// silently contribute nothing.
 private func openAPIText() throws -> String {
-    let url = packageRoot().deletingLastPathComponent().appendingPathComponent("shared/openapi.json")
+    let shared = packageRoot().deletingLastPathComponent().appendingPathComponent("shared")
+    let folders: [URL]
     do {
-        return try String(contentsOf: url, encoding: .utf8)
+        folders = try FileManager.default.contentsOfDirectory(
+            at: shared, includingPropertiesForKeys: [.isDirectoryKey])
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
     } catch {
-        assertTest(false, "The contract is readable at \(url.path): \(error)")
+        assertTest(false, "The contract folder is readable at \(shared.path): \(error)")
         throw error
     }
+
+    // **Ordered by the first path each slice publishes**, not by folder name: `biometric-samples`
+    // sorts before `health` but the document wrote `/health` first, and `/` puts `health` ahead of
+    // every `/v1` resource. Within the resources the two orders coincide, which is why the folder
+    // names were a near miss rather than a wrong answer.
+    var slices: [(firstPath: String, text: String)] = []
+    for folder in folders {
+        let url = folder.appendingPathComponent("openapi.json")
+        do {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            guard let first = mountedPaths(in: text).first else {
+                assertTest(false, "The contract slice at \(url.path) publishes no path")
+                continue
+            }
+            slices.append((first, text))
+        } catch {
+            assertTest(false, "The contract slice is readable at \(url.path): \(error)")
+            throw error
+        }
+    }
+    return slices.sorted { $0.firstPath < $1.firstPath }
+        .map(\.text)
+        .joined(separator: "\n")
 }
 
 /// The keys of the `paths` object, in the order the document writes them.

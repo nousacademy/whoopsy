@@ -135,7 +135,7 @@ export function createApp() {
    * **`c.req.url` is where the origin comes from, and that is what makes a deployment describe
    * itself with nothing configured.** A document fetched from `https://<host>/openapi.json` names
    * `https://<host>`, and one fetched from `wrangler dev` names `http://localhost:8787` rather than
-   * the template. The committed `shared/openapi.json` cannot do this — a script has no request to
+   * the template. A committed file cannot do this — a script has no request to
    * read an origin from — so the two readings differ in this one field, which `openapi.ts`'s module
    * comment argues and README § The backend shows how to compare them.
    *

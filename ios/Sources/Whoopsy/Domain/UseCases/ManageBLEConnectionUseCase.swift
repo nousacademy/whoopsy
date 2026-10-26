@@ -51,6 +51,24 @@ public final class ManageBLEConnectionUseCase: Sendable {
         try await bleRepository.rebootStrap()
     }
 
+    /// Sends the 5.0/MG's persistent-recording toggle. See
+    /// `WhoopBLEDeviceRepository.setPersistentRecording(_:)` — it is an experiment, not a setting,
+    /// and the strap's ACK does not confirm it.
+    public func setPersistentRecording(_ enabled: Bool) async throws {
+        try await bleRepository.setPersistentRecording(enabled)
+    }
+
+    /// Asks the strap to advertise a different name. See
+    /// `WhoopBLEDeviceRepository.setAdvertisingName(_:)` — unconfirmed on both generations.
+    public func setAdvertisingName(_ name: String) async throws {
+        try await bleRepository.setAdvertisingName(name)
+    }
+
+    /// Asks the strap for the name it has stored — a log-and-capture read, not a decoded answer.
+    public func requestAdvertisingName() async {
+        await bleRepository.requestAdvertisingName()
+    }
+
     public func getCurrentDevice() async -> WhoopDevice? {
         await bleRepository.getCurrentDevice()
     }

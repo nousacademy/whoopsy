@@ -450,6 +450,32 @@ is what keeps a row an importer wrote from ever matching, whatever its heart-rat
 halves are needed: a row can carry all five zones with every duration at zero, so testing emptiness
 alone would draw a bar asserting no time in any zone on a day nobody measured.
 
+### 2.d Time in zone, and an activity's typical time there
+
+**Time in a band is a sample-interval integral, and it has one definition** (`ZoneTimeMath`). Each
+sample is credited with the interval since the previous accepted sample — the first is credited `1.0` s,
+and an interval longer than `5.0` s is credited as `5.0`, because a strap that stopped notifying was
+not measuring the gap — and that interval belongs to the **current** sample's band. A reading of
+`0` bpm is refused outright: no worn strap reports it, and admitting it would credit time to a reading
+no sensor produced. Time above resting but below zone 1 is **measured and belongs to no band**, so the
+five band times sum to at most the measured span and never to the session's wall length.
+
+Three consumers share it and must keep sharing it: the live session's accumulator, the day's Strain
+model (whose zone block is a diagnostic beside the score, not an input to it) and the activity page's
+completed-session fold.
+
+**A session's band times come from exactly one producer.** An imported session has WHOOP's own
+`HR Zone n %` block, and its time is that share of the session's length; a session this app recorded
+has no block — the live path writes `nil` deliberately — so its time is the integral above. When both
+somehow exist the integral wins, because it is the session's actual readings rather than a percentage
+rounded before storage.
+
+**The activity page's grey mark is the mean of that same integral over the last ten sessions of the
+same activity** (the window `ActivityBaseline` owns), shown once three of them have samples. It is
+built only from measured folds: an imported prior has a percentage and no samples, and letting its
+share into the mean would mix WHOOP's producer with this app's inside one figure. The mark is absent
+on a row with no time of its own — a comparison with one side missing is withheld.
+
 ---
 
 ## 3. Recovery Score (0% – 100%)
@@ -1660,6 +1686,18 @@ draws and the reason a writer uses `map` and never `?? 0`.
 term WHOOP names, and that decision is unchanged: a fitted 7-night deficit was measured at 0.35 of a
 point on the need, for a second fitted constant and seven nights of history. This section gives the
 debt a **reader**, not a new role.
+
+### 4.z A stored night records its rule and its input
+
+**A night is a decision rather than a reading**, so a row that cannot say which rule made it cannot be
+trusted to be current — and the app's answer used to be to re-decide on every open. Since `v37` a
+classified night carries `algorithm` (`SleepAlgorithm.current`, `stager-v1`) and `scored_through`, the
+newest epoch end or sample instant the classification actually read. The page re-classifies only when
+the rule changed, the input grew past that watermark, or the row predates the columns; otherwise it
+reads the row. An inconclusive re-classification — no motion yet, fewer samples than an epoch, the
+drain still arriving — **keeps** the stored night, because a short read is not a verdict. The one case
+that removes a row is a classification made by a version this build no longer has, where today's rule
+is entitled to deny it. The rule is `SleepReclassification`; §15 pins both halves.
 
 ---
 

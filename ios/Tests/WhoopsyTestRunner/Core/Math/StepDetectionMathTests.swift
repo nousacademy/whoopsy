@@ -26,6 +26,7 @@ enum StepTests {
         try await StepCounterPayloadDecoderTests.run()
         try await Spo2CandidateProbeTests.run()
         try await StrapEventDecoderTests.run()
+        try await StrapConditionReportTests.run()
         try await DiagnosticsTests.run()
         try await DeviceInformationPayloadTests.run()
         try await StepAccumulatorTests.run()
@@ -36,6 +37,10 @@ enum StepTests {
         try await StrainPanelTests.run()
         try await WhoopPacketEncoder5Tests.run()
         try await HistoricalDrainSessionTests.run()
+        // The drain's two triggers and their retry — appended for the reason the blocks below are:
+        // it is new rather than moved, and it reads the scripted repository the live-session blocks
+        // already use.
+        try await DrainCoordinatorTests.run()
         // Appended rather than slotted in beside `StepCountPersistenceTests`: every block above was
         // moved into its file from this section's original body and their order is that body's, while
         // this one is new. It takes the store's shape for granted, so it belongs after all of them.

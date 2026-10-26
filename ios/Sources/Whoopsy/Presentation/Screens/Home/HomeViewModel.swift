@@ -389,6 +389,7 @@ import SwiftUI
     }
 
     public func load(for date: Date) async {
+        let started = Date()
         isLoading = true
         defer { isLoading = false }
 
@@ -486,8 +487,21 @@ import SwiftUI
                 age: profile?.age)
             sleepScore = metricWeek?.days.last?.sleepScore
         } catch {
+            // **The banner is drawn by no view, so this log is the only trace a failed day leaves.**
+            // Every read below the failure keeps its previous value — on a first load that is `nil` —
+            // which is why a throw could make Home look empty rather than wrong. Logged with its
+            // screen and day so an archive can tell a failed read from a slow one.
+            AppLogger.database.error("""
+                Home load failed for \(date.description, privacy: .public): \
+                \(error.localizedDescription, privacy: .public)
+                """)
             errorMessage = error.localizedDescription
         }
+
+        AppLogger.ui.notice("""
+            Home for \(date.description, privacy: .public) loaded in \
+            \(Int(Date().timeIntervalSince(started) * 1000), privacy: .public) ms
+            """)
 
         task?.cancel()
         task = Task { [weak self, streamUseCase] in

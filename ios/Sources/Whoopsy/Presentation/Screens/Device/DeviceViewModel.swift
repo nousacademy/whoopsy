@@ -18,16 +18,6 @@ import SwiftUI
     public private(set) var status = ""
     public var preferences = AppPreferences()
 
-    /// The model shown in the ADVANCED tab's picker.
-    ///
-    /// Seeded from the strap's *resolved* generation, which is the user's stored choice when there is
-    /// one and the name heuristic otherwise. `isModelSaved` is what tells the two apart on screen,
-    /// because they are the same value here and a different claim about where it came from.
-    public var model: WhoopHardwareGeneration = .whoop4
-
-    /// Whether a model for this strap has actually been chosen, as opposed to inferred.
-    public private(set) var isModelSaved = false
-
     /// The instant the strap last delivered something to this app, or `nil` when it never has.
     ///
     /// **The producer is the newest stored sample, and it is deliberately not
@@ -58,7 +48,6 @@ import SwiftUI
     /// view model is constructed in `MainContainerView` and nowhere else.
     private let refreshStrain: RefreshStrainUseCase
     private let preferencesRepository: any AppPreferencesRepository
-    private let strapModels: any StrapModelRepository
     private let protocols: any WhoopProtocolProviding
     private let biometrics: any BiometricRepository
     private var task: Task<Void, Never>?
@@ -69,7 +58,6 @@ import SwiftUI
         sync: SyncHistoricalDataUseCase,
         refreshStrain: RefreshStrainUseCase,
         preferencesRepository: any AppPreferencesRepository,
-        strapModels: any StrapModelRepository,
         protocols: any WhoopProtocolProviding,
         biometrics: any BiometricRepository
     ) {
@@ -77,7 +65,6 @@ import SwiftUI
         self.sync = sync
         self.refreshStrain = refreshStrain
         self.preferencesRepository = preferencesRepository
-        self.strapModels = strapModels
         self.protocols = protocols
         self.biometrics = biometrics
     }
@@ -91,19 +78,26 @@ import SwiftUI
         return !device.id.isEmpty
     }
 
-    /// Whether this build can frame commands for the model currently selected.
+    /// The generation this page speaks to **the strap's**, not a stored choice.
     ///
-    /// Drives the caption under the picker. A `false` here is the whole reason
-    /// `WhoopProtocolProviding` is a dependency of a *view model*: choosing WHOOP 5.0 and being told
-    /// nothing would leave the user waiting for a sync that cannot happen.
+    /// **The model picker is gone, and this replaces it.** It existed because nothing in the app could
+    /// tell a 5.0 from a 5.0 MG except its owner; the strap's own Device Information Service answers
+    /// `0x2A24` and does separate them, so `WhoopBLEManager` now resolves the generation from that
+    /// string, the service list and — only when neither has spoken — the advertised name. What the
+    /// page draws is the answer that resolution produced.
+    private var connectedModel: WhoopHardwareGeneration {
+        device?.hardwareGeneration ?? .whoop4
+    }
+
+    /// Whether this build can frame commands for the connected strap's generation.
     public var supportsSync: Bool {
-        protocols.supportsProprietarySync(model)
+        protocols.supportsProprietarySync(connectedModel)
     }
 
     /// What the sync caption calls the envelope, e.g. `4.0`. Falls back to the model's own name when
     /// the catalog frames nothing, which only happens on the branch that prints no caption.
     public var protocolEnvelopeName: String {
-        protocols.protocolEnvelopeName(model) ?? model.rawValue
+        protocols.protocolEnvelopeName(connectedModel) ?? connectedModel.rawValue
     }
 
     /// The honest caveat under that caption — **and it differs per generation, because the two have
@@ -120,7 +114,7 @@ import SwiftUI
     /// in its top bar, and a second route to the same words would be a control whose only purpose is to
     /// reveal something already on the page.
     public var protocolCaveat: String {
-        switch model {
+        switch connectedModel {
         case .whoop4:
             return "That envelope has not been validated against real hardware yet, so a strap may still ignore what this app sends."
         case .whoop5, .whoop5MG:
@@ -138,7 +132,10 @@ import SwiftUI
     public func load() async {
         device = await manage.getCurrentDevice()
         preferences = await preferencesRepository.load()
-        await refreshModelState()
+        // **Ask the strap what it has stored, on every open of this page.** The advertisement a phone
+        // shows may be CoreBluetooth's cached name, so it cannot settle whether a rename took; this
+        // read is the strap's own answer, and its raw reply lands in `Documents/capture.txt`.
+        if isConnected { await manage.requestAdvertisingName() }
         await refreshLastSync()
 
         // **Idempotent, and that guard is a fix rather than tidying.** `.task` fires once per push and
@@ -156,7 +153,6 @@ import SwiftUI
             for await item in manage.deviceStream {
                 guard !Task.isCancelled else { return }
                 self?.device = item
-                await self?.refreshModelState()
             }
         }
 
@@ -228,6 +224,36 @@ import SwiftUI
         }
     }
 
+    /// Whether the connected strap can take the persistent-recording command: a live link to a 5.0/MG.
+    ///
+    /// **Not `supportsSync`**, which answers a different question — whether this *build* frames the
+    /// selected model at all. `0x9A` is published for the 5.0/MG alone; the 4.0's table lists the byte
+    /// but nothing here has captured a body for it, so the command is refused there whatever the build
+    /// can frame.
+    public var supportsPersistentRecording: Bool {
+        isConnected && (connectedModel == .whoop5 || connectedModel == .whoop5MG)
+    }
+
+    /// Asks the strap to persist its motion recording, or to stop.
+    ///
+    /// **The sentence says *requested*, because the strap's ACK does not confirm the setting** — only a
+    /// later drain can. The two actions are explicit rather than a switch: the app cannot read the
+    /// flag, so a toggle would draw a state it does not know.
+    ///
+    /// See `docs/TODO.md` §7.2 for the experiment and `WhoopCommandFrames.persistentR21` for the
+    /// opcode's battery warning.
+    public func setPersistentRecording(_ enabled: Bool) async {
+        status = enabled ? "Requesting persistent recording…" : "Reverting persistent recording…"
+        do {
+            try await manage.setPersistentRecording(enabled)
+            status = enabled
+                ? "Persistent recording ON requested. The strap does not confirm the setting — sync history to check."
+                : "Persistent recording OFF requested. If the optical engine stays on, reboot the strap."
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
     public func scan() async {
         isScanning = true
         defer { isScanning = false }
@@ -268,38 +294,37 @@ import SwiftUI
 
     /// Records the user's choice and re-resolves the strap's generation.
     ///
-    /// The state write is synchronous and the persistence is not, so the picker moves on the tap
-    /// rather than a turn of the run loop later. The `refreshStrapModel` call is what makes the choice
-    /// real: without it the generation — and so the envelope every command is framed with — would not
-    /// change until the strap was rediscovered.
-    public func choose(_ value: WhoopHardwareGeneration) {
-        model = value
-        Task { await persist(value) }
-    }
+    /// The name the strap advertises **as the strap itself reports it**, falling back to what the scan
+    /// heard until `GET_ADVERTISING_NAME` has answered.
+    ///
+    /// The fallback matters: `device.name` comes from the advertisement, which CoreBluetooth caches, so
+    /// it can lag a rename by minutes. `device.advertisingName` is the stored value read straight off
+    /// the strap and is the only one that answers "did it take?".
+    public var advertisingName: String? { device?.advertisingName ?? device?.name }
 
-    private func persist(_ value: WhoopHardwareGeneration) async {
-        guard let id = device?.id, !id.isEmpty else {
-            status = "No strap to assign a model to. Connect one first."
+    /// Asks the strap to advertise a different name, and reports only that the request was sent.
+    ///
+    /// **The strap does not confirm this write**, on either generation — see
+    /// `WhoopCommandFrames.setAdvertisingName`. So the status line says *requested*, and the name in
+    /// the next advertisement is the only evidence; the caller is told to look there rather than left
+    /// believing the rename took.
+    public func rename(_ name: String) async {
+        let clamped = WhoopCommandFrames.clampedAdvertisingName(name)
+        guard !clamped.isEmpty else {
+            status = "A strap needs a name of at least one character."
             return
         }
-        await strapModels.setModel(value, forDeviceId: id)
-        await manage.refreshStrapModel()
-        device = await manage.getCurrentDevice()
-        await refreshModelState()
-        status = supportsSync
-            ? "Saved. \(value.rawValue) is what this strap will be treated as."
-            : "Saved. Syncing with \(value.rawValue) is not implemented yet — see below."
-    }
-
-    private func refreshModelState() async {
-        let saved = await strapModels.allModels()
-        guard let device, !device.id.isEmpty else {
-            isModelSaved = false
-            model = device?.hardwareGeneration ?? model
-            return
+        do {
+            try await manage.setAdvertisingName(clamped)
+            status = "Rename sent to the strap: \(clamped). Reading it back…"
+            // Ask the strap what it stored a moment later, so the row can show the *true* name rather
+            // than an advertisement the phone may be caching. The write is not acknowledged; this read
+            // is the acknowledgement.
+            try? await Task.sleep(for: .seconds(2))
+            await manage.requestAdvertisingName()
+        } catch {
+            status = "Could not send the rename: \(error.localizedDescription)"
         }
-        isModelSaved = saved[device.id] != nil
-        model = device.hardwareGeneration
     }
 
     /// The newest stored sample's instant, or `nil` when there is none.

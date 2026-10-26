@@ -25,13 +25,24 @@ enum HistoricalDrainSessionTests {
         /// Built by the real encoder and read back through the real decoder, so the session is fed a frame
         /// this app actually produced. A `WhoopRawFrame` assembled by hand would let the token's offset and
         /// the session's agree while both were wrong about the envelope.
-        func fiveMarker(cmd: UInt8, unix: UInt32, payloadBytes: Int) -> WhoopRawFrame? {
+        func fiveMarker(
+            cmd: UInt8, unix: UInt32, payloadBytes: Int, expected: Int? = nil,
+            tokenBytes: Data? = nil
+        ) -> WhoopRawFrame? {
+            let tokenBytes = tokenBytes ?? token
             var payload = [UInt8](repeating: 0, count: max(payloadBytes, 4))
             payload[0] = UInt8(unix & 0xFF)
             payload[1] = UInt8((unix >> 8) & 0xFF)
             payload[2] = UInt8((unix >> 16) & 0xFF)
             payload[3] = UInt8((unix >> 24) & 0xFF)
-            for (offset, byte) in token.enumerated() where 10 + offset < payload.count {
+            // The Gen 5 declared frame count, at payload 6 — `inner[9]`, ahead of the token at 10.
+            if let expected, payload.count >= HistoricalDrainSession.expectedFrameCountPayloadOffset + 4 {
+                let start = HistoricalDrainSession.expectedFrameCountPayloadOffset
+                for offset in 0..<4 {
+                    payload[start + offset] = UInt8((expected >> (8 * offset)) & 0xFF)
+                }
+            }
+            for (offset, byte) in tokenBytes.enumerated() where 10 + offset < payload.count {
                 payload[10 + offset] = byte
             }
             guard let framed = WhoopPacketEncoder5.buildPacket(
@@ -165,6 +176,10 @@ enum HistoricalDrainSessionTests {
             func stampedRecord(_ unix: UInt32) -> WhoopRawFrame? {
                 var bytes = StepTests.fiveFrame(
                     type: WhoopProtocolProfile.whoop5.packetTypes.historicalData, payloadBytes: 64)
+                // **The layout selector matters to the range now.** A stamp is only read from a layout
+                // on the 1 Hz grid (`HistoricalDrainSession.timestampedLayouts`), so this fixture names
+                // R18 at frame 9 — `inner[1]` — rather than leaving whatever `fiveFrame` defaults to.
+                bytes[9] = HeartRatePayloadDecoder.historicalLayout
                 let origin = 11
                 bytes[origin + 4] = UInt8(unix & 0xFF)
                 bytes[origin + 5] = UInt8((unix >> 8) & 0xFF)
@@ -385,7 +400,275 @@ enum HistoricalDrainSessionTests {
                 "An empty HISTORY_END at the end of the buffer is not the live edge: its marker is "
                     + "stamped now while the newest record the drain has seen is two months old, so the "
                     + "drain keeps listening and ends on the idle window rather than claiming it caught up")
+
+            // ---- The Gen 5 count gate: read, logged, and deliberately not obeyed ----
+
+            /// Any type this build can frame and decode — the histogram counts a frame before it looks
+            /// at its revision, so a frame of a type nothing decodes is still evidence of what arrived.
+            func typedFrame(type: UInt8) -> WhoopRawFrame? {
+                guard let framed = WhoopPacketEncoder5.buildPacket(
+                    profile: .whoop5, type: type, seq: 0, cmd: 0,
+                    payload: Data(repeating: 0, count: 8))
+                else { return nil }
+                return decoder.decodeProprietaryFrame(data: framed, profile: .whoop5)
+            }
+
+            assertTest(
+                HistoricalDrainSession.countedFrameTypes == [47, 48, 50, 53, 54, 55]
+                    && !HistoricalDrainSession.countedFrameTypes.contains(49)
+                    && !HistoricalDrainSession.countedFrameTypes.contains(51)
+                    && !HistoricalDrainSession.countedFrameTypes.contains(52)
+                    && HistoricalDrainSession.countedBatchTypes.contains(49),
+                "The count gate's membership is **six types — 47, 48, 50, 53, 54, 55 — and not the "
+                    + "records**: type 49 is the marker that carries the count, 51/52 are the IMU stream, "
+                    + "and getting this wrong is the reference's Groundhog Day equivalent. 49 stays in "
+                    + "the logged histogram only so a burst's framing is visible")
+
+            assertTest(
+                HistoricalDrainSession.expectedFrameCountPayloadOffset == 6
+                    && HistoricalDrainSession.expectedFrameCountPayloadOffset + 4
+                        == HistoricalDrainSession.continuationTokenPayloadOffset,
+                "…and the declared count is the four bytes immediately before the token: payload 6 is "
+                    + "`inner[9]`, the field the Gen 5 reference names `expected_count`. A marker long "
+                    + "enough to hold the token is long enough to hold this, so one guard covers both")
+
+            /// One burst: three records, an event, a console-log frame, and a marker declaring `expected`.
+            func burst(counting expected: Int) -> HistoricalDrainSession? {
+                var session = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+                _ = fiveMarker(cmd: 1, unix: oldEpoch, payloadBytes: 18).map { session.accept($0, now: drainNow) }
+                for _ in 0..<3 { _ = r18Record(unix: oldEpoch).map { session.accept($0, now: drainNow) } }
+                _ = typedFrame(type: 48).map { session.accept($0, now: drainNow) }
+                _ = typedFrame(type: 50).map { session.accept($0, now: drainNow) }
+                let end = fiveMarker(cmd: 2, unix: oldEpoch, payloadBytes: 18, expected: expected)
+                guard let end else { return nil }
+                _ = session.accept(end, now: drainNow)
+                return session
+            }
+
+            if let agreeing = burst(counting: 5) {
+                assertTest(
+                    agreeing.lastBurstFrameCounts
+                        == HistoricalDrainSession.BurstFrameCounts(expected: 5, counted: 5)
+                        && agreeing.lastBurstFrameCounts?.matches == true,
+                    "A burst of three records, one event and one console-log frame declares **5**, and "
+                        + "the session counts 5 — the three records alone would read 3, which is the "
+                        + "undercount this whole change is about, and the HISTORY_START marker in the "
+                        + "same burst contributes nothing to either side")
+            } else {
+                assertTest(false, "The agreeing-count burst could not be built")
+            }
+
+            if let short = burst(counting: 8) {
+                assertTest(
+                    short.lastBurstFrameCounts
+                        == HistoricalDrainSession.BurstFrameCounts(expected: 8, counted: 5)
+                        && short.lastBurstFrameCounts?.difference == 3,
+                    "…while the same burst against a marker declaring **8** is recorded as a shortfall "
+                        + "of three — the signature of frames lost in transit, which today is "
+                        + "indistinguishable from a complete burst")
+                assertTest(
+                    short.finishReason != .liveEdge,
+                    "**A mismatch is logged and not acted on**: the acknowledgement still goes out as "
+                        + "success, so nothing downstream changes until the validator is trusted. This "
+                        + "assertion is the one that fails when enforcement lands, which is exactly when "
+                        + "it should")
+            } else {
+                assertTest(false, "The short-count burst could not be built")
+            }
+
+            var excluding = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            _ = r18Record(unix: oldEpoch).map { excluding.accept($0, now: drainNow) }
+            _ = typedFrame(type: 51).map { excluding.accept($0, now: drainNow) }
+            _ = typedFrame(type: 53).map { excluding.accept($0, now: drainNow) }
+            if let end = fiveMarker(cmd: 2, unix: oldEpoch, payloadBytes: 18, expected: 2) {
+                _ = excluding.accept(end, now: drainNow)
+            }
+            assertTest(
+                excluding.lastBurstFrameCounts
+                    == HistoricalDrainSession.BurstFrameCounts(expected: 2, counted: 2),
+                "The membership is applied in both directions on the same burst: the type-51 IMU "
+                    + "frame is **not** counted, the type-53 frame is — so the number is the "
+                    + "reference's six-way rule rather than 'everything that arrived'")
+
+            var fourth = HistoricalDrainSession(profile: .whoop4, startedAt: drainNow)
+            // The same bytes a Gen 5 marker would use — on this generation the field at payload 6 is
+            // a record-id / batch counter, so a reader that took it for a count would see a burst
+            // declaring thousands and refuse every one.
+            if let end = fourMarker(cmd: 2, payloadBytes: 18) {
+                _ = fourth.accept(end, now: drainNow)
+            }
+            assertTest(
+                fourth.lastBurstFrameCounts == nil
+                    && WhoopProtocolProfile.whoop4.declaresBurstFrameCount == false
+                    && WhoopProtocolProfile.whoop5.declaresBurstFrameCount
+                    && WhoopProtocolProfile.whoop5MG.declaresBurstFrameCount,
+                "**The count field is Gen 5's and the gate is off where it is not**: on a 4.0 the "
+                    + "same offset is a record-id / batch counter, so nothing is read and nothing is "
+                    + "compared — a validator there would refuse every burst the strap sent. Both "
+                    + "5.0 profiles declare it, which is what makes the rule follow the envelope")
+
+            // ---- The trim cursor: the token read as the two words the acknowledgement echoes ----
+
+            assertTest(
+                HistoricalDrainSession.TrimCursor.decode(token)
+                    == HistoricalDrainSession.TrimCursor(
+                        trimPage: 0x44332211, wrapCount: 0x88776655),
+                "The eight-byte token is two little-endian words — a **trim page** and a **wrap "
+                    + "count** — which is what makes a rewind readable: `11 22 33 44 55 66 77 88` "
+                    + "decodes to trim `0x44332211`, wrap `0x88776655`")
+            assertTest(
+                HistoricalDrainSession.TrimCursor.decode(Data([0x01, 0x02])) == nil
+                    && HistoricalDrainSession.TrimCursor.decode(Data()) == nil,
+                "…and a token of any other length answers `nil` rather than padding a cursor out of "
+                    + "bytes that were never sent — the same refusal the marker reader makes")
+
+            var cursored = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            assertTest(cursored.lastTrimCursor == nil, "A session that has seen no marker holds no cursor")
+            let firstToken = Data([0x64, 0x00, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00])
+            let secondToken = Data([0x69, 0x00, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00])
+            if let first = fiveMarker(
+                cmd: 2, unix: oldEpoch, payloadBytes: 18, tokenBytes: firstToken) {
+                _ = cursored.accept(first, now: drainNow)
+            }
+            let firstCursor = cursored.lastTrimCursor
+            if let second = fiveMarker(
+                cmd: 2, unix: oldEpoch, payloadBytes: 18, tokenBytes: secondToken) {
+                _ = cursored.accept(second, now: drainNow)
+            }
+            assertTest(
+                firstCursor == HistoricalDrainSession.TrimCursor(trimPage: 100, wrapCount: 24)
+                    && cursored.lastTrimCursor
+                        == HistoricalDrainSession.TrimCursor(trimPage: 105, wrapCount: 24),
+                "Each burst records **its own** cursor rather than a drain-wide one: a trim page of "
+                    + "100 followed by 105 moves forward five, which is the reference's own per-batch "
+                    + "advance — and a page that stayed put, or came back, is the rewind the stamps "
+                    + "only hint at")
+
+            // ---- R26 is a record and not a clock ----
+
+            /// A type-47 frame with an arbitrary layout selector and payload length, so a revision this
+            /// build does not decode can still be fed to the session — which is exactly how it arrives.
+            func record(layout: UInt8, unix: UInt32, payloadBytes: Int = 73) -> WhoopRawFrame? {
+                var payload = [UInt8](repeating: 0, count: max(payloadBytes, 8))
+                payload[4] = UInt8(unix & 0xFF)
+                payload[5] = UInt8((unix >> 8) & 0xFF)
+                payload[6] = UInt8((unix >> 16) & 0xFF)
+                payload[7] = UInt8((unix >> 24) & 0xFF)
+                guard let framed = WhoopPacketEncoder5.buildPacket(
+                    profile: .whoop5,
+                    type: WhoopProtocolProfile.whoop5.packetTypes.historicalData,
+                    seq: layout, cmd: 0, payload: Data(payload))
+                else { return nil }
+                return decoder.decodeProprietaryFrame(data: framed, profile: .whoop5)
+            }
+
+            assertTest(
+                HistoricalDrainSession.timestampedLayouts == [18, 21, 24]
+                    && !HistoricalDrainSession.timestampedLayouts.contains(26),
+                "**Only the 1 Hz layouts are allowed to be the clock** — R18, R21 and the 4.0's type 24 "
+                    + "— while `R26`, the Pulse Information Packet, is a record whose own time is an "
+                    + "event time rather than a slot on the grid")
+
+            if let r26 = record(layout: 26, unix: nowEpoch) {
+                assertTest(
+                    HistoricalDrainSession.recordTimestamp(r26) == nil,
+                    "…so an `R26` record yields **no stamp at all**, even with a perfectly good unix "
+                        + "sitting in the bytes every other layout keeps its clock in — measured on "
+                        + "2026-10-26, where one stamped 00:18:04 arrived after a batch that had "
+                        + "reached 00:18:43 and the drain logged a stall that was not one")
+            } else {
+                assertTest(false, "The R26 record could not be built")
+            }
+
+            var r26Bursts = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            _ = r18Record(unix: oldEpoch).map { r26Bursts.accept($0, now: drainNow) }
+            var r26Actions: [HistoricalDrainSession.DrainAction?] = []
+            for _ in 0..<4 {
+                _ = record(layout: 26, unix: oldEpoch).map { r26Bursts.accept($0, now: drainNow) }
+                r26Actions.append(nowMarker.map { r26Bursts.accept($0, now: drainNow) })
+            }
+            assertTest(
+                r26Actions.allSatisfy { $0 == .acknowledge(token: token) }
+                    && r26Bursts.finishReason == nil,
+                "**Four `R26`-only bursts do not stall a drain that is advancing.** Their stamps would "
+                    + "all sit behind the 1 Hz record that opened it, and three consecutive stalls end "
+                    + "a drain as `.idleTimeout` — a fuse, not a log line, so a night with a few of "
+                    + "these packets would stop a good drain and call it stalled")
+            assertTest(
+                r26Bursts.recordCount == 5,
+                "…while the `R26` frames still **count**: five records reached the session, so the "
+                    + "revision is refused as a clock and not discarded as data "
+                    + "(\(r26Bursts.recordCount))")
+
+            var r26Edge = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            // A 1 Hz batch first, so the drain has a position to fall back to — the marker is only the
+            // fallback for a session that has seen no record at all, and that is a separate rule.
+            _ = r18Record(unix: oldEpoch).map { r26Edge.accept($0, now: drainNow) }
+            _ = fiveMarker(cmd: 2, unix: oldEpoch, payloadBytes: 18)
+                .map { r26Edge.accept($0, now: drainNow) }
+            _ = record(layout: 26, unix: nowEpoch).map { r26Edge.accept($0, now: drainNow) }
+            assertTest(
+                nowMarker.map { r26Edge.accept($0, now: drainNow) } == .acknowledge(token: token)
+                    && r26Edge.finishReason == nil,
+                "…and an `R26` stamped **now** does not declare the live edge: read as a 1 Hz record "
+                    + "it would make a burst of one end a drain whose backlog is still behind it, which "
+                    + "is the same field trusted in the wrong direction")
+
+            var counting = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            _ = r18Record(unix: oldEpoch).map { counting.accept($0, now: drainNow) }
+            _ = record(layout: 26, unix: oldEpoch).map { counting.accept($0, now: drainNow) }
+            if let end = fiveMarker(
+                cmd: 2, unix: oldEpoch, payloadBytes: 18, expected: 2) {
+                _ = counting.accept(end, now: drainNow)
+            }
+            assertTest(
+                counting.lastBurstFrameCounts
+                    == HistoricalDrainSession.BurstFrameCounts(expected: 2, counted: 2),
+                "An `R26` frame counts toward the burst's declared total as one type-47 frame — the "
+                    + "count gate and the clock are two different questions about the same record")
+
+            // ---- A batch that starts at or before the last one is flagged where it happens ----
+
+            var repeatCheck = HistoricalDrainSession(profile: .whoop5, startedAt: drainNow)
+            var repeatFlags: [Bool?] = []
+            // Forward, forward, **repeat**, **backwards** — the two shapes the 2026-10-25 capture
+            // showed, fed as batches rather than left to be spotted in a log.
+            for unix in [oldEpoch, oldEpoch + 60, oldEpoch + 60, oldEpoch + 30] {
+                _ = r18Record(unix: unix).map { repeatCheck.accept($0, now: drainNow) }
+                _ = fiveMarker(cmd: 2, unix: oldEpoch, payloadBytes: 18)
+                    .map { repeatCheck.accept($0, now: drainNow) }
+                repeatFlags.append(repeatCheck.lastBatchRepeatedStart)
+            }
+            assertTest(
+                repeatFlags == [false, false, true, true]
+                    && repeatCheck.repeatedStartBatchCount == 2,
+                "**A batch that begins at or before the previous batch's first record sets `repeat` "
+                    + "on its own line**, so a rewind is a flag in the capture rather than two lines "
+                    + "that have to be found and compared — the reading that a rotation can separate "
+                    + "into different files and a paste can truncate away "
+                    + "(\(repeatFlags.map { $0.map { $0 ? "repeat" : "forward" } ?? "nil" }), "
+                    + "count \(repeatCheck.repeatedStartBatchCount))")
+            assertTest(
+                repeatCheck.startedAt == drainNow,
+                "…and the session keeps **the instant it started**, which is what the closing "
+                    + "`DRAIN_END` summary reports: a night's per-batch lines can rotate out of the "
+                    + "capture file, and the line that says when the drain began must not")
+
+            // ---- The capture log this file writes to is not the developer's Documents ----
+
+            let documents = FileManager.default
+                .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            assertTest(
+                FileManager.default.fileExists(atPath: CaptureLog.shared.url.path)
+                    && !CaptureLog.shared.url.path.hasPrefix(documents.path),
+                "**The suite's `DRAIN_BATCH` lines land in a scratch file, not in `.documentDirectory`.** "
+                    + "Every marker above appended one, and on a host build that search path is a "
+                    + "general user folder rather than the app's sandbox — measured on 2026-10-26, "
+                    + "where a run appended fixture batches beside the person's own files and rotated "
+                    + "the previous one out of the way. `WHOOPSY_CAPTURE_DIR` is what `scripts/test.sh` "
+                    + "points into `tmp/` (\(CaptureLog.shared.url.path))")
         }
+
 
         do {
             let fourIdle = drainNow.addingTimeInterval(8)

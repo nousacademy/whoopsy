@@ -13,7 +13,21 @@ import Foundation
 /// **The app must be running for the timer to fire**, and iOS may suspend it. The foreground
 /// catch-up in `MainContainerView` is what makes the schedule reliable: opening the app after 18:00
 /// on a day whose marker is older runs it immediately, once.
-public struct DailySyncUseCase: Sendable {
+public actor DailySyncUseCase {
+
+    /// The gap below which a second attempt is skipped.
+    ///
+    /// **A failed run is retried on the next foreground, and that is a thrash this bounds.** The
+    /// marker is saved only on success, so an evening whose upload keeps failing — a cancelled request
+    /// when the screen locks is the ordinary way — would otherwise re-read two days of seven resources
+    /// and re-issue the whole upload on every unlock. Those reads share the one `DatabaseQueue` with
+    /// whatever screen is drawing, which is what a blank Home for the first seconds after foregrounding
+    /// looked like on 2026-10-24. Fifteen minutes keeps a real retry inside the evening while making
+    /// an unlock loop stop costing anything.
+    public static let retryInterval: TimeInterval = 15 * 60
+
+    /// When the last attempt began, successful or not. Actor state, because two foregrounds may race.
+    private var lastAttemptAt: Date?
 
     private let engine: SyncEngine
     private let settingsStore: any SyncSettingsRepository
@@ -36,6 +50,11 @@ public struct DailySyncUseCase: Sendable {
 
         let current = now()
         guard SyncSchedule.isDue(lastRunDay: settings.lastDailySyncDay, now: current) else { return }
+        if let lastAttemptAt,
+           current.timeIntervalSince(lastAttemptAt) < Self.retryInterval {
+            return
+        }
+        lastAttemptAt = current
 
         let calendar = SyncSchedule.calendar()
         let today = SyncSchedule.dayKey(for: current)

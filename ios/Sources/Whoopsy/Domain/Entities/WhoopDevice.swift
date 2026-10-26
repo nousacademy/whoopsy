@@ -15,6 +15,28 @@ public enum WhoopHardwareGeneration: String, CaseIterable, Identifiable, Sendabl
     case standardBleHR = "Standard BLE Heart Rate"
     case simulator = "Whoop Simulator"
 
+    /// The model a strap's own Device Information Service reports, or `nil` when the string names
+    /// none of them.
+    ///
+    /// **This is hardware evidence, and it is better than the advertised name in both directions.**
+    /// The name is whatever the owner called the strap — *"Alex WHOOP"* has no digit in it at all, so
+    /// the heuristic called a 5.0 a 4.0 — and it cannot distinguish the MG, because the two advertise
+    /// the same way. `0x2A24` is written by the strap and read from it: a 5.0 answers `5.0` (measured
+    /// on this project's own strap on 2026-10-25, alongside `WG50_r52` for the hardware revision and
+    /// `50.42.1.0` for the firmware), and the MG's own string is expected to carry `MG`.
+    ///
+    /// **`MG` is tested before the digits**, because `5.0 MG` contains both and the digits would
+    /// otherwise answer 5.0 — the one distinction the service list cannot make and this string can.
+    /// A model string this build does not recognise returns `nil` rather than a guess, which leaves
+    /// the caller's precedence to the rungs below it.
+    public static func from(modelNumber: String) -> WhoopHardwareGeneration? {
+        let text = modelNumber.uppercased()
+        if text.contains("MG") { return .whoop5MG }
+        if text.contains("4") { return .whoop4 }
+        if text.contains("5") { return .whoop5 }
+        return nil
+    }
+
     public var id: String { rawValue }
 
     /// The models a user may assign to a strap.
@@ -56,6 +78,13 @@ public struct WhoopDevice: Identifiable, Equatable, Sendable {
     public let isCharging: Bool
     public let firmwareVersion: String?
     public let serialNumber: String?
+
+    /// The name the **strap** says it has stored, or `nil` before it has been asked.
+    ///
+    /// Different from `name`, which is what the peripheral advertises — and that can be CoreBluetooth's
+    /// cached copy of an older advertisement. This one comes from `GET_ADVERTISING_NAME` and is the
+    /// only value a rename can be checked against.
+    public let advertisingName: String?
     public let signalStrengthRssi: Int?
     public let lastSyncTime: Date?
 
@@ -71,7 +100,9 @@ public struct WhoopDevice: Identifiable, Equatable, Sendable {
         isOnBody: Bool? = nil,
         isCharging: Bool? = nil,
         firmwareVersion: String? = nil,
-        serialNumber: String? = nil
+        serialNumber: String? = nil,
+        advertisingName: String? = nil,
+        connectionState: WhoopConnectionState? = nil
     ) -> WhoopDevice {
         WhoopDevice(
             id: id,
@@ -81,11 +112,15 @@ public struct WhoopDevice: Identifiable, Equatable, Sendable {
             // A battery value handed in through `updating` is the one place a real read arrives, so
             // it is what marks the figure measured. Nothing else may.
             batteryIsMeasured: batteryPercentage != nil ? true : self.batteryIsMeasured,
-            connectionState: connectionState,
+            // **`connectionState` is for the manager's link transitions and is never passed by a
+            // notification.** A battery read cannot change whether the strap is linked, and a
+            // notification allowed to set this would let a stale field decide the dot's colour.
+            connectionState: connectionState ?? self.connectionState,
             isOnBody: isOnBody ?? self.isOnBody,
             isCharging: isCharging ?? self.isCharging,
             firmwareVersion: firmwareVersion ?? self.firmwareVersion,
             serialNumber: serialNumber ?? self.serialNumber,
+            advertisingName: advertisingName ?? self.advertisingName,
             signalStrengthRssi: signalStrengthRssi,
             lastSyncTime: lastSyncTime)
     }
@@ -101,6 +136,7 @@ public struct WhoopDevice: Identifiable, Equatable, Sendable {
         isCharging: Bool = false,
         firmwareVersion: String? = nil,
         serialNumber: String? = nil,
+        advertisingName: String? = nil,
         signalStrengthRssi: Int? = -65,
         lastSyncTime: Date? = nil
     ) {
@@ -114,6 +150,7 @@ public struct WhoopDevice: Identifiable, Equatable, Sendable {
         self.isCharging = isCharging
         self.firmwareVersion = firmwareVersion
         self.serialNumber = serialNumber
+        self.advertisingName = advertisingName
         self.signalStrengthRssi = signalStrengthRssi
         self.lastSyncTime = lastSyncTime
     }

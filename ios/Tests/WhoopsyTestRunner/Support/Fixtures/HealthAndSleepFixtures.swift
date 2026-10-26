@@ -37,6 +37,7 @@ struct FixtureHealthStore: HealthStoreClient {
 }
 
 struct NoSleepSource: SleepRepository {
+    func deleteSleepSession(for date: Date) async throws {}
     func getSleepSession(for date: Date) async throws -> SleepSession? { nil }
     func saveSleepSession(_ session: SleepSession, source: String?) async throws {}
     /// Implements the requirement, not the `days:`-only convenience: once `days:` moved to a protocol
@@ -58,6 +59,7 @@ struct NoSleepSource: SleepRepository {
 /// Only the history is counted. `getSleepSession` is a keyed read of one row and is not the query this
 /// is about.
 actor CountingSleepRepository: SleepRepository {
+    func deleteSleepSession(for date: Date) async throws {}
     private let inner: any SleepRepository
     private(set) var historyReads = 0
 

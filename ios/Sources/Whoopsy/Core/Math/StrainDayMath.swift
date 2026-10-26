@@ -92,13 +92,16 @@ public enum StrainDayMath {
             if hr > maxObservedHR { maxObservedHR = hr }
             if sample.timestamp > scoredThrough { scoredThrough = sample.timestamp }
 
-            // Estimate duration between samples (default 1 second if continuous)
-            let duration: TimeInterval = (i > 0)
-                ? min(5.0, sample.timestamp.timeIntervalSince(samples[i - 1].timestamp))
-                : 1.0
-
-            let (zoneIdx, load) = StrainAccumulatorMath.loadDelta(
-                for: hr, zones: zones, restingHeartRate: restingHeartRate, durationSeconds: duration)
+            // The interval rule, the 5-second cap and the band attribution are `ZoneTimeMath`'s,
+            // shared with the live accumulator and with the activity page's completed-session fold.
+            let delta = ZoneTimeMath.delta(
+                heartRate: hr,
+                previousTimestamp: i > 0 ? samples[i - 1].timestamp : nil,
+                timestamp: sample.timestamp,
+                zones: zones,
+                restingHeartRate: restingHeartRate)
+            let duration = delta.durationSeconds
+            let (zoneIdx, load) = (delta.zone, delta.load)
             // Load is added even when no zone matched: time above resting but below zone 1's floor is
             // credited at weight 1 by the low-intensity band. Zone *duration* is added only when a zone
             // matched, so the five percentages still sum to at most 100.

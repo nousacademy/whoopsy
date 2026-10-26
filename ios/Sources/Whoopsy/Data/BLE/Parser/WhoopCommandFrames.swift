@@ -143,6 +143,156 @@ public enum WhoopCommandFrames {
         }
     }
 
+    /// `0x9A TOGGLE_PERSISTENT_R21` — the persistent-recording flag, and **the one opcode this app can
+    /// send only from a deliberate tap.**
+    ///
+    /// **It exists because the flash recorder stopped and nothing else has explained it.** The owner's
+    /// 5.0 has written no history since 2026-08-26 with a correct clock, a healthy link and no
+    /// battery-related change, and NOOP records this as command 154 on the 5.0/MG: a revision-1
+    /// boolean, `[REVISION_1, state]`, stored non-volatile. `docs/TODO.md` §7.2 is the experiment and
+    /// its two-party consent: the control is manual, one-shot, on the device page's ADVANCED tab, and
+    /// never part of any connect sequence.
+    ///
+    /// **The ACK does not confirm the programming.** The strap acknowledges the write and the flag's
+    /// effect is only observable through a later drain, so no caller may report "enabled" — the screen's
+    /// sentence says *requested* and names the verification.
+    ///
+    /// **The flag is a trap as well as a tool.** The reference warns that it can keep the optical engine
+    /// running across reboots, which burns battery until a fresh boot; `[0x01, 0x00]` is the revert, and
+    /// clearing it does not stop an engine already running — `0x1D REBOOT_STRAP` is that recovery.
+    ///
+    /// **5.0/MG only.** The 4.0 reference lists `0x9A` in its own full command table, but nothing here
+    /// has captured it on a 4.0 and the two envelopes' command bodies are not interchangeable, so the
+    /// 4.0 branch refuses rather than guessing a body.
+    ///
+    /// **`0x9A` is deliberately absent from both opcode tables.** §16's forbidden-byte sweep reads the
+    /// tables, and keeping the byte out of them means this function is the only path to it — a new
+    /// caller has to come through a name that says what it does.
+    public static func persistentR21(
+        profile: WhoopProtocolProfile,
+        seq: UInt8,
+        enabled: Bool
+    ) -> Data? {
+        switch profile.headerChecksum {
+        case .crc8OverLengthBytes:
+            return nil
+        case .crc16ModbusOverHeader:
+            return WhoopPacketEncoder5.buildPacket(
+                profile: profile,
+                type: profile.packetTypes.command,
+                seq: seq,
+                cmd: 0x9A,
+                payload: Data([0x01, enabled ? 0x01 : 0x00]))
+        }
+    }
+
+    /// The longest name either generation will store, in UTF-8 bytes.
+    ///
+    /// **15, on both, and for different reasons that happen to land on the same number.** A 5.0/MG
+    /// takes `length` followed by that many bytes with a ceiling of 15; a 4.0 takes a fixed 16-byte
+    /// field whose last byte must be NUL, which leaves 15 usable. See
+    /// `setAdvertisingName(profile:seq:name:)` for the bodies.
+    public static let maximumAdvertisingNameBytes = 15
+
+    /// Clamps a name to `maximumAdvertisingNameBytes` **without splitting a character**.
+    ///
+    /// Byte truncation is the obvious implementation and the wrong one: `é` is two UTF-8 bytes and a
+    /// name cut through it stores an invalid sequence the strap advertises as mojibake. Scalars are
+    /// appended while they fit, so the result is always whole characters and always within the limit.
+    public static func clampedAdvertisingName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        var bytes = 0
+        var kept = String.UnicodeScalarView()
+        for scalar in trimmed.unicodeScalars {
+            let width = String(scalar).utf8.count
+            if bytes + width > maximumAdvertisingNameBytes { break }
+            bytes += width
+            kept.append(scalar)
+        }
+        return String(kept)
+    }
+
+    /// Sets the name the strap advertises, on both generations.
+    ///
+    /// **This is the one way a third-party app can name a strap.** The advertised name is not GAP's
+    /// `0x2A00` — CoreBluetooth hides the Generic Access service from every app, which is why the
+    /// name looks unreachable — it is a proprietary command:
+    ///
+    /// - **5.0/MG, ID 140 (`0x8C`):** `[revision=1][length][name…]`, total `2 + length`, `0…15` bytes.
+    /// - **4.0, ID 77 (`0x4D`):** two reserved bytes then a fixed 16-byte field, whose first byte
+    ///   must be non-zero and whose last must be NUL — 15 usable bytes.
+    ///
+    /// Both are `[reported]`: noop's command matrix documents them (and its 5.0 table marks the *4.0*
+    /// ids 76/77 unsupported, returning result 3, which is why the generation picks the number), but
+    /// **neither write has been confirmed in a device capture**, and the reference says radio
+    /// visibility may lag the reply. So the caller must treat a sent frame as *requested*, never as
+    /// *stored*, and verify it the only way this app can: the name in the next advertisement.
+    public static func setAdvertisingName(
+        profile: WhoopProtocolProfile,
+        seq: UInt8,
+        name: String
+    ) -> Data? {
+        let clamped = clampedAdvertisingName(name)
+        guard !clamped.isEmpty else { return nil }
+        let bytes = Array(clamped.utf8)
+
+        switch profile.generation {
+        case .whoop4:
+            // Two reserved bytes, then a 16-byte field, NUL-terminated.
+            var field = bytes
+            field.append(0)
+            field += Array(repeating: 0, count: max(0, 16 - field.count))
+            return WhoopPacketEncoder.buildPacket(
+                profile: profile,
+                type: profile.packetTypes.command,
+                seq: seq,
+                cmd: 0x4D,
+                payload: Data([0x00, 0x00] + field))
+        case .whoop5, .whoop5MG:
+            guard profile.canTransmitCommands else { return nil }
+            return WhoopPacketEncoder5.buildPacket(
+                profile: profile,
+                type: profile.packetTypes.command,
+                seq: seq,
+                cmd: 0x8C,
+                payload: Data([0x01, UInt8(bytes.count)] + bytes))
+        default:
+            return nil
+        }
+    }
+
+    /// Asks the strap what name it has stored — the read half of the rename.
+    ///
+    /// **This is what makes a rename answerable**, and it is the reason the control can be trusted at
+    /// all: the advertised name a phone shows comes from CoreBluetooth's cache as often as from the
+    /// radio, while this answer comes from the strap's own storage — `[revision][source][length]
+    /// [16-byte field]`, with source `1` custom and `2` fallback. 5.0/MG uses ID 141 (`0x8D`), 4.0
+    /// uses ID 76 (`0x4C`), and the request body is one byte: the revision, `1`.
+    public static func getAdvertisingName(
+        profile: WhoopProtocolProfile,
+        seq: UInt8
+    ) -> Data? {
+        switch profile.generation {
+        case .whoop4:
+            return WhoopPacketEncoder.buildPacket(
+                profile: profile,
+                type: profile.packetTypes.command,
+                seq: seq,
+                cmd: 0x4C,
+                payload: Data([0x00]))
+        case .whoop5, .whoop5MG:
+            guard profile.canTransmitCommands else { return nil }
+            return WhoopPacketEncoder5.buildPacket(
+                profile: profile,
+                type: profile.packetTypes.command,
+                seq: seq,
+                cmd: 0x8D,
+                payload: Data([0x01]))
+        default:
+            return nil
+        }
+    }
+
     /// The drain's request, in whichever envelope the profile uses.
     ///
     /// **It takes no window, because neither generation's request carries one.** Both send a single

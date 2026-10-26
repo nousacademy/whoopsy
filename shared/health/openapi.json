@@ -3,7 +3,7 @@
   "info": {
     "title": "Whoopsy Sync API — health",
     "version": "0.1.0",
-    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold. This file is the `health` slice of that document: the `/health` paths and the components they reference. `shared/openapi.json` is the whole contract."
+    "description": "The API contract shared between the Worker and the iOS client. It is generated from the Hono route definitions in backend/src/routes/ rather than written by hand, so this file and the Worker cannot disagree. Regenerate it with `npm --prefix backend run openapi` after changing those routes. The Worker also serves this document live at `GET /openapi.json`, from this same configuration; the one field the two readings differ in is `servers[0].url`, where a served copy names the origin the request arrived on and the committed copy carries `/` — the origin it was fetched from, which is the only honest value a file in a repository can hold. This file is the `health` slice of that document: the `/health` paths and the components they reference. The whole document is not committed — the Worker serves it at `GET /openapi.json`."
   },
   "servers": [
     {

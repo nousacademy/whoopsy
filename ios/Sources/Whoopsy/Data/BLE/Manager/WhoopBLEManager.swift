@@ -345,6 +345,73 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             stored: stored, observed: observed, advertisedName: advertisedName)
     }
 
+    /// Records the strap's own answer, and persists it when the user has never chosen a model.
+    ///
+    /// **Evidence, not a guess, so writing it is not the "guess overriding a choice" this app
+    /// forbids** — the rule is about a *stored choice*, and `strapModelCache[deviceId] == nil` is the
+    /// absence of one. Without this, a strap whose advertised name carries no digit ("Alex WHOOP")
+    /// resolves as a 4.0 on every launch, and the device page shows 4.0 until service discovery
+    /// corrects it. With it, the second launch starts from what the hardware said.
+    ///
+    /// The user's 5.0-vs-MG answer still wins over the service list, which cannot separate the two —
+    /// but the model string *can*, so a stored `5.0` beside an observed `5.0 MG` keeps the user's
+    /// choice and the log says so rather than silently overruling either.
+    private func adoptObservedGeneration(modelNumber: String) {
+        guard let observed = WhoopHardwareGeneration.from(modelNumber: modelNumber) else {
+            AppLogger.ble.notice("""
+                Model number \(modelNumber, privacy: .public) names no generation this build knows; \
+                the advertised-name rung still decides.
+                """)
+            return
+        }
+        adoptObservedGeneration(observed, persist: true)
+    }
+
+    /// The one place an observed generation is recorded, shared by the service list and the model
+    /// string — so the two rungs cannot come to disagree about what "observed" means.
+    /// - Parameter persist: `true` only for the **model string**, which is the one rung that can name
+    ///   a 5.0 MG as well as a 5.0. The service list runs first and cannot tell the two apart, so it
+    ///   records the observation without writing it — otherwise a stored `5.0` would be in place by
+    ///   the time the model string arrived with the better answer, and the user-choice rule would
+    ///   then correctly refuse to correct it.
+    private func adoptObservedGeneration(_ observed: WhoopHardwareGeneration, persist: Bool) {
+        guard let current = currentDeviceState, !current.id.isEmpty else { return }
+        let deviceId = current.id
+
+        strapModelLock.lock()
+        let stored = strapModelCache[deviceId]
+        serviceObservedGenerations[deviceId] = observed
+        if stored == nil { strapModelCache[deviceId] = observed }
+        strapModelLock.unlock()
+
+        if persist, stored == nil, let repository = strapModelRepository {
+            Task { await repository.setModel(observed, forDeviceId: deviceId) }
+        }
+
+        let keepsUserChoice = stored == .whoop5 || stored == .whoop5MG
+        guard !keepsUserChoice, current.hardwareGeneration != observed else { return }
+
+        updateDeviceState {
+            WhoopDevice(
+                id: current.id,
+                name: current.name,
+                hardwareGeneration: observed,
+                batteryPercentage: current.batteryPercentage,
+                connectionState: current.connectionState,
+                isOnBody: current.isOnBody,
+                isCharging: current.isCharging,
+                firmwareVersion: current.firmwareVersion,
+                serialNumber: current.serialNumber,
+                signalStrengthRssi: current.signalStrengthRssi,
+                lastSyncTime: current.lastSyncTime
+            )
+        }
+        AppLogger.ble.notice("""
+            The strap reports itself as \(observed.rawValue, privacy: .public); it was resolved as \
+            \(current.hardwareGeneration.rawValue, privacy: .public) before that read.
+            """)
+    }
+
     /// Records the strap's own answer when its service list contains the 5.0/MG service.
     ///
     /// **Runs from `didDiscoverServices`, before any characteristic is discovered**, so the command
@@ -358,30 +425,16 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     private func adoptWhoop5FromDiscoveredService(for peripheral: CBPeripheral) {
         let deviceId = peripheral.identifier.uuidString
         strapModelLock.lock()
-        let stored = strapModelCache[deviceId]
         let alreadyObserved = serviceObservedGenerations[deviceId]
-        serviceObservedGenerations[deviceId] = .whoop5
         strapModelLock.unlock()
 
-        guard let current = currentDeviceState, current.id == deviceId else { return }
-        let keepsUserChoice = stored == .whoop5 || stored == .whoop5MG
-        guard !keepsUserChoice, current.hardwareGeneration != .whoop5 else { return }
+        // **Not persisted.** The service list proves a 5.0 from a 4.0 and cannot separate the MG;
+        // the model string arrives moments later and can. Writing `.whoop5` here would put a stored
+        // choice in place that the user-choice rule then refuses to correct to `.whoop5MG`.
+        adoptObservedGeneration(.whoop5, persist: false)
 
-        updateDeviceState {
-            WhoopDevice(
-                id: current.id,
-                name: current.name,
-                hardwareGeneration: .whoop5,
-                batteryPercentage: current.batteryPercentage,
-                connectionState: current.connectionState,
-                isOnBody: current.isOnBody,
-                isCharging: current.isCharging,
-                firmwareVersion: current.firmwareVersion,
-                serialNumber: current.serialNumber,
-                signalStrengthRssi: current.signalStrengthRssi,
-                lastSyncTime: current.lastSyncTime
-            )
-        }
+        guard let current = currentDeviceState, current.id == deviceId,
+              current.hardwareGeneration == .whoop5 else { return }
 
         if alreadyObserved != .whoop5 {
             AppLogger.ble.notice("""
@@ -706,7 +759,15 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     /// **An explicit `disconnect()` wins.** A strap the user switched off must not come back on its own
     /// the next time the app is opened; only the Device page's scan can link it again.
     public func rearmConnection() {
-        guard !isIntentionalDisconnect(), centralManager.state == .poweredOn else { return }
+        guard !isIntentionalDisconnect() else { return }
+        guard centralManager.state == .poweredOn else {
+            // **The second place a stale `.connected` is corrected.** The powered-off callback can
+            // have been missed while the app was suspended, so the foreground asks the radio again —
+            // and if it is off, no link exists, whatever the last device object said. Hopped to the
+            // BLE queue because it mutates the same state that queue owns.
+            bleQueue.async { [weak self] in self?.markLinkLost() }
+            return
+        }
         if let peripheral = connectedPeripheral {
             // `.connected` here means there is nothing to arm. The keep-alive window is restarted
             // anyway, because the app may have spent the intervening time suspended with no ticks —
@@ -859,6 +920,89 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         }
         peripheral.writeValue(data, for: char, type: .withResponse)
         return true
+    }
+
+    /// Sends the strap's advertising-name command, and reports only whether the write reached the link.
+    ///
+    /// **A sent frame is not a stored name.** Neither generation's write has been confirmed in a
+    /// device capture, and the reference says radio visibility may lag the reply — so the only proof
+    /// this app has is the name in the *next* advertisement, which is what the device page tells the
+    /// user to look at. `false` means nothing was written: no command path, an empty name, or a
+    /// generation this build cannot frame for.
+    public func setAdvertisingName(_ name: String) -> Bool {
+        guard let profile = currentProfile,
+              let frame = WhoopCommandFrames.setAdvertisingName(
+                profile: profile, seq: commandSequence.next(), name: name)
+        else {
+            let generation = currentDeviceState?.hardwareGeneration.rawValue ?? "none"
+            AppLogger.ble.warning("""
+                Refused SET_ADVERTISING_NAME: cannot frame it for \(generation, privacy: .public).
+                """)
+            return false
+        }
+
+        let handedToTheLink = sendConfirmedCommand(frame)
+        AppLogger.ble.notice("""
+            Sent SET_ADVERTISING_NAME (requested, not confirmed): \
+            \(WhoopCommandFrames.clampedAdvertisingName(name), privacy: .public) — the name in the \
+            next advertisement is what will settle it.
+            """)
+        return handedToTheLink
+    }
+
+    /// The opcodes whose reply states the strap's stored advertising name — 141/140 on a 5.0/MG and
+    /// 76/77 on a 4.0.
+    static let advertisingNameCommands: Set<UInt8> = [0x8D, 0x8C, 0x4C, 0x4D]
+
+    /// Asks the strap for the name it has stored, logging the reply for the capture file.
+    ///
+    /// **This is the read that settles a rename**, because the advertisement a phone shows may be
+    /// CoreBluetooth's cache rather than the radio's current state. Nothing here decodes the answer —
+    /// the reference documents a 19-byte body but marks field validation incomplete, and a decoder
+    /// built on an unverified layout would report a plausible name it had guessed at. The raw reply
+    /// goes to `Documents/capture.txt` and that is read before any field is claimed.
+    public func requestAdvertisingName() -> Bool {
+        guard let profile = currentProfile,
+              let frame = WhoopCommandFrames.getAdvertisingName(
+                profile: profile, seq: commandSequence.next())
+        else { return false }
+        let handedToTheLink = sendConfirmedCommand(frame)
+        CaptureLog.shared.append(
+            "ADVERTISING_NAME_READ_REQUESTED generation=\(profile.generation.rawValue) sent=\(handedToTheLink)")
+        return handedToTheLink
+    }
+
+    /// Sends `0x9A TOGGLE_PERSISTENT_R21`, and reports only whether the write reached the link.
+    ///
+    /// **It does not report that recording is on, and no caller may say so.** The strap acknowledges
+    /// the write and does not confirm the programming; only a later drain can. `false` means nothing
+    /// was written — not a 5.0/MG, no command path, or the characteristic refused a confirmed write —
+    /// and that is *unknown*, not *off*.
+    ///
+    /// **Deliberately not part of any connect sequence.** It is reachable only from the device page's
+    /// ADVANCED tab, behind a confirmation that names the battery cost. See
+    /// `WhoopCommandFrames.persistentR21` for the opcode's caveats and `docs/TODO.md` §7.2 for the
+    /// experiment this exists for.
+    public func setPersistentRecording(_ enabled: Bool) -> Bool {
+        guard let profile = currentProfile,
+              profile.generation == .whoop5 || profile.generation == .whoop5MG,
+              profile.canTransmitCommands,
+              let frame = WhoopCommandFrames.persistentR21(
+                profile: profile, seq: commandSequence.next(), enabled: enabled)
+        else {
+            AppLogger.ble.warning("""
+                Refused PERSISTENT_R21 (0x9A): the connected strap is not a command-capable 5.0/MG.
+                """)
+            return false
+        }
+
+        let handedToTheLink = sendConfirmedCommand(frame)
+        AppLogger.ble.notice("""
+            Sent TOGGLE_PERSISTENT_R21 (0x9A) state=\(enabled ? 1 : 0, privacy: .public) — the ACK does \
+            not confirm programming; verify with a drain.
+            """)
+        Diagnostics.record("persistent_r21_requested", ["state": enabled ? "on" : "off"])
+        return handedToTheLink
     }
 
     /// Everything this app sends on a command characteristic once the link is ready to take it.
@@ -1232,6 +1376,28 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         }
     }
 
+    /// The strap's own backlog report, to `os.log`, `capture.txt` and the diagnostics sink.
+    ///
+    /// **This is the line that answers "two days or fourteen".** Event 29 carries a page backlog and
+    /// an hours figure, so the streak a 14-day wear used to be needed for is readable on any connect.
+    /// It stays a log line: the body is a reported layout and this app does not draw an unconfirmed
+    /// figure, which is also why the charge percentage here is not fed to the battery badge.
+    private func logStrapCondition(_ report: StrapConditionReport) {
+        let line = "STRAP_CONDITION backlog_pages=\(report.pageBacklog) "
+            + "backlog_hours=\(String(format: "%.1f", report.backlogHours)) "
+            + "soc=\(String(format: "%.1f", report.batteryPercentage)) "
+            + "flash=\(report.flashState) charging=\(report.isCharging) wrist=\(report.wristState)"
+        AppLogger.ble.notice("\(line, privacy: .public) (reported layout, unconfirmed)")
+        CaptureLog.shared.append(line)
+        Diagnostics.record("strap_condition", [
+            "pageBacklog": "\(report.pageBacklog)",
+            "backlogHours": String(format: "%.1f", report.backlogHours),
+            "soc": String(format: "%.1f", report.batteryPercentage),
+            "charging": report.isCharging ? "true" : "false",
+            "wrist": "\(report.wristState)"
+        ])
+    }
+
     /// Logs a command-response frame raw, so the GET_CLOCK reply is in the archive.
     ///
     /// **Bounded on purpose.** The first `commandResponse` frame on a link is logged, and after that
@@ -1245,16 +1411,37 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             || frame.cmd == profile.syncOpcodes?.getClock
             || frame.cmd == profile.commandOpcodes?.getDataRange
             || frame.cmd == profile.syncOpcodes?.getDataRange
+            // The advertising-name pair, on both generations. A reply to these is the only place the
+            // strap states what it has stored — the advertisement a phone prints may be its cache.
+            || Self.advertisingNameCommands.contains(frame.cmd)
         let isFirstResponse = frame.type == profile.packetTypes.commandResponse && !hasLoggedCommandResponse
 
         guard isClockReply || isFirstResponse else { return }
         if isFirstResponse { hasLoggedCommandResponse = true }
 
-        AppLogger.ble.notice("""
-            Command response (raw, not decoded): type=0x\(String(frame.type, radix: 16, uppercase: true), privacy: .public) \
-            seq=\(frame.seq) cmd=0x\(String(frame.cmd, radix: 16, uppercase: true), privacy: .public) \
-            payload=\(self.hexPreview(frame.payload), privacy: .public)
-            """)
+        // A plain string first, then one logger call: the `privacy:` annotations only exist inside a
+        // Logger's interpolation, not in a `String` literal built before it.
+        let rawResponse = "Command response (raw, not decoded): "
+            + "type=0x\(String(frame.type, radix: 16, uppercase: true)) "
+            + "seq=\(frame.seq) cmd=0x\(String(frame.cmd, radix: 16, uppercase: true)) "
+            + "payload=\(self.hexPreview(frame.payload))"
+        AppLogger.ble.notice("\(rawResponse, privacy: .public)")
+        // The same line into `Documents/capture.txt`, on the drain's terms: a rename's result is read
+        // minutes later, and `/usr/bin/log`'s device archive is two to four minutes deep.
+        CaptureLog.shared.append("COMMAND_RESPONSE cmd=0x\(String(frame.cmd, radix: 16, uppercase: true)) payload=\(self.hexPreview(frame.payload))")
+
+        // **The advertising name is the second reply worth decoding**, and unlike the data range it
+        // has a consumer: the device page prints the strap's stored name rather than the advertisement
+        // a phone may be caching. `AdvertisingNamePayload` tolerates the envelope's leading length
+        // byte; a reply that does not fit its shape is left alone rather than guessed at.
+        if frame.cmd == 0x8D || frame.cmd == 0x4C,
+           let stored = AdvertisingNamePayload.decode(payload: frame.payload) {
+            CaptureLog.shared.append(
+                "ADVERTISING_NAME_READ stored=\(stored.value) source=\(stored.source.rawValue)")
+            if stored.source == .custom {
+                updateDeviceState { $0.updating(advertisingName: stored.value) }
+            }
+        }
 
         // **The one reply worth decoding is the data range, and only for the log.** Its write page
         // answers whether the strap is storing history at all: two drains either side of a wear with
@@ -1392,6 +1579,21 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             "batches": "\(finished.batchCount)",
             "reason": finished.finishReason.map { String(describing: $0) } ?? "none"
         ])
+        // The persistent copy, on `recordSpo2ProbeLine`'s terms: the log's archive is minutes deep and
+        // a drain is read when the phone comes back, so the outcome that outlives the session belongs
+        // in `Documents/capture.txt` beside the batches rather than only in `os.log`.
+        // **The line that has to survive a rotation.** A night's drain is hundreds of one-minute
+        // bursts, and the per-batch lines are the ones a 64 KB cap can take; this one carries the
+        // facts a morning reader needs — when the drain started, how far back its records reach, how
+        // many batches re-sent a stretch, and the cursor it finished on.
+        CaptureLog.shared.append(
+            "DRAIN_END started=\(finished.startedAt.ISO8601Format()) "
+                + "records=\(finished.recordCount) batches=\(finished.batchCount) "
+                + "oldest=\(finished.lowestRecordTimestamp?.ISO8601Format() ?? "-") "
+                + "newest=\(finished.highestRecordTimestamp?.ISO8601Format() ?? "-") "
+                + "repeats=\(finished.repeatedStartBatchCount) "
+                + "trim=\(finished.lastTrimCursor?.trimPage.description ?? "-") "
+                + "reason=\(finished.finishReason.map { String(describing: $0) } ?? "none")")
 
         watchdog?.cancel()
         continuation?.resume(returning: finished)
@@ -1763,6 +1965,18 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         applyDeviceState(transform(current))
     }
 
+    /// Moves the device to `.disconnected` when the link ended without a callback that would have.
+    ///
+    /// **The peripheral is deliberately kept.** `connectedPeripheral` is what the powered-on branch
+    /// re-arms from, and a `CBPeripheral` reference survives a radio cycle; what changes here is only
+    /// the state the two screens draw. A strap whose radio went off is not linked, so the dot goes
+    /// yellow and the battery figure — which `batteryReading` admits only for `.connected` — is
+    /// withheld rather than left at whatever it last read.
+    private func markLinkLost() {
+        guard let current = currentDeviceState, current.connectionState != .disconnected else { return }
+        applyDeviceState(current.updating(connectionState: .disconnected))
+    }
+
     private func applyDeviceState(_ updated: WhoopDevice) {
         // The state write and the subscriber snapshot are taken under one lock, so the replay in
         // `deviceStream` cannot observe a state that was set before a subscriber it will not be
@@ -1783,6 +1997,18 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
             // Nothing can be heard from the strap while the radio is off, and a tick firing into
             // that state would read it as silence. The link, if it survives, re-arms below.
             stopKeepAlive()
+            // **The radio going away is the link ending, and CoreBluetooth does not promise a
+            // `didDisconnectPeripheral` for it.** Measured on 2026-10-24 with Airplane Mode on: the
+            // device page read "Connected" and Home's badge kept a green dot beside the last battery
+            // figure, because nothing had moved `currentDeviceState` — there is no peripheral to
+            // disconnect when the central itself is off. `.resetting` is excluded because it is
+            // transient; the manager settles on `.poweredOn` or one of the three below.
+            if central.state == .poweredOff || central.state == .unauthorized
+                || central.state == .unsupported {
+                // A drain cannot outlive its radio either, and its caller must not stay suspended.
+                concludeDrain(reason: .aborted)
+                markLinkLost()
+            }
             return
         }
 
@@ -1796,15 +2022,31 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
         if let restored {
             issueStandingConnect(for: restored, after: .disconnected)
         } else if let peripheral = connectedPeripheral {
-            // A restore that found the link up has already re-armed it; the tick is restarted here
-            // because it was stopped when the radio went away, and the window is restarted with it.
-            guard peripheral.state != .connected else {
-                beginKeepAliveWindow()
+            // **A link iOS still holds after a radio cycle is not a link this app can use.**
+            // `didDisconnectPeripheral` is never delivered for a power-off, so the per-link flags
+            // survived: `hasSentConnectCommands` still said the handshake had run, so discovery would
+            // skip it — no `SET_CLOCK`, no `GET_DATA_RANGE`, no history request, no battery read —
+            // and the strap would look connected while nothing worked. That is noop's #2787, reported
+            // there with a Mac asleep overnight and `didBond` still true on wake; the same shape was
+            // measured here on 2026-10-24 as a reconnect that drained nothing.
+            //
+            // So the state is reset and the services are re-discovered rather than the keep-alive
+            // being restarted over stale flags. Re-discovery re-runs `didDiscoverCharacteristicsFor`,
+            // which is what re-sends the connect pass.
+            guard peripheral.state == .connected else {
+                // Bluetooth was cycled, or a connect was refused while it was off. Either way the
+                // pending connection is gone, and only a new one gets the strap back.
+                issueStandingConnect(for: peripheral, after: .failedToConnect)
                 return
             }
-            // Bluetooth was cycled, or a connect was refused while it was off. Either way the pending
-            // connection is gone, and only a new one gets the strap back.
-            issueStandingConnect(for: peripheral, after: .failedToConnect)
+            prepareForNewLink()
+            AppLogger.ble.notice("""
+                Radio returned with the strap still attached — per-link state reset and services \
+                re-discovered so the connect pass runs again.
+                """)
+            peripheral.discoverServices(nil)
+            beginKeepAliveWindow()
+            return
         } else {
             startScanning()
         }
@@ -2222,11 +2464,15 @@ extension WhoopBLEManager: CBPeripheralDelegate {
         }
     }
 
-    /// Applies one DIS value: firmware and serial reach `WhoopDevice`, the other three are logged.
+    /// Applies one DIS value: firmware and serial reach `WhoopDevice`, the model resolves the strap's
+    /// generation, and the other two are logged.
     ///
-    /// **Model, hardware revision and manufacturer have no field and must not get one here.** They are
-    /// display strings, and inventing a `WhoopDevice` property for one would put a value on the device
-    /// page that nothing asked to show. The log is where a capture reads them.
+    /// **The model string is evidence rather than a display string**, and it is the strongest rung
+    /// this app has: written by the strap, read from it, and able to tell a 5.0 from a 5.0 MG where the
+    /// service list cannot. It resolves the generation and, when the user has never chosen one for this
+    /// strap, is persisted so the next launch does not fall back to the advertised name. Hardware
+    /// revision and manufacturer still have no home beyond the log — inventing a `WhoopDevice`
+    /// property for either would put a value on the device page that nothing asked to show.
     private func handleDeviceInformation(_ uuid: CBUUID, data: Data) {
         guard let field = DeviceInformationField(uuid: uuid) else { return }
         guard let text = DeviceInformationPayload.text(from: data) else {
@@ -2246,7 +2492,9 @@ extension WhoopBLEManager: CBPeripheralDelegate {
             updateDeviceState { $0.updating(firmwareVersion: text) }
         case .serial:
             updateDeviceState { $0.updating(serialNumber: text) }
-        case .model, .hardwareRevision, .manufacturer:
+        case .model:
+            adoptObservedGeneration(modelNumber: text)
+        case .hardwareRevision, .manufacturer:
             break
         }
     }
@@ -2493,6 +2741,15 @@ extension WhoopBLEManager: CBPeripheralDelegate {
             // when there is none.
             if let event = StrapEventDecoder.decode(frame: frame) {
                 handleStrapEvent(event)
+            }
+
+            // **The strap volunteers how much history it is holding.** Event 29 carries a page backlog
+            // and an hours figure, which is the difference between "two days" and "fourteen" answered
+            // on every connect instead of by wearing the strap for a fortnight. Logged, never drawn:
+            // the layout is reported and unconfirmed, and this app does not put an unconfirmed figure
+            // on a screen.
+            if let condition = StrapConditionReport.decode(frame) {
+                logStrapCondition(condition)
             }
 
             // The 5.0/MG clock read-back's answer, captured raw. No offset is decoded from it — the

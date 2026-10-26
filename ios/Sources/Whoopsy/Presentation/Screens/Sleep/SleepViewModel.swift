@@ -228,6 +228,27 @@ import SwiftUI
     /// `minimumEpochSamples`, which is what keeps it harmless for an imported day; but it has no
     /// existing-row check, so given samples it would happily overwrite a session that is already
     /// stored. Reading first removes the question.
+    /// Whether a stored night must be re-classified before this page draws it.
+    ///
+    /// **Three answers, in order.** A night an import supplied is never touched — WHOOP's own figures
+    /// are not this app's to re-decide. A row with no recorded version is re-run once, because the
+    /// rule that produced it is unknowable and this is the only way it converges. A row whose version
+    /// matches is re-run only when the night's newest input is later than its watermark, which is the
+    /// drain-finished-late case and nothing else.
+    ///
+    /// A current-version row with no watermark cannot be produced by this build; it is treated as
+    /// stale rather than trusted, the conservative direction for a night that is about to be read.
+    private func shouldReclassify(_ stored: SleepSession?, on date: Date) async -> Bool {
+        if stored?.hasWhoopSleepNeed == true { return false }
+        guard let stored else { return true }
+        guard stored.algorithm == SleepAlgorithm.current else { return true }
+        guard let watermark = stored.scoredThrough else { return true }
+        // The one read, paid only on the path that can still say "no": a night of the current
+        // version whose row already covers everything the analyzer can see is answered from storage.
+        let edge = try? await analyze.inputEdge(for: date)
+        return SleepReclassification.isOwed(watermark: watermark, inputEdge: edge)
+    }
+
     public func load(for date: Date) async {
         isLoading = true
         defer { isLoading = false }
@@ -241,24 +262,46 @@ import SwiftUI
         do {
             async let profileRead = userProfileRepository.getUserProfile()
             var stored = try await repository.getSleepSession(for: date)
-            // **A session this app classified is provisional for today, and this is the gate that
-            // replaces it.** `hasWhoopSleepNeed` is the entity's one provenance bit — true for a night
-            // an import supplied, false for one `AnalyzeSleepUseCase` classified — and a strap session
-            // written before a fix to the stager (the crop window, the onset run, the resting-rate
-            // threshold) is otherwise never reclassified, because a screen that reads a stored row
-            // never re-runs the analysis. Recomputing is the permanent answer, the same one
-            // `RecoveryViewModel` now applies: the save is an upsert keyed on the day, so the night
-            // converges on the current rule. An imported night is left alone.
-            if Calendar.current.isDateInToday(date),
-                stored?.hasWhoopSleepNeed != true {
+            // **The night is read unless something says it is stale, and the two somethings are a
+            // rule change and new input.** A stored `algorithm` that is not `SleepAlgorithm.current`
+            // is a classification made by a rule this build no longer applies, so it is re-run; a
+            // watermark older than the night's newest epoch or sample is a row a drain has since
+            // outgrown, so it is re-run. Everything else is answered from storage — which is what
+            // "already calculated" has to mean, and what makes the page open at once.
+            //
+            // **This replaced an unconditional re-run, and the unconditional version was destructive.**
+            // It re-classified on every open, and a night whose drain had not yet delivered its
+            // motion could legitimately classify as absent — over a rule that had not changed — and
+            // the old code then deleted the row, taking Home's ring and the page's whole timeline
+            // with it until the next night. The deletion survives only for the one case that earns
+            // it: a stored row whose algorithm no longer exists here.
+            if Calendar.current.isDateInToday(date), await shouldReclassify(stored, on: date) {
                 let provisional = stored
+                let analysisStarted = Date()
                 stored = try await analyze.execute(for: date)
-                // **A re-analysis that says "no night" must also remove the provisional row.** The
-                // analyzer writes nothing for an absent night, so without this the previous
-                // classification would stay on disk and Recovery would go on reading a night the
-                // current rule denies.
-                if stored == nil, provisional != nil {
-                    try? await repository.deleteSleepSession(for: date)
+                AppLogger.database.notice("""
+                    Sleep page \(date.description, privacy: .public): re-classified in \
+                    \(Int(Date().timeIntervalSince(analysisStarted) * 1000), privacy: .public) ms, \
+                    had=\(provisional != nil, privacy: .public) got=\(stored != nil, privacy: .public)
+                    """)
+                if stored == nil, let provisional {
+                    if provisional.algorithm != SleepAlgorithm.current {
+                        // The current rule denies a night an older rule accepted, so the row goes.
+                        AppLogger.database.notice("""
+                            Sleep page \(date.description, privacy: .public): the classifier found no \
+                            night under \(SleepAlgorithm.current.rawValue, privacy: .public); the row \
+                            was classified by \(provisional.algorithm?.rawValue ?? "no recorded version", privacy: .public) and is removed
+                            """)
+                        try? await repository.deleteSleepSession(for: date)
+                    } else {
+                        // Same rule, inconclusive input: keep what this app already measured. A short
+                        // read is evidence of a short read, not of an absent night.
+                        AppLogger.database.notice("""
+                            Sleep page \(date.description, privacy: .public): re-classification was \
+                            inconclusive over input the row had not seen; the stored night is kept
+                            """)
+                        stored = provisional
+                    }
                 }
             }
             // One wide read, five consumers. Both the typical-range card and the consistency card's

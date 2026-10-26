@@ -69,5 +69,11 @@ enum StrainAccumulatorMathTests {
             for: 200, zones: zones, restingHeartRate: 50, durationSeconds: 10)
         assertTest(aboveMax.zone == .zone5 && aboveMax.load == 160.0,
             "A rate above maxHR is still scored as zone 5 (\(aboveMax))")
+
+        // ---- The interval rule, and the fold that shares it ----
+
+        // `ZoneTimeMath` is the one definition of how samples become zone time; this call is here so
+        // §4 runs it. Its own file carries the cross-check against `LiveSessionAccumulator`.
+        ZoneTimeMathTests.run()
     }
 }

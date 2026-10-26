@@ -95,6 +95,28 @@ public protocol WhoopBLEDeviceRepository: Sendable {
     /// Throws when there is no command path, so a caller cannot report a reboot that was never sent.
     func rebootStrap() async throws
 
+    /// Sends the 5.0/MG's `0x9A TOGGLE_PERSISTENT_R21` with state `enabled`, and nothing else.
+    ///
+    /// **A deliberate experiment, not a setting.** It exists only because the flash recorder stopped
+    /// with no other explanation (`docs/TODO.md` §7.2), it is reachable only from the device page's
+    /// ADVANCED tab, and no connect path may call it. The strap acknowledges the write and **does not
+    /// confirm the programming** — a caller must say *requested*, never *enabled*, and point at a
+    /// drain as the verification.
+    ///
+    /// Throws `WhoopSyncError.commandUnavailable` when the connected strap is not a command-capable
+    /// 5.0/MG, and `noCommandPath` when nothing was sent — never a `false` a caller could read as
+    /// "off".
+    func setPersistentRecording(_ enabled: Bool) async throws
+
+    /// Asks the strap to advertise a different name — see `WhoopCommandFrames.setAdvertisingName`.
+    ///
+    /// A throw means nothing was written. A return means the frame reached the link and **nothing
+    /// more**: the write is unconfirmed on both generations, so the caller reports it as requested.
+    func setAdvertisingName(_ name: String) async throws
+
+    /// Asks the strap for the name it has stored, logging the reply for a capture.
+    func requestAdvertisingName() async
+
     /// Get the current connected device state
     func getCurrentDevice() async -> WhoopDevice?
 
@@ -209,6 +231,15 @@ public enum WhoopSyncError: Error, LocalizedError, Equatable {
     case endedWithoutConfirmation(
         records: Int, batches: Int, oldestRecord: Date?, newestRecord: Date?)
 
+    /// A command that is **not** the drain's was refused because the connected strap is not a
+    /// generation this build can write it to — today that is `0x9A TOGGLE_PERSISTENT_R21`, which is
+    /// 5.0/MG only.
+    ///
+    /// Separate from `noCommandPath` rather than reusing it for the enum's sake: that case's message
+    /// names a *history request*, and a sentence about history over a persistent-recording tap is a
+    /// false explanation of what failed.
+    case commandUnavailable(generation: String)
+
     public var errorDescription: String? {
         switch self {
         case .noCommandPath(let generation):
@@ -216,6 +247,8 @@ public enum WhoopSyncError: Error, LocalizedError, Equatable {
         case .endedWithoutConfirmation(let records, let batches, _, _):
             return "The strap stopped responding after \(records) record(s) in \(batches) batch(es). "
                 + "Sync again to continue from where it left off."
+        case .commandUnavailable(let generation):
+            return "This build cannot send that command to a \(generation) strap."
         }
     }
 

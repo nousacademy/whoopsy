@@ -59,10 +59,20 @@ public struct ActivityHeartRateChartView: View {
     public let start: Date
     public let end: Date
 
-    public init(series: ActivityHeartRateSeries?, start: Date, end: Date) {
+    /// Whether the page is still reading this session's samples.
+    ///
+    /// **The absence sentence is withheld while the read is in flight**, and that is the whole of this
+    /// flag. `nil` means two different things to a reader — *nothing was recorded* and *nothing has
+    /// arrived yet* — and drawing `No heart rate recorded` for the second and then replacing it with a
+    /// trace is the flash the user reported as glitchy on 2026-10-24. The frame, the rules and the
+    /// clock labels are drawn in every state, so withholding the sentence costs no layout.
+    public let isPending: Bool
+
+    public init(series: ActivityHeartRateSeries?, start: Date, end: Date, isPending: Bool = false) {
         self.series = series
         self.start = start
         self.end = end
+        self.isPending = isPending
     }
 
     /// What the plot says when there is nothing to draw in it.
@@ -151,7 +161,7 @@ public struct ActivityHeartRateChartView: View {
 
                 ActivityHeartRatePlot.DotPath(runs: plot.runs, axis: series.axis, radius: 2.5)
                     .fill(Theme.weekLine)
-            } else {
+            } else if !isPending {
                 Text(Self.absenceNote)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.textMuted)

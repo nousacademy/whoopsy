@@ -991,9 +991,10 @@ public struct ActivityDetailView: View {
             ActivityHeartRateChartView(
                 series: viewModel.heartRateSeries,
                 start: viewModel.session.startedAt,
-                end: viewModel.session.endedAt)
+                end: viewModel.session.endedAt,
+                isPending: viewModel.isLoading)
 
-            if viewModel.heartRateSeries == nil {
+            if viewModel.heartRateSeries == nil && !viewModel.isLoading {
                 Text(Self.noHeartRateNote)
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.textMuted)
@@ -1085,16 +1086,16 @@ public struct ActivityDetailView: View {
 
     // MARK: - Heart rate zones
 
-    /// The five bands, hardest first, each its own card with its BPM range, its share and its time.
+    /// The five bands, hardest first, each its own card with its BPM range, its time, and a bar.
     ///
     /// **This block is what the user asked to sit below the chart** — *"heart zones, zone 1, 2, 3, 4,
     /// and 5 and time duration within those zones for that workout"* — and it is drawn whether or not
     /// the chart above it has a trace, because the two answer different questions: the chart is a
-    /// recording this app makes, the rows are WHOOP's own published block. A session with no trace can
-    /// still have five real rows.
+    /// recording this app makes, the rows are the session's time in each band and, where there is
+    /// history, the same activity's typical time there.
     ///
-    /// **A session with no block draws five dashes**, not a `0%` and not an absent card. See
-    /// `ActivityZoneRow` for why those are different answers and which one this is.
+    /// **A session with neither samples nor a WHOOP block draws five dashes**, not a `0:00:00` and not
+    /// an absent card. See `ActivityZoneRow` for why those are different answers and which one this is.
     ///
     /// **There is no `HEART RATE ZONES` heading.** The reference has none — the five rows name
     /// themselves — and the `TYPICAL RANGE` row directly above them now serves as the section's label.
@@ -1106,7 +1107,7 @@ public struct ActivityDetailView: View {
                     zoneCard(row)
                 }
 
-                Text(Self.zoneFootnote)
+                Text(Self.zoneFootnote(viewModel.zoneSource))
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1116,50 +1117,49 @@ public struct ActivityDetailView: View {
         }
     }
 
-    /// One zone, as its own card.
+    /// One zone, as its own card: its name and range, its time, and the bar under them.
     ///
-    /// **The percent is drawn in the zone's own colour**, through
-    /// `HeartRateZoneIndex.color` — the app's one zone-to-colour mapping, so this row and the strain
-    /// page's bar cannot come to name one band two colours. It is the figure that belongs to the band,
-    /// and the tint says which band without a second label.
+    /// **The bar is the figure the user asked for** — *"the coloured dash should be sessions heart
+    /// range for that zone (time duration)"* — so its length is this session's time in the band and
+    /// its colour is `HeartRateZoneIndex.color`, the app's one zone-to-colour mapping. A grey tick on
+    /// the same track is the same activity's average time there, which is why the two are scaled
+    /// together rather than each to its own row.
     ///
     /// **The time is split into a dim minutes half and a bright seconds half**, through
     /// `ActivityZoneRow.durationParts`: the seconds are the digit that moves, so the moving part is the
     /// one at full strength. Both halves keep their monospaced digits, so the column does not shift as
     /// the numbers change width.
     ///
-    /// **The dashes an absent block draws are not split.** `durationParts` hands a string with no colon
-    /// back whole, so the single em dash is drawn once in the dim colour rather than being padded into a
-    /// two-part shape it does not have.
+    /// **The dashes an absent measurement draws are not split.** `durationParts` hands a string with no
+    /// colon back whole, so the single em dash is drawn once in the dim colour rather than being padded
+    /// into a two-part shape it does not have.
     private func zoneCard(_ row: ActivityZoneRow) -> some View {
         let parts = ActivityZoneRow.durationParts(row.secondsText)
-        return HStack(spacing: 8) {
-            Text("ZONE \(row.index.rawValue)")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(Theme.textPrimary)
-                .frame(width: 54, alignment: .leading)
-
-            Text("\(row.bpmRangeText) BPM")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Theme.textMuted)
-                .frame(width: 68, alignment: .leading)
-
-            Text(row.percentText)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(row.index.color)
-                .frame(width: 42, alignment: .leading)
-
-            Spacer(minLength: 4)
-
-            HStack(spacing: 0) {
-                Text(parts.leading)
-                    .foregroundStyle(Theme.textSecondary)
-
-                Text(parts.trailing)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("ZONE \(row.index.rawValue)")
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.textPrimary)
+                    .frame(width: 54, alignment: .leading)
+
+                Text("\(row.bpmRangeText) BPM")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Theme.textMuted)
+
+                Spacer(minLength: 4)
+
+                HStack(spacing: 0) {
+                    Text(parts.leading)
+                        .foregroundStyle(Theme.textSecondary)
+
+                    Text(parts.trailing)
+                        .foregroundStyle(Theme.textPrimary)
+                }
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .monospacedDigit()
             }
-            .font(.system(size: 13, weight: .semibold, design: .rounded))
-            .monospacedDigit()
+
+            ActivityZoneBar(row: row)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(cornerRadius: 12, padding: 12)
@@ -1169,20 +1169,87 @@ public struct ActivityDetailView: View {
 
     /// The one thing about this block a reader cannot work out from the rows.
     ///
-    /// **The five do not sum to the session**, and a reader who adds the column up and finds it short
-    /// would otherwise read that as an error. The remainder is time below zone 1, which WHOOP publishes
-    /// no column for — the same fact `WorkoutSession`'s own doc comment records and the reason these
-    /// rows are not derived through `WholePercentMath`.
+    /// **The five need not sum to the session**, and a reader who adds the column up and finds it short
+    /// would otherwise read that as an error. The remainder is time below zone 1, which belongs to no
+    /// band — the same fact `WorkoutSession`'s own doc comment records and the reason these rows are
+    /// not derived through `WholePercentMath`.
     ///
-    /// **And the edges are not WHOOP's.** The shares are its own; the BPM boundaries are this app's
-    /// Karvonen table off the profile's two heart rates, which on a fresh install is the cold-start
-    /// `190/60` constant. Saying so on the card is the same judgement that labels Home's VO₂ figure
-    /// `(EST.)` — the figure is real, its provenance is this app's. The reference has no such footnote,
-    /// and it needs none: its boundaries *are* WHOOP's. Removing a provenance disclosure to match a
-    /// picture is the one edit this page will not make.
-    private nonisolated static let zoneFootnote =
-        "Zone percentages are WHOOP's own and need not sum to 100: time below zone 1 belongs to no band. "
-        + "The BPM boundaries are this app's, from your profile's heart rates."
+    /// **The sentence names the producer, and there are two.** A recorded session's times are this
+    /// app's own fold of the session's heart-rate samples; an imported session's are WHOOP's published
+    /// percentages scaled by the session's length. A page that printed one sentence over both would be
+    /// describing a figure it did not compute. **And the edges are not WHOOP's either**: the BPM
+    /// boundaries are this app's Karvonen table off the profile's two heart rates, which on a fresh
+    /// install is the cold-start `190/60` constant. Saying so on the card is the same judgement that
+    /// labels Home's VO₂ figure `(EST.)`. The reference has no such footnote, and it needs none: its
+    /// boundaries *are* WHOOP's. Removing a provenance disclosure to match a picture is the one edit
+    /// this page will not make.
+    private nonisolated static func zoneFootnote(_ source: ActivityZoneRow.Source?) -> String {
+        let edges = "The BPM boundaries are this app's, from your profile's heart rates."
+        switch source {
+        case .measured:
+            return "Zone times are measured from this session's heart-rate samples and need not sum "
+                + "to its duration: time below zone 1 belongs to no band. " + edges
+                + " The grey mark is the average of your previous sessions of this activity."
+        case .imported:
+            return "Zone times are WHOOP's own percentages scaled by the session's length, and need "
+                + "not sum to the duration: time below zone 1 belongs to no band. " + edges
+                + " The grey mark, where shown, is the average of your previous sessions of this "
+                + "activity, measured from their own samples."
+        case nil:
+            return "No heart-rate samples were recorded for this session and it carries no WHOOP "
+                + "zone block. " + edges
+        }
+    }
+
+    /// The track a zone row's time is drawn on: this session's time as a filled bar, the activity's
+    /// average as a grey tick in the same scale.
+    ///
+    /// **The marker is taller than the track, and that is legibility rather than styling.** Zone 1's
+    /// own colour is the app's mid grey, so a grey tick of the track's own height would vanish inside
+    /// zone 1's fill; standing proud of it reads as a position on the track whatever colour is beneath.
+    ///
+    /// **The `ZStack` is explicitly leading-aligned with an explicit full-width frame** — a mark
+    /// positioned by `.offset` inside an overlay must be, or it centres in a box sized to its widest
+    /// sibling. See the `overlay`/`.offset` gotcha in `docs/GOTCHAS.md`.
+    ///
+    /// It is decoration: the card around it is one accessibility element whose label is
+    /// `ActivityZoneRow.spoken(_:)`, so the bar is hidden from VoiceOver rather than described twice.
+    private struct ActivityZoneBar: View {
+        let row: ActivityZoneRow
+
+        private static let trackHeight: CGFloat = 6
+        private static let markerHeight: CGFloat = 12
+        private static let markerWidth: CGFloat = 2
+
+        var body: some View {
+            GeometryReader { proxy in
+                let width = proxy.size.width
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Theme.ringTrack)
+                        .frame(width: width, height: Self.trackHeight)
+
+                    if row.barFraction > 0 {
+                        Capsule()
+                            .fill(row.index.color)
+                            .frame(width: max(1, width * row.barFraction), height: Self.trackHeight)
+                    }
+
+                    if let average = row.averageFraction {
+                        Capsule()
+                            .fill(Theme.neutralDelta)
+                            .frame(width: Self.markerWidth, height: Self.markerHeight)
+                            .offset(x: min(
+                                max(0, width * average - Self.markerWidth / 2),
+                                max(0, width - Self.markerWidth)))
+                    }
+                }
+                .frame(width: width, height: Self.markerHeight, alignment: .leading)
+            }
+            .frame(height: Self.markerHeight)
+            .accessibilityHidden(true)
+        }
+    }
 
     // MARK: - Route
 

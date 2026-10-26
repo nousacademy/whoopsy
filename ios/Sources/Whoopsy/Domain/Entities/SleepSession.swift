@@ -99,6 +99,20 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
 
     public let sleepStages: [SleepStageSegment]
 
+    /// Which rule classified this night, or `nil` on a row written before `v37` carried one.
+    ///
+    /// **The column that lets the page read a night instead of recomputing it.** A night is a decision
+    /// this app made rather than a reading, so a row whose version is not `SleepAlgorithm.current` is
+    /// the one case a re-classification is genuinely owed; a row whose version matches and whose
+    /// `scoredThrough` is not older than the night's newest input is answered from storage.
+    public let algorithm: SleepAlgorithm?
+
+    /// The newest epoch or sample instant this classification included, or `nil` before `v37`.
+    ///
+    /// The watermark `RefreshStrainUseCase` keeps for the same reason: a drain can deliver the rest of
+    /// a night after the row was written, and this is what says whether that happened.
+    public let scoredThrough: Date?
+
     public init(
         id: UUID = UUID(),
         date: Date = Date(),
@@ -114,7 +128,9 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
         sleepConsistency: Int? = nil,
         sleepDebtSeconds: TimeInterval? = nil,
         hasWhoopSleepNeed: Bool = false,
-        sleepStages: [SleepStageSegment] = []
+        sleepStages: [SleepStageSegment] = [],
+        algorithm: SleepAlgorithm? = nil,
+        scoredThrough: Date? = nil
     ) {
         self.id = id
         self.date = date
@@ -131,6 +147,8 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
         self.sleepDebtSeconds = sleepDebtSeconds
         self.hasWhoopSleepNeed = hasWhoopSleepNeed
         self.sleepStages = sleepStages
+        self.algorithm = algorithm
+        self.scoredThrough = scoredThrough
     }
 
     public var totalTimeAsleepSeconds: TimeInterval {

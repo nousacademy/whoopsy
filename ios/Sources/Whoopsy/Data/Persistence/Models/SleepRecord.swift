@@ -60,6 +60,17 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
     /// Where the row came from, when that is worth recording — see `RecoveryRecord.source`.
     public let source: String?
 
+    /// Which rule classified this night, or `nil` for a row written before `v37`.
+    ///
+    /// Local-only: it describes a decision this app made about its own samples, and the wire's sleep
+    /// row carries WHOOP's figures, not this app's provenance. `SleepRecord+SyncRow` passes `nil`.
+    public let algorithm: String?
+
+    /// The newest epoch or sample instant the classification included, or `nil` before `v37`.
+    ///
+    /// Local-only for the same reason as `algorithm`, and the same shape `strains.scoredThrough` has.
+    public let scoredThrough: Date?
+
     public init(
         date: Date,
         startTime: Date,
@@ -75,7 +86,9 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         sleepConsistency: Int? = nil,
         sleepDebt: Double? = nil,
         sleepStages: [SleepStageSegment]? = nil,
-        source: String? = nil
+        source: String? = nil,
+        algorithm: String? = nil,
+        scoredThrough: Date? = nil
     ) {
         self.date = date
         self.startTime = startTime
@@ -92,6 +105,8 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         self.sleepDebt = sleepDebt
         self.sleepStages = sleepStages
         self.source = source
+        self.algorithm = algorithm
+        self.scoredThrough = scoredThrough
     }
 
     enum CodingKeys: String, CodingKey {
@@ -110,5 +125,7 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         case sleepDebt = "sleep_debt"
         case sleepStages = "sleep_stages"
         case source
+        case algorithm
+        case scoredThrough = "scored_through"
     }
 }

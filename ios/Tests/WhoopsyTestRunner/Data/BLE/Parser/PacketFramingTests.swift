@@ -345,6 +345,29 @@ enum PacketFramingTests {
                 stored: .whoop5, observed: nil, advertisedName: "WHOOP Strap") == .whoop5,
             "A stored 5.0 choice survives a name that says nothing")
 
+        // The strongest rung, and the one that made the picker unnecessary: the strap's own model
+        // string, read from `0x2A24`. Measured on this project's strap on 2026-10-25 — it answers
+        // `5.0` while advertising as `Alex WHOOP`, a name with no digit in it at all.
+        assertTest(
+            WhoopHardwareGeneration.from(modelNumber: "5.0") == .whoop5,
+            "The model string names a 5.0 directly, which the advertised name cannot")
+        assertTest(
+            WhoopHardwareGeneration.from(modelNumber: "5.0 MG") == .whoop5MG,
+            "…and `MG` is tested before the digits, so `5.0 MG` answers the MG rather than 5.0 — the "
+                + "one distinction the service list cannot make and this string can")
+        assertTest(
+            WhoopHardwareGeneration.from(modelNumber: "4.0") == .whoop4,
+            "…and a 4.0 answers 4.0, so the old strap in the owner's drawer is still named correctly")
+        assertTest(
+            WhoopHardwareGeneration.from(modelNumber: "Wristband") == nil,
+            "A model string this build does not recognise answers `nil` rather than a guess, which "
+                + "leaves the callers' precedence to the rungs below it")
+        assertTest(
+            WhoopBLEManager.resolvedGeneration(
+                stored: nil, observed: .whoop5MG, advertisedName: "Alex WHOOP") == .whoop5MG,
+            "…and observed evidence of an MG survives a name that says nothing, which is the model "
+                + "picker's job until the strap started answering for itself")
+
         // MARK: Length-driven reassembly across notifications
         //
         // `docs/BLE_PROTOCOL.md` §4 named this as the remaining half of the framing problem, and it is the gate

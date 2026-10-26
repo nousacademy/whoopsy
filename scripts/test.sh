@@ -40,6 +40,14 @@ runner="$scratch/WhoopsyTestRunner"
 main_swift="$package_root/Tests/WhoopsyTestRunner/main.swift"
 export WHOOPSY_PACKAGE_ROOT="$package_root"
 
+# **Where the suite's capture log writes, and why it has to be set here.** `CaptureLog.shared` is what
+# `HistoricalDrainSession` appends its `DRAIN_BATCH` lines to, and the suite drives that session
+# directly — so a host build resolved `.documentDirectory` to a general user folder and every run
+# appended fixture batches beside whatever was already there, rotating the previous file out of the
+# way. Measured on 2026-10-26. `CaptureLog.defaultDirectory()` reads this variable first; pointing it
+# into the scratch path is the same rule as the rest of the suite's output.
+export WHOOPSY_CAPTURE_DIR="$scratch/capture"
+
 module_map="$package_root/.build/checkouts/GRDB.swift/Sources/CSQLite/module.modulemap"
 if [ ! -f "$module_map" ]; then
     echo "Missing $module_map" >&2

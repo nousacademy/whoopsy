@@ -9,23 +9,27 @@ import { createApp } from "../src/app";
 import { API_PREFIX, RELATIVE_ORIGIN, openApiConfig, serialiseOpenApiDocument } from "../src/openapi";
 
 /**
- * Writes the API contract to `shared/`: the whole document, and one file per resource.
+ * Writes the API contract to `shared/`: one file per resource, and no whole document.
  *
- * This is the **second reading of one source**. The Worker serves the same document live at
- * `GET /openapi.json`; this script produces the committed copy the iOS client reads. Both call
+ * This is the **second reading of one source**. The Worker serves the whole document live at
+ * `GET /openapi.json`; this script produces the committed copy the client reads. Both call
  * `createApp()` and `getOpenAPI31Document(openApiConfig)` and both serialise with
- * `serialiseOpenApiDocument`, so the two cannot say different things — and the shell gate
- * (`curl …/openapi.json | diff - shared/openapi.json`) is what checks that claim rather than
- * trusting it.
+ * `serialiseOpenApiDocument`, so the two cannot say different things.
  *
- * ## The whole document, and a slice per resource
+ * ## One folder per resource, and nothing at the root
  *
- * `shared/openapi.json` is the contract — it is what the Worker serves and what the shell gate diffs —
- * but it is also ~250 KB and 41 schemas, which is more than a reader wants in one buffer. So every
- * resource gets a folder named after its path segment, holding **a valid OpenAPI document in its own
- * right**: its own `paths`, and only the components those paths reach. `shared/strains/openapi.json`
- * is the strain resource's contract and nothing else; the eight of them plus `health` add up to the
- * full document's paths, with duplicated schemas because each file has to stand alone.
+ * The whole document is ~250 KB and 41 schemas, which is more than a reader wants in one buffer, so
+ * it is not committed at all — the deployment serves it. Every resource instead gets a folder named
+ * after its path segment, holding **a valid OpenAPI document in its own right**: its own `paths`, and
+ * only the components those paths reach. `shared/strains/openapi.json` is the strain resource's
+ * contract and nothing else; the eight of them plus `health` add up to the full document's paths,
+ * with duplicated schemas because each file has to stand alone. `shared/README.md` is the only
+ * hand-written file in the folder and says exactly that to a reader who opens it.
+ *
+ * **`pruneStaleSlices` is why the root stays empty.** A whole-document `shared/openapi.json` used to
+ * be written here; removing it from the generator without removing it from the tree would leave a
+ * second contract that no longer had a producer, so this script deletes any such file it finds before
+ * writing the slices.
  *
  * **These are generated, exactly like the file above.** They are not the source of anything, they are
  * never hand-edited, and the gate fails if a committed slice differs from the one the code produces —
@@ -265,7 +269,8 @@ function sliceFor(document: Document, slice: Slice): Record<string, unknown> {
       description:
         `${document.info.description ?? ""}${separator}` +
         `This file is the \`${slice.folder}\` slice of that document: the \`${slice.prefix}\` paths ` +
-        "and the components they reference. `shared/openapi.json` is the whole contract.",
+        "and the components they reference. The whole document is not committed — the Worker " +
+        "serves it at `GET /openapi.json`.",
     },
     servers: document.servers,
     paths,
@@ -296,15 +301,18 @@ function pruneStaleSlices(sharedDirectory: string, kept: ReadonlySet<string>): s
 }
 
 const sharedDirectory = fileURLToPath(new URL("../../shared", import.meta.url));
-const target = join(sharedDirectory, "openapi.json");
-const relativeTarget = "../shared/openapi.json";
+const staleWholeDocument = join(sharedDirectory, "openapi.json");
 
 try {
   const generated = createApp().getOpenAPI31Document(openApiConfig(RELATIVE_ORIGIN));
   const document = generated as unknown as Document;
 
-  writeFileSync(target, serialiseOpenApiDocument(document), "utf8");
-  console.log(`openapi: wrote ${relativeTarget}`);
+  // The whole document is served by the Worker and is not committed. A checkout that still holds
+  // one cleans itself here rather than carrying a contract with no producer.
+  if (existsSync(staleWholeDocument)) {
+    rmSync(staleWholeDocument, { force: true });
+    console.log("openapi: removed the whole-document ../shared/openapi.json");
+  }
 
   const slices: Slice[] = [
     { folder: "health", prefix: "/health" },
@@ -346,6 +354,6 @@ try {
   // Named before it is rethrown: an uncaught exception from here prints a stack whose top frame is
   // inside the generator or the filesystem, and "which output file was it trying to write" is the
   // first thing a reader wants and the one thing that stack does not say.
-  console.error(`openapi: could not write ${relativeTarget}`);
+  console.error("openapi: could not write the contract under ../shared/");
   throw error;
 }

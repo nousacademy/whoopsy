@@ -19,7 +19,7 @@ import { workoutRoutes } from "./workouts";
  * policy, so that the question "what does this endpoint do" is answered by reading one file rather
  * than by following a query into a table.
  *
- * The OpenAPI document in `shared/openapi.json` is generated from these, which is why the schemas are
+ * The OpenAPI documents under `shared/` are generated from these, which is why the schemas are
  * declared as `@hono/zod-openapi` route definitions rather than as hand-written JSON.
  *
  * **This file is the mount table, and the prefix is one constant rather than eight literals.** Each

@@ -81,7 +81,8 @@ enum ActivityZoneRowTests {
         // below zone 1, which WHOOP publishes no column for and which is why the column is short.
         let zoned = ActivityDetailTests.session(
             "Basketball", startOffset: 0, durationSeconds: 958, zones: [10, 20, 30, 25, 5])
-        let rows = ActivityZoneRow.rows(for: zoned, zones: ActivityDetailTests.zones)
+        let rows = ActivityZoneRow.rows(
+            for: zoned, zones: ActivityDetailTests.zones, measured: nil, priorAverage: nil)
 
         assertTest(
             rows.count == 5 && rows.map(\.index.rawValue) == [5, 4, 3, 2, 1],
@@ -90,10 +91,10 @@ enum ActivityZoneRowTests {
                 + "first element and cannot see a `ForEach` that walks it backwards "
                 + "(\(rows.map(\.index.rawValue)))")
         assertTest(
-            rows[4].percentText == "10%" && rows[4].secondsText == "0:01:36",
-            "Zone 1's share is `10` of 958 seconds and the row prints `0:01:36` — 95.8 seconds rounded to "
-                + "the clock's own resolution — and the two figures come from one division rather than "
-                + "two (\(rows[4].percentText), \(rows[4].secondsText))")
+            rows[4].secondsText == "0:01:36" && rows[4].source == .imported,
+            "An imported session's zone 1 is `10` of 958 seconds and the row prints `0:01:36` — 95.8 "
+                + "seconds at the clock's resolution — from WHOOP's own share "
+                + "(\(rows[4].secondsText), \(String(describing: rows[4].source)))")
         assertTest(
             rows.allSatisfy { $0.seconds != nil }
                 && rows.compactMap(\.seconds).reduce(0, +) < zoned.durationSeconds,
@@ -112,60 +113,143 @@ enum ActivityZoneRowTests {
                 + "ranges tile the scale without a gap or an overlap "
                 + "(\(rows.map(\.bpmRangeText)))")
 
-        // An absent block and a measured zero are different answers, and the whole type exists to keep
-        // them apart.
+        // An absent measurement and a measured zero are different answers, and the whole type exists to
+        // keep them apart.
         let unzonedRows = ActivityZoneRow.rows(
-            for: ActivityDetailTests.session("Basketball", startOffset: 0, durationSeconds: 958), zones: ActivityDetailTests.zones)
+            for: ActivityDetailTests.session("Basketball", startOffset: 0, durationSeconds: 958),
+            zones: ActivityDetailTests.zones, measured: nil, priorAverage: nil)
         assertTest(
             unzonedRows.count == 5
-                && unzonedRows.allSatisfy { $0.percent == nil && $0.seconds == nil },
-            "A session with no zone block still draws five rows, each with no figure on it — `nil` in, "
-                + "`nil` out, on `WorkoutSession.zoneSeconds`'s own guard")
+                && unzonedRows.allSatisfy { $0.seconds == nil && $0.source == nil },
+            "A session with neither samples nor a block still draws five rows, each with no figure on it "
+                + "— `nil` in, `nil` out, on `WorkoutSession.zoneSeconds`'s own guard")
         assertTest(
-            unzonedRows.allSatisfy { $0.percentText == "—" && $0.secondsText == "—" },
-            "…and both properties draw the dash, so a row can never show a figure beside an absent one "
-                + "(\(unzonedRows.map(\.percentText)), \(unzonedRows.map(\.secondsText)))")
+            unzonedRows.allSatisfy {
+                $0.secondsText == "—" && $0.barFraction == 0 && $0.averageFraction == nil
+            },
+            "…and the row draws the dash with an empty track and no marker, so a figure can never appear "
+                + "beside an absent one (\(unzonedRows.map(\.secondsText)))")
         assertTest(
             ActivityZoneRow.spoken(unzonedRows[0]).hasSuffix("Not recorded for this session."),
             "…and the row says so out loud rather than reading a zero "
                 + "(\(ActivityZoneRow.spoken(unzonedRows[0])))")
 
         let zeroRows = ActivityZoneRow.rows(
-            for: ActivityDetailTests.session("Basketball", startOffset: 0, durationSeconds: 958, zones: [0, 0, 0, 0, 0]),
-            zones: ActivityDetailTests.zones)
+            for: ActivityDetailTests.session(
+                "Basketball", startOffset: 0, durationSeconds: 958, zones: [0, 0, 0, 0, 0]),
+            zones: ActivityDetailTests.zones, measured: nil, priorAverage: nil)
         assertTest(
-            zeroRows.allSatisfy { $0.percentText == "0%" && $0.secondsText == "0:00:00" },
+            zeroRows.allSatisfy { $0.secondsText == "0:00:00" && $0.seconds == 0 },
             "A stored block of five zeroes is a **measurement** — 45 of the export's 673 rows are exactly "
-                + "that, workouts that never reached zone 1 — so it draws `0%` beside `0:00:00`, not the "
-                + "dash an absent block draws. The two are the same pixels only if someone collapses them")
-        assertTest(
-            zeroRows.allSatisfy { $0.percent == 0 && $0.seconds == 0 },
-            "**And a stored `0` percent implies exactly `0` seconds.** This is the property that "
-                + "separates this app's rows from the reference's: the export's percents are whole, so a "
-                + "row's two figures are one share of one duration and can never contradict each other, "
-                + "where the reference's `ZONE 1 … 0% · 0:00:12` comes from a finer internal share it "
-                + "rounds only for display")
+                + "that, workouts that never reached zone 1 — so it draws `0:00:00`, not the dash an absent "
+                + "measurement draws. The two are the same pixels only if someone collapses them")
 
         assertTest(
             ActivityZoneRow.rows(
                 for: ActivityDetailTests.session("Basketball", startOffset: 0, durationSeconds: 958,
                              zones: [10.5, 20, 30, 25, 5]),
-                zones: ActivityDetailTests.zones
-            ).allSatisfy { $0.percent == nil },
+                zones: ActivityDetailTests.zones, measured: nil, priorAverage: nil
+            ).allSatisfy { $0.seconds == nil },
             "A fractional percent is **refused outright** rather than rounded: all 3,365 `HR Zone n %` "
                 + "cells in the bundled file are whole numbers, so a fraction is a value from some other "
                 + "producer, and rounding it would silently invent a reading instead of losing one")
         assertTest(
             ActivityZoneRow.rows(
                 for: ActivityDetailTests.session("Basketball", startOffset: 0, durationSeconds: 958, zones: [10, 20]),
-                zones: ActivityDetailTests.zones
-            ).allSatisfy { $0.percent == nil },
+                zones: ActivityDetailTests.zones, measured: nil, priorAverage: nil
+            ).allSatisfy { $0.seconds == nil },
             "…and a block that is not five long reads as no block at all rather than as a partial set "
                 + "summing to a confident figure")
         assertTest(
-            ActivityZoneRow.rows(for: zoned, zones: Array(ActivityDetailTests.zones.prefix(4))).isEmpty,
+            ActivityZoneRow.rows(
+                for: zoned, zones: Array(ActivityDetailTests.zones.prefix(4)),
+                measured: nil, priorAverage: nil
+            ).isEmpty,
             "A zone **table** that is not five bands long answers no rows at all: a page drawing three of "
                 + "five zones would report the session's time as though the two hardest bands did not exist")
+
+        // MARK: - A recorded session's own time, and the two producers
+
+        // Totals in band order: 100 s in zone 1, 200 in zone 2, 50 in zone 3, 0 in zone 4, 300 in zone 5.
+        let measuredTotals = ZoneTimeMath.Totals(
+            zoneSeconds: [100, 200, 50, 0, 300], measuredSeconds: 900, sampleCount: 900)
+        let measuredRows = ActivityZoneRow.rows(
+            for: zoned, zones: ActivityDetailTests.zones,
+            measured: measuredTotals, priorAverage: nil)
+        assertTest(
+            measuredRows.map(\.seconds) == [300, 0, 50, 200, 100]
+                && measuredRows.allSatisfy { $0.source == .measured },
+            "A recorded session draws **its own measured times** — hardest band first, so zone 5's 300 "
+                + "seconds lead — even though it also carries WHOOP's block: measured wins because it is "
+                + "this session's actual readings (\(measuredRows.map(\.seconds)))")
+        assertTest(
+            measuredRows.map(\.secondsText) == ["0:05:00", "0:00:00", "0:00:50", "0:03:20", "0:01:40"],
+            "…and a measured **zero** in zone 4 prints `0:00:00` rather than a dash, which is the same "
+                + "distinction the stored all-zero block carries (\(measuredRows.map(\.secondsText)))")
+
+        // MARK: - The average, and its floor
+
+        let totals = { (seconds: [Double]) in ZoneTimeMath.Totals(
+            zoneSeconds: seconds, measuredSeconds: 900, sampleCount: 900) }
+        assertTest(
+            ActivityZoneBaseline.make(priorTotals: []) == nil
+                && ActivityZoneBaseline.make(priorTotals: [totals([1, 1, 1, 1, 1])]) == nil
+                && ActivityZoneBaseline.make(priorTotals: [totals([1, 1, 1, 1, 1]),
+                                                          totals([1, 1, 1, 1, 1])]) == nil,
+            "The zone average is withheld below `RecoveryScoring.minimumBaselineDays` measured priors — "
+                + "zero, one and two all answer `nil`, so the grey mark appears on exactly the third")
+        let threeAveraged = ActivityZoneBaseline.make(priorTotals: [
+            totals([100, 200, 300, 400, 500]),
+            totals([0, 0, 0, 0, 0]),
+            totals([200, 400, 600, 800, 1000]),
+        ])
+        assertTest(
+            threeAveraged?.averageSeconds == [100, 200, 300, 400, 500]
+                && threeAveraged?.sessionCount == 3,
+            "…and at three it is the mean of those three folds, band by band, with the count carried so "
+                + "the sentence can name its basis (\(String(describing: threeAveraged)))")
+        assertTest(
+            ActivityZoneBaseline.make(priorTotals: [
+                ZoneTimeMath.Totals(zoneSeconds: [1, 2], measuredSeconds: 3, sampleCount: 3),
+                ZoneTimeMath.Totals(zoneSeconds: [1, 2], measuredSeconds: 3, sampleCount: 3),
+                ZoneTimeMath.Totals(zoneSeconds: [1, 2], measuredSeconds: 3, sampleCount: 3),
+            ]) == nil,
+            "…and a fold that does not name five bands answers `nil` rather than a mean with three bands "
+                + "missing, which would print a band this app never measured")
+
+        // One scale for the block: the largest figure anywhere in it, session or average. Zone 5's
+        // average is the block's longest figure, so its marker runs the full track while its bar is half.
+        let averagedRows = ActivityZoneRow.rows(
+            for: zoned, zones: ActivityDetailTests.zones,
+            measured: measuredTotals,
+            priorAverage: ActivityZoneBaseline(
+                averageSeconds: [150, 50, 75, 25, 600], sessionCount: 4))
+        assertTest(
+            averagedRows.allSatisfy { $0.scaleSeconds == 600 },
+            "Every row in the block takes **one scale** — the largest figure anywhere in it — so a bar "
+                + "and its own grey marker are drawn on the same track "
+                + "(\(averagedRows.map(\.scaleSeconds)))")
+        assertTest(
+            averagedRows[0].averageFraction == 1.0 && averagedRows[0].barFraction == 0.5,
+            "…and zone 5's average, 600 s against a 300 s session, fills the track while the session's "
+                + "own bar reaches half — the case that fails if the marker is scaled to the session's "
+                + "maximum instead (\(String(describing: averagedRows[0].averageFraction)), "
+                + "\(averagedRows[0].barFraction))")
+        assertTest(
+            averagedRows[1].seconds == 0 && averagedRows[1].averageFraction == 25.0 / 600.0,
+            "…and a band the session never entered still carries the activity's average beside its zero, "
+                + "because the comparison is the point of drawing both")
+        assertTest(
+            unzonedRows.allSatisfy { $0.averageFraction == nil && $0.averageSeconds == nil },
+            "A row with no time of its own has no marker either: a comparison with one side missing is "
+                + "the withheld badge rule this page already applies to strain and steps")
+        assertTest(
+            ActivityZoneRow.spoken(averagedRows[0])
+                == "Zone 5, 177+ bpm. 0:05:00. Average over your last 4 sessions of this activity: "
+                    + "0:10:00.",
+            "…and the spoken row names the average and the population it came from, so a blind reader "
+                + "hears what the grey mark is without a legend "
+                + "(\(ActivityZoneRow.spoken(averagedRows[0])))")
 
         // MARK: - The time's two halves
 
@@ -188,14 +272,13 @@ enum ActivityZoneRowTests {
                 + "shape as the numbers shrink")
         assertTest(
             ActivityZoneRow.durationParts("0:00:00") == (leading: "0:00", trailing: ":00"),
-            "**And a measured zero keeps its two halves**, so a `0%` row from the 45 all-zero rows in the "
-                + "export draws a real `0:00` and `:00` rather than collapsing to the single undivided "
-                + "mark an absent block draws — the same distinction the row's values carry, carried "
-                + "through the drawing")
+            "**And a measured zero keeps its two halves**, so a `0` row draws a real `0:00` and `:00` "
+                + "rather than collapsing to the single undivided mark an absent measurement draws — the "
+                + "same distinction the row's values carry, carried through the drawing")
         assertTest(
             ActivityZoneRow.durationParts("—") == (leading: "—", trailing: ""),
             "A string with no colon comes back **whole with an empty tail**, which is the dash an absent "
-                + "block draws: a dash is not a duration and has no halves, so it is drawn once and "
+                + "measurement draws: a dash is not a duration and has no halves, so it is drawn once and "
                 + "undivided rather than padded into a two-part shape it does not have")
 
         // MARK: - The window

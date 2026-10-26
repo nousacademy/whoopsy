@@ -118,7 +118,6 @@ public struct MainContainerView: View {
             sync: container.syncHistoricalDataUseCase,
             refreshStrain: container.refreshStrainUseCase,
             preferencesRepository: container.preferencesRepository,
-            strapModels: container.strapModelRepository,
             protocols: container.protocolCatalog,
             biometrics: container.biometricRepository)
         // **The one live session that outlives the process is restored here**, in the initialiser
@@ -248,10 +247,30 @@ public struct MainContainerView: View {
             guard phase == .active else { return }
             Task {
                 await container.manageBLEConnectionUseCase.rearmConnection()
+
+                // **The two catch-up runs yield to the first screen, and that is ordering rather than
+                // a timer for correctness.** Both are background work whose result no screen is
+                // waiting on: `runIfDue` uploads the span since the last sync, and `refreshToday`
+                // re-reads a whole day of samples and folds it. They share one `DatabaseQueue` with
+                // the reads Home is doing to draw its rings, so starting them in the same instant as
+                // the first `HomeViewModel.load` puts a day's fold and a week's upload ahead of the
+                // sleep ring in the queue — which is what "the ring took a while to populate on the
+                // first load" was, reported 2026-10-24. Nothing is lost by waiting: `lastDailySyncDay`
+                // still bounds the sync to one run an evening, and the five-minute tick would score
+                // the day anyway.
+                try? await Task.sleep(for: .seconds(2))
+
                 // **The catch-up that makes the schedule reliable.** A suspended app's 18:00 timer
                 // does not fire; opening the app after the window on an unmarked day runs it once,
                 // and `lastDailySyncDay` prevents a second run the same evening.
                 await container.dailySyncUseCase.runIfDue()
+                // **The drain's second trigger, and the one a night needs.** A phone that stayed
+                // connected all night never re-connects in the morning, so the connect-triggered
+                // drain never runs and the night sits in the strap's flash until someone presses
+                // `SYNC HISTORY`. `DrainCoordinator` makes this safe to call on every foreground: it
+                // is skipped while a drain is in flight, and a strap with nothing new answers in one
+                // cheap batch.
+                await container.drainCoordinator.drain()
                 // A foreground is the moment a day that changed while the app was suspended gets
                 // scored, without waiting for the five-minute tick.
                 await container.refreshStrainUseCase.refreshToday()
@@ -324,35 +343,17 @@ extension MainContainerView {
                 case .disconnected, .scanning, .connecting, .error:
                     // A link that ended gets a fresh drain when it returns.
                     drainedThisLink = false
+                case .syncing:
+                    // A drain in progress is the same link, not a new one: the flag stays set so the
+                    // state change cannot queue a second drain behind the first.
+                    continue
                 case .connected:
                     guard !drainedThisLink else { continue }
                     drainedThisLink = true
-                    do {
-                        let outcome = try await container.syncHistoricalDataUseCase.execute()
-                        AppLogger.ble.notice("""
-                            Auto-sync: \(outcome.recordCount, privacy: .public) record(s) in \
-                            \(outcome.batchCount, privacy: .public) batch(es), ending \
-                            \(String(describing: outcome.ending), privacy: .public)
-                            """)
-                        // **The drain's other half.** The records are on disk and would otherwise go
-                        // unscored until each day's own page happened to be opened — which on a
-                        // backlog is never. The range comes off the drain's own stamps, so a drain
-                        // that carried none asks for nothing.
-                        await container.refreshStrainUseCase.refresh(
-                            from: outcome.oldestRecord, to: outcome.newestRecord)
-                    } catch {
-                        AppLogger.ble.warning("""
-                            Auto-sync failed: \(error.localizedDescription, privacy: .public)
-                            """)
-                        // A drain that stopped early still wrote what it read — `endedWithoutConfirmation`
-                        // carries the range for exactly this.
-                        if let range = (error as? WhoopSyncError)?.recordRange {
-                            await container.refreshStrainUseCase.refresh(
-                                from: range.oldest, to: range.newest)
-                        }
-                    }
-                case .syncing:
-                    continue
+                    // One gate for every automatic drain — the connect here and the foreground
+                    // below are two triggers for one operation, and `DrainCoordinator` is what keeps
+                    // them from superseding each other. It also owns the retry a silent strap gets.
+                    await container.drainCoordinator.drain()
                 }
             }
         }

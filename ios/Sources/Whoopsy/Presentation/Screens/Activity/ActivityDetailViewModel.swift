@@ -30,8 +30,10 @@ import SwiftUI
 /// number**: a delete removes a row the user asked to remove, and an edit relabels one and moves its
 /// two boundaries inside the span it already had. `ActivityEditDraft` is where the second of those is
 /// bounded, and its clamp is the reason this type can offer a write at all without becoming a place a
-/// calculate use case may be wired into — nothing here produces a strain, a heart rate or a zone
-/// share, and the edit's `applying(to:)` hands every one of those back exactly as it found it.
+/// calculate use case may be wired into — nothing here *writes* a measurement, and the edit's
+/// `applying(to:)` hands every stored one back exactly as it found it. The page does derive the
+/// session's time-in-zone from the session's own samples, on read and never to a row; that is the
+/// same derive-on-read shape the fast layout uses, and `docs/ALGORITHMS.md` §2 carries the rule.
 ///
 /// ## Everything the page draws is a value on this type, not a rule in a `body`
 ///
@@ -96,10 +98,35 @@ import SwiftUI
 
     /// The five zone rows, highest band first, or `[]` when the profile cannot produce a zone table.
     ///
-    /// It holds `ActivityZoneRow`s whose `percent` is itself `nil` for a session with no block, so an
-    /// empty array and five dashed rows are different answers: the first is a page that cannot name a
-    /// band, the second is a session WHOOP did not publish a block for.
-    public private(set) var zoneRows: [ActivityZoneRow] = []
+    /// **Computed from the inputs beside it rather than stored**, so the rows cannot disagree with the
+    /// samples or the baseline they describe: `load()` fills `zoneTable`, `sessionZoneTotals` and
+    /// `zoneBaseline`, and this derives once. An empty array and five dashed rows are different
+    /// answers — the first is a page that cannot name a band, the second is a session with neither
+    /// samples nor a WHOOP block.
+    public var zoneRows: [ActivityZoneRow] {
+        ActivityZoneRow.rows(
+            for: session,
+            zones: zoneTable,
+            measured: sessionZoneTotals,
+            priorAverage: zoneBaseline)
+    }
+
+    /// Which producer the five rows' times came from — `nil` when they are all dashes.
+    ///
+    /// Read by the view to choose the footnote that describes where the figures came from; the two
+    /// producers are named in `ActivityZoneRow.Source`.
+    public var zoneSource: ActivityZoneRow.Source? { zoneRows.first?.source }
+
+    /// The profile's five bands, or `[]` when the profile read threw.
+    private var zoneTable: [HeartRateZone] = []
+    /// The profile's resting rate, for the zone fold's low-intensity band.
+    private var restingHeartRate = 0
+    /// The session's own samples, read once and shared by the chart and the zone rows.
+    private var sessionSamples: [BiometricSample] = []
+    /// The session's own time-in-zone fold, or `nil` when it has no usable samples.
+    private var sessionZoneTotals: ZoneTimeMath.Totals?
+    /// The same-activity mean the rows' grey marks draw, or `nil` below its floor.
+    private var zoneBaseline: ActivityZoneBaseline?
 
     /// The heart-rate series, or `nil` when the session has no samples to plot.
     ///
@@ -203,18 +230,55 @@ import SwiftUI
         self.liveFast = liveFast
     }
 
-    /// Loads the comparison history and the session's own trace.
+    /// Loads the session's own figures first, then the comparison history.
     ///
-    /// The zone rows are resolved **before** any of that, because they need no history: the profile's
-    /// zone table and the session's own stored percentages are both already available, so a page whose
-    /// history read is slow still draws five real rows. The trace is read over the session's own window
-    /// and is independent of the history for the same reason.
+    /// **The session's figures need no history**, so they land first and a slow history read withholds
+    /// only the comparisons. The zone rows are folded from the same sample array the chart is built
+    /// from — one read, two readers — and the profile's zone table is what turns that fold into bands.
+    ///
+    /// **The prior-session zone average is the one thing here that costs extra reads**, up to the ten
+    /// sessions `ActivityBaseline.window` caps at. It is gated: a session with no zone figure of its own
+    /// (a fast, a hand-added session, a profile that threw) reads nothing.
     public func load() async {
         isLoading = true
         defer { isLoading = false }
 
-        await loadZoneRows()
-        await loadHeartRateSeries()
+        async let profileRead = userProfileRepository.getUserProfile()
+        async let samplesRead = biometricRepository.getSamples(
+            from: session.startedAt, to: session.endedAt)
+
+        do {
+            let profile = try await profileRead
+            restingHeartRate = profile.restingHeartRate
+            zoneTable = StrainAccumulatorMath.computeZones(
+                maxHR: profile.maxHeartRate, restHR: profile.restingHeartRate)
+        } catch {
+            // No table, no rows: the page draws the zone block's absence rather than five invented
+            // bands. The chart is unaffected, because its samples are read independently.
+            zoneTable = []
+            restingHeartRate = 0
+        }
+
+        do {
+            let samples = try await samplesRead
+            sessionSamples = samples
+            heartRateSeries = ActivityHeartRateSeries(
+                samples: samples, start: session.startedAt, end: session.endedAt)
+            sessionZoneTotals = zoneTable.isEmpty
+                ? nil
+                : ZoneTimeMath.totals(
+                    samples: samples,
+                    zones: zoneTable,
+                    restingHeartRate: restingHeartRate)
+        } catch {
+            // `nil` is the same answer a session with no samples gives, and the page draws `No Data`
+            // for both — a read that failed and a read that found nothing are the same thing to a
+            // reader, which is why `HoursOfSleepChartSeries` collapses them too.
+            sessionSamples = []
+            heartRateSeries = nil
+            sessionZoneTotals = nil
+        }
+
         await loadFastingRecovery()
         loadRouteRenderer()
 
@@ -225,12 +289,45 @@ import SwiftUI
             // to instants strictly before it — one definition, in the domain, not repeated here.
             let window = ActivityBaseline.window(for: session, in: history)
             baseline = ActivityBaseline.summary(for: session, priorSessions: window)
+            await loadZoneBaseline(priorSessions: window)
         } catch {
             // A failed read leaves the empty summary in place, so the page draws its own figures with
             // every comparison withheld rather than an error where a badge would be. The session is
             // already stored; the comparison is the only thing lost.
             errorMessage = "Could not load this activity's history."
         }
+    }
+
+    /// The same-activity mean the zone rows' grey marks draw.
+    ///
+    /// **Every prior is folded from its own samples**, never from a WHOOP percentage block: mixing the
+    /// two producers into one mean would be the defect `ActivityZoneBaseline` documents. A prior whose
+    /// read throws or that carries no samples contributes nothing; below the floor the whole average is
+    /// `nil` and the marker is absent.
+    ///
+    /// Reads are sequential because `LocalDatabaseManager` is a single `DatabaseQueue` and would
+    /// serialise them anyway; the window is already capped at ten.
+    private func loadZoneBaseline(priorSessions: [WorkoutSession]) async {
+        guard !zoneTable.isEmpty,
+              ActivityZoneRow.rows(
+                for: session, zones: zoneTable, measured: sessionZoneTotals, priorAverage: nil
+              ).contains(where: { $0.seconds != nil })
+        else {
+            zoneBaseline = nil
+            return
+        }
+
+        var totals: [ZoneTimeMath.Totals] = []
+        for prior in priorSessions {
+            let samples = (try? await biometricRepository.getSamples(
+                from: prior.startedAt, to: prior.endedAt)) ?? []
+            if let folded = ZoneTimeMath.totals(
+                samples: samples, zones: zoneTable, restingHeartRate: restingHeartRate)
+            {
+                totals.append(folded)
+            }
+        }
+        zoneBaseline = ActivityZoneBaseline.make(priorTotals: totals)
     }
 
     /// Removes the session this page is about, and reports whether it actually went.
@@ -272,11 +369,12 @@ import SwiftUI
     /// ## It re-runs the whole load, and that is deliberate
     ///
     /// Four separate things on this page are derived from `session`, and a trim moves three of them.
-    /// `zoneRows` is the one that is easy to spot: each row's time is `share × durationSeconds`, so a
-    /// shortened span rescales all five printed durations while the percentages stay WHOOP's, and a
-    /// save that swapped only `session` would leave `DURATION` printing the new span over five rows
-    /// still scaled by the old one — two figures for one span, which is the disagreement
-    /// `zoneSeconds(_:)` exists to make impossible. `heartRateSeries` is read over
+    /// `zoneRows` is the one that is easy to spot, and **how it moves depends on its producer**: an
+    /// imported session's time is `share × durationSeconds`, so a shortened span rescales all five
+    /// while the percentages stay WHOOP's; a measured session's time is re-read and re-integrated over
+    /// the new sample window, which is why the rows are derived in `load()` rather than adjusted in
+    /// place. A save that swapped only `session` would leave `DURATION` printing the new span over five
+    /// rows still scaled by the old one — two figures for one span. `heartRateSeries` is read over
     /// `startedAt…endedAt` and would otherwise keep plotting a window the session no longer has.
     ///
     /// **The comparison window is the third, and it is the one that would be missed.** `baseline` is
@@ -306,36 +404,6 @@ import SwiftUI
         session = edited
         await load()
         return true
-    }
-
-    /// The profile's five bands, paired with the session's own stored shares.
-    private func loadZoneRows() async {
-        do {
-            let profile = try await userProfileRepository.getUserProfile()
-            let zones = StrainAccumulatorMath.computeZones(
-                maxHR: profile.maxHeartRate, restHR: profile.restingHeartRate)
-            zoneRows = ActivityZoneRow.rows(for: session, zones: zones)
-        } catch {
-            // No table, no rows: the page draws the zone block's absence rather than five invented
-            // bands. `rows(for:zones:)` answers `[]` for a table that is not five long, so this and
-            // that guard produce the same screen.
-            zoneRows = []
-        }
-    }
-
-    /// The session's heart rate over its own window.
-    private func loadHeartRateSeries() async {
-        do {
-            let samples = try await biometricRepository.getSamples(
-                from: session.startedAt, to: session.endedAt)
-            heartRateSeries = ActivityHeartRateSeries(
-                samples: samples, start: session.startedAt, end: session.endedAt)
-        } catch {
-            // `nil` is the same answer a session with no samples gives, and the page draws `No Data`
-            // for both — a read that failed and a read that found nothing are the same thing to a
-            // reader, which is why `HoursOfSleepChartSeries` collapses them too.
-            heartRateSeries = nil
-        }
     }
 
     /// What a fast's page prints, read only for a session that draws the fasting layout.

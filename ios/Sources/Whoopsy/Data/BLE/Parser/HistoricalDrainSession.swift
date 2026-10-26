@@ -95,6 +95,120 @@ public struct HistoricalDrainSession: Sendable {
     /// Records seen — `historicalData`-typed frames, one per record.
     public private(set) var recordCount = 0
 
+    /// Where a Gen 5 `HISTORY_END` declares how many frames the burst carried.
+    ///
+    /// **Payload 6 is frame `inner[9]`, and it is a count only on a 5.0/MG.** [reported] OpenStrap's
+    /// Gen 5 reference (`PROTOCOL-GEN5.md` §8) puts `expected_count`, a u32 LE, at `inner[9]`; that
+    /// reference's Gen 4 document puts a "record-id / batch counter (not echoed)" at the same offset.
+    /// The two generations number their fields alike and mean different things by this one, which is
+    /// why `WhoopProtocolProfile.declaresBurstFrameCount` gates the read rather than a bare literal.
+    ///
+    /// Payload 6 sits between the strap clock at 0 and the continuation token at 10, so a marker long
+    /// enough for the token is long enough for this. See `burstFrameCounts`.
+    public static let expectedFrameCountPayloadOffset = 6
+
+    /// The frame types a Gen 5 burst's declared count covers — **the membership, and getting it wrong
+    /// makes the strap re-offer the same burst forever**.
+    ///
+    /// [reported] `PROTOCOL-GEN5.md` §8: count each complete frame once, for types 47, 48, 50, 53, 54
+    /// and 55 only. Type 49 is the marker that carries the count and does not count itself; 51 and 52
+    /// (the IMU stream) are excluded. Revision and byte length are irrelevant — a frame this build
+    /// cannot decode still counts, which is the property that keeps a burst of unknown revisions from
+    /// being trimmed past.
+    public static let countedFrameTypes: Set<UInt8> = [47, 48, 50, 53, 54, 55]
+
+    /// What one burst said it carried, against what this session counted — the evidence the next
+    /// decision about the count gate needs.
+    ///
+    /// **Recorded, logged and not enforced.** Nothing about the acknowledgement depends on this yet:
+    /// the session still ACKs success after every `HISTORY_END`. Turning a mismatch into the negative
+    /// result (Gen 5 body `00 00`) is the step that makes the strap re-offer a short burst, and it
+    /// waits until a capture shows `expected` and `counted` agreeing on an ordinary burst — a validator
+    /// whose membership is wrong would refuse good bursts forever, which is worse than the silent loss
+    /// it is meant to catch.
+    public struct BurstFrameCounts: Equatable, Sendable {
+        public let expected: Int
+        public let counted: Int
+        public init(expected: Int, counted: Int) {
+            self.expected = expected
+            self.counted = counted
+        }
+        public var matches: Bool { expected == counted }
+        /// `expected - counted`, negative when more frames arrived than were declared.
+        public var difference: Int { expected - counted }
+    }
+
+    /// The last completed burst's declared and counted frames, or `nil` on a generation that declares
+    /// none and for a burst whose marker was too short to hold the field.
+    public private(set) var lastBurstFrameCounts: BurstFrameCounts?
+
+    /// The continued-read cursor the last `HISTORY_END` handed us, as the two words the references
+    /// name, or `nil` for a marker too short to carry a token.
+    ///
+    /// **This is the value the acknowledgement echoes**, so it is the one number that can explain a
+    /// rewind: a burst that begins at a stamp an earlier burst already covered is the strap reading
+    /// from an earlier page, and a token that went backwards says so directly where the stamps only
+    /// suggest it.
+    public private(set) var lastTrimCursor: TrimCursor?
+
+    /// The first record stamp of the previous **completed** batch, for the repeat test below.
+    private var previousBatchFirstTimestamp: Date?
+
+    /// Whether the batch that just ended began **at or before** the previous batch's first record, or
+    /// `nil` before two batches have completed.
+    ///
+    /// **This is the rewind made observable rather than inferred.** A re-sent stretch shows up as two
+    /// batches whose `first` stamps go backwards or repeat while both declared counts match — measured
+    /// on 2026-10-25, where a drain produced `first=23:17:49` twice and then `first=23:38:49` after
+    /// `23:38:53`. Reading that out of a capture by eye needs two lines side by side, and a rotation
+    /// can separate them into different files; a flag on the line itself cannot be separated.
+    ///
+    /// It says *the stream went back*, not *why*. The trim cursor on the same line is the evidence that
+    /// distinguishes a cursor that stalled from a strap re-sending on its own.
+    public private(set) var lastBatchRepeatedStart: Bool?
+
+    /// How many completed batches began at or before the batch before them.
+    public private(set) var repeatedStartBatchCount = 0
+
+    /// The eight-byte continuation token, read as the references describe it:
+    /// `[u32 trim page][u32 wrap count]`, both little-endian.
+    ///
+    /// **[reported] The two names are OpenStrap's** (`PROTOCOL.md` §4.2 for the Gen 4 token, and the
+    /// Gen 5 reference's marker layout at `inner[13:21]`). The wrap count is **not** a per-batch
+    /// identifier — it changes only when the ring buffer wraps, so consecutive bursts routinely share
+    /// it. A `trim` that does not move, or moves and returns between two bursts, is the rewind; a
+    /// `wrap` that changes is the buffer having gone round, which makes a stamp comparison across it
+    /// meaningless.
+    public struct TrimCursor: Equatable, Sendable {
+        public let trimPage: UInt32
+        public let wrapCount: UInt32
+        public init(trimPage: UInt32, wrapCount: UInt32) {
+            self.trimPage = trimPage
+            self.wrapCount = wrapCount
+        }
+
+        /// The two words of an eight-byte token, or `nil` for anything of another length — the same
+        /// refusal `continuationToken(from:)` makes, applied to the value rather than to the marker.
+        public static func decode(_ token: Data) -> TrimCursor? {
+            guard token.count == continuationTokenBytes else { return nil }
+            return TrimCursor(
+                trimPage: WhoopPacketDecoder.littleEndianUInt32(in: token),
+                wrapCount: WhoopPacketDecoder.littleEndianUInt32(in: token.dropFirst(4)))
+        }
+    }
+
+    /// Every frame type the current batch carried, and how many of each, reset at each `HISTORY_END`.
+    ///
+    /// **This is instrumentation today and the count gate's input tomorrow.** It is recorded at the top
+    /// of `accept`, before any revision or layout walk, because the reference's rule is one count per
+    /// complete frame *independent of revision*. `countedFrameTypes` is the subset that would be
+    /// validated; type 49 is in this histogram only so a burst's framing is visible in the log.
+    private var batchTypeCounts: [UInt8: Int] = [:]
+
+    /// The frame types whose presence in a burst is worth counting — `countedFrameTypes` plus the
+    /// marker itself, so the log shows `31×2` on a burst that opened and closed.
+    public static let countedBatchTypes: Set<UInt8> = countedFrameTypes.union([49])
+
     /// Batches ended — `HISTORY_END` markers, which is what the acknowledgements are counted against.
     public private(set) var batchCount = 0
 
@@ -176,8 +290,18 @@ public struct HistoricalDrainSession: Sendable {
             : Self.idleTimeoutWhoop5Seconds
     }
 
+    /// When the drain asked the strap, for the summary line that outlives the per-batch ones.
+    ///
+    /// **The per-batch lines rotate; the summary does not.** A night's drain is ~480 one-minute
+    /// bursts, and `CaptureLog` keeps 64 KB plus one rotated file — enough for an ordinary night but
+    /// not with room to spare, and the line a morning reader most needs is the **first** one. So the
+    /// drain's own start, range and repeat count belong on the closing line rather than only in the
+    /// batches a rotation can drop.
+    public let startedAt: Date
+
     public init(profile: WhoopProtocolProfile, startedAt: Date) {
         self.profile = profile
+        self.startedAt = startedAt
         self.lastActivity = startedAt
     }
 
@@ -191,6 +315,14 @@ public struct HistoricalDrainSession: Sendable {
         guard !isFinished else { return .none }
 
         let types = profile.packetTypes
+
+        // The six types OpenStrap's Gen 5 reference says a burst's declared count covers, plus the
+        // metadata marker itself so a burst's framing is visible: 47 `historicalData`, 48 events,
+        // 49 metadata, and 50/53/54/55. Live telemetry (43) is deliberately absent — it is the frame a
+        // drain must not mistake for activity.
+        if Self.countedBatchTypes.contains(frame.type) {
+            batchTypeCounts[frame.type, default: 0] += 1
+        }
 
         if frame.type == types.historicalData {
             recordCount += 1
@@ -267,11 +399,47 @@ public struct HistoricalDrainSession: Sendable {
                 .map { String(format: "%02X", $0) }
                 .joined(separator: " ")
             let markerUnix = WhoopPacketDecoder.littleEndianUInt32(in: frame.payload)
+            // **The cursor we are about to echo, read before the log rather than after it.** The
+            // rewind this drain shows — a burst beginning at a stamp an earlier burst already
+            // covered, with both sides' counts matching — is a trim-cursor question, and the token is
+            // the cursor. Two words, as the references name them: a trim page and a wrap count.
+            let token = continuationToken(from: frame)
+            lastTrimCursor = token.flatMap(TrimCursor.decode)
             let batchNewest = newestRecordTimestamp
             let batchFirst = firstRecordTimestamp
             let batchLayout = newestRecordLayout
             let atEdge = isAtLiveEdge(frame, now: now)
             let seen = recordCount
+            let batchTypes = batchTypeCounts
+                .sorted { $0.key < $1.key }
+                .map { String(format: "%02X\u{00D7}%d", $0.key, $0.value) }
+                .joined(separator: ",")
+            // **The count gate, read and not yet obeyed.** Gen 5 declares how many frames the burst
+            // carried; Gen 4's field at the same offset is a batch counter, so the read is gated by the
+            // envelope. What the log needs is both numbers side by side: `counted=47` against
+            // `expected=55` is a burst we received two thirds of, and `expected == counted` on a burst
+            // the strap re-offers would rule this whole hypothesis out, which no other line can do.
+            let counts = profile.declaresBurstFrameCount
+                ? Self.burstFrameCounts(in: frame, batchTypeCounts: batchTypeCounts)
+                : nil
+            lastBurstFrameCounts = counts
+            let countsText = counts.map {
+                "expected=\($0.expected) counted=\($0.counted)"
+                    + ($0.matches ? "" : " delta=\($0.difference)")
+            } ?? "expected=- counted=-"
+            // The trim cursor itself, in the references' own terms. A page that does not advance
+            // between two bursts, or advances and then comes back, is the rewind made visible.
+            let cursorText = lastTrimCursor.map {
+                "trim=\($0.trimPage) wrap=\($0.wrapCount)"
+            } ?? "trim=- wrap=-"
+            // **Did this batch start at or before the one before it?** The rewind, decided at the
+            // marker rather than by comparing captures later.
+            let repeated = batchFirst.map { first in
+                previousBatchFirstTimestamp.map { first <= $0 } ?? false
+            } ?? false
+            lastBatchRepeatedStart = repeated
+            if repeated { repeatedStartBatchCount += 1 }
+            if let batchFirst { previousBatchFirstTimestamp = batchFirst }
 
             // A batch that does not beat the drain's highest stamp is the strap re-sending, and an
             // unguarded loop of those never idles out because the records keep arriving.
@@ -284,6 +452,7 @@ public struct HistoricalDrainSession: Sendable {
             newestRecordTimestamp = nil
             newestRecordLayout = nil
             firstRecordTimestamp = nil
+            batchTypeCounts = [:]
             let stalled = stalledBatchCount
 
             AppLogger.ble.notice("""
@@ -292,9 +461,23 @@ public struct HistoricalDrainSession: Sendable {
                 firstRecord=\(batchFirst?.description ?? "none", privacy: .public) \
                 newestRecord=\(batchNewest?.description ?? "none", privacy: .public) \
                 newestLayout=\(batchLayout.map { String($0) } ?? "none", privacy: .public) \
-                recordsSoFar=\(seen, privacy: .public) stalled=\(stalled, privacy: .public)
+                recordsSoFar=\(seen, privacy: .public) stalled=\(stalled, privacy: .public) \
+                \(countsText, privacy: .public) \(cursorText, privacy: .public) \
+                repeat=\(repeated, privacy: .public) types=\(batchTypes, privacy: .public)
                 """)
-            guard let token = continuationToken(from: frame) else { return .none }
+            // **The same line into the file that outlives the log's two-minute window.**
+            // `CaptureLog.shared` is `Documents/capture.txt`, capped and rotating, and it exists
+            // precisely because a drain is read minutes after the fact — `/usr/bin/log`'s device
+            // archive had already rolled past three of these before they could be pulled. The batch
+            // summary is the one line per minute of history that carries the stamps; the per-record
+            // line stays in `os.log` so a long drain cannot rotate the file away.
+            CaptureLog.shared.append(
+                "DRAIN_BATCH first=\(batchFirst?.ISO8601Format() ?? "-") "
+                    + "newest=\(batchNewest?.ISO8601Format() ?? "-") "
+                    + "layout=\(batchLayout.map { String($0) } ?? "-") "
+                    + "soFar=\(seen) stalled=\(stalled) liveEdge=\(atEdge) "
+                    + "\(countsText) \(cursorText) repeat=\(repeated) types=\(batchTypes)")
+            guard let token else { return .none }
             if stalledBatchCount >= Self.maximumStalledBatches {
                 // Acknowledged either way — the strap is waiting — but the drain stops rather than
                 // reading one batch forever. The reason is set here so `concludeDrain(reason:)`'s
@@ -354,6 +537,25 @@ public struct HistoricalDrainSession: Sendable {
         return frame.payload.subdata(in: start ..< (start + Self.continuationTokenBytes))
     }
 
+    /// What a Gen 5 marker declared against what this burst actually carried.
+    ///
+    /// The declared side is a u32 LE at `expectedFrameCountPayloadOffset`; the counted side is the
+    /// histogram restricted to `countedFrameTypes`, so 49's own framing never inflates it. `nil` when
+    /// the marker is too short to hold the field — a marker that never declared a count cannot disagree
+    /// with one, and inventing `0` there would read as a burst we received nothing of.
+    static func burstFrameCounts(
+        in frame: WhoopRawFrame,
+        batchTypeCounts: [UInt8: Int]
+    ) -> BurstFrameCounts? {
+        let start = expectedFrameCountPayloadOffset
+        guard frame.payload.count >= start + 4 else { return nil }
+        let expected = Int(WhoopPacketDecoder.littleEndianUInt32(in: frame.payload.dropFirst(start)))
+        let counted = batchTypeCounts.reduce(0) { total, entry in
+            countedFrameTypes.contains(entry.key) ? total + entry.value : total
+        }
+        return BurstFrameCounts(expected: expected, counted: counted)
+    }
+
     /// Whether the batch that just ended is the present moment.
     ///
     /// **5.0 only, and a heuristic even there.** The marker's own `unix` field is published for that
@@ -387,13 +589,38 @@ public struct HistoricalDrainSession: Sendable {
         return abs(stamp.timeIntervalSince(now)) <= Self.liveEdgeWindowSeconds
     }
 
-    /// The record's own unix stamp: a `u32` at payload `[4]` in every historical layout this app
-    /// walks — `R18`, `R21` and the 4.0's type 24.
+    /// The record layouts whose own stamp sits on the **1 Hz grid** — R18, R21 and the 4.0's type 24.
     ///
-    /// `nil` when the record is too short to carry it or the value is not a real date. The `> 1e9`
-    /// floor is 2001-09-09, the same one the per-record log used before this became load-bearing: a
-    /// lost RTC's `2000-01-03` is a stamp, but it is not evidence of catching up to the present.
-    static func recordTimestamp(_ frame: WhoopRawFrame) -> Date? {
+    /// **A type-47 frame is not automatically a one-second record, and R26 is the one that proves it.**
+    /// [reported] The Gen 5 reference (§5) lists revision 26 as the *Pulse Information Packet* — an
+    /// 88-byte frame among the 1 Hz records that carries its own event time rather than a slot on the
+    /// grid. Measured on the owner's 5.0 on 2026-10-26: a burst of one `R26` record stamped
+    /// `00:18:04` arrived after a batch that had already reached `00:18:43`, and the drain logged
+    /// `stalled=1` for a strap that was advancing perfectly well.
+    ///
+    /// **That count is a fuse rather than a log line.** Three consecutive stalled batches end the
+    /// drain as `.idleTimeout`, so a night with a few `R26` bursts would stop a good drain and report
+    /// it as a stalled one. The live edge has the same problem in the other direction: an `R26` stamped
+    /// *now* would end a drain that still had history behind it. So the stamp reader refuses every
+    /// layout not in this set — the record still counts toward the burst and toward `recordCount`, it
+    /// just cannot be the clock.
+    public static let timestampedLayouts: Set<UInt8> = [
+        HeartRatePayloadDecoder.historicalLayout,
+        MotionPayloadDecoder.r21Layout,
+        HeartRatePayloadDecoder.whoop4HistoricalLayout,
+    ]
+
+    /// The record's own unix stamp: a `u32` at payload `[4]` in every historical layout **on the 1 Hz
+    /// grid** — `R18`, `R21` and the 4.0's type 24.
+    ///
+    /// `nil` for a layout outside `timestampedLayouts`, for a record too short to carry the field, and
+    /// for a value that is not a real date. **The layout gate is the load-bearing part**: `R26` carries
+    /// a stamp-like field at the same offset with a different meaning, and both the stall guard and the
+    /// live edge treat a stamp as evidence about the drain's position. The `> 1e9` floor is 2001-09-09,
+    /// the same one the per-record log used before this became load-bearing: a lost RTC's `2000-01-03`
+    /// is a stamp, but it is not evidence of catching up to the present.
+    public static func recordTimestamp(_ frame: WhoopRawFrame) -> Date? {
+        guard timestampedLayouts.contains(frame.seq) else { return nil }
         guard frame.payload.count >= 8 else { return nil }
         let p = [UInt8](frame.payload.prefix(8))
         let seconds = UInt32(p[4]) | (UInt32(p[5]) << 8)

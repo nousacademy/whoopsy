@@ -138,6 +138,37 @@ public final class WhoopBLEDeviceRepositoryImpl: WhoopBLEDeviceRepository, @unch
         realBleManager?.currentProfile?.generation.rawValue ?? "unknown"
     }
 
+    /// Sends the persistent-recording toggle, and **fails rather than reporting a setting.**
+    ///
+    /// The strap acknowledges the write and does not confirm the programming, so the only claim this
+    /// call makes on success is that the frame reached the link. A `false` from the manager is a
+    /// refusal — mock mode, a non-5.0/MG, a missing command path, or a characteristic that will not
+    /// take a confirmed write — and all of those are `commandUnavailable` rather than a silent no-op.
+    public func setPersistentRecording(_ enabled: Bool) async throws {
+        guard !isMockMode, let manager = realBleManager else {
+            throw WhoopSyncError.commandUnavailable(generation: "simulated")
+        }
+        guard manager.setPersistentRecording(enabled) else {
+            throw WhoopSyncError.commandUnavailable(
+                generation: currentDeviceGenerationLabel())
+        }
+    }
+
+    public func setAdvertisingName(_ name: String) async throws {
+        guard !isMockMode, let manager = realBleManager else {
+            throw WhoopSyncError.commandUnavailable(generation: "simulated")
+        }
+        guard manager.setAdvertisingName(name) else {
+            throw WhoopSyncError.commandUnavailable(
+                generation: currentDeviceGenerationLabel())
+        }
+    }
+
+    public func requestAdvertisingName() async {
+        guard !isMockMode, let manager = realBleManager else { return }
+        _ = manager.requestAdvertisingName()
+    }
+
     /// Runs a drain to its conclusion and reports what it did.
     ///
     /// **This is the call the whole Phase-3 wiring exists for, and its shape is the point: it awaits.**

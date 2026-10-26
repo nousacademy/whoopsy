@@ -156,22 +156,26 @@ public struct LiveSessionAccumulator: Sendable {
     public mutating func accept(heartRate: Int, at timestamp: Date, isOnBody: Bool) {
         guard heartRate > 0 else { return }
 
-        // Convention 1 and 2 above; see the type's documentation before changing either.
-        let duration: TimeInterval = previousTimestamp
-            .map { min(5.0, timestamp.timeIntervalSince($0)) } ?? 1.0
-
-        let (zoneIndex, load) = StrainAccumulatorMath.loadDelta(
-            for: heartRate, zones: zones, restingHeartRate: restingHeartRate, durationSeconds: duration)
+        // Convention 1 and 2 above; see the type's documentation before changing either. The
+        // interval rule and the band attribution live in `ZoneTimeMath.delta`, which
+        // `StrainDayMath` and the activity page's completed-session fold also call — one definition
+        // rather than three that agree by inspection.
+        let delta = ZoneTimeMath.delta(
+            heartRate: heartRate,
+            previousTimestamp: previousTimestamp,
+            timestamp: timestamp,
+            zones: zones,
+            restingHeartRate: restingHeartRate)
 
         // Load is added even when no zone matched: a rate above resting but below zone 1's floor is
-        // real cardiovascular time with `load > 0` and `zoneIndex == nil`. Zone *duration* is added only
+        // real cardiovascular time with `load > 0` and no zone. Zone *duration* is added only
         // when a zone matched, so the five percentages still sum to at most 100.
-        accumulatedLoad += load
-        if let zoneIndex {
-            zoneDurations[zoneIndex, default: 0] += duration
+        accumulatedLoad += delta.load
+        if let zoneIndex = delta.zone {
+            zoneDurations[zoneIndex, default: 0] += delta.durationSeconds
         }
 
-        measuredSeconds += duration
+        measuredSeconds += delta.durationSeconds
         heartRateSum += heartRate
         sampleCount += 1
         maxObservedHeartRate = max(maxObservedHeartRate, heartRate)

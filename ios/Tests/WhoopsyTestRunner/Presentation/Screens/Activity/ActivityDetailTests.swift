@@ -20,8 +20,10 @@ import Whoopsy
 ///    rather than a fourth verdict on it: strain rising against the last ten basketball sessions is
 ///    neither good news nor bad, and `MetricChange.Verdict`'s three cases are all mapped to a colour.
 /// 2. **The five zone rows**, which is what the user asked to sit below the chart. The property that
-///    matters is that a row's percent and its time are **one share of one duration**, so they cannot
-///    contradict each other — and the reference's `0% · 0:00:12` is therefore unreachable here.
+///    matters is that a row's time comes from **exactly one producer** — WHOOP's percentage for an
+///    imported session, this app's own sample fold for a recorded one — and that the two are never
+///    averaged into one figure; the second half of the block drives the real page over an in-memory
+///    database to prove the recorded path end to end.
 /// 3. **The window and the band**, on a fixture whose quartiles are exact in binary.
 /// 4. **The edit sheet's draft**, which is the one value both of the sheet's time controls write
 ///    through: a drag handle at each end of the chart and a compact `DatePicker` under `Start Time`
@@ -168,6 +170,10 @@ enum ActivityDetailTests {
     }
 
     static func run() async throws {
+        // A recorded session's own zone time and the same-activity average, through the real page and
+        // an in-memory database — the half of the zone block that no value fixture can reach.
+        try await ActivityZonePageTests.run()
+
         try await ActivityZoneRowTests.run()
         try await FastingRecoveryChartTests.run()
         try await ActivityEditDraftTests.run()

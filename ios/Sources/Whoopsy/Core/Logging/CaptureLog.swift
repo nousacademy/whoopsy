@@ -33,13 +33,43 @@ public final class CaptureLog: @unchecked Sendable {
 
     /// - Parameters:
     ///   - fileName: the file's name inside the directory.
-    ///   - directory: nil uses the app's Documents directory. A test passes its own, so the suite
-    ///     never writes into the developer's real container.
+    ///   - directory: nil uses `defaultDirectory()`. A test passes its own, so the suite never writes
+    ///     into the developer's real container.
     public init(fileName: String, directory: URL? = nil) {
-        let directory = directory ?? FileManager.default
-            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let directory = directory ?? Self.defaultDirectory()
+        // The directory may not exist — a scratch path on the host build does not, and a write into a
+        // missing directory would fail silently for the whole run.
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         fileURL = directory.appendingPathComponent(fileName, isDirectory: false)
         rotatedURL = fileURL.appendingPathExtension("1")
+    }
+
+    /// Where the files live when no directory is passed.
+    ///
+    /// **The app container is the phone's answer and only the phone's.** On iOS `.documentDirectory` is
+    /// the app's own sandbox, which is what makes a capture readable in Files. A host build has no
+    /// container — that search path resolves to a general user folder, and a test binary writing there
+    /// puts fixture lines beside whatever the person running it keeps in it. Measured on 2026-10-26:
+    /// every run appended its batches to that folder and rotated the previous file out of the way. So a
+    /// host build gets a scratch directory instead:
+    ///
+    /// 1. `WHOOPSY_CAPTURE_DIR` when set — `scripts/test.sh` points it at `tmp/build/verify/capture`,
+    ///    which is the rule in `CLAUDE.md` that everything produced while testing lives under `tmp/`.
+    /// 2. Otherwise the process's temporary directory, never `.documentDirectory`.
+    ///
+    /// The suite asserts the property that matters rather than the path: the shared log's file is not
+    /// inside `.documentDirectory`.
+    public static func defaultDirectory() -> URL {
+        if let override = ProcessInfo.processInfo.environment["WHOOPSY_CAPTURE_DIR"],
+           !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        #if os(iOS)
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        #else
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("whoopsy-capture", isDirectory: true)
+        #endif
     }
 
     /// The file's current location, for a caller that wants to surface it.

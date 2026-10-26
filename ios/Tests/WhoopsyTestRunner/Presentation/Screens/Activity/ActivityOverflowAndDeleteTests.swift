@@ -740,19 +740,20 @@ enum ActivityOverflowAndDeleteTests {
                 activityName: row.activityName,
                 hrZonePercents: row.hrZonePercents)
         }
-        let exportRows = exported.map { ActivityZoneRow.rows(for: $0, zones: ActivityDetailTests.zones) }
+        let exportRows = exported.map { session in
+            ActivityZoneRow.rows(
+                for: session, zones: ActivityDetailTests.zones,
+                measured: nil, priorAverage: nil)
+        }
 
         assertTest(
             exported.count == 673 && exportRows.allSatisfy { $0.count == 5 },
             "All 673 of the export's workouts yield five zone rows — no row is short a band, and none "
                 + "answers an empty list (\(exported.count))")
         assertTest(
-            exportRows.allSatisfy { $0.allSatisfy { $0.percent != nil } }
-                && exportRows.allSatisfy { rows in
-                    rows.allSatisfy { ($0.percent ?? 1) == ($0.percent ?? 1).rounded() }
-                },
-            "…and every one of the 3,365 figures is a whole percent, which is the property that makes a "
-                + "row's two figures one answer divided once rather than two that can disagree")
+            exportRows.allSatisfy { $0.allSatisfy { $0.source == .imported && $0.seconds != nil } },
+            "…and every one of those rows takes its time from WHOOP's own share — the imported producer, "
+                + "never a measured fold, because the export carries no heart-rate series")
         assertTest(
             zip(exported, exportRows).allSatisfy { session, rows in
                 rows.compactMap(\.seconds).reduce(0, +) <= session.durationSeconds + 1e-6
@@ -761,15 +762,18 @@ enum ActivityOverflowAndDeleteTests {
                 + "is time below zone 1, which WHOOP publishes no column for, so zones 1–3 plus 4–5 is "
                 + "deliberately not the workout's duration")
         assertTest(
-            zip(exported, exportRows).allSatisfy { _, rows in
-                rows.allSatisfy { ($0.percent != 0) || $0.seconds == 0 }
+            zip(exported, exportRows).allSatisfy { session, rows in
+                guard let percents = session.hrZonePercents else { return true }
+                return zip(percents, rows.reversed()).allSatisfy { percent, row in
+                    (percent != 0) || row.seconds == 0
+                }
             },
             "**A stored `0` percent implies exactly `0` seconds across the whole file.** This is the "
                 + "property the reference cannot state and this app can: the mockup's `ZONE 1 … 0% · "
                 + "0:00:12` is unreachable here, because the two figures come from one share of one span")
 
-        let zeroExportRows = zip(exported, exportRows).filter { _, rows in
-            rows.allSatisfy { $0.percent == 0 }
+        let zeroExportRows = zip(exported, exportRows).filter { session, _ in
+            session.hrZonePercents?.allSatisfy { $0 == 0 } == true
         }
         assertTest(
             zeroExportRows.count == 45,
@@ -778,10 +782,10 @@ enum ActivityOverflowAndDeleteTests {
                 + "(\(zeroExportRows.count))")
         assertTest(
             zeroExportRows.allSatisfy { _, rows in
-                rows.allSatisfy { $0.percentText == "0%" && $0.secondsText == "0:00:00" }
+                rows.allSatisfy { $0.secondsText == "0:00:00" && $0.seconds == 0 }
             },
-            "…and each of those reads back a **measured** `0%` beside `0:00:00` rather than the dash an "
-                + "absent block draws — 45 sessions this app would otherwise report as having no zone "
+            "…and each of those reads back a **measured** `0:00:00` rather than the dash an absent "
+                + "measurement draws — 45 sessions this app would otherwise report as having no zone "
                 + "data at all")
     }
 }

@@ -120,9 +120,27 @@ public actor RefreshStrainUseCase {
         await refresh(today)
     }
 
+    /// The gap below which a second foreground recompute is skipped.
+    ///
+    /// **A foreground is the expensive trigger, not the cheap one.** The watermark check makes a tick
+    /// with no new input cost two indexed reads, but a strap that has been on all day *always* has new
+    /// input — so every unlock re-read the whole day of samples and folded it, competing with the reads
+    /// the first screen is doing on the same `DatabaseQueue`. A minute is short enough that the number
+    /// on the ring is current by the time anyone reads it, and long enough that flicking between apps
+    /// no longer re-folds a day each time.
+    public static let minimumForegroundInterval: TimeInterval = 60
+
+    private var lastForegroundRefresh: Date?
+
     /// Recomputes today if it has input newer than its stored row.
     public func refreshToday() async {
-        await refresh(Date())
+        let current = Date()
+        if let lastForegroundRefresh,
+           current.timeIntervalSince(lastForegroundRefresh) < Self.minimumForegroundInterval {
+            return
+        }
+        lastForegroundRefresh = current
+        await refresh(current)
     }
 
     /// Scores the days a drain delivered.

@@ -430,8 +430,44 @@ and live-HR arms, then `0x0B GET_CLOCK` so a capture sees both sides of the exch
 the same pair before its `0x16` request. **The read-back's reply is logged and not decoded** — neither
 reference parses it — so this app still does not claim a clock latched. **The Device Information
 Service (`0x180A`) is read on both generations once the link is bonded**, filling
-`WhoopDevice.firmwareVersion` from `2A26` and `serialNumber` from `2A25`; model, hardware revision and
-manufacturer are logged and have no field. **Events are decoded on both generations** —
+`WhoopDevice.firmwareVersion` from `2A26` and `serialNumber` from `2A25`. **`2A24` now resolves the
+strap's generation** — `WhoopHardwareGeneration.from(modelNumber:)`, `MG` tested before the digits —
+because it is the one rung that separates a 5.0 from a 5.0 MG, which the service list cannot; when the
+user has never chosen a model it is also persisted, so a launch does not start from the advertised
+name. Hardware revision and manufacturer are logged and have no field.
+
+**The advertised name is a proprietary command, which is why it looks unreachable.** CoreBluetooth
+hides the Generic Access service from every third-party app, so GAP's `0x2A00` cannot be read or
+written here — and a strap named *"Alex WHOOP"* was named through the WHOOP app's own opcode, not
+through GAP. [reported] noop's command matrix documents both generations: **5.0/MG uses ID 140
+(`SET`) and 141 (`GET`)**, the set body `[revision=1][length][name…]` with 0–15 name bytes and the get
+reply a fixed 19 bytes (`[revision][source][length][16-byte field]`, source `1` custom / `2` fallback);
+**4.0 uses ID 77 (`SET`) and 76 (`GET`)**, the set body two reserved bytes then a fixed 16-byte field
+whose last byte must be NUL — 15 usable bytes — and both are version-bounded to firmware 41.17.6.0.
+**The 5.0 table marks the 4.0 ids unsupported (result 3)**, which is why the generation picks the
+number. **[captured] 2026-10-25: ID 140 works on this project's 5.0, firmware 50.42.1.0** — a rename sent
+from the device page's `NAME` row was applied, and **the advertisement lagged the write by a few
+minutes**, exactly as the reference warns. So the write is real but the acknowledgement proves nothing
+and a scan taken immediately afterwards reads `CoreBluetooth`'s cache rather than the radio. **`141`'s reply was captured too, on 2026-10-25:**
+
+```
+cmd=0x8D payload=14 01 01 01 0C 57 68 6F 6F 70 73 79 20 35 2E 30 00 …
+```
+
+— a leading **length byte `0x14` (20)**, then revision `1`, **the operation's result `1`**, source
+`1` (custom), name length `0x0C` (12, NUL included), then `Whoopsy 5.0` and the rest of the 16-byte
+field. So the reference's fixed-19-byte read names the right fields and omits two bytes this envelope
+carries: the payload-length prefix in front and the result byte after the revision. `Advertising Name
+Payload.decode` tolerates the first and requires the second. The strap had by then stored the name this app
+sent, which is how the rename was proven end to end rather than inferred from an advertisement.
+
+**[captured] 2026-10-25, this project's own strap, read from a Mac as a second central** (`bleak`,
+read-only — a drain driven from it would advance the strap's trim cursor and rob the app):
+`180A` answers `WHOOP Inc.` / `5.0` / `5AG…` / `50.42.1.0` / `WG50_r52`, battery `0x2A19` reads 49%,
+and the proprietary surface is **`FD4B0001` with `FD4B0002` write-capable and `FD4B0003`/`4`/`5`/`7`
+notify-only** — the four roles this document assigns them, confirmed by an independent central rather
+than by this app's own decoder. The strap advertises as `Alex WHOOP`, a name with no digit in it,
+which is why the advertised-name heuristic resolved a 5.0 as a 4.0 before discovery. **Events are decoded on both generations** —
 `StrapEventDecoder` reads the number from the inner `cmd` and the unix stamp at payload `1`, maps
 `CHARGING_ON`/`OFF` and `WRIST_ON`/`OFF` onto `isCharging`/`isOnBody`, and logs the rest, battery
 level included, because that event's payload layout is not published.
@@ -719,14 +755,86 @@ field, and §4's rule against deriving a heart rate from it applies to oxygen to
 Two opcodes in the reference's full command table are **not to be sent by this app**, and both are
 listed here because a drain that is misbehaving is exactly when someone reaches for them:
 
+* **The Gen 5 burst count gate is a membership rule, and Gen 4 has the same offset meaning something
+  else.** [reported] OpenStrap's Gen 5 reference (`OpenStrap/research` PR #1, `PROTOCOL-GEN5.md` §8)
+  puts **`expected_count`, a u32 LE at `inner[9]`** — payload **6** for this app — in every
+  `HISTORY_END`, and says the client counts complete frames **once each, for types 47, 48, 50, 53, 54
+  and 55 only**: 49 is the marker that carries the count, 51/52 are the IMU stream, and revision and
+  byte length are irrelevant. A client that miscounts makes the band re-offer the same burst
+  indefinitely, which is this generation's form of the Groundhog Day bug. The matching negative result
+  is `0x17` with body **`00 00`** on Gen 5 (Gen 4's is a single `00`), the default burst size is 50 and
+  drops to 10 after five consecutive negative results, and **fifteen consecutive failures** is the
+  terminal boundary where the client aborts with `0x14` (`ABORT_HISTORICAL_TRANSMITS`, opcode 20).
+  **The Gen 4 reference publishes the same `inner[9]` as "a record-id / batch counter (not echoed)"**,
+  so the field is read only under the CRC16 envelope — `WhoopProtocolProfile.declaresBurstFrameCount`
+  — and a validator that read it on a 4.0 would refuse every burst.
+  **[repo] This app reads and logs the pair and does not enforce it yet**: `HistoricalDrainSession`
+  counts `countedFrameTypes` per burst and records `expected`/`counted` on the `DRAIN_BATCH` line, but
+  it still ACKs success after every marker, and the
+  `DRAIN_BATCH` line carries the token it echoes as `trim=<page> wrap=<count>` — the two
+  little-endian words of the 8-byte token — and `repeat=`, which is true when a batch began at or
+  before the previous batch's first record. A page that never moved, or a stream that went back, is
+  the rewind stated on one line rather than inferred from two batches a rotation can separate.
+  **Measured 2026-10-26, the first trim-instrumented drain of real length: 57 consecutive
+  bursts, `trim` monotonically increasing, `wrap` constant, `repeat=false` on every one**, and every
+  declared count matched. The stride is proportional to the records in the burst — 60 records is +4,
+  45 is +3, 17 is +2, i.e. one unit per 15 records rounded up — which is a page-sized cursor rather
+  than a per-batch constant. A 53-minute backlog drained in 22 seconds and ended `complete`. **The closing `DRAIN_END` line carries the summary a rotation cannot take** — `started=`, the record range (`oldest=`/`newest=`), `repeats=`, the final `trim=` and the reason — because a night's drain is hundreds of per-batch lines against a 64 KB cap, and the first of them is exactly the one a morning reader needs. Turning a mismatch into the negative result waits until a
+  capture shows the two agreeing on an ordinary burst, because a validator with the wrong membership
+  would refuse good bursts forever. The owner's 2026-10-25 capture already showed the premise holds —
+  bursts carried `types=2F×45,30×2,31×2,32×8` and `2F×30,31×2,32×40`, so types 48 and 50 are really
+  there and a 47-only count is short by the console-log traffic. What the gate would fix is a burst
+  damaged in transit: today a short burst is acknowledged and the strap trims past records this phone
+  never stored, and the strap's ring buffer is the only copy.
+  **[measured] 2026-10-25, the owner's 5.0 on `50.42.1.0`: 53 consecutive bursts, every one
+  matching its declaration** — including `2F×44,30×3,32×20` against 67 and `2F×20,30×1,32×36`
+  against 57, with the two `31` markers never counted. The membership is confirmed on a second strap
+  and a second firmware, and only three of the six types (47/48/50) were exercised by it; 53–55 have
+  never appeared.
+* **A type-47 frame is not automatically a one-second record, and `R26` is the one that says
+  so.** [reported] The Gen 5 reference (§5) lists revision **26 as the Pulse Information Packet** — an
+  88-byte frame carrying its own **event time**, not a slot on the 1 Hz grid. [repo + measured] The
+  drain met one on 2026-10-26: `layout=26 ... expected=8 counted=8 types=2F×1,30×1,31×2,32×6`, one
+  record stamped `00:18:04` arriving after a batch that had already reached `00:18:43`. Read as a
+  1 Hz record it made the stall guard log `stalled=1` for a strap that was advancing — and three of
+  those end a drain as `.idleTimeout`, so a handful of these packets across a night would stop a
+  good drain and call it stalled. **The stamp reader is therefore gated on
+  `HistoricalDrainSession.timestampedLayouts` — 18, 21 and the 4.0's 24 — and an `R26` frame still
+  counts toward its burst's declared total.** The count gate and the clock are two questions about
+  the same record.
+
+* **`0x9B`–`0x9F` — certificate transfer and `LOCK_DEVICE` — are destructive and are refused by name.**
+  [reported] noop's `#2828` names them from the official app 5.473.0's command table:
+  `START_CERTIFICATE_TRANSFER` (155), `LOAD_CERTIFICATE` (156), `VERIFY_CERTIFICATE` (157),
+  `PROCESS_CERTIFICATE` (158) and **`LOCK_DEVICE` (159)**. Their reversibility is unknown and a locked
+  strap is one this app could not use at all, so `WhoopProtocolProfileTests` sweeps all three command
+  tables for these five bytes exactly as it sweeps for `0x19` and `0x9A` — the failure mode being a
+  table carrying one under a name that reads innocuous.
 * **`0x19 FORCE_TRIM` is a flash erase and is destructive.** The reference marks it "never sent".
   The drain is non-destructive by design and does not need it; a trim issued to "clear the backlog"
   would destroy the user's history irreversibly, including the portion not yet drained.
-* **`0x9A TOGGLE_PERSISTENT_R21` is a trap.** It forces the optical engine on across reboots, so the
-  LED stays lit and the strap burns battery until a fresh boot — clearing the flag does not stop the
-  running engine; recovery is `REBOOT_STRAP` (`0x1D`). The reference client keeps to wrist-gated
-  optical (OpenStrap's name for `0x6B`; noop reads that byte as a state read — §3) and never sends
-  `0x9A` casually.
+* **`0x9A TOGGLE_PERSISTENT_R21` is a trap, and since 2026-10-24 the app has one deliberate way to
+  spring it.** It forces the optical engine on across reboots, so the LED stays lit and the strap
+  burns battery until a fresh boot — clearing the flag does not stop the running engine; recovery is
+  `REBOOT_STRAP` (`0x1D`). The reference client keeps to wrist-gated optical (OpenStrap's name for
+  `0x6B`; noop reads that byte as a state read — §3) and never sends `0x9A` casually. **The exception
+  is a manual control on the device page's ADVANCED tab**, added to test whether the flag is what
+  stopped the owner's flash recorder (`docs/TODO.md` §7.2): `[1, 1]` to set it, `[1, 0]` to revert,
+  behind a confirmation that names the battery cost. It is **5.0/MG only**, it is never part of a
+  connect sequence, and **the byte is in neither opcode table** — `WhoopCommandFrames.persistentR21`
+  is the only builder, so §16's forbidden-byte sweep still fails if anything else grows a path to it.
+  The ACK does not confirm programming; only a drain does. **Measured on 2026-10-24, firmware
+  50.42.1.0:** every drain before the `[1, 1]` write answered `0 record(s)`; the first after it read
+  **8,984 `R18` records stamped hours *before* the write**, so on this firmware the flag gates the
+  **read path** rather than starting a recorder — and a ten-minute disconnected wear then banked one
+  record per ~24 s, `R21` motion cadence, which *looked* motion-only until a longer capture on
+  2026-10-25 showed a worn strap banking **one `R18` per second with Bluetooth off** (2,003 records in
+  32 minutes) — so the sparse windows were wrist-off time, not a link-state rule. Both readings are
+  one unit's and one firmware's. A `0x22 GET_DATA_RANGE`
+  sent throughout drew no reply of the app's command-response type — though a **17-byte
+  `type=0x28 cmd=0x22`** frame did arrive ten minutes later carrying a body that is neither noop's
+  65-byte layout nor a decodable cursor, so the canary is **present and undecoded** rather than absent
+  (`docs/TODO.md` §7.2).
 
 Two more live-path opcodes belong here for completeness, since §5's live producer depends on them:
 `0x03 TOGGLE_REALTIME_HR` and `0x6B` — which **OpenStrap** names `ENABLE_OPTICAL_DATA` and calls
@@ -741,6 +849,15 @@ acknowledged `sendConnectCommands()` writes `0x03 TOGGLE_REALTIME_HR` with the o
 `HeartRatePayloadDecoder.decodeLive` — heart rate at payload `[5]`, R-R count at `[6]`, intervals at
 `[7 + 2i]` in 1/1024 s. **The builder is enable-only**, because nothing establishes what a disarm
 body would be. `0x6B` belongs to the 4.0's motion-enable group and is not sent to a 5.0.
+
+**Event 29 `STRAP_CONDITION_REPORT` is the strap's own answer to "how much history do you
+hold", and this app reads it.** [reported] Its body — eleven bytes at payload 9, after the event
+header's `u16 id`, `u32 unix`, `u16 subsec` and `u16 body length` — is `u32 page backlog`, `u16`
+backlog in tenths of an hour, `u16` state of charge in tenths, then `u8` flash, `u8` charging and a
+`u8` wrist tri-state. `StrapConditionReport` decodes it for the log only: the layout is one
+reference's and no capture here has confirmed it, and the charge figure is deliberately not fed to
+the battery badge, whose whole rule is that a figure the strap did not send is not drawn. **This is
+the instrument that replaces a fourteen-day wear** — one connect reports the backlog in hours.
 
 Records stream as `0x2F` punctuated by `0x31` metadata markers with a sub-type at `inner[2]`:
 
@@ -828,9 +945,10 @@ safe command set along with reboot/power-cycle/firmware opcodes.
 | :--- | :--- | :--- | :--- |
 | Request opcode | `0x16` | `0x16` | `0x16` / 22 |
 | Request body | a single `00` — **the same byte on both generations**, and the four sources below agree on it | `00` | explicit `00`; "Command 22 returns state plus two zero bytes" |
-| Inbound record type | `0x2F` counted toward the batch on a 4.0; `47` on a 5.0/MG, where the layout selector at frame byte 9 picks the walk (see below) | `0x2F` | 47 |
+| Inbound record type | `0x2F` counted toward the batch on a 4.0; on a 5.0/MG the layout selector at frame byte 9 picks the walk (see below), and the burst's **frame count** is the six-type membership rather than the record type alone | `0x2F` | 47 |
 | ACK loop | `0x17` + the 8-byte token, per batch | `0x17` + 8-byte token | `0x17` + `end_data`(8) |
 | Batch ending | `HISTORY_END` acknowledged, `HISTORY_COMPLETE` not | metadata `0x31`, sub-type at `inner[2]` | 49, same sub-type offset |
+| Count gate | **read and logged, not enforced**: `expected` from payload 6 and `counted` from types 47/48/50/53/54/55, both on the `DRAIN_BATCH` line, 5.0/MG only | `inner[9]` is a record-id / batch counter — no gate | `inner[9]` u32 expected count, six-type membership, negative result `00 00`, abort with `0x14` after 15 failures |
 | Record layout | **R18, R21 and the 4.0's type-24 record are walked; R20 is not** — R18 → `HeartRatePayloadDecoder.decodeR18Historical` (heart rate and R-R), R21 → `MotionPayloadDecoder` (§6), type 24 → `HeartRatePayloadDecoder.decodeWhoop4Historical` (heart rate and signed-ms R-R), R20 has no reader (see below) | 96-byte header; HR at `[17]`, count `[18]`, R-R `[19+2i]` | layout selector at frame byte 9: R18 124 B, R21 1,244 B, R20 2,140 B (frame) |
 
 **The request body is one `00` byte on both generations.** A `[u32 startEpoch][u32 endEpoch]` little-endian window has no source behind it and must not be reintroduced at either builder. **Four sources agree on the bare byte, three of
@@ -963,10 +1081,21 @@ while the five records it closed were stamped `2026-08-24 12:51:13` onward). The
 that head with the wall clock and so declared the live edge after one batch over two months of
 unread backlog — reported as `caughtUpToLiveEdge`. **The live edge is now the newest **record's** stamp, with the **drain-wide highest record** as the fallback for a batch that carries none — and the marker is used only by a session that has seen no record at all, because the strap closes its last chunk with an empty marker stamped now over two-month-old records and a batch whose newest
 record does not advance is counted as a stall (`maximumStalledBatches = 3`) so a re-sending strap
-cannot keep the idle window armed forever. What that drain did **not** establish is a multi-batch
-archive: on this strap the buffer holds two bursts of ~60 records stamped months earlier and nothing
-later, so every drain returns those. The `R18` walk is therefore proven on real records; a strap that
-keeps writing is not, and the cursor's failure to advance across connections remains open (§7).
+cannot keep the idle window armed forever. **A multi-batch drain has since been observed, and it is the ordinary case now.** On 2026-10-24 the
+same strap answered **`412 record(s) in 8 batch(es)`** in one session — `type=0x2F layout=18
+payload=109 B` throughout, one record per second, batch boundaries a minute apart, the last
+`HISTORY_END` reporting `liveEdge=true` — so the cursor, the ACK loop, the stall guard and the
+live-edge rule all ran over more than one batch on real records. **The connected rate is `[captured]`; the disconnected rate is not.** Connected, the strap writes one
+`R18` per second — that is every record of the 412, logged. What happens while the phone is away is
+**inferred rather than seen**: a 30-minute disconnected wear came back as **30 records in 2 batches**
+(the app's own completion line, not a frame), and the drain after it opened its window at
+`SET_CLOCK`'s own stamp (`14:22:51Z`, the reconnect), which says the earlier drain had consumed what
+lay before it. The step total moved across that first drain, and a cumulative pedometer needs only one
+record to account for a whole gap, so **at least one offline record carried a step counter and at
+least one was presumably `R18`** — which record, and at what layout, has never been read. Until an
+offline drain is captured inside the archive's window, "about one record a minute while disconnected"
+is a rate estimate from a count, not a measurement. The `R18` walk itself is proven on real records;
+what makes the strap write at one rate rather than the other is unknown.
 
 ---
 

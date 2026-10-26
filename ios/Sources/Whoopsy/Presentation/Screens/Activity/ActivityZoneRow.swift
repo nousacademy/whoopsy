@@ -1,50 +1,61 @@
 import Foundation
 
-/// One of the five heart-rate zone rows under the session's chart: the band's edges, the share of the
-/// session that fell inside it, and the time that share works out to.
+/// One of the five heart-rate zone rows under the session's chart: the band's edges, the time the
+/// session spent inside it, and — when there is history — the time a typical session of the same
+/// activity spends there.
 ///
 /// ## Why this is a value and not five lines in a `body`
 ///
 /// `DayBarRules`' reason, which applies to every rule this page draws that a person would otherwise
 /// write inline: the runner that tests this app has no renderer, so a derivation written into a `View`
 /// is a derivation nothing can assert. Three things here are worth asserting and none of them is
-/// visible in a screenshot — the pairing of the two figures, the ordering of the five rows, and the
-/// difference between an absent block and a measured zero.
+/// visible in a screenshot — the pairing of a row's time with its bar, the ordering of the five rows,
+/// and the difference between an absent measurement and a measured zero.
 ///
-/// ## Both figures come from one source
+/// ## A row's time comes from exactly one producer
 ///
-/// `percent` is WHOOP's own `HR Zone n %` for the session and `seconds` is that share of the session's
-/// length — the same derivation `WorkoutSession.zoneSeconds(_:)` already performs for the strain page's
-/// two summed rows, forwarded to rather than restated. **A row printing `22%` beside a time derived
-/// independently of it would be two figures free to disagree**, which is the rule `MetricChange.between`
-/// applies to the pair it compares and the reason that type compares formatted text.
+/// Two producers can name a session's time in a band, and a row uses one of them, never a mean of the
+/// two:
 ///
-/// ## The two absences are different, and only one of them is a dash
+/// - **`.measured`** — this app's own `ZoneTimeMath.totals` folded from the session's heart-rate
+///   samples. Every session this app recorded has this, and it is the path that made the page's five
+///   dashes into figures.
+/// - **`.imported`** — WHOOP's own `HR Zone n %` block scaled by the session's length, through
+///   `WorkoutSession.zoneSeconds(_:)`. A session the app did not record has only this.
 ///
-/// `percent` and `seconds` are `nil` together or set together — one condition produces both, so a row
-/// can never print a percentage with no time beside it:
+/// **Measured wins when both are present**, because it is this session's actual readings rather than
+/// a percentage WHOOP rounded to a whole number. A row averaging the two would be a figure from
+/// neither producer — the defect `RecoveryScoring` avoids by never mixing a computed need with an
+/// imported one.
 ///
-/// - **`nil` is an absent block.** A session this app recorded itself carries no `hrZonePercents`, and
-///   neither does any row written before `v14`. All five rows draw a dash.
-/// - **A stored `0` is a measurement.** 45 of the bundled export's 673 rows read `0` in every band —
-///   real workouts that never reached zone 1 — and those are a measured `0%` and `0:00`, drawn as
-///   such. The two must not be collapsed: a dash over a measured zero says *not measured* about a fact
-///   WHOOP did measure.
+/// ## The absences are different, and only one of them is a dash
 ///
-/// ## What these rows are not
+/// `seconds` is `nil` only when the session has neither samples nor a valid block — then all five
+/// rows draw a dash. **A stored zero is a measurement**: the bundled export has rows reading `0` in
+/// every band (workouts that never reached zone 1), and `.measured` produces a real zero whenever the
+/// session's readings all sat below zone 1. Those print `0:00:00`, never a dash.
 ///
-/// **The five percentages do not sum to the session**, so neither do the five times. The remainder is
-/// time below zone 1, which WHOOP publishes no column for — the same shortfall `WorkoutSession`'s own
-/// doc comment records, and the reason `WholePercentMath.wholePercents(ofSeconds:)` must not be used to
-/// derive this column.
+/// ## The five times need not sum to the session
 ///
-/// **The share is WHOOP's and the edges are this app's.** The percentages come out of `workouts.csv`
-/// verbatim; the BPM boundaries come from `StrainAccumulatorMath.computeZones`, which is a pure function
-/// of the profile's two heart rates and which `GRDBUserProfileRepository` answers with a cold-start
-/// `190/60` when no profile row exists — indistinguishably from a user-supplied profile. So on a fresh
-/// install those edges are a constant this app wrote down. The strain detail page already carries the
-/// same mismatch, which is why this is a documented property of the page rather than a defect here.
+/// Time below zone 1 is measured time that belongs to no band, so the five band times sum to at most
+/// the measured span — the same shortfall `WorkoutSession`'s own doc records, and the reason
+/// `WholePercentMath.wholePercents(ofSeconds:)` must not be used to derive a share of a session.
+///
+/// ## The bar scale is the block's, not the row's
+///
+/// Every bar in the block is a fraction of `scaleSeconds` — the largest time anywhere in the block,
+/// session or average. A per-row scale would draw zone 2 as long as zone 5; a session-length scale
+/// would draw every bar as a sliver. One scale also makes the grey average mark comparable with the
+/// session's own bar on the same track, which is the whole point of drawing the two together.
 public struct ActivityZoneRow: Equatable, Sendable {
+
+    /// Which producer a row's `seconds` came from. `nil` exactly when `seconds` is.
+    public enum Source: Equatable, Sendable {
+        /// This app's own `ZoneTimeMath` fold over the session's heart-rate samples.
+        case measured
+        /// WHOOP's `HR Zone n %` block, scaled by the session's length.
+        case imported
+    }
 
     public let index: HeartRateZoneIndex
 
@@ -53,25 +64,51 @@ public struct ActivityZoneRow: Equatable, Sendable {
     public let lowerBpm: Int
     public let upperBpm: Int
 
-    /// WHOOP's share of the session in this band, in whole percent, or `nil` when the session carries
-    /// no zone block at all.
-    public let percent: Double?
-
-    /// `percent` of the session's length, in seconds, or `nil` with it.
+    /// This session's time in the band, or `nil` when it has neither samples nor a valid block.
     public let seconds: Double?
 
-    public init(
+    /// Which producer `seconds` came from; `nil` with it.
+    public let source: Source?
+
+    /// Mean time in the band over the prior sessions of this activity that carried samples, or `nil`
+    /// below `ActivityZoneBaseline`'s floor — and `nil` on every row of a session that has no time of
+    /// its own, because a marker beside a dash is a comparison with one side missing.
+    public let averageSeconds: Double?
+
+    /// How many prior sessions the mean was taken over; `nil` with `averageSeconds`.
+    public let averageSessionCount: Int?
+
+    /// Seconds at full track width. One value for every row in the block.
+    public let scaleSeconds: Double
+
+    /// `seconds / scaleSeconds`, clamped to `0…1`. `0` when `seconds` is nil.
+    public let barFraction: Double
+
+    /// `averageSeconds / scaleSeconds`, or `nil` with it.
+    public let averageFraction: Double?
+
+    private init(
         index: HeartRateZoneIndex,
         lowerBpm: Int,
         upperBpm: Int,
-        percent: Double?,
-        seconds: Double?
+        seconds: Double?,
+        source: Source?,
+        averageSeconds: Double?,
+        averageSessionCount: Int?,
+        scaleSeconds: Double,
+        barFraction: Double,
+        averageFraction: Double?
     ) {
         self.index = index
         self.lowerBpm = lowerBpm
         self.upperBpm = upperBpm
-        self.percent = percent
         self.seconds = seconds
+        self.source = source
+        self.averageSeconds = averageSeconds
+        self.averageSessionCount = averageSessionCount
+        self.scaleSeconds = scaleSeconds
+        self.barFraction = barFraction
+        self.averageFraction = averageFraction
     }
 
     /// The five rows for a session, **highest band first**.
@@ -86,27 +123,64 @@ public struct ActivityZoneRow: Equatable, Sendable {
     /// not exist, which is worse than drawing nothing; and the table cannot in fact be short, since
     /// `computeZones` zips `HeartRateZoneIndex.allCases` against a fixed five-element array.
     ///
-    /// **A whole percent is required and a fraction is refused.** The bundled export's 3,365
-    /// `HR Zone n %` cells are all whole numbers — measured, zero fractional values — so a fractional
-    /// percent would be a value from some other producer, and `seconds` is a share of the session
-    /// computed from it. Refusing rather than rounding is the conservative direction: this app has no
-    /// case that produces one and rounding would silently invent a reading if it ever did.
+    /// - Parameters:
+    ///   - measured: the session's own heart-rate fold, or `nil` when it has no samples.
+    ///   - priorAverage: the same-activity mean, or `nil` below its floor. Applied only to rows that
+    ///     have a time of their own.
+    ///
+    /// **A whole percent is required and a fraction is refused** on the imported path. The bundled
+    /// export's 3,365 `HR Zone n %` cells are all whole numbers — measured, zero fractional values —
+    /// so a fractional percent would be a value from some other producer, and `seconds` is a share of
+    /// the session computed from it. Refusing rather than rounding is the conservative direction: this
+    /// app has no case that produces one and rounding would silently invent a reading if it ever did.
     public static func rows(
-        for session: WorkoutSession, zones: [HeartRateZone]
+        for session: WorkoutSession,
+        zones: [HeartRateZone],
+        measured: ZoneTimeMath.Totals?,
+        priorAverage: ActivityZoneBaseline?
     ) -> [ActivityZoneRow] {
         guard zones.count == HeartRateZoneIndex.allCases.count else { return [] }
         let percents = wholePercents(of: session)
 
-        return zones.reversed().map { zone in
-            let percent = percents?[zone.index.rawValue - 1]
+        // Resolved before the rows so one scale can be taken across both marks in the block.
+        let resolved: [(zone: HeartRateZone, seconds: Double?, source: Source?)] = zones.map { zone in
+            if let measured, measured.zoneSeconds.count == HeartRateZoneIndex.allCases.count {
+                return (zone, measured.seconds(in: zone.index), .measured)
+            }
+            guard let percents else { return (zone, nil, nil) }
+            // `wholePercents` has already checked finiteness and count, so `zoneSeconds` answers a
+            // number for the same reason the block was accepted.
+            let seconds = percents[zone.index.rawValue - 1].isFinite
+                ? session.zoneSeconds(zone.index)
+                : nil
+            return (zone, seconds, seconds == nil ? nil : .imported)
+        }
+
+        let scale = resolved
+            .compactMap(\.seconds)
+            .reduce(0, max)
+        let averageScale = resolved
+            .compactMap { row in
+                row.seconds == nil ? nil : priorAverage?.seconds(in: row.zone.index)
+            }
+            .reduce(0, max)
+        let scaleSeconds = max(scale, averageScale)
+
+        return resolved.reversed().map { row in
+            let average = row.seconds == nil
+                ? nil
+                : priorAverage?.seconds(in: row.zone.index)
             return ActivityZoneRow(
-                index: zone.index,
-                lowerBpm: zone.lowerBpm,
-                upperBpm: zone.upperBpm,
-                percent: percent,
-                // The same condition that produced `percent`, applied through the entity's own
-                // derivation so the two figures are one answer and not two.
-                seconds: percent == nil ? nil : session.zoneSeconds(zone.index))
+                index: row.zone.index,
+                lowerBpm: row.zone.lowerBpm,
+                upperBpm: row.zone.upperBpm,
+                seconds: row.seconds,
+                source: row.seconds == nil ? nil : row.source,
+                averageSeconds: average,
+                averageSessionCount: average == nil ? nil : priorAverage?.sessionCount,
+                scaleSeconds: scaleSeconds,
+                barFraction: fraction(row.seconds, of: scaleSeconds),
+                averageFraction: average.map { fraction($0, of: scaleSeconds) })
         }
     }
 
@@ -117,6 +191,12 @@ public struct ActivityZoneRow: Equatable, Sendable {
               percents.allSatisfy({ $0.isFinite && $0 == $0.rounded() })
         else { return nil }
         return percents
+    }
+
+    /// A mark's position on the track, clamped so a malformed input cannot draw past the end.
+    private static func fraction(_ value: Double?, of scale: Double) -> Double {
+        guard let value, scale > 0, value.isFinite else { return 0 }
+        return min(1, max(0, value / scale))
     }
 
     /// The band as the row prints it: `106-125`, and `178+` for the top band.
@@ -133,16 +213,10 @@ public struct ActivityZoneRow: Equatable, Sendable {
         index == .zone5 ? "\(lowerBpm)+" : "\(lowerBpm)-\(upperBpm)"
     }
 
-    /// The share as the row prints it — `0%`, `22%` — or the dash an absent block draws.
+    /// The time as the row prints it — `0:00:12` — or the dash an absent measurement draws.
     ///
-    /// A dash and not `0%`: see this type's comment. `0%` is a measurement WHOOP made and a dash is the
-    /// absence of a block, and the two are the same pixels only if someone collapses them.
-    public var percentText: String {
-        guard let percent else { return "—" }
-        return "\(Int(percent.rounded()))%"
-    }
-
-    /// The time as the row prints it — `0:00:12` — or the same dash, from the same condition.
+    /// A dash and not `0:00:00`: the first is the absence of a measurement and the second is a
+    /// measurement of none, and the two are the same pixels only if someone collapses them.
     public var secondsText: String {
         guard let seconds else { return "—" }
         return seconds.formattedClockDuration()
@@ -162,10 +236,8 @@ public struct ActivityZoneRow: Equatable, Sendable {
     /// colon would put the minutes on the trailing side and leave `0` alone on the leading one.
     ///
     /// **A string with no colon comes back whole with an empty tail**, which is the dash an absent
-    /// block draws (`—`): the dash is not a duration and has no halves, so it is drawn undivided rather
-    /// than padded into a shape it does not have. That case is unreachable for a *measured* row —
-    /// `formattedClockDuration` always emits at least one colon — and is handled rather than trapped
-    /// because a total function needs no argument about which strings reach it.
+    /// measurement draws (`—`): the dash is not a duration and has no halves, so it is drawn undivided
+    /// rather than padded into a shape it does not have.
     public nonisolated static func durationParts(
         _ text: String
     ) -> (leading: String, trailing: String) {
@@ -177,12 +249,19 @@ public struct ActivityZoneRow: Equatable, Sendable {
     ///
     /// `nonisolated static` rather than text composed inside the `body`, on the rule this page's other
     /// strings follow: the runner has no renderer, so a sentence written into a `body` is a sentence
-    /// nothing can assert. It is asserted against the two absences rather than against a screenshot.
+    /// nothing can assert. It is asserted against the absences and against the average's basis rather
+    /// than against a screenshot.
     public nonisolated static func spoken(_ row: ActivityZoneRow) -> String {
         let band = "Zone \(row.index.rawValue), \(row.bpmRangeText) bpm"
-        guard let percent = row.percent, let seconds = row.seconds else {
+        guard let seconds = row.seconds else {
             return "\(band). Not recorded for this session."
         }
-        return "\(band). \(Int(percent.rounded())) percent, \(seconds.formattedClockDuration())."
+        let time = "\(band). \(seconds.formattedClockDuration())."
+        guard let average = row.averageSeconds, let count = row.averageSessionCount else {
+            return time
+        }
+        return time
+            + " Average over your last \(count) sessions of this activity: "
+            + average.formattedClockDuration() + "."
     }
 }

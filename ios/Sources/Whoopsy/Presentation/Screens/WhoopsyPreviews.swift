@@ -59,8 +59,7 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 sync: container.syncHistoricalDataUseCase,
                 refreshStrain: container.refreshStrainUseCase,
                 preferencesRepository: container.preferencesRepository,
-                strapModels: container.strapModelRepository,
-                protocols: container.protocolCatalog,
+                    protocols: container.protocolCatalog,
                 biometrics: container.biometricRepository
             ),
             profileViewModel: ProfileViewModel(

@@ -39,6 +39,12 @@ public enum MotionPayloadDecoder {
     /// to be the payload's own length or the test refuses every real record.
     public static let r21PayloadBytes = 1229
 
+    /// R21's layout selector under packet 47 — `WhoopRawFrame.seq`, the same byte that names R18 and
+    /// R20. Named here because `HistoricalDrainSession` needs it to tell a record on the 1 Hz grid from
+    /// one that is not; R21's own decoder selects on payload length rather than this byte, and that
+    /// difference is not an inconsistency — a length is what keeps the walk inside the record.
+    public static let r21Layout: UInt8 = 21
+
     /// R10's payload: the 4.0's `REALTIME_RAW_DATA` variant declaring **1917** bytes.
     ///
     /// The declared length counts the inner record plus the four-byte trailer, so the payload is

@@ -93,6 +93,16 @@ enum StrainDayMathTests {
         assertTest(
             hrOnly.motionLoad == 0,
             "…with a motion term of exactly zero rather than an invented figure")
+        // The zone block is the same interval rule expressed a second way here, so it needs its own
+        // pin: 3,600 one-second samples at 70 bpm earn the low band and no zone, and the 300 at 170
+        // are zone 4. Without this a delegation regression in the fold would move no assertion.
+        assertTest(
+            hrOnly.zones.first(where: { $0.index == .zone4 })?.durationSeconds == 300
+                && hrOnly.zones.filter { $0.index != .zone4 }
+                    .allSatisfy { $0.durationSeconds == 0 },
+            "…and the day's zone times are the same fold: 300 seconds in zone 4 and nothing in the "
+                + "other four, because the first 3,600 samples sat above resting but under zone 1 "
+                + "(\(hrOnly.zones.map(\.durationSeconds)))")
 
         // ---- An elevated window is scored by heart rate, not by heart rate plus motion ----
         let burst = StrainTests.samples(from: start, count: 60, heartRate: 170)

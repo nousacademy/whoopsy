@@ -821,34 +821,280 @@ Also settled in this session:
   to **once a second per day** with a trailing flush — a per-record write flooded `cfprefsd` and SQLite
   during the backlog.
 
-### 7.2 The open problem: the flash recorder stopped on 2026-08-26
+### 7.2 The flash recorder: readable since 2026-10-24, and offline capture is full-rate while worn
 
-The flash holds roughly **16 hours of wear across 24–26 August** and nothing later. The strap has been
-worn since — live heart rate and motion work — but nothing is being written to flash, so the counter
-cannot cover a current day and today's steps remain detector-only. The battery read **30%**.
+For weeks the flash appeared to hold roughly **16 hours of wear across 24–26 August** and nothing
+later: every drain answered `0 record(s)`, live heart rate and motion worked, and the counter could
+not cover a current day. **That reading was wrong about the recorder and right about the drain.** The
+strap had been writing history all along; what changed on 2026-10-24 was that a drain could finally
+read it. The failed tests and the successful one are recorded below in order, because the conclusion
+reverses this section's original premise and it is the failures that make the reversal credible.
 
-- [ ] **Charge to 100%, reconnect, wear it disconnected for 10–15 minutes, then sync.** This is NOOP's
-      own recovery for a strap that stopped banking ("its clock has lost sync … fully charge it to
-      100%, then reconnect"). Expected: records with a stamp from today, not 0.
-- [ ] **If still 0: the persistent-policy experiment.** NOOP's 5.0 command **154 (`0x9A`)
-      `TOGGLE_PERSISTENT_R21`** takes a revision-1 boolean `[1, state]` — wire 0 explicit off, wire 1
-      on — and stores it nonvolatile; **153 (`0x99`)** is the R20/optical twin. The ACK does **not**
-      confirm the programming. This repo currently lists `0x9A` as never-send because it can keep the
-      optical engine on across reboots and burn battery; if it is tried, it must be one deliberate tap
-      with `[1, 0]` as the revert, not part of the connect sequence.
-- [ ] **Charge is the leading hypothesis, not a proven cause.** 30% is low but not empty; a full charge
-      is the cheap test that separates "battery guard" from "recorder stuck".
+**What has been tested, in order.** A drain at **30%** battery and two more at **69%** all answered
+`0 record(s) in 1 batch(es)`, and so did a 15-minute Bluetooth-off wear on 2026-10-24 — every one of
+them with the strap connected, and the last of them read off the **automatic** drain on reconnect
+(`Auto-sync: 0 record(s) in 1 batch(es), ending caughtUpToLiveEdge`) rather than a button press. The
+link worked throughout and the cursor did not replay August.
+
+**Then the `0x9A` toggle was sent, and the picture changed completely.** The sequence on 2026-10-24:
+`ENABLE PERSISTENT RECORDING` at **08:48:55** (`Sent TOGGLE_PERSISTENT_R21 (0x9A) state=1`, write
+acknowledged), then revert → quit → relaunch → enable again, then a drain at **09:05** that read real
+records for the first time:
+
+- **Layout `18` — `R18` — at one record per second of history**, ~60 per batch, ~2.5 batches a second:
+  `recordsSoFar` 8,804 → 8,864 → 8,924 → 8,984, `newestRecord` advancing minute by minute from
+  `2026-10-24 05:13Z` (01:13 EDT).
+- The manual sync that followed reported **`422 record(s) in 9 batch(es)`, caught up to now** — the
+  first non-zero completion this strap has produced, and a genuine live-edge claim because the drain
+  carried records.
+- A **10-minute disconnected wear** afterwards produced **`25 record(s) in 2 batch(es)`** — one record
+  per ~24 s, not `R18`'s 1 per second (that would have been ~600). The first reading was **"offline
+  capture is motion-only"**, which is what the opcode's name suggests — and the rate test below
+  overturns the *content* half of it: the sparse offline records are `R18` too, so the flag changes
+  how often the strap writes rather than what it writes.
+- **Steps switched from the detector to the strap's own counter** at the drain: 1,115 detector →
+  501 counter → 733 as the morning went on. That is the designed arbitration (the first counter record
+  for a day replaces the detector's total), and a data point for §7.4's comparison.
+- The strap's **clock was correct throughout** — a live `R21` record's own unix field read
+  `13:11:12Z` against the phone's `13:11:12Z` — so the "invalid RTC stops banking" rule is not the
+  cause, and the drained stamps file onto the right days.
+- `0x22 GET_DATA_RANGE` stayed **unanswered** on firmware 50.42.1.0 throughout, so the write-page test
+  is blocked, not merely unrun.
+
+**What that means.** The strap had been **writing history before the toggle was sent** — the drained
+records run back through the previous night and the early hours of the morning, hours before `0x9A`
+was first sent. So the flag did not revive a dead recorder; it appears to have made the history
+**readable** (gating the read path, or resetting the read pointer). Which of those two it is cannot be
+separated from this run, and the two have different consequences — a gate is a setting, a pointer
+reset is a one-shot.
+
+**One test left, and everything else settled. Known unknowns — none of them blocking a ship — follow
+the closed list at the end of this section.**
+
+- [ ] **The one test left: a night away from the phone, synced without a button.** Airplane mode on,
+      strap worn, sleep; in the morning airplane mode off, open the app, and there should be a
+      `DRAIN_END` in `Documents/capture.txt` that nobody asked for, with a `first` stamp from the night
+      and a full night's records. That single line proves the whole chain in one go — the strap banking
+      with no phone (measured at full rate on 2026-10-25), the foreground trigger firing where no
+      reconnect happens (a phone connected all night never re-connects), the per-link state reset that
+      lets the connect pass re-run after a radio cycle (noop's `#2787`), the retry for a strap that
+      answers nothing, and the strain refresh fed from the drained range. **Everything below this item
+      is closed**; this is the last behaviour no capture has shown.
+- [x] **`0x9A` sent, and the first successful drain.** Done 2026-10-24; see above. The flag is still
+      **ON**; the battery cost (optical engine across reboots) has not yet been measured.
+- [x] **The rate test: run 2026-10-24, and the layout finally read.** A second drain ten minutes later
+      answered **`412 record(s) in 8 batch(es)`**, and the device log has every record:
+      **`type=0x2F layout=18 payload=109 B`, one per second**, batch boundaries a minute apart
+      (`firstRecord` 14:22:51Z, 14:23:36Z, then :36 each minute), the last `HISTORY_END` reporting
+      **`liveEdge=true`**. `spo2probe summary r18=412` agrees. So the **multi-batch drain is now
+      observed** — the ACK loop, the stall guard and the live-edge rule all ran across eight batches on
+      real records — and the earlier "one record per minute" figure needs no exotic explanation:
+      **that drain had consumed the disconnected window at ~1 record a minute, and this one started
+      exactly where it stopped.** The proof is the start stamp, `14:22:51Z`, which is also
+      `SET_CLOCK`'s own event stamp, `Strap event 16 setRTC at 2026-10-24T14:22:51Z` — the reconnect
+      instant. **Only the connected half of the rate is captured.** Every one of those 412 records is
+      in the log; the disconnected side rests on two things that are not a capture — the app's own
+      `30 record(s) in 2 batch(es)` line, and the start stamp above. So "about one record a minute
+      while disconnected" is an **estimate from a count**, and the layout of those records **has never
+      been seen**; at least one carried the step counter, because the total moved across that drain
+      and the pedometer is cumulative. **The next disconnected wear is the capture that makes this
+      real**: press sync and have the archive pulled inside two minutes, then read `layout=` off the
+      offline records themselves.
+- [x] **Offline banking at scale: `825 record(s) in 16 batch(es)`.** Measured 2026-10-25 with the
+      phone's Bluetooth **off** for the wear, then one `SYNC HISTORY` on reconnect. Sixteen batches at
+      roughly 52 records each, against the **30 records in 2 batches** the earlier 30-minute
+      airplane-mode wear produced. Two things follow. **The strap banks while the phone cannot hear it**
+      — this is the same conclusion as before with an order of magnitude more data behind it — and
+      **the rate is not a constant**: 30 records over half an hour and 825 over a shorter window cannot
+      be one fixed cadence. The obvious explanation is that the recorder is **motion-gated** rather
+      than fixed-interval, which is what the two earlier still-airplane results and this one's much
+      larger count would look like together. **The capture is still missing** — the archive had rolled
+      past this drain by the time it was pulled, so `layout=` and the stamps of the offline records
+      remain unread. **The window was 22 minutes of Bluetooth-off wear**, which makes the rate
+      **~37 records a minute** — 825 in 22 min, against 30 in 30 min on the still airplane-mode wear
+      and 25 in ~10 min on the first one. **A fourth window settles the question the other way**:
+      10–15 minutes of Bluetooth-off wear on the same morning produced **`15 record(s) in 1 batch`** —
+      about one a minute, exactly like the still tests. So the 825 is an **outlier rather than a rate**,
+      and the likeliest explanation is that its window was not purely offline: the drain before it had
+      consumed up to the live edge at 09:25, and records written **while still connected** between then
+      and the moment Bluetooth went off sit in the same read. Ten minutes of connected time at one a
+      second is ~600 records on its own, which is most of 825. **The working model is therefore the
+      simple one again** — about one a minute disconnected, one a second connected — and it is still
+      uncaptured: three of the four windows were read as counts from the app's own message, and the
+      stamps that would separate "written offline" from "written while linked" have never been read.
+      **The capture exists now, and it settles the connected half exactly.** `CaptureLog.shared`
+      writes `DRAIN_BATCH`/`DRAIN_END` lines to `Documents/capture.txt`, visible in iOS Files, so a
+      drain is read minutes later instead of inside `/usr/bin/log`'s two-to-four-minute archive —
+      five pulls had missed that window. Measured 2026-10-25 14:27Z, four batches then one:
+
+      ```
+      first=14:25:06 newest=14:25:50 soFar=45   stalled=0 liveEdge=false
+      first=14:25:51 newest=14:26:50 soFar=105  stalled=0 liveEdge=false
+      first=14:26:51 newest=14:27:35 soFar=150  stalled=0 liveEdge=false
+      first=14:27:36 newest=14:27:42 soFar=157  stalled=0 liveEdge=true
+      DRAIN_END records=157 batches=4 reason=liveEdge
+      DRAIN_BATCH first=14:27:43 newest=14:28:12 soFar=30  stalled=0 liveEdge=false
+      DRAIN_END records=30 batches=1 reason=complete
+      ```
+
+      Three facts come out of it. **The stamps are one second apart throughout** — 157 records over
+      2 m 36 s, and 30 over 29 s — so **connected recording is one `R18` per second**, captured rather
+      than inferred. **The two drains tile the timeline with no gap and no overlap**: one ends at
+      `14:27:42`, the next begins at `14:27:43`, which is the ACK/trim cursor doing its job on real
+      records. And **a batch is a ~60-second window of the strap's own clock** (boundaries at :50/:51),
+      not a fixed record count — hence 45, 60, 45, 7. **What this does not contain is an offline
+      window**: the phone was connected throughout, so the disconnected rate is still only the three
+      counts above, and counts cannot distinguish 30 records in 30 seconds from 30 in 30 minutes.
+      The next test is now trivial — Bluetooth off for 30 minutes, sync, read `capture.txt`: the
+      stamps inside that window are the answer, with no archive race.
+- [x] **DECISIVE: a 30-minute Bluetooth-off wear came back at full rate.** Captured 2026-10-25 from
+      `Documents/capture.txt` — the off window is the long gap between drains:
+
+      ```
+      15:34:27 DRAIN_BATCH first=15:34:22 newest=15:34:40  soFar=19    }  ends the 765-record drain
+      15:34:31 DRAIN_END   records=765 batches=14 reason=complete
+      ...                  (Bluetooth off, ~30 minutes)
+      16:06:11 DRAIN_BATCH first=15:34:41 newest=15:35:25  soFar=64
+      16:06:12 DRAIN_BATCH first=15:35:26 newest=15:36:25  soFar=124
+      ...                  one 60-record batch per minute, unbroken, to 16:06:24
+      16:06:26 DRAIN_END   records=2003 batches=36 reason=liveEdge
+      ```
+
+      **2,003 records across 32 minutes, every batch a full 60 records per 60 seconds, with no gap in
+      the stamps** — so while the strap is *worn* it writes one `R18` per second whether or not the
+      phone can hear it, and a phone-free hour returns at full fidelity. That is the answer to the
+      question this section opened with, and it retires the "~1 record a minute offline" reading: the
+      three sparse windows were **wrist-off** time, not link-off time, since the recorder is what the
+      optical engine feeds — and the same capture proves it from the other direction: **the strap was
+      taken off for a shower at 16:15 and put back at 16:25**, and the history has a **ten-minute hole
+      with no records at all** between `newest=16:15:39` and `first=16:25:42`, inside a drain that was
+      otherwise continuous at one a second. Two controlled observations, one rule: worn is full rate,
+      off the wrist is nothing. Two smaller things ride with it: a handful of batch
+      boundaries overlap by up to ~40 s in this capture (`first=15:43:26` then `first=15:43:27`), so a
+      few records are re-sent and the unique count is slightly under 2,003 — harmless, deduped by
+      timestamp — and `stalled=0` throughout, so the stall guard never had to fire.
+- [x] **Why the rate differs: it does not, by link state — it differs by whether the strap is worn.**
+      Answered 2026-10-25 by the Bluetooth-off capture below: 2,003 records across 32 minutes, one per
+      second, with no gap in the stamps while the strap was on a wrist and the phone could not hear it.
+      The three sparse windows (30 in 30 min, 25 in ~10 min, 15 in 10–15 min) were the strap **off the
+      wrist**, where the optical engine has nothing to report and the recorder writes almost nothing.
+      Nothing about `0x03` or the handshake is implicated, and a phone-free walk yields usable heart
+      rate.
+- [x] **The retry fired in the wild, and it is why the link still caught up.** 2026-10-25 from
+      `capture.txt`: after a clean 1,140-record drain at 17:24:07, **two consecutive drains ended
+      `records=0 batches=0 reason=idleTimeout`** — 17:25:40 and 17:26:45, a minute apart, which is the
+      drain's own idle window rather than the five-second retry delay — and the third attempt at
+      17:26:51 read **176 records** and ended on a live edge. Without `DrainCoordinator`'s attempts that
+      link would have come back with nothing and waited for a manual press. The same capture also shows
+      the opposite case behaving: an aborted drain (19 records, `reason=aborted`, 16:34:31) was followed
+      by a fresh one starting at the same cursor and reading the window again, so a superseded drain
+      loses the session and not the records.
+- [x] **A drain can fail with `0 record(s) in 0 batch(es)` and succeed on the next press.**
+      2026-10-24 16:57, immediately after a live football session ended: `SYNC HISTORY` reported
+      *"The strap stopped responding after 0 record(s) in 0 batch(es)"*. **That is a different failure
+      from the `0 record(s) in 1 batch(es)` this section opens with** — one batch is an answer saying
+      the buffer is empty, zero batches is no answer at all, and it is the idle timeout rather than a
+      read. Pressing the button again on the same link minutes later returned
+      **`447 record(s) in 9 batch(es)`**, so the strap was fine and the request was not. The likely
+      shape is a request issued while the link was still busy tearing down the live session — worth
+      confirming with a log pulled inside the window on the next failure, since the successful retry
+      is the only one that leaves a trace (`layout=18`, 60-record batches, `stalled=0`, cursor
+      advancing from `13:23:09Z` on 2026-10-25).
+
+**Known unknowns, none of them blocking a ship.**
+
+- **The Gen 5 burst count gate is read and logged, and not enforced.** [reported] The OpenStrap Gen 5
+      reference (`OpenStrap/research` PR #1, `PROTOCOL-GEN5.md` §8) puts `expected_count`, a u32 LE at
+      `inner[9]` — payload **6** here — in every `HISTORY_END`, and says a client must count **complete
+      frames once each, for types 47, 48, 50, 53, 54 and 55 only** — not 49, not 51/52 — and that
+      miscounting the membership makes the band **re-offer the same burst forever**. That is the Gen 5
+      analogue of the Groundhog Day bug. The Gen 4 reference puts a record-id / batch counter at the
+      same offset, so the read is gated by the envelope. **The premise is now measured**: the
+      2026-10-25 capture's per-batch histogram showed `types=2F×45,30×2,31×2,32×8` and
+      `2F×30,31×2,32×40` — types 48 and 50 really do ride in bursts, so a 47-only count is short by the
+      event and console-log traffic. `HistoricalDrainSession` now counts the six types and logs
+      `expected=` / `counted=` on every `DRAIN_BATCH` line, and **still acknowledges success either
+      way**. Enforcement — the Gen 5 negative result (`0x17` body `00 00`), re-offer, and `0x14` after
+      fifteen consecutive failures — waits on one capture showing the two numbers agreeing on an
+      ordinary burst, because a validator with the wrong membership would refuse good bursts forever.
+      **What it would fix**: a burst damaged in transit is acknowledged today, and the strap trims past
+      records this phone never stored — its ring buffer is the only copy. What it would **not** fix is
+      our re-offers. **Measured 2026-10-25: 53 consecutive bursts, `expected == counted` on every one**
+      — including `2F×44,30×3,32×20` against 67 and `2F×20,30×1,32×36` against 57 — so the membership
+      is right, the gate is **ruled out** as the cause, and the next suspect is the ACK/token cursor:
+      the drain now logs the token it echoes (`trim=`/`wrap=`) on every `DRAIN_BATCH` line and sets
+      `repeat=true` on any batch beginning at or before the previous one's first record, so the next
+      capture reads both — the rewind and whether the trim page moved — **on one line**, without two
+      batches that a rotation or a paste can separate. **One drain has since been captured clean: 57 batches, `repeat=false` on all of them, `trim`
+      monotone throughout** (`94247` → `94467`), so the rewind is not every drain and the cursor
+      advanced exactly as the counts imply. The older drains that did re-send two stretches (`first=23:17:49` twice, then
+      `first=23:38:53` followed by `first=23:38:49`), each time with its declared count matching, so the
+      rewind is in the trim cursor rather than in the counting. Nothing was lost by it — `soFar`
+      advanced on every batch and the records upsert by timestamp — but the duplication is the symptom.
+      Enforcement stays off: with zero mismatches a NAK would change nothing today, and a validator
+      interacting with a cursor already rewinding could turn a harmless duplicate into a loop.
+- **The retention question has an instrument now, and it needs no fortnight.** Event 29
+      `STRAP_CONDITION_REPORT` carries a page backlog and an hours figure, and it is decoded into a
+      `STRAP_CONDITION` line on every connect (`StrapConditionReport`). The first capture containing
+      that line answers "two days or fourteen": if `backlog_hours` sits in the tens after a day of
+      wear, the buffer is shallow; if it sits in the hundreds, the 14-day claim is plausible. It stays
+      log-only until a capture confirms the offsets — the same rule the oxygen candidate follows.
+- **`R26` has appeared and has no decoder.** The first one was read on 2026-10-26 —
+      `layout=26 ... expected=8 counted=8 ... types=2F×1,30×1,31×2,32×6`, one record, an 88-byte
+      frame the Gen 5 reference calls the *Pulse Information Packet*. It is **counted** toward its
+      burst and **not decoded**, and it is **not allowed to be the clock**: its field at payload 4 is an
+      event time, and reading it as a 1 Hz stamp made the stall guard log a stall on a drain that was
+      advancing. `HistoricalDrainSession.timestampedLayouts` is that gate now (18/21/24). Whether
+      anything in it is worth storing is open — the reference documents the frame as pulse
+      information, and nothing here has looked inside one yet.
+- **`0x22 GET_DATA_RANGE` is undecoded** — a `0x22`-bearing frame does exist, and it is not the documented one.
+      Two captures are in hand, and both must be read narrowly. At 10:29:42 a
+      `type=0x24 seq=41 cmd=0xA payload=11 01 00 00 00` line appears beside the request — that is the
+      **first command response on the link**, `logClockReplyCandidate`'s `isFirstResponse` branch, not
+      an answer to `0x22`. Then at **10:30:59** a frame arrives as
+      **`type=0x28 seq=2 cmd=0x22 payload=C1 DC 6A C2 35 64 00 00 00 00 00 00 00 00 00 01 00`** — inner
+      byte `0x22`, **17 bytes**, so it is not noop's 65-byte layout either (which begins `0x01`), and
+      `WhoopDataRange.decode` refuses it on length, correctly. Two things are therefore still open: the
+      app's own `commandResponse` type is `0x24`, so a type-`0x28` frame may be a metadata page rather
+      than an answer at all; and its body's first four bytes read as a unix stamp roughly three minutes
+      **after** its arrival, so no field offset is claimed. **Next:** take the `0x22` frame twice across
+      a disconnected wear and diff the two bodies — a field that moves with the wear is the write page,
+      whatever offset it sits at. Do not decode anything from one sample.
+- **`0x9A` causality is unproven** — the causal test is revert and repeat. Once a 30-minute wear has recorded, `REVERT` and run the
+      same wear again. If drains go back to `0`, the flag is the gate and must stay on (or the battery
+      cost must be accepted); if they still record, the first success was the strap's own state and the
+      flag is incidental.
+- **The automatic drain failed on some reconnects: cause identified and fixed, not yet re-observed.**
+      At **08:47 and 09:00** on 2026-10-24 the app connected and nothing drained — no `Auto-sync`, no
+      `Drain: asked GET_DATA_RANGE` — while the 09:05 connection drained. The diagnosis is noop's
+      `#2787`, reported the same week: a radio power-off delivers no `didDisconnectPeripheral`, so the
+      per-link flags survive and `hasSentConnectCommands` stays true — discovery then skips the connect
+      pass and the strap gets no `SET_CLOCK`, no `GET_DATA_RANGE` and no history request while the screen
+      says *connected*. **Fixed on 2026-10-25** by resetting the link state and re-discovering services
+      when the radio returns with the strap still attached; the overnight test above is what re-observes
+      it.
+- **The battery cost of the flag is unmeasured** — watch it. The reference warns the optical engine can stay running
+      across reboots. Compare the hourly drain against the pre-toggle rate; `REVERT` is the undo and
+      `REBOOT STRAP` is the recovery if the engine stays on.
+
+
+**`caught up to now` is not evidence that the buffer is current.** On a zero-record drain that sentence
+comes from the marker fallback: with no records in the session there is nothing to compare the marker's
+clock against, and the marker's head is the drain's own time. The honest sentence for `recordCount == 0`
+is *"no new records"*, and reserving "caught up to now" for a drain that carried records is an
+outstanding wording fix rather than a behaviour change.
 
 ### 7.3 Questions this session did **not** answer
 
-- [ ] **The 14-day storage claim is untested.** The drained span is only ~16 hours because the recorder
-      stopped after 26 August — not because the ring filled. A working recorder over 14+ days is what
-      would test the retention figure; the current data cannot.
-- [ ] **The subscription kill-switch hypothesis is unconfirmed.** Records continue to
-      `2026-08-26` — four days *after* the export (and the subscription) ends on 2026-08-22 — so the
-      strap kept recording past expiry. No command in the protocol references disables recording, and
-      the documented stop rule is an invalid RTC. If banking resumes after a charge, the hypothesis is
-      dead; if it never does, it stays open, not proven.
+- [ ] **The 14-day storage claim is still untested, but the buffer is no longer stale.** The
+      2026-10-24 drain read records from the **previous night and the hours before the drain**, so the
+      recorder holds at least the most recent stretch of wear. Whether it holds 14 days, or drops its
+      oldest records first, needs a span longer than one night — §7.2's 30-minute test answers cadence,
+      not capacity.
+- [x] **The subscription kill-switch hypothesis is dead.** Records were read through 2026-10-24,
+      months after the export (and the subscription) ends on 2026-08-22, and the strap kept writing
+      throughout. Nothing disables recording at expiry; the `0 record(s)` answers were a read-path
+      problem, not an empty buffer.
 - [ ] **Watch for a timestamp discontinuity.** A jump in `newestRecord` between consecutive batches
       marks where `SET_CLOCK` took effect; records before it were written under a wrong clock, so their
       apparent span is not elapsed time. The 24–26 August segment advanced smoothly, so it is real.
@@ -859,9 +1105,13 @@ cannot cover a current day and today's steps remain detector-only. The battery r
       increase against the phone's Health step count for the same window. The rhythm gate delays the
       first two steps of every train by design; a mile should read within a few percent of the phone.
       Record the `TrackSteps rate: +N steps in 1 measured min` lines for those minutes.
-- [ ] **Counter (waiting for a current banked day).** Once the strap banks a current R18 record, the
-      day switches to the counter and the same walk becomes the counter's test. Compare against the
-      phone, not against `2k per mile` — stride varies.
+- [ ] **Counter — now live, and the two sources disagree by more than a stride.** The 2026-10-24 drain
+      was the first current `R18` day, and it switched the day's figure from the detector's **1,115** to
+      the counter's **501**, then **733** as the morning went on. A gap that size is not stride: either
+      the detector over-counts (the rhythm gate admits spurious trains), the counter's delta rule drops
+      windows, or both totals are being written to the same day. **Re-run the mile walk with both
+      sources logged side by side before trusting either**, and compare each against the phone, not
+      against `2k per mile`.
 - [ ] **Fit `stepTicksPerStep` only from a capture.** The counter is counted at **1 tick = 1 step**,
       which is NOOP's default; a systematic factor from a real walk is the only justification for a
       divisor, and it should be a measured constant, not a slider guessed at.
@@ -871,10 +1121,34 @@ cannot cover a current day and today's steps remain detector-only. The battery r
 `HistoricalDrainSession` (token, live edge, stall), `StepCounterPayloadDecoder` (R18 payload 46/52/53,
 2020 stamp floor, one-shot `step_counter` diagnostic), `StepCounterAccumulator` (the delta rule),
 `StepCounterStateStore` (the ledger), `TrackStepsUseCase` (arbitration and throttling). §16 asserts all
-of it; the suite is **24/24 sections, 3,020 assertions**.
+of it; the suite is **25/25 sections, 3,231 assertions** — measured 2026-10-24 after §14's radio-loss
+and charging-badge assertions and §16's `0x9A` block were added.
 
 ```bash
 unset DEVELOPER_DIR && make test SECTIONS=16   # the step/drain block
-unset DEVELOPER_DIR && make test              # all 24 sections
+unset DEVELOPER_DIR && make test              # all 25 sections
 make ipa                                      # tmp/whoopsy.ipa for Sideloadly
 ```
+
+### 7.6 The two test days, once the drain is settled
+
+The 2026-10-23 drain session wrote two recovery rows from **test wear rather than real nights** — the
+HRV and resting rate on them are measurements of a test, not of a day — and they sit inside the 30-day
+baseline window, so they lift it until they go. **Their dates are deliberately not recorded here.**
+
+- [ ] **Delete the day, not just the row.** A one-off clear has to cover `recoveries`, `sleeps`,
+      `strains`, `stepCounts` and the `biometric_samples` / `motionEpochs` underneath them. Deleting
+      the strain row alone is futile: `RefreshStrainUseCase` recomputes any day whose newest input is
+      later than its watermark, so a surviving sample or epoch re-creates it on the next tick.
+      Deleting the samples too is what makes the clear final. The other three tables do not
+      regenerate a past day — recovery is scored on today's load only, the night is classified on
+      today's sleep-page load only, and steps come from a live stream — so removing their rows is
+      enough on its own.
+- [ ] **Recomputing is not the fix here.** Unlike a row invalidated by a model change, a test day's
+      samples *are* the artifact: `CalculateRecoveryUseCase` would produce the same kind of row from
+      them. Delete, do not re-score.
+- [ ] **There is no in-app delete**, so this is a temporary startup one-off — a `UserDefaults`-guarded
+      block that runs the deletes once — installed, launched, and reverted in the next build. A
+      one-off migration would work too (this migrator does not set `eraseDatabaseOnSchemaChange`, so
+      removing a registered-and-applied migration later is harmless), but it leaves a row in
+      `grdb_migrations` for a change the code no longer contains, which the startup block does not.

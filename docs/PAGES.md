@@ -101,7 +101,7 @@ The Strain and Sleep tabs are the earlier instance of the same sweep, and their 
 
 build them.
 
-**The profile page is three tabbed panes over the app's own record of the person using it, and only the first of them was ever specified.** The reference draws `BIOMETRICS` alone — `FIRST NAME`, `BIRTHDAY`, `GENDER`, a `UNITS` segmented control, `HEIGHT` and `WEIGHT` side by side, above a full-width greyed `SAVE` (**the `UNITS` control is hand-built**, `SegmentedPillControl`, on the same reasoning that took the device page's tabs off their `Picker` — see `docs/ARCHITECTURE.md` §2.C) — and the other two panes were named without contents, so their subjects are the user's decisions rather than the picture's: `LOGS` is the **whole import/export surface moved off `More → Settings`**, and `STORAGE` is the **cloud sync's own pane**, `SyncStorageViewModel` — the sync key, then a `DEVICE STORAGE │ WHOOPSY SYNC API` destination, then the span a run would send, then a `SYNCED RESOURCES` list, above a `SYNC` button. **It held a `RECOVERIES | WORKOUTS | STRAINS` segment over one `RUN` button, and that segment is gone.** It selected which resource's cutoff and local-copy policy the rows below belonged to, and there is now one destination and one span for the install — so a selector here would be a control asking a question with one answer, while the run sent all seven. The list replaced it and is a `ForEach` over `SyncedResource.allCases`, so a resource added to that enum appears on the screen with no view edit — and the order is read off `shared/openapi.json` rather than decided in the view. The tab list is a nested `ProfileDashboardView.Tab` enum whose `rawValue` *is* its title, on `DeviceSettingsView.Tab`'s rule: the order **is** the drawing, and a reorder is invisible in a screenshot of the first tab, which is the one a screenshot would be taken of. §18 pins the three titles and the pane's copy for the same reason — the runner has no renderer, so a rule written into a `body` is a rule nothing can assert — and §22 pins the state machine that chooses between the two span sentences and the two destination notes. It pins the `Whoop` section's three rows the same way: the count, the file order, the titles as drawn, and that `journal_entries.csv` is not among them. **All three titles were renamed on the user's instruction** — `BODY` → `BIOMETRICS` and `DATA` → `LOGS` among them — and that instruction named three labels and no content, so the third tab spent a while naming a subject its one sentence did not describe. **That disagreement was ended by the feature rather than by a rewording**: the pane is where this phone's own SQLite file meets the database behind it, which is what the word was pointing at all along.
+**The profile page is three tabbed panes over the app's own record of the person using it, and only the first of them was ever specified.** The reference draws `BIOMETRICS` alone — `FIRST NAME`, `BIRTHDAY`, `GENDER`, a `UNITS` segmented control, `HEIGHT` and `WEIGHT` side by side, above a full-width greyed `SAVE` (**the `UNITS` control is hand-built**, `SegmentedPillControl`, on the same reasoning that took the device page's tabs off their `Picker` — see `docs/ARCHITECTURE.md` §2.C) — and the other two panes were named without contents, so their subjects are the user's decisions rather than the picture's: `LOGS` is the **whole import/export surface moved off `More → Settings`**, and `STORAGE` is the **cloud sync's own pane**, `SyncStorageViewModel` — the sync key, then a `DEVICE STORAGE │ WHOOPSY SYNC API` destination, then the span a run would send, then a `SYNCED RESOURCES` list, above a `SYNC` button. **It held a `RECOVERIES | WORKOUTS | STRAINS` segment over one `RUN` button, and that segment is gone.** It selected which resource's cutoff and local-copy policy the rows below belonged to, and there is now one destination and one span for the install — so a selector here would be a control asking a question with one answer, while the run sent all seven. The list replaced it and is a `ForEach` over `SyncedResource.allCases`, so a resource added to that enum appears on the screen with no view edit — and the order is read off the generated contract rather than decided in the view. The tab list is a nested `ProfileDashboardView.Tab` enum whose `rawValue` *is* its title, on `DeviceSettingsView.Tab`'s rule: the order **is** the drawing, and a reorder is invisible in a screenshot of the first tab, which is the one a screenshot would be taken of. §18 pins the three titles and the pane's copy for the same reason — the runner has no renderer, so a rule written into a `body` is a rule nothing can assert — and §22 pins the state machine that chooses between the two span sentences and the two destination notes. It pins the `Whoop` section's three rows the same way: the count, the file order, the titles as drawn, and that `journal_entries.csv` is not among them. **All three titles were renamed on the user's instruction** — `BODY` → `BIOMETRICS` and `DATA` → `LOGS` among them — and that instruction named three labels and no content, so the third tab spent a while naming a subject its one sentence did not describe. **That disagreement was ended by the feature rather than by a rewording**: the pane is where this phone's own SQLite file meets the database behind it, which is what the word was pointing at all along.
 
 
 
@@ -223,6 +223,62 @@ build them.
 
 
 
+### A strap's advertised name is a proprietary command, not GAP's `0x2A00`
+
+**ADVANCED gained a `NAME` row, and it is the one control on that page that changes the strap rather
+than this phone.** A strap named *"Alex WHOOP"* was named through the WHOOP app — not through GAP,
+whose `0x2A00` CoreBluetooth hides from every third-party app. The rename is [reported] noop's ID 140
+on a 5.0/MG and ID 77 on a 4.0, with different bodies and the same 15-byte ceiling (clamped on a
+scalar boundary, so a multi-byte character is never cut in half). **The strap does not acknowledge the write** — though the write itself works: ID 140 was applied on
+2026-10-25 on the owner's 5.0 and the advertisement lagged it by a few minutes. So the row says
+*requested* and the footer says what will settle it: the name in the next advertisement, after enough
+time that the phone is not answering from its CoreBluetooth cache. It is drawn as a plain `NAME` row opening an alert with a text field — no new sheet, no
+new view model state beyond the draft, and nothing is written locally, because the strap is the owner
+of this value.
+
+### A stored night records the rule that classified it and the input it saw, and is re-read rather than re-analysed
+
+**The sleep page used to re-classify today's night on every open, and the reason was a missing column.**
+A `sleeps` row is a decision — onset, staging, need — and until `v37` it carried no record of which
+rule made it or how much input it read, so the only way to know whether a stored night met the current
+stager was to recompute it. That cost a full classification on every open, and it was dangerous the
+way an unconditional write always is: a night whose drain had not finished classifies as absent, and
+the page treated that as a verdict.
+
+Now the row carries `algorithm` and `scored_through`, and the page asks three questions in order.
+**Imported?** Never touch it — WHOOP's own night is not this app's to re-decide. **Version matches and
+the analyzer can see nothing newer?** Read the row, which is what makes the page open at once. **Else?**
+Classify again — and if that comes back empty, keep the stored night unless its version is one this
+build no longer has, because a short read is evidence of a short read rather than of an absent night.
+The figure the ring shows is unchanged by all of this: it is the composite of sufficiency, efficiency,
+restorative share and timing, read from `MetricWeek`'s last slot.
+
+### A zone row's time comes from exactly one producer, and the page's grey average is measured samples only
+
+**The five zone rows under the chart draw time, not percentage, and the two producers that can name
+that time are never mixed.** An imported session carries WHOOP's own `HR Zone n %` block, so its rows
+are that share of the session's length; a session this app recorded carries no block at all — the live
+path writes `hrZonePercents: nil` on purpose — so its rows are folded from its own samples by
+`ZoneTimeMath`, the same integral the live session and the day's Strain use. Measured wins when a
+session somehow has both. The instruction was *"i dont see the time durations i was in each specific
+heart rate zone"*: the page had drawn five dashes for every recorded session, because its rows asked
+for a column only an import ever writes, while the samples it was already plotting went unread.
+
+**The bar's length is the session's time and its scale is the block's, not the row's.** Every bar is a
+fraction of the largest time anywhere in the block, session or average, so a bar and its own grey mark
+are on one track: a per-row scale would draw zone 2 as long as zone 5, and the session's length would
+draw every bar as a sliver. The grey mark is the mean over the last ten sessions of the same activity
+(`ActivityBaseline`'s window), built from **their samples** and shown once three of them have any —
+an imported prior contributes nothing, which is what keeps the mean from mixing WHOOP's producer into
+this app's. It is drawn taller than the track because zone 1's own fill is grey and a same-height
+marker would vanish inside it.
+
+The footnote varies with the producer, because one sentence cannot honestly describe two: a recorded
+session's times are this app's and a row's five need not sum to the duration (time below zone 1
+belongs to no band), and an imported one's are WHOOP's own percentages scaled by the session's length.
+The BPM edges are this app's Karvonen table in both cases, and that disclosure is not removable to
+match a picture.
+
 ### A session is not a screen's state, and that is the whole of the design
 
 **A session is not a screen's state, and that is the whole of the design.** `LiveSessionUseCase` is a `@MainActor @Observable` class held as a stored `let` on `DIContainer` and handed down from `MainContainerView`, so `LiveSessionView` owns neither a `NavigationStack` nor a view model — the first follows every pushed page here, the second is the feature: **the screen is free to come and go while the recording continues**, which is what the user asked for (*"if user presses back, session will still be live recording"*). There is deliberately **no `.onDisappear { end() }`** on that view; backing out is not stopping, and re-entering shows the accumulated figures because `snapshot` is the use case's. Recording is also not *ended* by a process death and cannot be resumed by one: an ended session is written, and the orphan sweep below only cleans up the lock-screen card.
@@ -257,3 +313,30 @@ session (which never had a prompt). There is deliberately **no clear control**: 
 rated* and there is no column path that means *unrate*, so re-rating is how an answer changes. The
 detail row is drawn only when a rating exists — an unrated session shows nothing rather than a dash,
 because the absence is the user's and not a measurement that failed to load.
+
+### `0x9A` exists on one screen, behind one confirmation, and is not a setting
+
+The device page's **ADVANCED** tab grew two buttons under `REBOOT STRAP` on 2026-10-24: `ENABLE
+PERSISTENT RECORDING` sends `0x9A TOGGLE_PERSISTENT_R21` with `[1, 1]`, and `REVERT PERSISTENT
+RECORDING` sends `[1, 0]`. It exists because the owner's flash recorder stopped writing history with a
+correct clock, a healthy link and no battery-related change, and this is the last lever NOOP's 5.0
+command table offers — the experiment is `docs/TODO.md` §7.2.
+
+**Two explicit actions rather than a switch, and that is the whole design of the control.** The strap
+cannot be asked what its flag is: `0x9A` is a write whose ACK does not report programming, so the app
+can never read the state back. A toggle would therefore draw a position the app does not know, which is
+the same fabrication class as a dash drawn as a zero. ON and REVERT say what they will send, and the
+status line after a tap says **requested**, never *enabled*.
+
+**It is 5.0/MG only, and the byte is in no opcode table.** The 4.0's reference lists `0x9A`, but no body
+has been captured for that envelope and the two bodies are not interchangeable, so the builder refuses
+it; `WhoopCommandFrames.persistentR21` is the single path to the byte, which keeps §16's forbidden-byte
+sweep meaningful — that sweep reads the tables, and a second caller would have to come through a name
+that says what it does.
+
+**The confirmation carries the cost rather than hiding it behind the tap.** The reference warns the flag
+can keep the optical engine running across reboots and drain the battery, and clearing the flag does
+not stop an engine already running — `REBOOT STRAP`, directly above it, is the recovery. The buttons are
+disabled unless a 5.0/MG is connected (`supportsPersistentRecording`, not `supportsSync`: the latter
+answers whether this *build* frames the model, while the command is published for those two generations
+alone).

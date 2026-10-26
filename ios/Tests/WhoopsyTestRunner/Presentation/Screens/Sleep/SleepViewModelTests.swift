@@ -3,6 +3,140 @@ import Whoopsy
 
 enum SleepViewModelTests {
     static func run() async throws {
+
+        // ── The provenance gate: a night is read unless it says it is stale ────────────────────────
+        //
+        // The page used to re-classify today's night on every open. That was the only way to be sure a
+        // stored night met the current stager, because the row recorded no version and no watermark —
+        // and it was destructive, because an inconclusive run over an unfinished drain was treated as
+        // a verdict and the row was deleted. These assertions are the replacement rule.
+
+        let watermark = Date(timeIntervalSinceReferenceDate: 1_000)
+        assertTest(
+            SleepReclassification.isOwed(watermark: watermark, inputEdge: nil) == false,
+            "No newer input means nothing is owed: the analyzer can see exactly what the row already "
+                + "saw, so the page reads the night instead of recomputing it")
+        assertTest(
+            SleepReclassification.isOwed(
+                watermark: watermark, inputEdge: watermark.addingTimeInterval(1)) == true,
+            "…and an epoch or sample newer than the watermark is owed a re-classification — the "
+                + "drain-finished-late case, and the only input that can change a night")
+        assertTest(
+            SleepReclassification.isOwed(
+                watermark: watermark, inputEdge: watermark.addingTimeInterval(-1)) == false,
+            "…while input that is already covered is not, so a live stream cannot make every open a "
+                + "recompute")
+        assertTest(
+            SleepReclassification.isOwed(watermark: nil, inputEdge: watermark) == true,
+            "A row that cannot say what it saw is conservatively stale — the honest answer for a row "
+                + "whose version is missing")
+
+        // The analyzer's own edge is the newer of its two inputs, taken from arrays it just read.
+        let edgeStart = Date(timeIntervalSinceReferenceDate: 2_000)
+        let edgeSamples = [BiometricSample(timestamp: edgeStart, heartRate: 55)]
+        let edgeEpochs = [MotionEpoch(
+            start: edgeStart.addingTimeInterval(30),
+            end: edgeStart.addingTimeInterval(60),
+            meanMagnitudeG: 1.0,
+            maxMagnitudeG: 1.02,
+            sampleCount: 3_000)]
+        assertTest(
+            AnalyzeSleepUseCase.inputEdge(samples: edgeSamples, epochs: edgeEpochs)
+                == edgeStart.addingTimeInterval(60),
+            "The recorded watermark is the newest instant either input reaches, not the sample's — an "
+                + "epoch that ran later than the last heartbeat is still input the night was read from")
+
+        // Persistence: the pair round-trips, and a row from before the column reads back as unknown.
+        do {
+            let db = LocalDatabaseManager(inMemory: true)
+            let sleeps = GRDBSleepRepository(db: db)
+            let day = Calendar.current.startOfDay(for: Date()).addingTimeInterval(-86_400)
+            try await sleeps.saveSleepSession(
+                SleepSession(
+                    date: day,
+                    startTime: day.addingTimeInterval(-3600),
+                    endTime: day.addingTimeInterval(6 * 3600),
+                    lightSleepSeconds: 14_400,
+                    algorithm: .current,
+                    scoredThrough: watermark))
+            let stored = try await sleeps.getSleepSession(for: day)
+            assertTest(
+                stored?.algorithm == .current && stored?.scoredThrough == watermark,
+                "A classified night records the rule that made it and the newest input it saw, and "
+                    + "both read back through the repository untouched")
+            assertTest(
+                SleepAlgorithm(stored: nil) == nil
+                    && SleepAlgorithm(stored: "a-rule-from-the-future") == nil,
+                "…and a missing or unrecognised version resolves to no version rather than to a "
+                    + "neighbouring rule, so the page re-classifies once instead of trusting a string "
+                    + "it cannot name")
+        }
+
+        // ── Keep versus delete, through the real page ─────────────────────────────────────────────
+        //
+        // The case that lost a night: a stored row of the current version, opened for today, with no
+        // usable samples in the window. The classifier answers "no night" — and that answer must not
+        // remove a row it did not classify.
+        do {
+            let db = LocalDatabaseManager(inMemory: true)
+            let sleeps = GRDBSleepRepository(db: db)
+            let today = Date().startOfDay
+            let night = SleepSession(
+                date: today,
+                startTime: today.addingTimeInterval(-3600),
+                endTime: today.addingTimeInterval(6 * 3600),
+                lightSleepSeconds: 14_400,
+                algorithm: .current,
+                scoredThrough: Date())
+            try await sleeps.saveSleepSession(night)
+
+            let noSamples = OvernightBiometricStore(samples: [])
+            let page = await MainActor.run {
+                SleepViewModel(
+                    analyze: AnalyzeSleepUseCase(
+                        biometricRepository: noSamples,
+                        sleepRepository: sleeps,
+                        strainRepository: GRDBStrainRepository(db: db),
+                        userProfileRepository: GRDBUserProfileRepository(db: db),
+                        motionRepository: FixtureMotionEpochRepository()),
+                    repository: sleeps,
+                    napRepository: GRDBNapRepository(db: db),
+                    biometricRepository: noSamples,
+                    analyzeSleepStress: AnalyzeSleepStressUseCase(biometricRepository: noSamples),
+                    userProfileRepository: GRDBUserProfileRepository(db: db))
+            }
+            await page.load(for: today)
+            let kept = try await sleeps.getSleepSession(for: today)
+            assertTest(
+                kept != nil,
+                "A night of the current version survives an open that classified nothing: no newer "
+                    + "input, so the page reads the row — which is what makes the ring appear without "
+                    + "waiting for a re-analysis, and what stops a short read deleting a real night")
+
+            // The one case that does delete: a row made by a rule this build no longer has.
+            try await sleeps.saveSleepSession(
+                SleepSession(
+                    date: today,
+                    startTime: today.addingTimeInterval(-3600),
+                    endTime: today.addingTimeInterval(6 * 3600),
+                    lightSleepSeconds: 14_400,
+                    algorithm: nil,
+                    scoredThrough: nil))
+            let legacyBefore = try await sleeps.getSleepSession(for: today)
+            assertTest(
+                legacyBefore?.algorithm == nil && legacyBefore?.hasWhoopSleepNeed == false,
+                "The fixture's legacy row is stored with no recorded version and no imported-need "
+                    + "marker, which is what makes it the re-classify-and-delete case "
+                    + "(\(String(describing: legacyBefore?.algorithm)))")
+            await page.load(for: today)
+            let legacy = try await sleeps.getSleepSession(for: today)
+            assertTest(
+                legacy == nil,
+                "…while a row with no recorded version is re-classified, and a null answer from the "
+                    + "current rule removes it: an old rule's night that today's rule denies is not a "
+                    + "night this app should keep showing")
+        }
+
         // ── 9. The read, end to end ──────────────────────────────────────────────────────────────────
         //
         // The values above are the chart's substance; this is the same night arriving through the read the

@@ -106,6 +106,10 @@ public final class SyncHistoricalDataUseCase: Sendable {
             switch error {
             case .noCommandPath:
                 persistence.cancel()
+            case .commandUnavailable:
+                // Not a drain's error; it is listed so the switch stays exhaustive, and a consumer
+                // waiting on a stream nothing will finish is the one thing it must not leave behind.
+                persistence.cancel()
             case .endedWithoutConfirmation(let records, let batches, let oldest, let newest):
                 AppLogger.ble.warning("""
                     Drain ended without confirmation: \(records, privacy: .public) record(s) in \

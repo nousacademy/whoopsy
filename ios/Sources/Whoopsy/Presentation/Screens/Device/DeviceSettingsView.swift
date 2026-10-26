@@ -100,6 +100,17 @@ public struct DeviceSettingsView: View {
 
     /// Whether the reboot confirmation is up. See `rebootSection`.
     @State private var isConfirmingReboot = false
+    @State private var isRenaming = false
+    @State private var renameDraft = ""
+
+    /// Whether the persistent-recording confirmation is up, and which state it would send.
+    ///
+    /// **Two explicit actions rather than a switch.** The strap cannot be asked what its
+    /// `PERSISTENT_R21` flag is — `0x9A` is a write whose ACK does not report programming — so a
+    /// toggle would draw a state the app does not know. `true` is ON (`[1, 1]`), `false` is the
+    /// revert (`[1, 0]`). See `persistentRecordingSection`.
+    @State private var isConfirmingPersistentRecording = false
+    @State private var persistentRecordingTarget = true
 
     public init(viewModel: DeviceViewModel) {
         _viewModel = State(initialValue: viewModel)
@@ -797,6 +808,80 @@ public struct DeviceSettingsView: View {
         }
     }
 
+    /// The persistent-recording experiment, and **the only route to `0x9A` in this app**.
+    ///
+    /// **It exists because the flash recorder stopped**, not as a feature: the owner's 5.0 has written
+    /// no history since 2026-08-26 with a correct clock, a healthy link and no battery-related change,
+    /// and `docs/TODO.md` §7.2 records this as the last lever NOOP's 5.0 command table offers. It sits
+    /// beside REBOOT STRAP because it is the other command that acts on the hardware's own policy.
+    ///
+    /// **Two explicit actions, never a switch.** The strap cannot be asked what the flag is — the ACK
+    /// does not report programming — so a toggle would draw a state the app does not know. Each action
+    /// confirms first, and the footer carries the cost rather than hiding it behind the tap.
+    ///
+    /// **Gated on a live 5.0/MG link**, not on `supportsSync`: that answers whether this *build*
+    /// frames the selected model, while this command is published for those two generations alone.
+    private var persistentRecordingSection: some View {
+        Section {
+            advancedAction(
+                "ENABLE PERSISTENT RECORDING", symbol: "record.circle",
+                available: viewModel.supportsPersistentRecording
+            ) {
+                persistentRecordingTarget = true
+                isConfirmingPersistentRecording = true
+            }
+            advancedAction(
+                "REVERT PERSISTENT RECORDING", symbol: "arrow.uturn.backward",
+                available: viewModel.supportsPersistentRecording
+            ) {
+                persistentRecordingTarget = false
+                isConfirmingPersistentRecording = true
+            }
+        } footer: {
+            Text("Experimental, and the only control here that changes the strap's own recording policy. Sends 0x9A TOGGLE_PERSISTENT_R21 to a 5.0/MG. The strap acknowledges the write but does not confirm the setting, and the flag is stored across reboots — verify with SYNC HISTORY. The reference warns it can keep the optical engine running and drain the battery; REVERT clears the flag, and a reboot is the recovery if the engine stays on.")
+        }
+        .confirmationDialog(
+            persistentRecordingTarget ? "Enable persistent recording?" : "Revert persistent recording?",
+            isPresented: $isConfirmingPersistentRecording,
+            titleVisibility: .visible
+        ) {
+            Button(persistentRecordingTarget ? "Send ON" : "Send REVERT") {
+                Task { await viewModel.setPersistentRecording(persistentRecordingTarget) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(persistentRecordingTarget
+                ? "Sends 0x9A with state 1. The strap acknowledges the write but does not confirm the setting. This can keep the optical engine running across reboots and drain the battery."
+                : "Sends 0x9A with state 0. Clearing the flag does not stop an engine already running — reboot the strap if the LED stays on.")
+        }
+    }
+
+    /// One full-width action card — `rebootSection`'s shape, extracted for its second user.
+    private func advancedAction(
+        _ title: String, symbol: String, available: Bool, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.system(size: 16, weight: .semibold))
+                Text(title)
+                    .font(.subheadline.weight(.bold))
+                    .tracking(0.7)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Theme.textPrimary)
+            .opacity(available ? 1 : 0.55)
+            .frame(maxWidth: .infinity)
+            .glassCard(cornerRadius: 14, padding: 16)
+        }
+        .buttonStyle(.plain)
+        .disabled(!available)
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
+    }
+
     @ViewBuilder
     private var advancedSections: some View {
         deviceFactsSection
@@ -804,8 +889,9 @@ public struct DeviceSettingsView: View {
         pairSection
         unpairSection
         rebootSection
+        persistentRecordingSection
 
-        modelSection
+        renameSection
         protocolSection
 
         Section {
@@ -874,30 +960,42 @@ public struct DeviceSettingsView: View {
         .accessibilityLabel(Text("\(fact.label) \(value)"))
     }
 
-    /// Which model the user says this strap is.
+    /// Renames the strap — the one thing on this page that changes the strap rather than this phone.
     ///
-    /// Moved here unchanged from `DeviceDetailView`, which this page replaced — including the reason
-    /// the picker is left unstyled: a `Form` row that pushes a list is the idiom on iOS, a pop-up
-    /// button is the idiom on macOS, and this screen is built for both.
-    private var modelSection: some View {
+    /// **The name is not GAP's `0x2A00`**, which CoreBluetooth hides from every app; it is a
+    /// proprietary command (`WhoopCommandFrames.setAdvertisingName`), and neither generation confirms
+    /// the write. So the footer says what the strap will do — advertise it — and the status line says
+    /// *requested*, because a sent frame is all this app can prove.
+    @ViewBuilder
+    private var renameSection: some View {
         Section {
-            Picker("Model", selection: Binding(
-                get: { viewModel.model },
-                set: { viewModel.choose($0) }
-            )) {
-                ForEach(WhoopHardwareGeneration.selectableModels) { model in
-                    Text(model.rawValue).tag(model)
+            Button {
+                renameDraft = viewModel.advertisingName ?? ""
+                isRenaming = true
+            } label: {
+                HStack {
+                    Text("NAME")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    Text(viewModel.advertisingName ?? "—")
+                        .foregroundStyle(Theme.textPrimary)
                 }
             }
             .disabled(!viewModel.hasDevice)
         } header: {
-            Text("Model")
+            Text("Strap")
         } footer: {
-            if viewModel.isModelSaved {
-                Text("Saved for this strap. The choice is remembered per device and decides which protocol this app speaks to it.")
-            } else {
-                Text("Not chosen yet — this is inferred from the name the strap advertises, which cannot tell a 5.0 from a 5.0 MG. Confirm it above.")
+            Text("The name the strap advertises to every phone that scans it. Up to 15 characters. The strap does not acknowledge the write, so the app reads the stored name back from it a moment later.")
+        }
+        .alert("Rename strap", isPresented: $isRenaming) {
+            TextField("Name", text: $renameDraft)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") {
+                Task { await viewModel.rename(renameDraft) }
             }
+        } message: {
+            Text("Up to 15 characters. The new name can take a few minutes to appear — that is the strap's advertisement lagging, not a failure.")
         }
     }
 

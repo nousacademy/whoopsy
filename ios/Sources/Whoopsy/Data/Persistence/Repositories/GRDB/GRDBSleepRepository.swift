@@ -46,7 +46,9 @@ public final class GRDBSleepRepository: SleepRepository, Sendable {
             // spelling of the same absence in the column and make "was it staged?" unanswerable from
             // the data alone, which is the mistake `SleepSession.hasWhoopSleepNeed` exists to undo.
             sleepStages: session.sleepStages.isEmpty ? nil : session.sleepStages,
-            source: source
+            source: source,
+            algorithm: session.algorithm?.rawValue,
+            scoredThrough: session.scoredThrough
         )
         try await db.saveSleep(record)
     }
@@ -79,7 +81,13 @@ public final class GRDBSleepRepository: SleepRepository, Sendable {
             // imported night and every row older than `v12` — resolves to the entity's own empty
             // default, so a caller that only wants the totals is unaffected and one that draws the
             // timeline reads `isEmpty` rather than unwrapping.
-            sleepStages: record.sleepStages ?? []
+            sleepStages: record.sleepStages ?? [],
+            // The provenance pair, read back as the entity's own types. An unrecognised string — a
+            // version from a build that no longer exists here — resolves to `nil`, which the page
+            // treats as "no recorded version" and answers with one re-classification rather than
+            // trusting a rule it cannot name.
+            algorithm: SleepAlgorithm(stored: record.algorithm),
+            scoredThrough: record.scoredThrough
         )
     }
 }

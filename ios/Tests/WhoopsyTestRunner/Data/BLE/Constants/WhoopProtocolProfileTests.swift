@@ -118,6 +118,16 @@ enum WhoopProtocolProfileTests {
         let forbidden: [UInt8: String] = [
             0x19: "0x19 FORCE_TRIM, a flash erase",
             0x9A: "0x9A TOGGLE_PERSISTENT_R21, which forces the optical engine on across reboots",
+            // **The five noop's `#2828` names as destructive**, taken from the official app 5.473.0's
+            // own command table: certificate transfer in four steps and `LOCK_DEVICE` at 159. Their
+            // reversibility is unknown and a lock is the one command that could leave a strap this
+            // app cannot use. The sweep is where they belong because a table carrying one under a
+            // name that reads innocuous is how it would ever be sent.
+            0x9B: "0x9B START_CERTIFICATE_TRANSFER",
+            0x9C: "0x9C LOAD_CERTIFICATE",
+            0x9D: "0x9D VERIFY_CERTIFICATE",
+            0x9E: "0x9E PROCESS_CERTIFICATE",
+            0x9F: "0x9F LOCK_DEVICE, whose reversibility is unknown",
         ]
         for profile in [WhoopProtocolProfile.whoop4, .whoop5, .whoop5MG] {
             let table = transmittedOpcodes(profile)

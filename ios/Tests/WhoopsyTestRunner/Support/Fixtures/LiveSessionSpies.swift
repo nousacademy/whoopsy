@@ -30,6 +30,33 @@ final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Se
     private var stepCounterContinuations: [UUID: AsyncStream<StepCounterSample>.Continuation] = [:]
     private var historicalContinuations: [UUID: AsyncStream<BiometricSample>.Continuation] = [:]
 
+    /// What the next `requestHistoricalSync` calls answer, in order.
+    ///
+    /// **A script rather than one fixed answer, because the behaviour under test is a *sequence*** —
+    /// `DrainCoordinator` retries a strap that answered nothing and stops at one that answered empty,
+    /// and neither is observable from a single response. An empty script keeps the old behaviour: one
+    /// zero-record, zero-batch outcome, which is what every other section here expects.
+    enum DrainResponse {
+        case outcome(HistoricalSyncOutcome)
+        case failure
+    }
+
+    private var drainScript: [DrainResponse] = []
+    private var drainRequests = 0
+
+    /// How many times the drain has been asked for, which is the retry assertion's whole evidence.
+    var drainRequestCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return drainRequests
+    }
+
+    func scriptDrain(_ responses: [DrainResponse]) {
+        lock.lock()
+        drainScript = responses
+        lock.unlock()
+    }
+
     /// Registers one telemetry continuation under a fresh `UUID` and arranges for its removal.
     ///
     /// `[weak self]` rather than a strong capture: the continuation is stored by `self` and holds this
@@ -170,6 +197,15 @@ final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Se
     func sendHapticAlert(durationSeconds: Int, pattern: Int) async throws {}
     /// Never reached: a reboot is a device-page action and this fixture has no strap to restart.
     func rebootStrap() async throws {}
+    /// Never reached: no section drives the persistent-recording tap. It throws rather than no-ops,
+    /// so a future test that calls it without meaning to fails instead of reporting a setting written.
+    func setPersistentRecording(_ enabled: Bool) async throws {
+        throw WhoopSyncError.commandUnavailable(generation: "simulated")
+    }
+    func setAdvertisingName(_ name: String) async throws {
+        throw WhoopSyncError.commandUnavailable(generation: "simulated")
+    }
+    func requestAdvertisingName() async {}
     func getCurrentDevice() async -> WhoopDevice? { nil }
     func refreshStrapModel() async {}
 
@@ -186,8 +222,21 @@ final class ScriptedTelemetryRepository: WhoopBLEDeviceRepository, @unchecked Se
         historicalContinuations.removeAll()
         lock.unlock()
         for reader in readers { reader.finish() }
-        return HistoricalSyncOutcome(
-            recordCount: 0, batchCount: 0, ending: .aborted, oldestRecord: nil, newestRecord: nil)
+
+        lock.lock()
+        drainRequests += 1
+        let next = drainScript.isEmpty ? nil : drainScript.removeFirst()
+        lock.unlock()
+
+        switch next {
+        case .failure:
+            throw WhoopSyncError.commandUnavailable(generation: "scripted")
+        case .outcome(let outcome):
+            return outcome
+        case nil:
+            return HistoricalSyncOutcome(
+                recordCount: 0, batchCount: 0, ending: .aborted, oldestRecord: nil, newestRecord: nil)
+        }
     }
 }
 

@@ -53,7 +53,7 @@ verify: build test ios
 # The Worker's own gate, and the four steps are one argument: install, prove the types, prove the
 # behaviour, then prove the committed contract is the one the code generates. The last step is why the
 # generator writes unconditionally — a run that changed nothing rewrites identical bytes, so this
-# `git diff` answers "is `shared/openapi.json` current?" and not a second question about intent.
+# `git diff` answers "is `shared/` current?" and not a second question about intent.
 #
 # **Deliberately NOT a prerequisite of `verify`.** `verify` is the pair CLAUDE.md insists on — a green
 # iOS build is not a green host build — and it must stay runnable without a Node toolchain, a

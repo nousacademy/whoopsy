@@ -76,7 +76,7 @@ on one unit, and being specific about what that proved is more useful than a fea
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-a 3144-assertion test runner that pins the behaviour of all of them.
+a 3158-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -153,10 +153,10 @@ whoopsy/
 ├── ios/              the app — one SwiftPM package plus Whoopsy.xcodeproj
 │   ├── Sources/      Whoopsy/ (the four layers) and WhoopsyLiveActivityKit/
 │   ├── App/          Xcode-only sources: iOS/, Map/, LiveActivity/, Config/
-│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 3144-assertion suite,
+│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 3158-assertion suite,
 │                     mirroring Sources/Whoopsy/ file for file
 ├── backend/          optional Cloudflare Worker — see docs/BACKEND.md
-├── shared/           openapi.json + one {resource}/openapi.json per route, generated
+├── shared/           one {resource}/openapi.json per route, generated
 ├── docs/             the specs
 └── Makefile  scripts/  tmp/  CLAUDE.md  README.md
 ```
@@ -418,7 +418,7 @@ and compare its size and timestamp against the built one.
 
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 25 sections, 3144 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 25 sections, 3158 assertions, and no
 test discovery:
 
 ```bash
@@ -431,7 +431,7 @@ deleted sources and the link fails) and hands the runner an absolute `#filePath`
 longer cares which directory you run it from. It ends with one machine-readable line:
 
 ```
-SUITE sections=1,2,...,25 assertions=3144 failed=0 exit=0
+SUITE sections=1,2,...,25 assertions=3158 failed=0 exit=0
 ```
 
 Read that line rather than the scrollback — the suite has no test discovery, so a section that

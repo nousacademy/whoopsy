@@ -466,6 +466,19 @@ public struct WhoopProtocolProfile: Sendable, Equatable {
     /// write-side answer for its own generation.
     public var canTransmitCommands: Bool { commandOpcodes != nil || syncOpcodes != nil }
 
+    /// Whether a `HISTORY_END` marker's payload 6 is a **declared frame count**, or something else.
+    ///
+    /// **[reported] This is Gen 5's field and not Gen 4's, even though both put a u32 at `inner[9]`.**
+    /// OpenStrap's Gen 5 reference (`PROTOCOL-GEN5.md` §8) says each `HISTORY_END` declares an expected
+    /// count there and that a client which validates it must count types 47, 48, 50, 53, 54 and 55 —
+    /// its "count gate". That reference's own Gen 4 document publishes the *same* offset as "a record-id
+    /// / batch counter (not echoed)", so reading it as a count on a 4.0 would compare two unrelated
+    /// numbers and refuse every burst forever.
+    ///
+    /// Derived from `headerChecksum` rather than from a new stored property, because the envelope is what
+    /// discriminates a generation everywhere else in this repo and a second flag could disagree with it.
+    public var declaresBurstFrameCount: Bool { headerChecksum == .crc16ModbusOverHeader }
+
     // MARK: - The length arithmetic
 
     /// How many bytes the inner record occupies, given the frame's declared length.

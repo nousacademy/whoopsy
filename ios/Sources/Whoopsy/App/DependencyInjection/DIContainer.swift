@@ -32,6 +32,10 @@ public final class DIContainer: @unchecked Sendable {
     public let analyzeSleepStressUseCase: AnalyzeSleepStressUseCase
     public let manageBLEConnectionUseCase: ManageBLEConnectionUseCase
     public let syncHistoricalDataUseCase: SyncHistoricalDataUseCase
+
+    /// The one gate every automatic drain goes through — a connect and a foreground are two triggers
+    /// for one operation, and this is what keeps them from superseding each other.
+    public let drainCoordinator: DrainCoordinator
     public let exportLocalDataUseCase: ExportLocalDataUseCase
     public let saveWorkoutUseCase: SaveWorkoutUseCase
     /// The strap's step counter. **Long-running rather than call-and-return** — see
@@ -410,6 +414,10 @@ public final class DIContainer: @unchecked Sendable {
         self.syncHistoricalDataUseCase = SyncHistoricalDataUseCase(
             bleRepository: bleRepository,
             biometricRepository: biometricRepository
+        )
+        self.drainCoordinator = DrainCoordinator(
+            sync: self.syncHistoricalDataUseCase,
+            strain: self.refreshStrainUseCase
         )
 
         // **The database, not the repositories.** It reads through `LocalDatabaseSnapshotting`, which

@@ -13,9 +13,9 @@ import { bearerToken } from "../src/utils/tokens";
  * The served contract, checked against the config it was generated from.
  *
  * This file covers the half of "one source, two readings" that a Worker can check. The other half —
- * that `shared/openapi.json` is byte-identical to what the Worker serves — cannot live here: the
- * runtime has no filesystem, so that comparison is a shell step against a running `wrangler dev`,
- * and it is in the README's backend section rather than in this suite.
+ * that the committed slices are byte-identical to the ones the generator writes — cannot live here:
+ * the runtime has no filesystem, so that comparison is `make backend-check`'s last step rather than
+ * this suite.
  *
  * **What is worth asserting is the shape a client depends on**, not the whole document: the paths
  * that exist, the methods on each, and the fields that are prose rather than generated — the
@@ -650,7 +650,7 @@ describe("serialiseOpenApiDocument", () => {
     const document = await served();
     const text = await SELF.fetch("https://whoopsy.test/openapi.json").then((r) => r.text());
 
-    // Pretty-printed and newline-terminated, which is what makes `shared/openapi.json` a reviewable
+    // Pretty-printed and newline-terminated, which is what makes each file under `shared/` readable
     // file and keeps `git diff` from reporting a missing newline at EOF on every regeneration. The
     // served document and the committed one are therefore the same shape, not merely the same JSON.
     expect(text).toBe(`${JSON.stringify(document, null, 2)}\n`);

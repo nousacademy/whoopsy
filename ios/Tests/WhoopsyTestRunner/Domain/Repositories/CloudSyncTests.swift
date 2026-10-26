@@ -92,7 +92,8 @@ enum CloudSyncTests {
 
         // MARK: The contract — what the server will answer for
 
-        let contract = try contractText()
+        let contractSlices = try contractText()
+        let contract = contractSlices.joined(separator: "\n")
 
         // The negative half. Spelled with the colon because that is the only form an operation key has
         // in JSON — a `DELETE` route would appear as `"delete": {` and nothing else in the document
@@ -116,15 +117,16 @@ enum CloudSyncTests {
 
         // Every method the contract does declare, collected and swept as one list. This is the half that
         // would catch a verb this file has never heard of rather than only the one it is looking for.
-        let verbs = Set(operationVerbs(in: contract))
+        let verbs = Set(operationVerbs(in: contractSlices))
         assertTest(verbs == ["get", "post", "put"],
                    "The only verbs the Worker answers are get, post and put — so a delete arriving under "
                        + "a spelling this sweep did not anticipate still fails here: \(verbs.sorted())")
 
         // And the count of paths, for `SyncedResourceTests`' reason: a scan that read half the document
         // would sweep half the contract, and every negative above would still hold.
-        assertTest(contract.components(separatedBy: "\"paths\": {").count == 2,
-                   "…and the document holds exactly one `paths` object, which is the one swept")
+        assertTest(contract.components(separatedBy: "\"paths\": {").count == contractSlices.count + 1,
+                   "…and every one of the \(contractSlices.count) slices holds its own `paths` "
+                       + "object, so the join swept the whole folder rather than its first file")
     }
 }
 
@@ -142,15 +144,36 @@ private func sourceText(at relativePath: String) throws -> String {
 }
 
 /// The committed contract, one directory above the package — `SyncedResourceTests`' climb, repeated
-/// rather than shared, because the two files read the same document for two unrelated reasons.
-private func contractText() throws -> String {
-    let url = packageRoot().deletingLastPathComponent().appendingPathComponent("shared/openapi.json")
+/// rather than shared, because the two files read the same contract for two unrelated reasons.
+///
+/// **It is a folder of slices now, not one document**, so this is every slice joined: the sweep is
+/// over operations and verbs, and which file an operation was written in does not change either.
+/// `sliceCount()` is returned beside it so the caller can prove the join read the whole folder rather
+/// than stopping at the first file.
+private func contractText() throws -> [String] {
+    let shared = packageRoot().deletingLastPathComponent().appendingPathComponent("shared")
+    let folders: [URL]
     do {
-        return try String(contentsOf: url, encoding: .utf8)
+        folders = try FileManager.default.contentsOfDirectory(
+            at: shared, includingPropertiesForKeys: [.isDirectoryKey])
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
     } catch {
-        assertTest(false, "The contract is readable at \(url.path): \(error)")
+        assertTest(false, "The contract folder is readable at \(shared.path): \(error)")
         throw error
     }
+
+    var slices: [String] = []
+    for folder in folders {
+        let url = folder.appendingPathComponent("openapi.json")
+        do {
+            slices.append(try String(contentsOf: url, encoding: .utf8))
+        } catch {
+            assertTest(false, "The contract slice is readable at \(url.path): \(error)")
+            throw error
+        }
+    }
+    return slices
 }
 
 /// The names of the methods a protocol declares.
@@ -180,14 +203,23 @@ private func declaredMethods(in text: String) -> [String] {
 /// included `parameters` or `summary` would show up here as itself, and a verb spelled `DELETE` would
 /// arrive in upper case and fail the comparison below rather than being filtered out by a rule written
 /// to expect lower case.
-private func operationVerbs(in text: String) -> [String] {
-    guard let data = text.data(using: .utf8),
-          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let paths = object["paths"] as? [String: [String: Any]]
-    else {
-        assertTest(false, "The contract parses as a document with a `paths` object")
-        return []
+private func operationVerbs(in slices: [String]) -> [String] {
+    // **One decode per slice, merged into one path table.** The committed contract is a folder of
+    // per-resource documents rather than a single one, and this sweep asks a whole-contract question —
+    // which verbs exist anywhere — so the slices are joined at the level that matters (the paths) and
+    // not by concatenating the text, which would not parse.
+    var merged: [String: [String: Any]] = [:]
+    for text in slices {
+        guard let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let paths = object["paths"] as? [String: [String: Any]]
+        else {
+            assertTest(false, "Every contract slice parses as a document with a `paths` object")
+            return []
+        }
+        for (path, item) in paths { merged[path] = item }
     }
+    let paths = merged
 
     assertTest(paths.count == 23,
                "…and it mounts the 23 paths this sweep believes it does, so the verb set below is "

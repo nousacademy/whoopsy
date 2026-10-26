@@ -172,8 +172,8 @@ describe("the gate runs before everything else", () => {
     });
 
     // `/openapi.json` is the served contract. It is exempt because it is infrastructure rather than
-    // API — and because the shell gate in `README.md` compares it against `shared/openapi.json` with
-    // a curl that has no token to send.
+    // API — and because the served document is built for a reader rather than a caller, so it has
+    // no credential of its own to present.
     const document = await SELF.fetch(`${BASE}/openapi.json`);
     expect(document.status).toBe(200);
   });

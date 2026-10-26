@@ -148,7 +148,7 @@ export const UserHeaderSchema = z.object({
  * therefore sees them in the order they will actually matter.
  *
  * That order is deterministic — `merge` preserves declaration order and Zod does not reorder — which
- * matters more than it sounds: `shared/openapi.json` is a committed file that `make backend-check`
+ * matters more than it sounds: the files under `shared/` are committed and `make backend-check`
  * diffs, so an unstable parameter order would show up as a spurious change on every regeneration.
  */
 export const RequestHeaderSchema = TokenHeaderSchema.merge(UserHeaderSchema);

@@ -133,6 +133,32 @@ enum HomeDeviceSettingsTests {
                 + "`batteryIsMeasured` is what separates an answered `0x2A19` from the constant every "
                 + "`WhoopDevice` starts with")
 
+        // ---- The link loss the radio takes away without a callback ----
+        //
+        // `WhoopBLEManager.centralManagerDidUpdateState` moves the device to `.disconnected` when the
+        // central goes `.poweredOff`, because CoreBluetooth does not promise `didDisconnectPeripheral`
+        // for that transition. Measured on 2026-10-24 with Airplane Mode on: the device page read
+        // "Connected" and Home's badge kept a green dot beside the battery figure, on a phone whose
+        // radio was off. The move goes through `updating(connectionState:)` — the one mutator that
+        // cannot reset a field — so this asserts it keeps everything discovery and the battery read
+        // put on the object.
+        let lostLink = WhoopDevice(
+            id: "strap", name: "WHOOP 5.0", hardwareGeneration: .whoop5,
+            batteryPercentage: 62, batteryIsMeasured: true, connectionState: .connected,
+            firmwareVersion: "50.42.1.0", serialNumber: "SERIAL")
+            .updating(connectionState: .disconnected)
+        assertTest(
+            lostLink.connectionState == .disconnected
+                && lostLink.batteryPercentage == 62 && lostLink.batteryIsMeasured
+                && lostLink.firmwareVersion == "50.42.1.0" && lostLink.serialNumber == "SERIAL"
+                && lostLink.hardwareGeneration == .whoop5,
+            "A radio loss moves the state and nothing else — the battery, the generation and the DIS "
+                + "fields survive it")
+        assertTest(
+            lostLink.batteryReading == nil && lostLink.connectionState.linkColor != Theme.recoveryGreen,
+            "…and the badge then withholds the figure and stops drawing the link green, which is the "
+                + "drawing half of the same fix")
+
         // ---- The gate those three read, over the whole enum, and the two drawings of its absence ----
         //
         // Swept rather than sampled because the arm that matters is the one nobody would write a case for:
@@ -342,5 +368,44 @@ enum HomeDeviceSettingsTests {
             "…and red stays for `.scanning`, `.connecting` and `.error` — hunting for a strap, or a link "
                 + "that failed, is neither there nor stale. The three arms are the whole of the rule: "
                 + "green linked, yellow stale, red not-there-yet.")
+
+        // ---- The charging bolt, and the dot it may and may not replace ----
+        //
+        // `StrapEventDecoder` maps the strap's events 7/8 to `.chargingOn`/`.chargingOff`, which are
+        // the only writers of `WhoopDevice.isCharging`; the battery characteristic carries no charging
+        // flag, so this is the whole provenance. What a renderer would show is not assertable here —
+        // the same caveat the dot's block states — so what is pinned is **when** the bolt is drawn.
+        assertTest(
+            connectionStates.allSatisfy {
+                StrapLinkBadge.showsCharging(isCharging: true, state: $0) == $0.isLinked
+            },
+            "A charging strap draws the bolt only while it is **linked** — `.connected` or `.syncing`. "
+                + "The dot's other job is to say the link is gone, so a charging bolt must not stand in "
+                + "for a disconnected strap's yellow dot; the charging state survives that disconnect "
+                + "and reappears with the bolt when the link returns.")
+        assertTest(
+            connectionStates.allSatisfy {
+                !StrapLinkBadge.showsCharging(isCharging: false, state: $0)
+            },
+            "…and a strap that has never reported charging draws the dot in every state, so the bolt is "
+                + "a reading rather than a default.")
+        assertTest(
+            !StrapLinkBadge.chargingSymbol.isEmpty
+                && StrapLinkBadge.chargingSymbol == "bolt.fill",
+            "The bolt's symbol is the one the badge names — a wrong name draws an empty badge, which "
+                + "no build and no screenshot of another screen can see")
+        assertTest(
+            StrapLinkBadge.chargingColor == Theme.recoveryYellow,
+            "The bolt is drawn in the same yellow the disconnected dot uses — borrowed rather than given "
+                + "a token of its own, for `linkColor`'s reason")
+        assertTest(
+            StrapLinkBadge.chargingDiameter > StrapLinkBadge.dotDiameter,
+            "The charging badge is larger than the dot, because the bolt needs a frame inside the "
+                + "`StrapGlyph` knockout ring — at `dotDiameter` its tips would meet the ring")
+        assertTest(
+            WhoopDevice(id: "strap", isCharging: false).updating(isCharging: true).isCharging
+                && !WhoopDevice(id: "strap", isCharging: true).updating(isCharging: false).isCharging,
+            "The device's charging flag moves both ways through `updating`, so an unplug reappears as "
+                + "the dot rather than a bolt that can only ever be turned on")
     }
 }
