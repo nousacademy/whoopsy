@@ -32,9 +32,9 @@ ones. **The bond gates the proprietary command characteristic, not the SIG servi
 reported requirement rather than a settled one, so §7 Q6 carries it as an open question. The
 constraint the source records is that the 5.0/MG refuses writes and notifies on the proprietary
 service with `CBATTError.insufficientAuthentication` / `.insufficientEncryption` until the link is
-**encrypted** ("Authentication is insufficient", noop #17) — and the bond is established by
-**just-works pairing**: noop writes the static `CLIENT_HELLO` to `fd4b0002` `.withResponse`, which is
-what triggers the strap's just-works bond. **noop's source does not say macOS cannot complete that
+**encrypted** ("Authentication is insufficient", the community reference #17) — and the bond is established by
+**just-works pairing**: the community reference writes the static `CLIENT_HELLO` to `fd4b0002` `.withResponse`, which is
+what triggers the strap's just-works bond. **The community reference's source does not say macOS cannot complete that
 bond** — the one Apple-platform limit it records is that CoreBluetooth exposes no link-encryption or
 bond *state*, so a client cannot ask whether it is bonded. §7 Q6 carries the still-open part.
 
@@ -42,12 +42,12 @@ bond *state*, so a client cannot ask whether it is bonded. §7 Q6 carries the st
 
 `61080001-8d6d-82b8-614a-1c8cb0f8dcc6`. **This document and `WhoopGATTConstants` now agree** — the
 value is sourced rather than captured, because the ecosystem answers it: it is the base half in the
-reference clients of half a dozen independent projects (noop's Swift, Kotlin and Python clients —
-whose own `docs/BLE_REVERSE_ENGINEERING.md` maps the five characteristics — OpenStrap/research,
-atria, Whoopless, WhoopBLE). One project dissents on the trailing service digit only, using `…0000`.
+reference clients of half a dozen independent projects — the community reference's Swift, Kotlin and
+Python clients, whose own `docs/BLE_REVERSE_ENGINEERING.md` maps the five characteristics, and the
+research reference's 5.0 write-up, among them. One project dissents on the trailing service digit only, using `…0000`.
 
-The half `…82A5-4E40-1CA360B95B30` is **unsourced**: it returns no hit in noop, in OpenStrap, or in a public code search across GitHub, and must not be used.
-§1 of the suite pins these identifiers against the reference literals — not against the constants
+The half `…82A5-4E40-1CA360B95B30` is **unsourced**: it returns no hit in the community reference, in the research reference, or in a public code search across GitHub, and must not be used.
+§1 of the suite pins these identifiers against the published literals — not against the constants
 they test, which is the distinction that matters here — so the substitution cannot silently reverse.
 
 **Why it was worth a section anyway.** A wrong service UUID does not present as a decode error — it
@@ -129,7 +129,7 @@ tail (4)   crc32, u32 LE
 * The inner record begins at **offset 8** — a four-byte shift against 4.0.
 * CRC32 covers `frame[8 ..< declLength + 4]`.
 * 5.0 has a fixed 16-byte type-35 `CLIENT_HELLO`, beginning `AA 01 08 00 00 01 E6 71 …`; 4.0 has no
-  fixed hello. **Its function is not a greeting — it is the bond trigger.** The reference writes it
+  fixed hello. **Its function is not a greeting — it is the bond trigger.** The community reference writes it
   to `fd4b0002` **`.withResponse`** deliberately, because the write itself is what starts the strap's
   just-works pairing, and the realtime stream can only be armed afterwards. Its failure is silent:
   an unanswered hello raises **no write error**, the link just drops. §7 Q6 carries what that means
@@ -192,7 +192,7 @@ are checkable against each other rather than merely similar.
 **Both vocabularies are published, and they name the same byte rather than describing two
 mechanisms.** The 4.0-enveloped schema keys its `HISTORICAL_DATA` on versions `24` / `12` / `5` /
 `7` / `9`; the 5.0/MG sensor reference names record layouts an `R` number — `R16`, `R17`, `R18`,
-`R20`, `R21`, `R26`. The reference is explicit that the type alone identifies nothing — "R16 and R17
+`R20`, `R21`, `R26`. The community reference is explicit that the type alone identifies nothing — "R16 and R17
 ECG use a layout selector at byte 9" — and that **packet number, record layout, command number and
 event number are separate namespaces**. The correction worth carrying is that the `24` / `12` / `5`
 / `7` / `9` vocabulary belongs to a schema whose **envelope is the 4.0's** (`SOF` at 0, two-byte
@@ -217,12 +217,12 @@ with no strap**. All three are correct, and all four are asserted in §1 of the 
 
 | Vector | Source | Expected | `CRCUtils` | |
 | :--- | :--- | :--- | :--- | :--- |
-| `crc8([0x08, 0x00])` | osr `PROTOCOL.md` §2 | `0xA8` | `0xA8` | ✅ |
-| `crc8([0x10, 0x00])` | osr `PROTOCOL.md` §2 | `0x57` | `0x57` | ✅ |
-| `crc16Modbus(5.0 hello[0..<6])` | noop `PROTOCOL.md` §2.2 | `0x71E6` | `0x71E6` | ✅ |
-| `crc32(5.0 hello payload)` | noop `PROTOCOL.md` §2.2 | `0x8D5C3E36` | `0x8D5C3E36` | ✅ |
-| `crc16Modbus(toggle hdr[0..<6])` | dofek `whoop-ble-protocol.md` | `0x41E7` | `0x41E7` | ✅ |
-| `crc32(toggle payload)` | dofek `whoop-ble-protocol.md` | `0xFC61E958` | `0xFC61E958` | ✅ |
+| `crc8([0x08, 0x00])` | the research reference's `PROTOCOL.md` §2 | `0xA8` | `0xA8` | ✅ |
+| `crc8([0x10, 0x00])` | the research reference's `PROTOCOL.md` §2 | `0x57` | `0x57` | ✅ |
+| `crc16Modbus(5.0 hello[0..<6])` | the community reference's `PROTOCOL.md` §2.2 | `0x71E6` | `0x71E6` | ✅ |
+| `crc32(5.0 hello payload)` | the community reference's `PROTOCOL.md` §2.2 | `0x8D5C3E36` | `0x8D5C3E36` | ✅ |
+| `crc16Modbus(toggle hdr[0..<6])` | the APK reading's `whoop-ble-protocol.md` | `0x41E7` | `0x41E7` | ✅ |
+| `crc32(toggle payload)` | the APK reading's `whoop-ble-protocol.md` | `0xFC61E958` | `0xFC61E958` | ✅ |
 
 The 5.0 vector is the whole static `CLIENT_HELLO` frame, so it validates the envelope reading too:
 
@@ -327,9 +327,9 @@ The 4.0's fourteen:
 | `0x4F` / 79 | `runHapticsPattern` | `WhoopPacketEncoder.runHapticsPattern` | play a catalog pattern `loops` times — body `[pattern, loops, 0, 0, 0]`; **not the 5.0's byte**, see below |
 | `0x20` | `ping` | `pingCommand` | ping / keep-alive |
 | `0x16` | `requestHistoricalSync` | `WhoopCommandFrames.historicalSyncRequest` | the drain's request — **`0x16`; see §4** |
-| `0x6A` | `toggleIMUMode` | `motionEnableSequence` | IMU on/off — **one byte on the 4.0**, `[01]` to enable and `[00]` to stop. The two-byte form is real but belongs to the optical and persistent toggles; OpenStrap's `TWO_BYTE_TOGGLES` names those four opcodes and excludes this one, and noop's 4.0 branch sends `[0x01]` while giving its 5/MG the two-byte selector. §6's `[1,1]` is the *5/MG's* shorthand — do not carry it back to the 4.0 |
-| `0x3F` | `sendRealtimeMotion` | `motionEnableSequence` | start the live 100 Hz motion record — body `[01]`, from noop's implemented `sendR10R11Realtime` (hardware-verified) and OpenStrap's `cmd_send_r10_r11` |
-| `0x6B` | `enableOpticalData` | `motionEnableSequence` | body `[01, 01]` — OpenStrap's running client reads it as wrist-gated optical (the HR source) and this app followed that; noop's 4.0 *doc* says it *returns* the stored IMU stream state, while noop's own enum uses `enableOpticalData` and never sends it. See the naming note below |
+| `0x6A` | `toggleIMUMode` | `motionEnableSequence` | IMU on/off — **one byte on the 4.0**, `[01]` to enable and `[00]` to stop. The two-byte form is real but belongs to the optical and persistent toggles; the research reference's `TWO_BYTE_TOGGLES` names those four opcodes and excludes this one, and the community reference's 4.0 branch sends `[0x01]` while giving its 5/MG the two-byte selector. §6's `[1,1]` is the *5/MG's* shorthand — do not carry it back to the 4.0 |
+| `0x3F` | `sendRealtimeMotion` | `motionEnableSequence` | start the live 100 Hz motion record — body `[01]`, from the community reference's implemented `sendR10R11Realtime` (hardware-verified) and the research reference's `cmd_send_r10_r11` |
+| `0x6B` | `enableOpticalData` | `motionEnableSequence` | body `[01, 01]` — the research reference's running client reads it as wrist-gated optical (the HR source) and this app followed that; the community reference's 4.0 *doc* says it *returns* the stored IMU stream state, while the community reference's own enum uses `enableOpticalData` and never sends it. See the naming note below |
 | `0x0A` | `setClock` | `setClockFrames` | SET_CLOCK, both firmware lengths |
 | `0x0B` | `getClock` | `clockReadBack` | GET_CLOCK — the read-back; **sent on both generations**, and the reply is logged rather than parsed |
 | `0x14` | `abortHistoricalTransmits` | `abortHistoricalTransmits` | stop a drain |
@@ -337,45 +337,45 @@ The 4.0's fourteen:
 | `0x22` | `getDataRange` | — | the range canary |
 | `0x17` | `historicalDataResult` | `historicalDataAck` | the per-batch ACK |
 
-**106 and 107 are where the two references disagree — and noop disagrees with itself about 107.** The
-two columns of noop's command matrix give these bytes different names from OpenStrap's table, and for
-107 the difference is not a label but what the byte is *for*. **noop's own implemented enum is a third
-column, and it takes OpenStrap's side of the name**:
+**106 and 107 are where the two references disagree — and the community reference disagrees with itself about 107.** The
+two columns of the community reference's command matrix give these bytes different names from the research reference's table, and for
+107 the difference is not a label but what the byte is *for*. **The community reference's own implemented enum is a third
+column, and it takes the research reference's side of the name**:
 
-| ID | OpenStrap/research **[reported 4.0]** | noop's command doc **[S · 41.17.6.0]** | noop's implemented enum |
+| ID | the research reference **[reported 4.0]** | the community reference's command doc **[S · 41.17.6.0]** | the community reference's implemented enum |
 | :--- | :--- | :--- | :--- |
-| 106 / `0x6A` | `TOGGLE_IMU_MODE` ("live IMU"), body `[01]` | `SET_IMU_DATA_STREAM`, body `[01, state]`, state `0`/`1` — **"Sets the stored IMU data-stream state"** | `toggleIMUMode = 106`, sent as `[0x01]` on a 4.0 and `[0x01, 0x01]` on a 5/MG — **the doc row's two-byte form is the 5/MG's, and noop's own code is what says so** |
+| 106 / `0x6A` | `TOGGLE_IMU_MODE` ("live IMU"), body `[01]` | `SET_IMU_DATA_STREAM`, body `[01, state]`, state `0`/`1` — **"Sets the stored IMU data-stream state"** | `toggleIMUMode = 106`, sent as `[0x01]` on a 4.0 and `[0x01, 0x01]` on a 5/MG — **the doc row's two-byte form is the 5/MG's, and the community reference's own code is what says so** |
 | 107 / `0x6B` | `ENABLE_OPTICAL_DATA` — "wrist-gated optical (**the HR source**)", body `[01, 01]` | `GET_IMU_DATA_STREAM`, body `[01]` — **"Returns the stored IMU data-stream state"** | `enableOpticalData = 107`, **never sent by any call site** |
 
 **The width question on 106 is settled too, and by the same client that frames the optical opcodes.**
-OpenStrap defines `TWO_BYTE_TOGGLES` — "opcodes that take the special TWO-byte
+The research reference defines `TWO_BYTE_TOGGLES` — "opcodes that take the special TWO-byte
 `[REVISION_1=0x01, enable]` payload", with the failure it prevents spelled out: *"Sending a single
 `[0x01]` is read as `[revision, <missing enable>]` → no data flows."* Its members are
 `ENABLE_OPTICAL_DATA`, `TOGGLE_OPTICAL_MODE` and the two persistent toggles, and **`0x6A` is not among
-them** — every call site builds `bytes([0x01 if on else 0x00])`. noop's 4.0 branch agrees, sending
+them** — every call site builds `bytes([0x01 if on else 0x00])`. The community reference's 4.0 branch agrees, sending
 `[0x01]` where its 5/MG gets `[0x01, 0x01]` under a comment that calls the two-byte form *"the two-byte
-realtime IMU selector"*. So noop's doc row is the only voice claiming a two-byte 4.0, and noop's own
+realtime IMU selector"*. So the community reference's doc row is the only voice claiming a two-byte 4.0, and the community reference's own
 code is against it: **the two-byte `[1, 1]` this app sent on a 4.0 was the 5/MG's payload**, and the
 4.0 now sends `[01]`.
 
 **The read reading is the command doc's alone, and the code beside it contradicts it.**
-`Strand/BLE/Commands.swift` names 107 `enableOpticalData` — OpenStrap's name, and this app's — and
-no call site in that client sends it: noop's live-IMU path is `startRawData` plus 106 and nothing
-more. So noop's `GET_IMU_DATA_STREAM` is a 4.0-column refinement its own enum does not carry, and
-OpenStrap's reading is not outvoted. What noop's doc does establish, and this app follows, is that
+`Strand/BLE/Commands.swift` names 107 `enableOpticalData` — the research reference's name, and this app's — and
+no call site in that client sends it: the community reference's live-IMU path is `startRawData` plus 106 and nothing
+more. So the community reference's `GET_IMU_DATA_STREAM` is a 4.0-column refinement its own enum does not carry, and
+the research reference's reading is not outvoted. What the community reference's doc does establish, and this app follows, is that
 **107 carries a body on a 4.0**, so a bare 107 is not a frame this app may send. Its 107 row carries
 the warning *"The WHOOP 5/MG identifier `ENABLE_OPTICAL_DATA` does not describe this WHOOP 4
 operation"*, and its transport profile treats live HR as the standard GATT service and keeps it
 "separate".
 
 **Both readings are served by the same byte**, so nothing waits on the resolution.
-`[01, 01]` is OpenStrap's enable form, so an enable starts the optical path live HR depends on; under
-noop's reading it is a `[01]` read with a trailing byte, which starts nothing and is harmless either
+`[01, 01]` is the research reference's enable form, so an enable starts the optical path live HR depends on; under
+the community reference's reading it is a `[01]` read with a trailing byte, which starts nothing and is harmless either
 way. **§7 Q12** carries the capture that separates them — write `0x6B` with `[01, 01]` and read the
-reply — and the question it settles is what 107 *does*, not what to send. **OpenStrap's section is
+reply — and the question it settles is what 107 *does*, not what to send. **The research reference's section is
 emphatic about its reading** ("Live HR is optical/PPG-derived — no optical, no HR") and builds its live
 example on it, which is why the enable is the interpretation this app acts on. **The 5/MG's own 107 is not the live-optical enable its name
-suggests either**: noop's configuration contract records that on 50.42.1.0 the operation is **optical
+suggests either**: the community reference's configuration contract records that on 50.42.1.0 the operation is **optical
 session saving**, that "the identifier is historical", and that live optical output is **108** — so
 `ENABLE_OPTICAL_DATA` is a legacy label on both columns and not a description of the current
 operation on either.
@@ -402,7 +402,7 @@ clock bytes among them — `0x6A` is the same byte with a different body, and si
 | `0x13` / 19 | `notifyHaptics` | `WhoopPacketEncoder5.hapticsNotification` | the buzz, a **remap of catalog pattern 79** rather than 79 itself: an MG capture answers 79 with result `0x03`. Body is the 12-byte notification preset `[01] + [2F 98 00×6] + [00 00] + [loops − 1]` |
 
 **Every published 5.0 byte belongs in the table, and two of the five shared-numbering rows — `0x14`
-and `0x21` — are marked supported by noop under the same names the 4.0 uses.** The noop catalog
+and `0x21` — are marked supported by the community reference under the same names the 4.0 uses.** The community reference's catalog
 enumerates every ID from 1 to 159 once and bounds its 5/MG column to firmware 50.42.1.0. **Omitting a published opcode is its own error rather than a safe default** — it leaves the
 drain's only stop with no byte to send, and a builder reaching for one sends `0x52 STOP_RAW_DATA`
 instead, which stops the producer and leaves the drain walking. A name is not an opcode this build
@@ -439,7 +439,7 @@ name. Hardware revision and manufacturer are logged and have no field.
 **The advertised name is a proprietary command, which is why it looks unreachable.** CoreBluetooth
 hides the Generic Access service from every third-party app, so GAP's `0x2A00` cannot be read or
 written here — and a strap named *"Alex WHOOP"* was named through the WHOOP app's own opcode, not
-through GAP. [reported] noop's command matrix documents both generations: **5.0/MG uses ID 140
+through GAP. [reported] The community reference's command matrix documents both generations: **5.0/MG uses ID 140
 (`SET`) and 141 (`GET`)**, the set body `[revision=1][length][name…]` with 0–15 name bytes and the get
 reply a fixed 19 bytes (`[revision][source][length][16-byte field]`, source `1` custom / `2` fallback);
 **4.0 uses ID 77 (`SET`) and 76 (`GET`)**, the set body two reserved bytes then a fixed 16-byte field
@@ -447,7 +447,7 @@ whose last byte must be NUL — 15 usable bytes — and both are version-bounded
 **The 5.0 table marks the 4.0 ids unsupported (result 3)**, which is why the generation picks the
 number. **[captured] 2026-10-25: ID 140 works on this project's 5.0, firmware 50.42.1.0** — a rename sent
 from the device page's `NAME` row was applied, and **the advertisement lagged the write by a few
-minutes**, exactly as the reference warns. So the write is real but the acknowledgement proves nothing
+minutes**, exactly as the community reference warns. So the write is real but the acknowledgement proves nothing
 and a scan taken immediately afterwards reads `CoreBluetooth`'s cache rather than the radio. **`141`'s reply was captured too, on 2026-10-25:**
 
 ```
@@ -456,7 +456,7 @@ cmd=0x8D payload=14 01 01 01 0C 57 68 6F 6F 70 73 79 20 35 2E 30 00 …
 
 — a leading **length byte `0x14` (20)**, then revision `1`, **the operation's result `1`**, source
 `1` (custom), name length `0x0C` (12, NUL included), then `Whoopsy 5.0` and the rest of the 16-byte
-field. So the reference's fixed-19-byte read names the right fields and omits two bytes this envelope
+field. So the community reference's fixed-19-byte read names the right fields and omits two bytes this envelope
 carries: the payload-length prefix in front and the result byte after the revision. `Advertising Name
 Payload.decode` tolerates the first and requires the second. The strap had by then stored the name this app
 sent, which is how the rename was proven end to end rather than inferred from an advertisement.
@@ -479,7 +479,7 @@ device state and calls `discoverServices(nil)` itself; re-discovery re-runs
 on its acknowledgement, the motion enable plus the generation's other producer: the `0x05` telemetry
 enable on a 4.0 or the `0x03` live-HR arm on a 5.0/MG.
 **Inheriting the previous process's subscription is not a substitute**: a subscription can report
-`isNotifying == true` while delivering nothing to the new process, which is the failure noop reports
+`isNotifying == true` while delivering nothing to the new process, which is the failure the community reference reports
 as #613 — so the subscription is re-issued rather than trusted.
 
 **The implemented half is also re-sent on silence, and the threshold belongs to the generation.**
@@ -487,10 +487,10 @@ as #613 — so the subscription is re-issued rather than trusted.
 without the link dropping would keep a subscription that delivers nothing and never ask again. A 30 s
 `KeepAlivePolicy` tick therefore watches *data* — any non-empty notification, and any successful
 write — and after **15 s** of silence on a 4.0 re-sends its connect pass (the `0x05` telemetry
-enable and the three-frame motion enable). That figure is Asherlc's `WhoopBleDataWatchdog`. The
+enable and the three-frame motion enable). That figure is the Swift 4.0 client's `WhoopBleDataWatchdog.swift`. The
 5.0/MG gets **60 s** — the same pass, which on that generation is the two motion frames and the
-`0x03` arm — because its resting heart rate has documented at-rest lulls (noop #580/#1414, Edge
-#191) and a 15 s rule would re-arm a working producer on every quiet minute. Two guards sit around it: the re-send has its own 60 s floor, so noticing is
+`0x03` arm — because its resting heart rate has documented at-rest lulls (the community reference #580/#1414,
+the research reference's shipped client #191) and a 15 s rule would re-arm a working producer on every quiet minute. Two guards sit around it: the re-send has its own 60 s floor, so noticing is
 not the same as poking, and it is withheld unless the bond handshake was itself acknowledged
 (`hasSentConnectCommands`), because a 5.0/MG refuses writes made before it. **Past 120 s (4.0) or
 600 s (5.0/MG) of total silence the link is not healthy and is bounced** with
@@ -499,7 +499,7 @@ with the standing connect — so discovery re-runs and the enable sequence is se
 suppresses both the re-send and the bounce; a battery read (`0x2A19`, floored at 60 s) stays safe
 throughout and doubles as the probe.
 
-**A 5.0/MG that refuses five consecutive fast connection attempts is left alone.** noop #747 is the
+**A 5.0/MG that refuses five consecutive fast connection attempts is left alone.** The community reference #747 is the
 report the cap comes from, and the handshake being refused is the encrypted bond the strap demands
 before its proprietary service answers (§7 Q6). Only a *fast* refusal counts — a `didFailToConnect` inside two seconds of the attempt — and
 any drop, slow failure or failure with no previous attempt resets the count, so a strap that dropped
@@ -510,13 +510,13 @@ carries the caveat that explains it.
 
 **The 4.0's live enable is three ordered frames** (`0x6A` `[01]`, then `0x3F` `[01]`, then `0x6B`
 `[01,01]`), all or nothing. **All three carry a body**, and the references' own running clients are
-the basis: noop sends `[0x01]` for the realtime record (documented on-device, "2.1/s → 0/s"), and
-OpenStrap sends a two-byte `[revision, enable]` for the optical one. A bodyless `0x3F` is the shape
+the basis: the community reference sends `[0x01]` for the realtime record (documented on-device, "2.1/s → 0/s"), and
+the research reference sends a two-byte `[revision, enable]` for the optical one. A bodyless `0x3F` is the shape
 that matters most, because it starts no live record — which is the stream the step counter reads.
 **`0x6A` carries one byte rather than the two-byte form**: it is an IMU verb, and the two-byte
 `[revision, enable]` convention belongs to the optical and persistent toggles (see §3's note). The
-5.0's motion enable is two (`0x51` then `0x6A`), and **that ordering is the reference's rather than
-this app's** — noop's configuration contract states that the live-IMU sequence "starts raw production
+5.0's motion enable is two (`0x51` then `0x6A`), and **that ordering is the community reference's rather than
+this app's** — the community reference's configuration contract states that the live-IMU sequence "starts raw production
 before enabling live IMU transport", with stopping production and disabling that transport as
 separate cleanup operations. **A 5.0/MG also sends `0x03 TOGGLE_REALTIME_HR` in the same connect
 pass**, as a third, independent enable: it starts no motion stream and its notification is packet 40,
@@ -556,10 +556,10 @@ words rather than in one generic sentence, because the two generations have diff
 rather than the same one twice. The 4.0's is unvalidatedness alone. The 5.0's has a second and more
 specific blocker: its command characteristic refuses writes and notifies until the link is
 **encrypted** (`CBATTError.insufficientAuthentication` / `.insufficientEncryption`), and the bond is
-established by **just-works pairing** — noop writes the static `CLIENT_HELLO` `.withResponse`, which
+established by **just-works pairing** — the community reference writes the static `CLIENT_HELLO` `.withResponse`, which
 triggers it, and ships that path on macOS **and** iOS. The one Apple-platform limit it records is
 that CoreBluetooth exposes no bond state, so a client cannot ask whether it is bonded; the one
-reported iOS success outside noop (dofek) reuses the bond the official WHOOP app already made. `DeviceViewModel.protocolCaveat` carries both sentences;
+reported iOS success outside the community reference (the APK reading) reuses the bond the official WHOOP app already made. `DeviceViewModel.protocolCaveat` carries both sentences;
 §7 Q6 carries the whole of the open question, and **it stays open rather than softened into a
 permission**. Reading a 5.0 and writing to one became the same shape of capability in this build; what
 has never happened is either of them against a strap.
@@ -593,7 +593,7 @@ Sensor ADCs: raw green PPG `[29]`, red/IR `[31]`, red `[64]`, IR `[66]`, skin te
 `[70]`.
 
 **A second, independent parser now corroborates this table at a measured scale, and adds the one
-number a decoder needs that the table did not carry.** OpenStrap's `parse_r24` reads the same fields
+number a decoder needs that the table did not carry.** The research reference's `parse_r24` reads the same fields
 at the same offsets — counter at `[3:7]`, `unix` at `[7:11]`, sub-seconds at `[11:13]`, heart rate
 at `[17]`, `rr_count` at `[18]`, then the R-R intervals as **i16 LE milliseconds** from `[19]`, and
 the accelerometer triplet at `[36:48]` — and reports that the layout is "verified on **127,971 of
@@ -604,8 +604,8 @@ fields below `[88]`, so a walk should refuse it rather than read past its end. T
 from the same parser are worth carrying because both bound a decode: **`rr_count` is `0`–`4`**, so
 the R-R loop is bounded and does not need to be driven by the record's length, and **the strap's
 `[51]` is a contact *quality* (`0`–`198`) and not a wear flag** — the natural misreading of that
-field is the one the reference calls out. Two things this does *not* change: the confidence tags
-above are the 4.0 reference's own and are left as they were, because a second parser agreeing is
+field is the one the research reference calls out. Two things this does *not* change: the confidence tags
+above are the research reference's own and are left as they were, because a second parser agreeing is
 corroboration rather than a new source; and **none of it is a capture on this project's hardware**.
 The record walk is therefore a design against a layout a running client has decoded a hundred
 thousand times, rather than against a table. The R-R intervals are the field worth noting for this
@@ -631,7 +631,7 @@ heart-rate-over-the-night curve is constructible from stored history, not only f
 
 **The field exists; whether its value is *right* is a separate question, and this is the trap.** An
 absolute time is only as good as the clock that stamped it. The strap's RTC is set by
-`0x0A SET_CLOCK` (`[u32 epoch LE][u32 0]`), and the reference's event enum carries **type 13
+`0x0A SET_CLOCK` (`[u32 epoch LE][u32 0]`), and the community reference's event enum carries **type 13
 `RTC_LOST` — "battery fully died (clock reset)"** (plus event 16 `SET_RTC`). So a strap that has been
 flat for long enough comes back with a clock that is wrong by an unknown offset, and **every
 timestamp it then stamps is wrong by that same offset with nothing in the record to show it**. This
@@ -645,7 +645,7 @@ comparing a freshly drained record's `[7:11]` against wall time. Treat a drained
 time as **verified as a field, unverified as a value** until that comparison is made.
 
 **Correcting the clock is a prerequisite for the drain, not a refinement of it, and the reason is
-that `SET_CLOCK`'s payload LENGTH is firmware-specific and load-bearing.** noop ships **two** 4.0
+that `SET_CLOCK`'s payload LENGTH is firmware-specific and load-bearing.** The community reference ships **two** 4.0
 forms rather than one, and its source states why in as many words:
 
 | Form | Payload | Latches on |
@@ -655,14 +655,14 @@ forms rather than one, and its source states why in as many words:
 
 The failure mode is what makes this worth a section of its own: **a set that is the wrong length for
 the firmware is acknowledged but not latched**, so the RTC stays invalid — and a strap with an
-invalid RTC **stops banking sensor data to flash entirely**. noop records the symptom as "endless
+invalid RTC **stops banking sensor data to flash entirely**. The community reference records the symptom as "endless
 console-only syncs and no sleep/recovery", which is a strap that looks connected and productive while
 silently writing nothing. Its client therefore sends **both** forms on 4.0, because each is a no-op on
 the other's firmware and both carry the same `now`, so double-latching is harmless.
 
 Two things follow for this document. **The length is not settled across the ecosystem** — forms of 4,
 5, 8 and 9 bytes all appear in published clients, and four independent projects corroborate the
-silent-failure mode, which is why noop's belt-and-braces approach is the shape to copy rather than
+silent-failure mode, which is why the community reference's belt-and-braces approach is the shape to copy rather than
 picking one. That is what this app does: **`setClockFrames` sends both forms on every generation** — two for the
 4.0 at its drain, and since the link was first run two for the 5.0/MG under its own envelope at command 10.
 **That second length was measured rather than chosen**: on the owner's 5.0 the 8-byte
@@ -691,7 +691,7 @@ carries the reconciliation.
 **It does carry a per-record timestamp, and it is this section's field.** The schema places `unix` as
 a u32 at frame offset **11**, described as real unix seconds; its offsets are frame-absolute from the
 start-of-frame byte, so 11 is record-relative `7` — exactly this section's `[7:11]` — and frame 15
-under the 5.0 origin. One field, written in whichever frame the strap speaks. The reference's own
+under the 5.0 origin. One field, written in whichever frame the strap speaks. The community reference's own
 type-47 decoder reads that key first and comments that the record carries a **real unix timestamp and
 no wall-clock offset**, so §7 Q3 is answered in the affirmative. What a capture still settles is the
 narrower question: whether a 5.0 frame lays the version-24 record out at the same **record-relative**
@@ -702,7 +702,7 @@ the four-byte shift is derived from the envelope and not observed.
 ### The one oxygen field is a candidate, and it is logged rather than read
 **[reported 5.0, decompile-sourced]**
 
-noop's `spo2_candidate_82` (issue #709) is the only SpO₂-shaped field anyone has found in strap
+The community reference's `spo2_candidate_82` (issue #709) is the only SpO₂-shaped field anyone has found in strap
 data. It comes from decompiling the official app, not from a published layout: the app's `spo2_pct`
 reads **frame byte 82**, which is payload `[71]` under the 5.0/MG envelope's 11-byte origin. Its
 neighbouring **frame byte 81 (payload 70)** is the sleep-state byte the same record already carries,
@@ -736,7 +736,7 @@ this app derived.
 **The 4.0 has no equivalent path.** Its type-24 record carries raw red/IR ADC scalars (record `[31]`
 and `[66]`, payload `[61]` and `[63]`), with no wavelength labels and no AC/DC waveform, so a
 ratio-of-ratios calculation cannot be formed from it; the published clients that mention it
-(`OpenStrap Edge`, `life`) call it relative-only and unvalidated. There is also no `GET_SPO2`
+(two further client reports) call it relative-only and unvalidated. There is also no `GET_SPO2`
 command on either generation. The 5.0/MG's `R20` optical stream is the raw engine rather than this
 field, and §4's rule against deriving a heart rate from it applies to oxygen too.
 
@@ -752,11 +752,11 @@ field, and §4's rule against deriving a heart rate from it applies to oxygen to
 | `0x21` | `SET_READ_POINTER` | u32 offset; rewind/seek the read cursor |
 | `0x22` | `GET_DATA_RANGE` | the backlog window |
 
-Two opcodes in the reference's full command table are **not to be sent by this app**, and both are
+Two opcodes in the community reference's full command table are **not to be sent by this app**, and both are
 listed here because a drain that is misbehaving is exactly when someone reaches for them:
 
 * **The Gen 5 burst count gate is a membership rule, and Gen 4 has the same offset meaning something
-  else.** [reported] OpenStrap's Gen 5 reference (`OpenStrap/research` PR #1, `PROTOCOL-GEN5.md` §8)
+  else.** [reported] The research reference's own write-up (`PROTOCOL-GEN5.md` §8)
   puts **`expected_count`, a u32 LE at `inner[9]`** — payload **6** for this app — in every
   `HISTORY_END`, and says the client counts complete frames **once each, for types 47, 48, 50, 53, 54
   and 55 only**: 49 is the marker that carries the count, 51/52 are the IMU stream, and revision and
@@ -792,7 +792,7 @@ listed here because a drain that is misbehaving is exactly when someone reaches 
   and a second firmware, and only three of the six types (47/48/50) were exercised by it; 53–55 have
   never appeared.
 * **A type-47 frame is not automatically a one-second record, and `R26` is the one that says
-  so.** [reported] The Gen 5 reference (§5) lists revision **26 as the Pulse Information Packet** — an
+  so.** [reported] The research reference (§5) lists revision **26 as the Pulse Information Packet** — an
   88-byte frame carrying its own **event time**, not a slot on the 1 Hz grid. [repo + measured] The
   drain met one on 2026-10-26: `layout=26 ... expected=8 counted=8 types=2F×1,30×1,31×2,32×6`, one
   record stamped `00:18:04` arriving after a batch that had already reached `00:18:43`. Read as a
@@ -804,20 +804,20 @@ listed here because a drain that is misbehaving is exactly when someone reaches 
   the same record.
 
 * **`0x9B`–`0x9F` — certificate transfer and `LOCK_DEVICE` — are destructive and are refused by name.**
-  [reported] noop's `#2828` names them from the official app 5.473.0's command table:
+  [reported] The community reference's `#2828` names them from the official app 5.473.0's command table:
   `START_CERTIFICATE_TRANSFER` (155), `LOAD_CERTIFICATE` (156), `VERIFY_CERTIFICATE` (157),
   `PROCESS_CERTIFICATE` (158) and **`LOCK_DEVICE` (159)**. Their reversibility is unknown and a locked
   strap is one this app could not use at all, so `WhoopProtocolProfileTests` sweeps all three command
   tables for these five bytes exactly as it sweeps for `0x19` and `0x9A` — the failure mode being a
   table carrying one under a name that reads innocuous.
-* **`0x19 FORCE_TRIM` is a flash erase and is destructive.** The reference marks it "never sent".
+* **`0x19 FORCE_TRIM` is a flash erase and is destructive.** The research reference marks it "never sent".
   The drain is non-destructive by design and does not need it; a trim issued to "clear the backlog"
   would destroy the user's history irreversibly, including the portion not yet drained.
 * **`0x9A TOGGLE_PERSISTENT_R21` is a trap, and since 2026-10-24 the app has one deliberate way to
   spring it.** It forces the optical engine on across reboots, so the LED stays lit and the strap
   burns battery until a fresh boot — clearing the flag does not stop the running engine; recovery is
-  `REBOOT_STRAP` (`0x1D`). The reference client keeps to wrist-gated optical (OpenStrap's name for
-  `0x6B`; noop reads that byte as a state read — §3) and never sends `0x9A` casually. **The exception
+  `REBOOT_STRAP` (`0x1D`). The research reference's client keeps to wrist-gated optical (the research reference's name for
+  `0x6B`; the community reference reads that byte as a state read — §3) and never sends `0x9A` casually. **The exception
   is a manual control on the device page's ADVANCED tab**, added to test whether the flag is what
   stopped the owner's flash recorder (`docs/TODO.md` §7.2): `[1, 1]` to set it, `[1, 0]` to revert,
   behind a confirmation that names the battery cost. It is **5.0/MG only**, it is never part of a
@@ -832,14 +832,14 @@ listed here because a drain that is misbehaving is exactly when someone reaches 
   32 minutes) — so the sparse windows were wrist-off time, not a link-state rule. Both readings are
   one unit's and one firmware's. A `0x22 GET_DATA_RANGE`
   sent throughout drew no reply of the app's command-response type — though a **17-byte
-  `type=0x28 cmd=0x22`** frame did arrive ten minutes later carrying a body that is neither noop's
+  `type=0x28 cmd=0x22`** frame did arrive ten minutes later carrying a body that is neither the community reference's
   65-byte layout nor a decodable cursor, so the canary is **present and undecoded** rather than absent
   (`docs/TODO.md` §7.2).
 
 Two more live-path opcodes belong here for completeness, since §5's live producer depends on them:
-`0x03 TOGGLE_REALTIME_HR` and `0x6B` — which **OpenStrap** names `ENABLE_OPTICAL_DATA` and calls
-wrist-gated optical, **the HR source**. **noop's 4.0 column disagrees and calls the same byte
-`GET_IMU_DATA_STREAM`, a state read** — though noop's code names it `enableOpticalData` and never
+`0x03 TOGGLE_REALTIME_HR` and `0x6B` — which **the research reference** names `ENABLE_OPTICAL_DATA` and calls
+wrist-gated optical, **the HR source**. **The community reference's 4.0 column disagrees and calls the same byte
+`GET_IMU_DATA_STREAM`, a state read** — though the community reference's code names it `enableOpticalData` and never
 sends it, so the disagreement is between the two references' documents rather than their clients
 (§3's naming note has all three readings). **This app sends `0x03` and not `0x6B`.** A 4.0's live
 heart rate is the standard `0x2A37` GATT characteristic (§5), which needs no proprietary command to
@@ -859,6 +859,16 @@ reference's and no capture here has confirmed it, and the charge figure is delib
 the battery badge, whose whole rule is that a figure the strap did not send is not drawn. **This is
 the instrument that replaces a fourteen-day wear** — one connect reports the backlog in hours.
 
+**`R18` carries the accelerometer, and that is what makes a phone-away night classifiable.**
+body 24 is three `f32` in g — mean acceleration X/Y/Z for that second — and
+`HeartRatePayloadDecoder` reads them into `BiometricSample`. **The strap does not bank `R21` motion
+records in flash** [measured 2026-10-26 — every drained burst carried layouts 18 and 26, never 21],
+so the stillness signal the sleep classifier needs was never in the motion record after a
+disconnected wear: it was in the heart-rate record all along. The community reference reached the same conclusion from
+the other side (`#1801`: "staged WITHOUT a motion spine, from heart rate alone … weaker by
+construction"), and this app takes the stronger route because the accelerometer is present in the
+records it already drains.
+
 Records stream as `0x2F` punctuated by `0x31` metadata markers with a sub-type at `inner[2]`:
 
 * `1` = `HISTORY_START` — informational, ignore.
@@ -866,7 +876,7 @@ Records stream as `0x2F` punctuated by `0x31` metadata markers with a sub-type a
 * `3` = `HISTORY_COMPLETE` — **stop; do not ack.**
 
 The `HISTORY_END` marker carries an 8-byte continuation token at **payload 10** — frame 17 under
-the 4.0 envelope (`inner[13:21]`) and frame **21** under the 5.0's (`data[10:18]`, NOOP's
+the 4.0 envelope (`inner[13:21]`) and frame **21** under the 5.0's (`data[10:18]`, the community reference's
 hardware-verified trim cursor). The reply is:
 
 ```
@@ -875,7 +885,7 @@ hardware-verified trim cursor). The reply is:
 
 Status codes: `0x01` success, `0` failure, `2` pending, `3` unsupported.
 
-**Without a correct ACK the strap re-sends the same batch forever** — the reference calls it the
+**Without a correct ACK the strap re-sends the same batch forever** — the community reference calls it the
 "Groundhog Day bug". The cursor advances on a good ACK (≈ +5 per batch) and **persists across
 connections**, so a partial drain resumes rather than restarts. The band answers each ACK with a
 `0x24` ack-of-ack. The drain is **non-destructive — it never erases its own flash** — so it can be
@@ -900,11 +910,11 @@ is reported to describe the **3.0 and older firmware**, while current 4.0/5.0 fi
 two weeks [reported, commercial]. That is a lead rather than a resolution: no drain here has returned
 a record stamped inside a wear window. **The cheapest test is not a wear at all.** `GET_DATA_RANGE`'s
 65-byte reply carries a write page and an acknowledged page, so two drains either side of a
-disconnected wear show whether the write page moved. noop's #689 diagnostic gives the fields —
+disconnected wear show whether the write page moved. The community reference's #689 diagnostic gives the fields —
 `V(1)` read, `V(2)` write, `V(3)` acknowledged, `V(5)` capacity, with backlog
 `write < ack ? write + (capacity − ack) : write − ack` — marks the 5.0/MG layout **unconfirmed**, and
 uses the figure log-only. `WhoopDataRange` decodes it on the same terms. **A write page that never
-moves says the strap is not storing**, which no retention window explains. noop also re-offloads the
+moves says the strap is not storing**, which no retention window explains. The community reference also re-offloads the
 type-47 store **every ~15 minutes while connected**, and preserves the exact eight-byte `HISTORY_END`
 block in a **confirmed** ACK; this app's ACK keeps the same body and now writes it confirmed. If the
 write page moves during a connected session, one drain per connection is too rare.
@@ -957,13 +967,13 @@ readings:
 
 | Source | Kind | 4.0, ID 22 | 5.0/MG, ID 22 |
 | :--- | :--- | :--- | :--- |
-| noop `BLEManager.swift` | **implemented** | `send(.sendHistoricalData, payload: [0x00])` | same builder |
-| noop `docs/PROTOCOL_COMMANDS.md` | documented, observed | request body **`00`** — "observed working in device captures on 41.17.6.0, outside the documented command set" | "Older requests use explicit **`00`** for each operation"; "Command 22 returns state plus two zero bytes" |
-| OpenStrap `research_playground.py` | **implemented** | `build_command(seq, Cmd.SEND_HISTORICAL_DATA, b"\x00")` | — |
-| OpenStrap, same file | **captured frame** | `aa0800a823041600c7c25288` annotated `0x16 [00]` | — |
+| the community reference's `BLEManager.swift` | **implemented** | `send(.sendHistoricalData, payload: [0x00])` | same builder |
+| the community reference's `docs/PROTOCOL_COMMANDS.md` | documented, observed | request body **`00`** — "observed working in device captures on 41.17.6.0, outside the documented command set" | "Older requests use explicit **`00`** for each operation"; "Command 22 returns state plus two zero bytes" |
+| the research reference's `research_playground.py` | **implemented** | `build_command(seq, Cmd.SEND_HISTORICAL_DATA, b"\x00")` | — |
+| the research reference, same file | **captured frame** | `aa0800a823041600c7c25288` annotated `0x16 [00]` | — |
 
 **The eight-byte shape this app copied belongs to the reply, and it runs the other way.** ID 23's body
-is `01` plus the exact eight-byte `HISTORY_END` block — which noop calls **opaque** and warns against
+is `01` plus the exact eight-byte `HISTORY_END` block — which the community reference calls **opaque** and warns against
 reconstructing ("never reconstruct the opaque second word") — and `inner[13:21]` on the 4.0 /
 payload `[10,18)` on the 5.0 (frame 21) is where the ACK above reads it. **The token is at the same
 *payload* offset on both generations; a reader built on the 4.0's *frame* offset is four bytes early
@@ -973,13 +983,13 @@ the owner's 5.0 on 2026-10-23, where the drain replayed the same two August batc
 range on this command**, and a window has somewhere else to live — `0x21 SET_READ_POINTER` seeks the
 read cursor and takes a **u32 offset**, not an epoch pair.
 
-**No "newer form" exists.** noop's "older requests use explicit `00`" contrasts an explicit `00` with
+**No "newer form" exists.** The community reference's "older requests use explicit `00`" contrasts an explicit `00` with
 its builder's *default* payload, which is also `[0x00]` — both spellings are the same single byte, and
 no start/end body appears in any reference for either generation. The frame lengths are where a
 widening would show: **12 bytes for the 4.0 and 16 for the 5.0/MG**, each `header + 3 + 1 + 4`, so an
 eight-byte body lands at 19 and 23 and §16 fails on both.
 
-**One oddity stays on the record rather than being tidied away.** noop's 4.0 row for ID 22 describes it
+**One oddity stays on the record rather than being tidied away.** The community reference's 4.0 row for ID 22 describes it
 as starting **type-47** delivery — the 5.0/MG record type, on a row whose records this document
 elsewhere calls `0x2F` type 24 — and its status is `O / U`, observed rather than documented. That is a
 question about the *reply*, not the request, and **§7 Q11** carries it; it needs no new decoder,
@@ -1362,7 +1372,7 @@ is the practical reason §4's retention window matters more to this app than to 
 ### The R18 step counter: a pedometer field in the historical record, and the only one not captured here **[reported 5.0]**
 
 `R18` carries the strap's own pedometer beside the heart rate, and `StepCounterPayloadDecoder` reads
-three fields out of it. **All three are NOOP's reverse-engineering (`docs/PROTOCOL_SENSORS.md` in that
+three fields out of it. **All three are the community reference's reverse-engineering (`docs/PROTOCOL_SENSORS.md` in that
 project), not a capture on this strap**, and that provenance is the point: a wrong offset decodes a
 plausible number, so the decoder is guarded by the record's exact identity and the writer logs its
 first sample.
@@ -1403,7 +1413,7 @@ and preferred where it exists.
 | `.whoop4` | live | `0x2B` / 43, R10, payload 1910 | **live-only**, by design: the 4.0's flash holds the 1 Hz type-24 rollup and no high-rate buffer, so its step path runs only while the app is connected |
 | `.whoop5` / `.whoop5MG` | banked | 47, R21, payload 1229 (frame 1,244) | through §4's drain — **dropped by the step writer**, which takes the day from the counter instead; `RecordMotionUseCase` still consumes it for sleep |
 | `.whoop5` / `.whoop5MG` | live | 43, R21, payload 1229 (frame 1,244) | the same buffer streamed, and the detector's only input |
-| `.whoop5` / `.whoop5MG` | banked | 47, R18, payload 109 (frame 124) | **the strap's counter at frame 57, class at 63, source at 64** — `StepCounterPayloadDecoder`, §6's counter subsection. NOOP's offsets; **not captured here** |
+| `.whoop5` / `.whoop5MG` | banked | 47, R18, payload 109 (frame 124) | **the strap's counter at frame 57, class at 63, source at 64** — `StepCounterPayloadDecoder`, §6's counter subsection. The community reference's offsets; **not captured here** |
 
 **The two layouts are frame-absolute and the origins differ, which is the decoder's one real trap.**
 §6's `R21`/`R10` offsets are measured from the **frame's** first byte, while `WhoopRawFrame.payload`
@@ -1519,7 +1529,7 @@ deliberately ordered so the cheap, high-leverage answers come first.
 4. **What the real record size and header are, per strap** (§4) — **the 4.0 half is answered, and by
    more than the table above was built from.** 96 bytes is reported for 4.0 type 24, a real captured
    4.0 frame agrees with that table field for field, and an **implemented parser** now corroborates
-   it at scale: OpenStrap's `parse_r24` gives the same offsets this section records — counter at
+   it at scale: the research reference's `parse_r24` gives the same offsets this section records — counter at
    `[3:7]`, `unix` at `[7:11]`, sub-seconds at `[11:13]`, heart rate at `[17]`, `rr_count` at `[18]`
    with the R-R intervals as i16 LE from `[19]` — and states they are "verified on 127,971 of our
    own stored records and cross-checked against an independent implementation", with the heart rate
@@ -1534,7 +1544,7 @@ deliberately ordered so the cheap, high-leverage answers come first.
    app's first drain away.
 5. **Whether the ACK token survives reconnection** (§4) — reported persistent for 4.0's cursor; the
    resume behaviour matters for a sync that runs on a phone that comes and goes. **The references
-   answer this one by design rather than by measurement, and the design is the answer to copy:** noop
+   answer this one by design rather than by measurement, and the design is the answer to copy:** the community reference
    does not rely on the strap's token outliving a disconnect at all, it persists its **own** cursor
    client-side so a resumed backfill continues from where its last one stopped. Nothing in either
    reference states that a token survives a reconnection, so the working assumption is that it does
@@ -1553,29 +1563,29 @@ deliberately ordered so the cheap, high-leverage answers come first.
    unbonded connection and read the response.
 
    **Read that report as single-sourced, because it is.** `0x049c` appears in exactly one project —
-   `Asherlc/dofek`, whose `whoop-ble-protocol.md` states that unbonded commands return
+   the APK reading, whose `whoop-ble-protocol.md` states that unbonded commands return
    `PUFFIN_COMMAND_RESPONSE (0x26)` with error `0x049c` (1180) "regardless of command type, format, or
-   CRC", while a bonded connection is accepted. A public code search finds that constant in dofek's
-   docs and nowhere else: not in noop, which detects a refused bond through
-   `CBATTError.insufficientEncryption` / `.insufficientAuthentication` instead, and not in OpenStrap.
+   CRC", while a bonded connection is accepted. A public code search finds that constant in the APK reading's
+   docs and nowhere else: not in the community reference, which detects a refused bond through
+   `CBATTError.insufficientEncryption` / `.insufficientAuthentication` instead, and not in the research reference.
    It is also **not a standard ATT code** — it is an application-level error in the Puffin payload —
    so it is not something a reader can look up.
 
-   **And dofek's iOS half is weaker than it reads.** Its working iOS path is not a bond dofek
+   **And the APK reading's iOS half is weaker than it reads.** Its working iOS path is not a bond the APK reading
    creates: it is `retrieveConnectedPeripherals(withServices:)` **piggybacking on the bond the
    official WHOOP app already made**. Across the ecosystem, the platforms reported as able to
-   *initiate* pairing are Android (`createBond`), Linux/BlueZ — and, on noop's own path, Apple too
+   *initiate* pairing are Android (`createBond`), Linux/BlueZ — and, on the community reference's own path, Apple too
    (next paragraph), so the claim that no third-party iOS app establishes its own bond no longer
-   holds. Independently, noop observes that Apple's CoreBluetooth exposes **no link-encryption or
+   holds. Independently, the community reference observes that Apple's CoreBluetooth exposes **no link-encryption or
    bond state at all**, so a client cannot even ask whether it is bonded, and it records that its own
    unbonded-offload probe returned an inconclusive first result on real hardware rather than a
    refusal.
 
-   **What the implemented 5.0 path does narrows it, and it cuts both ways.** noop's own `BLEManager`
+   **What the implemented 5.0 path does narrows it, and it cuts both ways.** The community reference's own `BLEManager`
    does attempt a bond from the app: on connect it writes the static 16-byte `CLIENT_HELLO` to the
    `fd4b0002` characteristic **`.withResponse`**, specifically so the write triggers the strap's
    **just-works bonding**. So a third-party client does reach for its own bond rather than only
-   piggybacking — but noop labels the whole path **"EXPERIMENTAL"** and **"Unverified on real MG
+   piggybacking — but the community reference labels the whole path **"EXPERIMENTAL"** and **"Unverified on real MG
    hardware"**, and its issue tracker is where the failure is described rather than its docs: an
    unanswered `CLIENT_HELLO` produces **no write error at all — the link simply drops**, which is the
    worst shape a failure can take here because it is indistinguishable from a strap going out of
@@ -1595,14 +1605,14 @@ deliberately ordered so the cheap, high-leverage answers come first.
    history onto a **wrong day** rather than onto no day.
 
    The second half is the prerequisite, and it is cheap because it needs no drain: **write `SET_CLOCK`
-   in each candidate length and watch whether the RTC actually moves.** noop records that a
+   in each candidate length and watch whether the RTC actually moves.** The community reference records that a
    wrong-length set is **acknowledged but not latched** — and that a strap with an invalid RTC stops
    banking sensor data to flash altogether, so the symptom is a strap that looks connected while
    writing nothing. Published clients disagree on the length (4, 5, 8 and 9 bytes all appear in the
-   wild), and noop's own resolution is to send both the 8-byte and 9-byte forms on 4.0 rather than
+   wild), and the community reference's own resolution is to send both the 8-byte and 9-byte forms on 4.0 rather than
    choose. **Settle it per strap before building anything on top of the drain**, and expect the three
    straps to differ — the 5.0/MG's 8-byte form is the hardware-validated one, and its 9-byte form is
-   unverified there. A clock read that returns success is not evidence the clock is right; noop notes
+   unverified there. A clock read that returns success is not evidence the clock is right; the community reference notes
    a read failure can return zero time with a success result and no independent validity flag.
 8. **What is the full packet-type enum per generation?** (§2) — eight roles now correspond exactly
    across the two columns once the radix is equalised, which is strong evidence the numbering is
@@ -1616,11 +1626,11 @@ deliberately ordered so the cheap, high-leverage answers come first.
    narrower and does not block a decoder: **the sample-timing rule**, since `seconds + fraction /
    32768` for the frame base with 100 samples spread evenly across the second is a stated convention
    rather than an observed one — and **what types 51 and 52 carry**, both described as IMU streams
-   whose "current strap producer" is unconfirmed, with the reference forbidding the `R10`, `R21` or
+   whose "current strap producer" is unconfirmed, with the community reference forbidding the `R10`, `R21` or
    `R22` layout being substituted for them. Capture settles both; neither gates reading packet 43.
 10. **How far back does each strap's flash actually reach?** (§4) — the retention window this sync is
    designed against is **[assumed]** at fourteen days, and **the sources now disagree about it by a
-   factor of five.** Two reverse-engineering projects state ~14 days (noop's README, "the strap's
+   factor of five.** Two reverse-engineering projects state ~14 days (the community reference's README, "the strap's
    last ~14 days offload automatically"; andyguzmaneth/whoop4-ble, "~14 days of circular buffer,
    ~86,000 records per day", which is at least self-consistent at 1 Hz), and **neither measured it** —
    no project has drained to `HISTORY_COMPLETE` and read the oldest record's `[7:11]` against wall
@@ -1638,31 +1648,31 @@ deliberately ordered so the cheap, high-leverage answers come first.
    while current 4.0/5.0 firmware is reported at two weeks [reported, commercial] — a lead, not a
    measurement. **The cheapest capture is `GET_DATA_RANGE`, not a wear**: its 65-byte reply carries a
    write page and an acknowledged page, so two drains either side of a disconnected wear show whether
-   the write page moved at all. noop's #689 diagnostic gives the indices and marks the 5.0/MG layout
+   the write page moved at all. The community reference's #689 diagnostic gives the indices and marks the 5.0/MG layout
    unconfirmed; `WhoopDataRange` decodes it for the log only. A write page that does not move is the
    observation that says this strap is not storing, which no retention window can explain.
 
 11. **What is the drain request's body, and does it take a window at all?** (§4) — **answered by
    three implemented clients and one captured frame, and applied.** The body is a single `00` on both
-   generations: noop's `BLEManager` sends `payload: [0x00]`, OpenStrap's `research_playground.py`
+   generations: the community reference's `BLEManager` sends `payload: [0x00]`, the research reference's `research_playground.py`
    builds `b"\x00"`, and that file carries the captured vector `aa0800a823041600c7c25288` annotated
-   `0x16 [00]` — corroborated by noop's own doc. This app's eight-byte `[u32 start][u32 end]` window
+   `0x16 [00]` — corroborated by the community reference's own doc. This app's eight-byte `[u32 start][u32 end]` window
    has been corrected to the bare byte at both builders and at §16. **What the capture still adds is
    confirmation on this project's own hardware**, since no implementation here has been run against a
    strap: one drain, and the question is only whether records arrive. Two sub-questions come free with
-   the same drain, because noop's own 4.0 row is odd in both respects: it calls the delivery
+   the same drain, because the community reference's own 4.0 row is odd in both respects: it calls the delivery
    **type-47** where this document calls the 4.0 record `0x2F` type **24**, and its status is observed
    (`O / U`) rather than documented. Record the type byte of the first record to come back — that
    answers which is which for this strap, per strap.
 12. **What does the 4.0's `0x6B` do — and is it the optical enable or a state read?** (§3, §5) —
    **the two references' *documents* disagree; their code does not, so what is left is a question
-   about the byte's effect rather than its name.** OpenStrap reads 107 as `ENABLE_OPTICAL_DATA`,
-   "wrist-gated optical (**the HR source**)", and builds its live example on it. noop's 4.0 column
+   about the byte's effect rather than its name.** The research reference reads 107 as `ENABLE_OPTICAL_DATA`,
+   "wrist-gated optical (**the HR source**)", and builds its live example on it. The community reference's 4.0 column
    reads the same byte as `GET_IMU_DATA_STREAM` — body `[01]`, "Returns the stored IMU data-stream
    state" — and its 107 row warns that *"The WHOOP 5/MG identifier `ENABLE_OPTICAL_DATA` does not
-   describe this WHOOP 4 operation."* **But noop's own enum names the byte `enableOpticalData` and
+   describe this WHOOP 4 operation."* **But the community reference's own enum names the byte `enableOpticalData` and
    no call site sends it**, so the read reading rests on the doc alone (§3's note has the sites),
-   and the byte is sent as OpenStrap's two-byte `[01, 01]` — an enable under one reading, a `[01]`
+   and the byte is sent as the research reference's two-byte `[01, 01]` — an enable under one reading, a `[01]`
    read with a trailing byte under the other, harmless either way. **The capture is cheap and needs
    no drain:** write `0x6B` with `[01, 01]` on a connected 4.0 and read the reply — a state byte or
    a stream coming up are different answers — then confirm whether live HR responds at all, since
@@ -1688,175 +1698,32 @@ rather than the samples.
 
 ## Sources
 
-* **OpenStrap/research** — WHOOP 4.0 BLE protocol reference (`PROTOCOL.md`, 263 lines) plus a
-  2,271-line reference client (`research_playground.py`, whose `sync` drains the historical flash
-  and whose `build_batch_ack` is the ACK). Covers the 4.0 envelope, the type-24 record header, the
-  `0x2F`/`0x31` types, the ACK/token loop, the full command enum and the session-init sequence.
-  **Its evidence base is stronger than its README suggests, and the two disagree**: the README's
-  summary says the record past the header is "fingerprinted but unconfirmed", while `PROTOCOL.md` §5
-  documents it as validated by **per-byte variance analysis across 811 real records** (550 golden
-  capture + 261 R2 spanning 113 h), cross-checked against two independent decoders — and it is that
-  section which marks `[7:11]`, `[11:13]`, `[17]` and `[18]`/`[19:19+2n]` **verified**. Read
-  `PROTOCOL.md`, not the README, when judging a field's confidence. Two of its rejections matter
-  here: the `[76]` "respiration" and `[78]` "signal quality" fields are **bit-constant** across all
-  811 records and are fixed trailer bytes, and the README is explicit that **everything was tested
-  on a WHOOP 4.0 and nothing else**. It is also the source of §6's 4.0 rows — the live IMU opcodes
-  and record types, and the statement that **raw R10/R21 are live-stream only** while the flash
-  holds type-24 — and of the `[52:64]` byte-identical-mirror claim §4 now carries as a named
-  duplicate triplet. Note that this source reports **no gyroscope offset anywhere**, and that an
-  absence of evidence in a reference that did not go looking for one is not evidence of absence: the
-  noop schema below publishes the offsets and the calibrated scale.
-  <https://github.com/OpenStrap/research> · `PROTOCOL.md` §4–§5 are the load-bearing sections.
-* **OpenStrap/edge** — the sibling project, and **the closest thing in the ecosystem to this app**:
-  a Flutter client for **iOS and Android** under MIT, which pairs over BLE and drains history from
-  **4.0, 5.0 and MG** alike, shipped to real users as a public iOS TestFlight beta and an Android
-  APK. It is cited here for one thing this document cannot get from a reference: it is a
-  **third-party iOS client that actually syncs a strap**, which is the existence proof that the
-  target of this document is reachable from this platform at all. Three of its findings are load
-  bearing. It states that **Bluetooth lets only one app own the band at a time** and instructs users
-  to stop the official WHOOP app first — the same single-bond constraint noop reports, arrived at
-  independently. Its `SET_CLOCK` notes carry the payload-length warning §3 now documents, marked
-  hardware-verified, including the specific failure where a wrong-length set is **acknowledged but
-  not latched**, leaving the RTC "lost" so records come back dated to 1971. And it is the source of
-  the platform asymmetry a sync design has to plan around: **Apple gives third-party apps no real
-  background-service option**, so iOS background sync is best-effort and OS-scheduled, while Android
-  has no equivalent limit — which is the reason a drain on iOS is a foreground activity rather than
-  something the app can promise to do unattended. Its own README labels its metrics approximations
-  from published research and explicitly not medical-grade.
-  <https://github.com/OpenStrap/edge>
-* **noop `docs/PROTOCOL.md`** — the hub of a reference that **is reachable**. The repository is **`ryanbr/noop`**, whose `docs/` tree carries
-  `PROTOCOL.md`, `PROTOCOL_SENSORS.md`, `PROTOCOL_COMMANDS.md`, `PROTOCOL_WHOOP5.md`,
-  `PROTOCOL_CONCEPTS.md`, `PROTOCOL_TRANSPORT.md`, `PROTOCOL_CONFIGURATION.md` and
-  `WHOOP5_DEEP_DATA.md` alongside the Swift
-  protocol package. **`PROTOCOL_COMMANDS.md` is the canonical command matrix and the one to read a
-  name out of**: it enumerates every ID once with a **WHOOP 4 column beside a WHOOP 5/MG column**,
-  so it is the page that shows where the two generations name one byte differently — which is §3's
-  naming note, and the reason a name taken from the wrong column is visible there and nowhere else.
-  `PROTOCOL_CONFIGURATION.md` carries the per-operation contracts behind those names. The pages
-  below are quoted from the upstream tree, and its lineage moved rather than disappeared: the
-  canonical `NoopApp/noop` is now a 404 (the README describes the project as deplatformed and meant
-  to be mirrored), the repo cited here is the live continuation, and a same-named third repo is an
-  unrelated near-empty stub — so **cite this one by its full path** rather than by the name.
+This document cites other projects by **role rather than by name**. Each role has one file under
+`docs/` holding that project's identity, its URLs, and verbatim excerpts of the pages this document
+leans on — so a citation below can be traced in full without this document repeating anyone's
+project name:
 
-  **This is the ecosystem's strongest evidence and it is stronger than "a reference".** noop is a
-  shipped product on three platforms — a Swift macOS app with an iOS build, a Kotlin Android app and
-  Python Linux capture tooling — with tens of thousands of downloads and a release history, and its
-  protocol core is **implemented rather than documented**: the historical flash drain (request, the
-  per-chunk persist → cursor → `HISTORICAL_DATA_RESULT` ACK loop, `HISTORY_START`/`END`/`COMPLETE`
-  handling) is real code and is **hardware-verified on WHOOP 4.0**, with its changelog recording a
-  live run of 0 → 246 `HISTORICAL_DATA` frames. So where this document says a protocol detail is
-  "reported", read that as *reported by a client that runs*, not as *described by someone who read
-  about it*. Two caveats keep it honest: the project's own status notes say **iOS live BLE is still
-  being validated** and that no captured 5/MG `HISTORY_END` frame exists in-repo, and its 5/MG
-  deep-biometric decode is documented-only. Its licence is source-available and **noncommercial**,
-  deliberately not OSI — protocol facts are not copyrightable but its code is, so anything borrowed
-  from it must be reimplemented rather than copied.
+| Role | Where it lives |
+| :--- | :--- |
+| **the community reference** — the multi-platform client whose protocol, sensor and command documents §3's command matrix, §4's drain and §6's Gen 5 layouts come from | [`docs/noop/BLE_PROTOCOL.md`](noop/BLE_PROTOCOL.md) |
+| **the research reference** — a 4.0 `PROTOCOL.md`, a 5.0/MG `PROTOCOL-GEN5.md`, and the sibling iOS client that actually syncs a strap | [`docs/OpenStrap/BLE_PROTOCOL.md`](OpenStrap/BLE_PROTOCOL.md) |
+| **the APK reading** — a third independent reading, from WHOOP Android decompilation | [`docs/dofek/BLE_PROTOCOL.md`](dofek/BLE_PROTOCOL.md) |
+| **the Swift 4.0 client** — the source of the 15 s silent-stream window | [`docs/Asherlc/BLE_PROTOCOL.md`](Asherlc/BLE_PROTOCOL.md) |
 
-  Read this one for the envelope split and for the compatibility rule that
-  governs everything else in this document: **"WHOOP 5 historical data is not a WHOOP 4 layout with
-  shifted offsets"**, and "a shared command name does not establish the same request or response
-  bytes." It is also the source of §2's second column being written in **decimal**, which is the
-  whole of the radix problem §2 records.
-  <https://github.com/ryanbr/noop> · `PROTOCOL.md` is the hub and `PROTOCOL_CONCEPTS.md` carries the
-  CRC parameters and the durable-save-before-ACK invariant.
-* **noop `docs/PROTOCOL_SENSORS.md` — the 5.0/MG sensor-record reference, and the source of §6's
-  producer 3.** It names the record layouts `R16` / `R17` / `R18` / `R20` / `R21` / `R26`, gives each
-  a fixed byte length (`R18` 124, `R21` 1,244, `R20` 2,140), and publishes the `R21` six-axis IMU
-  layout — its columnar `i16` arrangement, its per-axis offsets and both of its scales. Decisively,
-  it states that **layout 21 is carried by live packet 43 *and* historical packet 47**, which is what
-  reverses this document's old "no live raw-IMU stream" finding. It is also where the namespace rule
-  comes from: packet number, record layout, command number and event number are separate namespaces,
-  and unmapped fields "must remain opaque, not silently converted to zero measurements."
-  <https://github.com/ryanbr/noop/blob/main/docs/PROTOCOL_SENSORS.md> · the `R21` section and the
-  type-43/47 carriage statement are the load-bearing parts.
-* **noop's Swift IMU decoder, in the same repository** — the `R21` layout translated into code, and
-  the closest thing to a third check on it. Two things about it matter here. It gates on the exact
-  1,244-byte length **and on both in-packet sample counts being 100** rather than on the type byte, so
-  it cannot misfire on a same-type frame that is not an IMU buffer — the shape a motion decoder in
-  this app should copy. And its header records hardware validation on **1,423 buffers from a real 5.0
-  (firmware 50.40.1.0)**: the accelerometer magnitude is a 1.01 g gravity shell, 100% of samples
-  within ±15% of the median at **4,117 ± 11 LSB** across 200 s, while the gyro sits near zero at rest
-  and correlates 0.79 with accelerometer motion. **That LSB figure is the measurement that settles
-  this document's ±4 g question**: 4,117 LSB at 1 g is `1/4096` g/LSB, and a ±4 g full scale would
-  put gravity at 0.50 g.
-  <https://github.com/ryanbr/noop> ·
-  `Packages/WhoopProtocol/Sources/WhoopProtocol/Whoop5RawImu.swift`.
-* **noop's protocol schema and decoder, in the same repository** — and this is the part of that
-  project this document leans on hardest, because it is machine-readable rather than prose. A JSON
-  schema keys `HISTORICAL_DATA` on its **version byte** (versions `24` / `12` / `5` / `7` / `9`) and
-  gives its fields at frame-absolute offsets — which is where §4's answer to Q3 comes from — and it
-  carries two length-keyed `REALTIME_RAW_DATA` variants: **1917 B** as a 6-axis IMU buffer with
-  **100 samples per axis**, the accelerometer at frame `89` / `289` / `489` at `0.000244140625`
-  g/LSB and the **gyroscope at `692` / `892` / `1092` at `0.06103515625` deg/s/LSB (±2000 dps)**,
-  and **1921 B** as an optical buffer. Its IMU scales are annotated as verified against a motion-
-  capture reference and a controlled 720° rotation on generation-4 hardware, which is the strongest
-  evidence in this document for any **position on the strap's own axes**, and the source of §6's 4.0
-  gyroscope row. Its `HISTORICAL_DATA` decoder reads the record's unix stamp first and comments that
-  there is **no wall-clock offset** to apply. **Its envelope is the 4.0's** — `SOF` at 0, two-byte
-  `length` at 1, `crc8` at 3, `packet_type` at 4, `seq` at 5 — so its `24` / `12` / `5` / `7` / `9`
-  vocabulary is 4.0-enveloped, and §2 does not attribute it to a 5.0 schema. The 5.0/MG record set
-  is `PROTOCOL_SENSORS.md` above, which is where the `R`-number layouts and §6's producer 3 come
-  from. <https://github.com/ryanbr/noop> · the schema is
-  `Packages/WhoopProtocol/Sources/WhoopProtocol/Resources/whoop_protocol.json`.
-* **noop's deep-data page (`WHOOP5_DEEP_DATA.md`)** — reachable at the upstream tree above. Two things in it matter. It states the 5.0/MG motion carriage plainly — "**the
-  large records are no longer an undifferentiated type-`0x2F` blob**. Layout v21 (1,244 bytes)
-  contains six-axis IMU data; layout v20 (2,140 bytes) contains five repeated measurement blocks
-  whose producer is optical" — so the two lengths §6 carried on its authority are **confirmed here
-  independently of the sensor reference** — and it records the enable sequence §6 now quotes:
-  "command 81 followed by command 106 with `[1,1]`; stop uses command 82 followed by command 106
-  with `[1,0]`", with the caution that requests, effective collection state and packet delivery are
-  separate things. **What it does not say is that the 5/MG has no live raw-IMU stream.** Nothing in
-  it supports the claim this document attributed to it, and two other sources contradict it. The
-  residue that remains genuinely unverifiable from here is only the feature extractor
-  (`accelEnergyG`, `gyroEnergyDps`, `jerkRms`, `cadenceHz`, `cadenceStrength`), whose offsets are
-  still unpublished — and §6 does not rest on it. Worth noting for method, since it is stronger than
-  a capture alone: the page correlates captured frames against the tester's own **WHOOP data
-  export** to pin an offset by known plaintext, and runs locally so that only offsets and encodings
-  ever leave the machine. It also keeps raw buffers aside so a byte-exact decoder can be reversed
-  offline — capture first, decode after, which is this document's own ordering.
-  <https://github.com/ryanbr/noop/blob/main/docs/WHOOP5_DEEP_DATA.md>
-* **Asherlc/dofek `docs/whoop-ble-protocol.md`** — a third independent reading, from APK
-  decompilation of WHOOP Android v5.439.0 plus PacketLogger captures and live probing, and **the
-  source of §2.1's second worked 5.0 frame**. It corroborates §6's `R21` layout **independently of
-  noop**: its table lists the same eight fields, at the same frame-absolute offsets once its 8-byte
-  envelope is added, and it states the range in as many words — "±8g (1g ≈ 4096 LSB)". It also names
-  packet `0x2B` / 43 `REALTIME_RAW_DATA` with the "Maverick R21 format" behind it, which is a third
-  independent statement that layout 21 rides a **live** packet. Two of its claims are recorded here
-  without being adopted, because each needs a capture to settle. It describes the `0x2B` flow as
-  needing no toggle, which is true only when piggybacking on a session the WHOOP app has already
-  configured (§6). And it states that **the strap requires BLE bonding before accepting any
-  commands**, with unbonded writes answered by `PUFFIN_COMMAND_RESPONSE` and error `0x049c` — which,
-  if it holds, is a precondition this app does not currently satisfy and would have to before any
-  command path is worth building. Note that the standard SIG services are separately reported to work
-  **unbonded**, so the two claims are consistent and describe different paths: `0x2A37` is why this
-  app's live heart rate works at all, and the custom command characteristic is a different question.
+A role name is not a claim about quality. Where two references disagree this document says so and
+carries both readings, and **a figure two projects repeat from each other is not two pieces of
+evidence** — §7 is the list of what a capture would settle. **That rule has already caught one here:
+the 4.0 client this document used to carry as a third, independent source turned out to be the research
+reference under its former repository name** — GitHub redirects the old path to the new one and the two
+share a repository id — so it is one project agreeing with itself, and it is now cited once, under the
+research reference.
 
-  **Two limits on that claim, and both matter.** It is **single-sourced**: a public code search finds
-  `0x049c` in this project's docs and nowhere else in the ecosystem, so it is one unreplicated report
-  rather than a settled fact — and it is not a standard ATT code, being an application-level error in
-  the Puffin payload, so it cannot be checked against a spec. And its **bonded iOS evidence is
-  piggybacking, not bonding**: the successful path it reports is
-  `retrieveConnectedPeripherals(withServices:)` **reusing the bond the official WHOOP app already
-  established**, which is a different claim from a third-party app creating one. Read together with
-  noop's own just-works bond — which ships on macOS **and** iOS — and the fact that Apple exposes no
-  bond state at all (§7 Q6), the honest status for a third-party iOS client is that it **can** bond,
-  but Apple cannot tell it whether it already has.
-  <https://github.com/Asherlc/dofek/blob/main/docs/whoop-ble-protocol.md>
 * **ITF Player Analysis Technology approval report PAT 25-025, for the WHOOP 5.0 and MG** — the
   `[filed]` source for the 5.0/MG sensor suite, including the "3-axis accelerometer and gyroscope"
   that §6's 5.0/MG hardware row rests on. Read it for what it is: a filing establishes **which sensors
   exist**, because the sensor list is the filing's subject and it is made under a duty of accuracy —
   and it says nothing whatever about the wire format.
   <https://www.itftennis.com/media/15583/whoop-pat-approval-report-pat-25-025.pdf>
-* **abdulsaheel/whoopsie** — a second WHOOP 4.0 client, read here only for corroboration, and it
-  corroborates two things §4 already carries: that the strap's clock **ships unset**, so a session
-  that skips setting it stamps garbage times, and that history transfers in batches requiring an exact
-  8-byte token echoed back. It adds one ordering §4 does not record — the local save must complete
-  **before** the acknowledgement is sent, or a crash mid-drain loses records the strap believes were
-  delivered. Its README defers record layouts to a separate repository, so the widely-quoted
-  1928-byte / 100 Hz figures reach this document second-hand and are not what §6 relies on — the
-  length and the rate there come from the noop schema above, which publishes the layout behind them.
-  <https://github.com/abdulsaheel/whoopsie>
 
 None of these has been reproduced against this project's hardware. §7 is the list of what would
 replace them.

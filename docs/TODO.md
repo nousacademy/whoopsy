@@ -4,6 +4,12 @@ The bundled WHOOP export is four files. **Three of them are read** — `physiolo
 full, `sleeps.csv` for its eight nap rows alone, and `workouts.csv` for the 673 workouts. This file
 is the inventory of what each column is worth and what it would take to use the rest.
 
+> **Sources.** Other people's reverse-engineering is cited here by **role**, never by project
+> name — the community reference, the research reference, the APK reading and the Swift 4.0
+> client. Each role resolves to one file under `docs/<project>/`
+> holding that project's identity, URLs and verbatim excerpts; the table is
+> [`docs/BLE_PROTOCOL.md` § Sources](BLE_PROTOCOL.md#sources).
+
 **Three sections at the end are not a column inventory** — §5, the strap's own historical sync, which
 is a wire-protocol task rather than an export one, §6, the walk to run on a sideloaded build, which
 is a device task rather than an export one, and **§7, the flash recorder and the step counter**, added
@@ -350,7 +356,7 @@ reboot, a 15-minute disconnected wear and a hard Bluetooth-off window — return
 evidence of a small cache, and a capacity test against a non-appending archive measures nothing.
 
 **Ask the strap before spending a night.** `0x22 GET_DATA_RANGE` now decodes its 65-byte reply and
-logs the **write page** and **acknowledged page** (`WhoopDataRange`; the layout is noop's #689
+logs the **write page** and **acknowledged page** (`WhoopDataRange`; the layout is the community reference's #689
 diagnostic, reported and unconfirmed on 5.0/MG, and it gates nothing). Run one drain and record the
 write page, then run another after a disconnected wear. **Write page unchanged** means nothing was
 written, and capacity is moot. **Write page moved with a backlog** means records exist and the drain's
@@ -363,7 +369,7 @@ claims, not this unit's behaviour. `docs/BLE_PROTOCOL.md` §4 and §7 Q10 carry 
 **The ACK and cadence are part of the mechanism.** `HISTORY_END` carries an eight-byte block whose
 first `u32` is the trim cursor; `0x17` is `[0x01] + those exact eight bytes`, written only after the
 records are stored, and it may release the strap's history. This app now writes that ACK confirmed
-and preserves the token. noop re-offloads the type-47 store **every ~15 minutes while connected**, so
+and preserves the token. The community reference re-offloads the type-47 store **every ~15 minutes while connected**, so
 if the write page moves during a session, one drain per connection is too rare.
 
 #### Test A — does the write page move? (minutes, no night needed)
@@ -387,7 +393,7 @@ Bluetooth on; force-quitting the app is what releases the strap.
 | **write moved**, acked caught up | It wrote and the app already drained it | Working; go to Test B for capacity |
 | No `Data range:` line | `GET_DATA_RANGE` is unanswered on this firmware | Fall back to Test B; the query is a lead, not a required path |
 
-**Two cautions.** The 65-byte layout is noop's unconfirmed 5.0 diagnostic: a nonsensical number means
+**Two cautions.** The 65-byte layout is the community reference's unconfirmed 5.0 diagnostic: a nonsensical number means
 the layout is wrong for this firmware, not that the strap is broken. And **never send `FORCE_TRIM`
 (`0x19`)** — it is the command that wiped five hours in the 4.0 investigation.
 
@@ -424,7 +430,7 @@ strap keeps recording heart rate and R-R regardless. Test A distinguishes those 
 in this app can verify the account's side, so record it as a hypothesis, not a cause, until the same
 test runs on a strap with an active membership.
 
-**Firmware is the other variable.** noop's 5.0/MG baseline is `50.42.1.0`; record this strap's DIS
+**Firmware is the other variable.** The community reference's 5.0/MG baseline is `50.42.1.0`; record this strap's DIS
 `2A26` reading beside the result. A write-page result from one firmware is not a statement about
 another.
 
@@ -488,7 +494,7 @@ packet-type numberings.
   second of wear, with a **96-byte header** carrying a u32 UNIX timestamp at `[7:11]` and
   sub-seconds at `[11:13]`. Heart rate is at `[17]`, R-R intervals at `[18:19+2n]`. Marked verified
   by the source, and tested by it on 4.0 only. **A second, independent parser now corroborates the
-  same map at a measured scale**: OpenStrap's `parse_r24` reads these fields at these offsets and
+  same map at a measured scale**: the research reference's `parse_r24` reads these fields at these offsets and
   reports them "verified on **127,971 of our own stored records** and cross-checked against an
   independent implementation", with the heart rate matching the live stream within a beat — and it
   supplies the **minimum inner length of 89 bytes** a decoder needs as a guard. So the map below has
@@ -572,7 +578,7 @@ packet-type numberings.
   would confirm it.
 - [ ] **The clock that stamps those records is still unverified, and a strap that has been flat gives
   every record a silent offset — this is a hardware check, not a code change.** The strap's RTC is set
-  by `0x0A SET_CLOCK`, and the reference's event enum has **type 13 `RTC_LOST`, "battery fully died
+  by `0x0A SET_CLOCK`, and the community reference's event enum has **type 13 `RTC_LOST`, "battery fully died
   (clock reset)"**, so on a strap that has been flat every drained record is wrong by an unknown
   offset with nothing in the record to show it, and the failure files history onto a **wrong day**
   rather than onto no day. **This app sends the clock set as a prerequisite** —
@@ -580,7 +586,7 @@ packet-type numberings.
   command-10 form, because a wrong-length set is acknowledged but not latched — every drain on both
   generations, and the 5.0/MG's connect pass opens with it. **Sending it is not the same as its having
   latched.** The read-back is command 11 on both generations, it is sent, and nothing here decodes the
-  reply (the reference parses none either); the reply is logged raw. So check a drained record's unix
+  reply (the community reference parses none either); the reply is logged raw. So check a drained record's unix
   field against wall time on each of the three straps before trusting it — `[4]` of either heart-rate
   record's payload — and do not treat a clock set having been written as evidence about it
 - [ ] **The window asked for is one day, not fourteen.** `SyncHistoricalDataUseCase` starts from
@@ -680,11 +686,29 @@ or to a file rather than to `.info`.
   `spo2_pct` and documented in `docs/BLE_PROTOCOL.md` §4. `Spo2CandidateProbe` classifies every
   drained record into 70–100 / bit-7 sentinel / sub-70 diagnostic / absent, and
   `Spo2CandidateAccumulator` emits at most three raw lines and one summary per drain to `.notice`
-  and `Documents/spo2-candidate.txt`. **It writes no row and no screen value**, because the
+  and `Documents/spo2-candidate.txt`. **`capture.txt` also opens with an `APP_START` line** carrying the bundle version, the debug
+  dylib's byte size and its **Mach-O `LC_UUID`** — added 2026-10-26 after two rounds of diagnosis
+  chased a symptom that was really a stale bundle on the phone. Modification times were tried first
+  and are useless: a sideloaded bundle carries the zip epoch, so every build claims 1979, and
+  Sideloadly's re-signing changes the byte size too. The UUID is the linker's and survives both. A
+  capture whose UUID does not match the IPA just installed is a capture of the wrong build. **It writes no row and no screen value**, because the
   validation contradicts itself: +0.99 against the app over eight nights on one strap, the opposite
   direction on another. Promotion needs **≥2 devices × ≥5 paired nights, r ≥ 0.7, MAE ≤ 1.0**, with
   byte 82 still winning the 74–92 offset scan. The 4.0 has no path: raw red/IR scalars, no waveform,
   no calibration
+
+- [ ] **The candidate populated on every night, and only in sleep.** Across five consecutive nights on
+      this unit, in-band values appeared **only on records the strap itself marked asleep** — nightly
+      means clustered in the 95–96 band and minima in the low 70s–high 80s, with the bit-7 sentinel and
+      the sub-70 diagnostic code both present and both excluded from the mean. That is the strongest
+      evidence yet that payload `[71]` is a genuine strap-computed percentage rather than a neighbour
+      correlated by coincidence — but it is one device, and the existing promotion gate is unchanged:
+      **≥2 devices × ≥5 paired nights against a reference oximeter, r ≥ 0.7, MAE ≤ 1.0**, byte 82 still
+      winning the 74–92 scan. The MG gives the second device; a fingertip oximeter supplies the
+      reference.
+      **A nightly minimum is not the minimum of the minute**: one 80 stands in a window whose mean is
+      96, and a single low sample is the shape an artifact has. Whatever ships must state which
+      statistic it draws — a 5th percentile or a sustained-run rule — rather than printing the raw low.
 - [ ] **Still zero network, and this does not change that.** The file is written into the app's own
   sandbox and read by whoever is holding the phone. The repository's guarantee — no `URLSession`, no
   HTTP client, no third-party SDK — is untouched by any of it
@@ -796,9 +820,9 @@ Two bugs in the drain were found on the owner's 5.0, both in `HistoricalDrainSes
 
 - **The continuation token was read four bytes early on the 5.0.** `HISTORY_END`'s token is at
   **payload 10** — frame 17 on the 4.0 (`inner[13:21]`) and frame **21** on the 5.0
-  (`data[10:18]`, NOOP's hardware-verified trim). This app read payload 6, so the strap accepted the
+  (`data[10:18]`, the community reference's hardware-verified trim). This app read payload 6, so the strap accepted the
   ACKed write and never advanced its trim: every drain replayed the same two August batches forever —
-  10,041 ticks at `12:51:13` and 10,222 at `12:57:42`, identical across connections. NOOP calls the
+  10,041 ticks at `12:51:13` and 10,222 at `12:57:42`, identical across connections. The community reference calls the
   symptom the "Groundhog Day bug".
 - **The live-edge test read the marker and not the records.** `HISTORY_END`'s head is the *drain's*
   clock (the phone's wall time), not the buffer's; the records it closed were two months old. The
@@ -814,7 +838,7 @@ that same sync replayed the two batches.
 Also settled in this session:
 
 - **The R18 counter decodes on real hardware**: `value=10041 class=0 source=hardware at
-  2026-08-24 12:51:13`. NOOP's offsets are validated; the field is real.
+  2026-08-24 12:51:13`. The community reference's offsets are validated; the field is real.
 - **The RTC is correct now** (`Motion record clock … drift -0.0 h`). The clock was never the current
   problem, and `SET_CLOCK` has latched at some point.
 - The counter ledger is persisted in `StepCounterStateStore` before its row, and writes are throttled
@@ -871,13 +895,22 @@ reset is a one-shot.
 **One test left, and everything else settled. Known unknowns — none of them blocking a ship — follow
 the closed list at the end of this section.**
 
-- [ ] **The one test left: a night away from the phone, synced without a button.** Airplane mode on,
+- [x] **The night away from the phone, synced without a button — run 2026-10-26.** The strap was
+      worn overnight with the radio off; the drain that followed reported
+      `DRAIN_END started=2026-10-26T10:46:07Z records=32274 batches=545 oldest=2026-10-26T02:09:42Z
+      newest=2026-10-26T10:49:36Z repeats=0 trim=96861 reason=complete` — **8 h 40 m of history, 545
+      batches, every declared count matched, no re-sent batch, strap-confirmed ending.** One open
+      question is recorded below rather than folded in: the drain's oldest stamp is 02:09, about an
+      hour after the previous night's drain ended at 01:11, so either the app was foregrounded in
+      between (a drain of its own) or that hour was trimmed unread.
+
+      _The original wording of the test follows._ Airplane mode on,
       strap worn, sleep; in the morning airplane mode off, open the app, and there should be a
       `DRAIN_END` in `Documents/capture.txt` that nobody asked for, with a `first` stamp from the night
       and a full night's records. That single line proves the whole chain in one go — the strap banking
       with no phone (measured at full rate on 2026-10-25), the foreground trigger firing where no
       reconnect happens (a phone connected all night never re-connects), the per-link state reset that
-      lets the connect pass re-run after a radio cycle (noop's `#2787`), the retry for a strap that
+      lets the connect pass re-run after a radio cycle (the community reference's `#2787`), the retry for a strap that
       answers nothing, and the strain refresh fed from the drained range. **Everything below this item
       is closed**; this is the last behaviour no capture has shown.
 - [x] **`0x9A` sent, and the first successful drain.** Done 2026-10-24; see above. The flag is still
@@ -1003,8 +1036,8 @@ the closed list at the end of this section.**
 
 **Known unknowns, none of them blocking a ship.**
 
-- **The Gen 5 burst count gate is read and logged, and not enforced.** [reported] The OpenStrap Gen 5
-      reference (`OpenStrap/research` PR #1, `PROTOCOL-GEN5.md` §8) puts `expected_count`, a u32 LE at
+- **The Gen 5 burst count gate is read and logged, and not enforced.** [reported] The research reference's own write-up
+      (`PROTOCOL-GEN5.md` §8) puts `expected_count`, a u32 LE at
       `inner[9]` — payload **6** here — in every `HISTORY_END`, and says a client must count **complete
       frames once each, for types 47, 48, 50, 53, 54 and 55 only** — not 49, not 51/52 — and that
       miscounting the membership makes the band **re-offer the same burst forever**. That is the Gen 5
@@ -1041,11 +1074,11 @@ the closed list at the end of this section.**
       log-only until a capture confirms the offsets — the same rule the oxygen candidate follows.
 - **`R26` has appeared and has no decoder.** The first one was read on 2026-10-26 —
       `layout=26 ... expected=8 counted=8 ... types=2F×1,30×1,31×2,32×6`, one record, an 88-byte
-      frame the Gen 5 reference calls the *Pulse Information Packet*. It is **counted** toward its
+      frame the research reference calls the *Pulse Information Packet*. It is **counted** toward its
       burst and **not decoded**, and it is **not allowed to be the clock**: its field at payload 4 is an
       event time, and reading it as a 1 Hz stamp made the stall guard log a stall on a drain that was
       advancing. `HistoricalDrainSession.timestampedLayouts` is that gate now (18/21/24). Whether
-      anything in it is worth storing is open — the reference documents the frame as pulse
+      anything in it is worth storing is open — the community reference documents the frame as pulse
       information, and nothing here has looked inside one yet.
 - **`0x22 GET_DATA_RANGE` is undecoded** — a `0x22`-bearing frame does exist, and it is not the documented one.
       Two captures are in hand, and both must be read narrowly. At 10:29:42 a
@@ -1053,7 +1086,7 @@ the closed list at the end of this section.**
       **first command response on the link**, `logClockReplyCandidate`'s `isFirstResponse` branch, not
       an answer to `0x22`. Then at **10:30:59** a frame arrives as
       **`type=0x28 seq=2 cmd=0x22 payload=C1 DC 6A C2 35 64 00 00 00 00 00 00 00 00 00 01 00`** — inner
-      byte `0x22`, **17 bytes**, so it is not noop's 65-byte layout either (which begins `0x01`), and
+      byte `0x22`, **17 bytes**, so it is not the community reference's 65-byte layout either (which begins `0x01`), and
       `WhoopDataRange.decode` refuses it on length, correctly. Two things are therefore still open: the
       app's own `commandResponse` type is `0x24`, so a type-`0x28` frame may be a metadata page rather
       than an answer at all; and its body's first four bytes read as a unix stamp roughly three minutes
@@ -1066,14 +1099,14 @@ the closed list at the end of this section.**
       flag is incidental.
 - **The automatic drain failed on some reconnects: cause identified and fixed, not yet re-observed.**
       At **08:47 and 09:00** on 2026-10-24 the app connected and nothing drained — no `Auto-sync`, no
-      `Drain: asked GET_DATA_RANGE` — while the 09:05 connection drained. The diagnosis is noop's
+      `Drain: asked GET_DATA_RANGE` — while the 09:05 connection drained. The diagnosis is the community reference's
       `#2787`, reported the same week: a radio power-off delivers no `didDisconnectPeripheral`, so the
       per-link flags survive and `hasSentConnectCommands` stays true — discovery then skips the connect
       pass and the strap gets no `SET_CLOCK`, no `GET_DATA_RANGE` and no history request while the screen
       says *connected*. **Fixed on 2026-10-25** by resetting the link state and re-discovering services
       when the radio returns with the strap still attached; the overnight test above is what re-observes
       it.
-- **The battery cost of the flag is unmeasured** — watch it. The reference warns the optical engine can stay running
+- **The battery cost of the flag is unmeasured** — watch it. The research reference warns the optical engine can stay running
       across reboots. Compare the hourly drain against the pre-toggle rate; `REVERT` is the undo and
       `REBOOT STRAP` is the recovery if the engine stays on.
 
@@ -1113,7 +1146,7 @@ outstanding wording fix rather than a behaviour change.
       sources logged side by side before trusting either**, and compare each against the phone, not
       against `2k per mile`.
 - [ ] **Fit `stepTicksPerStep` only from a capture.** The counter is counted at **1 tick = 1 step**,
-      which is NOOP's default; a systematic factor from a real walk is the only justification for a
+      which is the community reference's default; a systematic factor from a real walk is the only justification for a
       divisor, and it should be a measured constant, not a slider guessed at.
 
 ### 7.5 Where the code lives, and how to re-run the gate

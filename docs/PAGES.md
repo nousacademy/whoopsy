@@ -5,6 +5,12 @@ behind them, the measurements that corrected them, and the traps a new screen mo
 hit. The full inventory is `CLAUDE.md`'s `## Pages`; the five screens whose shape has no such decision
 to record are listed below, each linked to the file that implements it.
 
+> **Sources.** Other people's reverse-engineering is cited here by **role**, never by project
+> name — the community reference, the research reference, the APK reading and the Swift 4.0
+> client. Each role resolves to one file under `docs/<project>/`
+> holding that project's identity, URLs and verbatim excerpts; the table is
+> [`docs/BLE_PROTOCOL.md` § Sources](BLE_PROTOCOL.md#sources).
+
 `CLAUDE.md` `## Pages` keeps the **map** — the three tables (tabs, More, reached-from-Home) and the
 grep-able decisions list. This file is the reasoning behind those rows.
 
@@ -227,7 +233,7 @@ build them.
 
 **ADVANCED gained a `NAME` row, and it is the one control on that page that changes the strap rather
 than this phone.** A strap named *"Alex WHOOP"* was named through the WHOOP app — not through GAP,
-whose `0x2A00` CoreBluetooth hides from every third-party app. The rename is [reported] noop's ID 140
+whose `0x2A00` CoreBluetooth hides from every third-party app. The rename is [reported] The community reference's ID 140
 on a 5.0/MG and ID 77 on a 4.0, with different bodies and the same 15-byte ceiling (clamped on a
 scalar boundary, so a multi-byte character is never cut in half). **The strap does not acknowledge the write** — though the write itself works: ID 140 was applied on
 2026-10-25 on the owner's 5.0 and the advertisement lagged it by a few minutes. So the row says
@@ -319,7 +325,7 @@ because the absence is the user's and not a measurement that failed to load.
 The device page's **ADVANCED** tab grew two buttons under `REBOOT STRAP` on 2026-10-24: `ENABLE
 PERSISTENT RECORDING` sends `0x9A TOGGLE_PERSISTENT_R21` with `[1, 1]`, and `REVERT PERSISTENT
 RECORDING` sends `[1, 0]`. It exists because the owner's flash recorder stopped writing history with a
-correct clock, a healthy link and no battery-related change, and this is the last lever NOOP's 5.0
+correct clock, a healthy link and no battery-related change, and this is the last lever the community reference's 5.0
 command table offers — the experiment is `docs/TODO.md` §7.2.
 
 **Two explicit actions rather than a switch, and that is the whole design of the control.** The strap

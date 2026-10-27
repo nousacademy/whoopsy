@@ -4,6 +4,13 @@ This document details the open mathematical models implemented in Whoopsy for co
 
 Two sections are exceptions to the rest, in opposite directions. §6 is the only model whose constant is **not** this app's own and is not fitted to anything this app can see — it is quoted from a published method and cited — and it is the only one whose output the screen labels as an **estimate** rather than a measurement. It also still records WHOOP's own three-tier model and why none of that is implemented. §7 is the reverse case: WHOOP publishes no step model at all, so there is nothing to cite and nothing to fit against, and its two fitted constants are stated as this app's own calibration.
 
+> **Sources.** Other people's reverse-engineering is cited here by **role**, never by project
+> name — the community reference, the research reference, the APK reading and the Swift 4.0
+> client. Each role resolves to one file under `docs/<project>/`
+> holding that project's identity, URLs and verbatim excerpts; the table is
+> [`docs/BLE_PROTOCOL.md` § Sources](BLE_PROTOCOL.md#sources). The step counter's material is
+> excerpted under [`docs/noop/ALGORITHMS.md`](noop/ALGORITHMS.md).
+
 Two sources feed these models, and the split matters because one of them carries a permission this
 app cannot verify. The **WHOOP strap** supplies high-frequency telemetry over BLE (heart rate, R-R
 intervals, accelerometer, skin temperature, SpO2) **and the step count** (§7), which is accumulated
@@ -715,6 +722,43 @@ A tier is computed from the **score**, so it is defined only for a measured day:
 ## 4. Sleep Staging & Sleep Need
 
 ### Sleep Staging (Actigraphy + HR Dips)
+
+**The stillness spine has two sources, and the second is not a relaxation of the first.** The
+sleep/wake decision rests on how *quiet* the accelerometer was per 30-second window — a motionless
+wrist still reads ≈1 g, because gravity is inside the magnitude. That signal arrives as `R21` motion
+records while a phone is connected, and **the strap banks no `R21` in flash** [measured 2026-10-26],
+so a phone-away night has no epoch from that path. `R18` body 24 carries mean acceleration X/Y/Z, and
+`SampleStillnessMath` folds the second-to-second change into the same 30-second windows on the same
+scale (`1 + mean |Δa|`, ≈1.0 at rest), so `motionQuietCeiling` (1.05) and `motionCeiling` (1.25)
+apply unchanged.
+
+**They are merged per window, because each describes the windows its producer covered and no more.**
+The two producers run on one grid (`MotionEpochGrid.index`), so the spine over a read window is
+`motion` where an `R21` epoch exists and `samples` everywhere else; `motion` wins an overlap because
+100 Hz per axis is stronger than one averaged vector per second. A night is refused only when
+**neither** source holds evidence — never because one of them covered only part of the window. The
+first version chose a single source for the whole night and was measured wrong on 2026-10-27: two
+evening hours of `R21` (all awake) suppressed thirteen hours of `R18` stillness and the night was
+refused. A night assembled from both records `sleeps.stillness_spine = merged`; see
+`docs/GOTCHAS.md` **"A stored night records the rule…"**.
+
+**What this was chosen over, and why neither substitute was needed.** Two alternatives were on the
+table before the `R18` field was found, and both are still what the community reference's open work
+proposes for straps that cannot get motion — see [`docs/noop/BLE_PROTOCOL.md`](noop/BLE_PROTOCOL.md)
+for its own words:
+
+- **Staging from heart rate when no motion exists.** Refused here, and it stays refused: a heart rate
+  cannot separate sleep from lying still awake, so an HR-only path turns a night that never happened
+  into a session. That is the same reason the stage bands were never allowed to decide onset.
+- **Opening a live IMU stream to get a spine.** Unnecessary once the record is banked: the gravity
+  triplet arrives with the heart rate, one vector a second, and the phone-away night is precisely the
+  case where a live stream would need a connection that is not there.
+- **Choosing one source for the whole night.** Tried, measured wrong on 2026-10-27, and replaced by
+  the per-window merge above.
+
+The limit that remains is granularity, not availability: one mean vector per second averages a
+movement inside the second before it can be seen, which is why the row records `samples` or `merged`
+rather than claiming a recorded night.
 
 This is the model for **strap-only** nights. It reads the accelerometer and heart-rate channels, so
 it is only as real as the R-R and accelerometer round-trip is — see the note below.
@@ -2204,7 +2248,7 @@ drain's `R21` motion and its `R18` counter describe the same span.
 
 ### The counter path (5.0/MG, from the drain)
 
-The field map is **NOOP's reverse-engineering, not this project's capture** — `R18` frame offset `57`
+The field map is **the community reference's reverse-engineering, not this project's capture** — `R18` frame offset `57`
 is a `u16` cumulative "selected step/motion counter", `63` the activity class (`0` still, `1` walk,
 `2` run), `61` the hardware counter while a software override is active, and `64` is `0x10` when that
 override is on. `docs/BLE_PROTOCOL.md` §6 carries the offsets and their provenance; no strap on this
@@ -2227,7 +2271,7 @@ Five rules sit in that expression, and each is a different way a difference is n
   class, only walk and run deltas count; a stream that never carries one falls back to counting every
   plausible delta, which is the legacy firmware's rule.
 - **The absolute guard.** `512` is the wrap/reboot boundary. A wrap is small (`65,535 → 2` is three
-  ticks); a reboot is not. NOOP drops the delta rather than crediting a capped 511.
+  ticks); a reboot is not. The community reference drops the delta rather than crediting a capped 511.
 - **The rate.** Four steps a second is 240 a minute, above a sprint. A 598-tick jump is a
   discontinuity whatever the class says.
 - **The source.** At `64 == 0x10` the value at `57` is the software count and the hardware pedometer
@@ -2240,7 +2284,7 @@ measured day of no walking — a real `0`, not a dash — while a gap earns no c
 why the accumulator returns both figures and why `measuredSeconds` is the absence gate every reader
 already uses.
 
-**The counter is counted as one tick per step, with no divisor.** NOOP offers a per-user
+**The counter is counted as one tick per step, with no divisor.** The community reference offers a per-user
 `stepTicksPerStep` because its own comment calls `@57` a motion-tick counter; its default is `1.0` and
 its changelog records the full-`u16` fix as the change that made the figure sane. This app has no
 capture to fit a divisor against, so it takes the default and says so. A scale invented here would be
@@ -2412,9 +2456,9 @@ all, the suite still asserts the arithmetic against synthetic waveforms with kno
 passing run is still not evidence that a real wrist's motion matches a pedometer**, so no screenshot
 should be offered as such.
 
-**The counter has never been read from a strap at all.** Its offsets are NOOP's finding, its two
+**The counter has never been read from a strap at all.** Its offsets are the community reference's finding, its two
 semantics (a motion-tick counter, and an activity class that is the strap's own guess) are unverified
-here, and its one-tick-per-step scale is NOOP's default rather than this app's fit. The one-shot
+here, and its one-tick-per-step scale is the community reference's default rather than this app's fit. The one-shot
 `step_counter` diagnostic records the first sample of a connection so a sideloaded run can show the
 bytes before anyone trusts the number. Until that runs, the honest summary is: the counter is the
 better source *if* the field is where the reference says it is, and the fallback detector is the one
