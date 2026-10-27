@@ -33,6 +33,17 @@ enum HeartRatePayloadDecoderTests {
             frame[frameOffset + 1] = UInt8(value >> 8)
         }
 
+        /// One `f32` little-endian at a **payload** offset, written in frame coordinates (payload 0 is
+        /// frame 11 under the 5.0 envelope).
+        func writeFloat32(_ frame: inout [UInt8], payloadOffset: Int, _ value: Float) {
+            let bits = value.bitPattern
+            let base = 11 + payloadOffset
+            frame[base] = UInt8(bits & 0xFF)
+            frame[base + 1] = UInt8((bits >> 8) & 0xFF)
+            frame[base + 2] = UInt8((bits >> 16) & 0xFF)
+            frame[base + 3] = UInt8((bits >> 24) & 0xFF)
+        }
+
         /// A type-47 record with the R18 layout selector, written in **frame** coordinates: the
         /// offsets are the reference's own, and the decoder is the only side that subtracts the
         /// 11-byte origin.
@@ -177,6 +188,47 @@ enum HeartRatePayloadDecoderTests {
                 .flatMap { HeartRatePayloadDecoder.decodeHistorical(frame: $0) } == nil,
             "An R21 IMU record is refused even when its payload is long enough to hold a heart-rate "
                 + "field: the layout selector, not the length, decides what a type-47 record is")
+
+        // MARK: R18's accelerometer — the stillness signal a night needs
+
+        /// The same record with mean acceleration X/Y/Z at body 24, which is payload 34.
+        func r18WithAcceleration(x: Float, y: Float, z: Float) -> BiometricSample? {
+            var frame = r18Frame(heartRate: 60, unix: 1_790_000_000, declaredIntervals: 0, ticks: [])
+            writeFloat32(&frame, payloadOffset: 34, x)
+            writeFloat32(&frame, payloadOffset: 38, y)
+            writeFloat32(&frame, payloadOffset: 42, z)
+            StepTests.sealFive(&frame)
+            return decoder.decodeProprietaryFrame(data: Data(frame), profile: .whoop5)
+                .flatMap { HeartRatePayloadDecoder.decodeHistorical(frame: $0) }
+        }
+
+        let still = r18WithAcceleration(x: 0.10, y: -0.20, z: 0.97)
+        // `Float` → `Double` widens the literal (0.1 becomes 0.10000000149…), so the axes are
+        // compared at the precision the field actually carries.
+        func near(_ value: Double?, _ expected: Double) -> Bool {
+            guard let value else { return false }
+            return abs(value - expected) < 1e-6
+        }
+        assertTest(
+            near(still?.accelerometerX, 0.10) && near(still?.accelerometerY, -0.20)
+                && near(still?.accelerometerZ, 0.97),
+            "R18 **body 24 is mean acceleration X/Y/Z**, three `f32` in g at payload 34 — read into "
+                + "the sample because the strap does not bank `R21` in flash, so this is the only "
+                + "stillness evidence a phone-away night carries "
+                + "(\(still?.accelerometerX ?? .nan), \(still?.accelerometerY ?? .nan), "
+                + "\(still?.accelerometerZ ?? .nan))")
+
+        let zeroAcceleration = r18WithAcceleration(x: 0, y: 0, z: 0)
+        assertTest(
+            zeroAcceleration?.accelerometerX == nil && zeroAcceleration?.accelerometerZ == nil,
+            "…and a magnitude outside 0.5–2 g is **refused**: an all-zero triplet is free fall, not a "
+                + "motionless wrist, and a fabricated zero would read as perfect stillness to every "
+                + "threshold in the sleep classifier")
+
+        let saturated = r18WithAcceleration(x: 0, y: 0, z: 9)
+        assertTest(
+            saturated?.accelerometerZ == nil,
+            "…as is a reading of 9 g, which no wrist under gravity produces")
 
         // MARK: The 4.0's type-24 record
 

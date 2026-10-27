@@ -280,6 +280,118 @@ enum SleepOnsetMathTests {
                 assertTest(false, "The no-motion fixtures threw: \(error)")
             }
 
+            // ── The night the phone was away for, after an evening it was not ────────────────────────
+            //
+            // **The overnight failure of 2026-10-26/27, as a fixture.** A phone connected for two
+            // evening hours records `R21` epochs and then leaves; the strap banks no `R21` at all, so
+            // the rest of the night exists only as `R18` samples. The first version of the sample
+            // spine was chosen for the *whole* window — samples only when no motion epoch existed
+            // anywhere — so those two evening hours silenced thirteen hours of the only stillness
+            // evidence there was, and the night was refused. The three cases below are the rule, its
+            // two sources, and the refusal that must survive them.
+            do {
+                let calendar = Calendar.current
+                let morning = calendar.startOfDay(for: Date())
+                let base = Self.nightBase(morning: morning, calendar: calendar)          // 21:00
+                let bedtime = base.addingTimeInterval(2 * 3_600)                         // 23:00
+
+                // One sample a second, the drain's own rate: moving (HR 80, a wrist that turns every
+                // second) until bedtime, then still (HR 45, a wrist that does not) until 07:00.
+                let samples: [BiometricSample] = (0..<(10 * 3_600)).map { second in
+                    let timestamp = base.addingTimeInterval(Double(second))
+                    let asleep = timestamp >= bedtime
+                    return BiometricSample(
+                        timestamp: timestamp,
+                        heartRate: asleep ? 45 : 80,
+                        accelerometerX: asleep ? 1.0 : (second.isMultiple(of: 2) ? 2.0 : 2.6),
+                        accelerometerY: 0,
+                        accelerometerZ: 0)
+                }
+
+                // `R21` exists for the two hours the phone was connected, and every epoch in it is
+                // awake — which is the trap: presence is not coverage.
+                let eveningEpochs = stride(from: 0.0, to: 2 * 3_600.0, by: 30.0).map { offset in
+                    MotionEpoch(
+                        start: base.addingTimeInterval(offset),
+                        end: base.addingTimeInterval(offset + 30),
+                        meanMagnitudeG: 1.5,
+                        maxMagnitudeG: 1.6,
+                        sampleCount: 3_000)
+                }
+
+                func classify(
+                    motion: FixtureMotionEpochRepository, samples: [BiometricSample]
+                ) async throws -> SleepSession? {
+                    let db = LocalDatabaseManager(inMemory: true)
+                    return try await AnalyzeSleepUseCase(
+                        biometricRepository: OvernightBiometricStore(samples: samples),
+                        sleepRepository: GRDBSleepRepository(db: db),
+                        strainRepository: GRDBStrainRepository(db: db),
+                        userProfileRepository: GRDBUserProfileRepository(db: db),
+                        motionRepository: motion
+                    ).execute(for: morning)
+                }
+
+                let eveningOnly = try await classify(
+                    motion: FixtureMotionEpochRepository(epochs: eveningEpochs), samples: samples)
+                assertTest(
+                    eveningOnly != nil,
+                    "A night whose phone was connected for two evening hours and away for the rest is "
+                        + "**found** — the evening's motion epochs describe the evening, not the night")
+                assertTest(
+                    abs((eveningOnly?.startTime.timeIntervalSince(bedtime) ?? -1)) < 60,
+                    "…and it begins where the wrist actually stopped moving, not at the motion "
+                        + "recorder's last epoch "
+                        + "(got \(eveningOnly.map { "\($0.startTime.timeIntervalSince(base))" } ?? "nil") s in)")
+                assertTest(
+                    eveningOnly?.stillnessSpine == .samples,
+                    "…and the row records `samples`: the night itself was carried by `R18`, and the "
+                        + "evening's `R21` epochs are not part of it "
+                        + "(got \(eveningOnly?.stillnessSpine?.rawValue ?? "nil"))")
+
+                // A night that really does straddle both: the phone stayed connected for the first
+                // four hours after bedtime, so those windows are `R21` and the rest are `R18`.
+                let firstHalf = stride(from: 2 * 3_600.0, to: 6 * 3_600.0, by: 30.0).map { offset in
+                    MotionEpoch(
+                        start: base.addingTimeInterval(offset),
+                        end: base.addingTimeInterval(offset + 30),
+                        meanMagnitudeG: 1.0,
+                        maxMagnitudeG: 1.1,
+                        sampleCount: 3_000)
+                }
+                let straddled = try await classify(
+                    motion: FixtureMotionEpochRepository(epochs: eveningEpochs + firstHalf),
+                    samples: samples)
+                assertTest(
+                    straddled?.stillnessSpine == .merged,
+                    "A night with `R21` windows inside it and `R18` windows beside them is `merged`, "
+                        + "which is the only spelling that tells a reader both sensors carried it "
+                        + "(got \(straddled?.stillnessSpine?.rawValue ?? "nil"))")
+
+                let away = try await classify(
+                    motion: FixtureMotionEpochRepository(epochs: []), samples: samples)
+                assertTest(
+                    away != nil && away?.stillnessSpine == .samples,
+                    "The same night with the phone away throughout is `samples`, and is still a night "
+                        + "— this is the case the sample spine was written for "
+                        + "(got \(away?.stillnessSpine?.rawValue ?? "nil"))")
+
+                // The refusal is unchanged: strip the accelerometer and the evening's motion epochs
+                // are all there is, so no run of stillness exists and nothing is written. If this
+                // ever returns a session, the merge has become "a heart rate is enough".
+                let heartRateOnly = try await classify(
+                    motion: FixtureMotionEpochRepository(epochs: eveningEpochs),
+                    samples: samples.map {
+                        BiometricSample(timestamp: $0.timestamp, heartRate: $0.heartRate)
+                    })
+                assertTest(
+                    heartRateOnly == nil,
+                    "…and a heart rate alone is still **not a night**, even when motion records exist "
+                        + "for part of the window: the merge adds evidence, it does not replace the rule")
+            } catch {
+                assertTest(false, "The phone-away fixtures threw: \(error)")
+            }
+
             // ── A window with no sustained run is absent, and writes nothing ─────────────────────────
             //
             // The user's ruling for the strap path: a night the classifier never saw a run in is

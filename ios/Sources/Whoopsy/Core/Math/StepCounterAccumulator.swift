@@ -122,6 +122,45 @@ public struct StepCounterAccumulator: Sendable {
     public var previousWasSoftware: Bool? { lastWasSoftware }
     public var hasSeenActivityClass: Bool { hasSeenClass }
 
+    /// How many seconds of movement history the gate looks back over.
+    ///
+    /// **A count of active seconds, not a mean.** A mean is the wrong statistic here and the first
+    /// version of this gate was wrong because of it: one roll in bed produces *two* large deltas —
+    /// out and back — which drag a five-second mean well past any threshold while describing half a
+    /// second of movement. Thirty seconds of history asks the right question: was this wrist moving
+    /// *persistently*, or once?
+    public static let movementWindow = 30
+
+    /// The fewest deltas the gate will judge on. Until this many exist it abstains and the class rule
+    /// decides — so a relaunch or the start of a drain is never gated on no history.
+    public static let minimumMovementSamples = 10
+
+    /// The `|Δa|`, in g, above which one second counts as *moved*.
+    ///
+    /// Above the stillness floor (`SampleStillnessMath.quietDeltaG`, 0.05) with margin, so a settling
+    /// wrist does not read as a step, and below the swing of an ordinary walk.
+    public static let activeDeltaG = 0.12
+
+    /// How many of the window's seconds must have moved before a locomotion class is believed.
+    ///
+    /// Ten of thirty: a walk moves nearly every second, a roll moves one or two. A night that accrued
+    /// 300 steps before its wearer stood up did so through rolls like that, and this is the count
+    /// they fail. **App-calibrated**, measured on 2026-10-26 and re-calibratable in one place.
+    public static let minimumActiveSeconds = 10
+
+    /// The longest gap across which two accelerometer readings may be differenced.
+    ///
+    /// Beyond it the pair does not describe one motion: a five-minute silence followed by a record is
+    /// not a five-minute movement, and averaging it would excuse the steps it spans.
+    public static let maximumMovementGapSeconds: Double = 5
+
+    /// The last accelerometer reading, for the next delta.
+    private var lastAcceleration: AccelerationVector?
+    private var lastAccelerationSeconds: Double?
+
+    /// The recent `|Δa|` values, oldest first, at most `movementWindow` long.
+    private var recentMovements: [Double] = []
+
     public init(
         previousCounter: UInt16? = nil,
         previousSeconds: Double? = nil,
@@ -132,6 +171,27 @@ public struct StepCounterAccumulator: Sendable {
         self.lastSeconds = previousSeconds
         self.lastWasSoftware = previousWasSoftware
         self.hasSeenClass = hasSeenClass
+    }
+
+    /// The movement delta for this record, and whether it is evidence at all.
+    ///
+    /// `allows` is false when either side of the difference is missing or the two are further apart
+    /// than `maximumMovementGapSeconds` — which is not "still", it is "unknown", and the caller
+    /// answers those differently.
+    private mutating func movementDelta(
+        _ acceleration: AccelerationVector?, at seconds: Double
+    ) -> (allows: Bool, delta: Double) {
+        defer {
+            if let acceleration { lastAcceleration = acceleration }
+            lastAccelerationSeconds = seconds
+        }
+        guard let acceleration,
+              let previous = lastAcceleration,
+              let previousSeconds = lastAccelerationSeconds
+        else { return (false, 0) }
+        let elapsed = seconds - previousSeconds
+        guard elapsed > 0, elapsed <= Self.maximumMovementGapSeconds else { return (false, 0) }
+        return (true, acceleration.delta(from: previous))
     }
 
     /// Accepts one record and reports what it contributed.
@@ -146,7 +206,8 @@ public struct StepCounterAccumulator: Sendable {
         counter: UInt16,
         seconds: Double,
         activityClass: UInt8?,
-        softwareOverride: Bool
+        softwareOverride: Bool,
+        acceleration: AccelerationVector? = nil
     ) -> Outcome {
         if activityClass != nil { hasSeenClass = true }
 
@@ -161,6 +222,12 @@ public struct StepCounterAccumulator: Sendable {
             lastWasSoftware = softwareOverride
             return .none
         }
+
+        // The stillness evidence is accumulated before any early return, so a dropped record still
+        // contributes to the movement history it is evidence of.
+        let movement = movementDelta(acceleration, at: seconds)
+        lastAcceleration = acceleration
+        lastAccelerationSeconds = seconds
 
         let elapsed = seconds - previousSeconds
         // A repeated or out-of-order record is dropped **without advancing the continuation**.
@@ -194,6 +261,33 @@ public struct StepCounterAccumulator: Sendable {
             guard let activityClass, Self.locomotionClasses.contains(activityClass) else {
                 return Outcome(countedTicks: 0, measuredSeconds: coverage, isCoverageInterval: true)
             }
+        }
+
+        // **The strap's class, cross-checked against the wrist's own accelerometer.** A locomotion
+        // class over a wrist that never left the bed is the defect this gate exists for — measured
+        // 2026-10-26, a morning showing 300+ steps before the wearer stood up. The class is the
+        // strap's opinion; this is the second opinion, from the field the same record carries.
+        //
+        // A record with no usable acceleration is **not** gated: the class rule stays the fallback,
+        // exactly as it is for a strap whose firmware classifies nothing. Silence is not evidence of
+        // stillness, and refusing steps on a missing field would turn a decode gap into a dead
+        // pedometer.
+        if movement.allows {
+            recentMovements.append(movement.delta)
+            if recentMovements.count > Self.movementWindow {
+                recentMovements.removeFirst(recentMovements.count - Self.movementWindow)
+            }
+            if recentMovements.count >= Self.minimumMovementSamples {
+                let active = recentMovements.filter { $0 > Self.activeDeltaG }.count
+                if active < Self.minimumActiveSeconds {
+                    return Outcome(
+                        countedTicks: 0, measuredSeconds: coverage, isCoverageInterval: true)
+                }
+            }
+        } else {
+            // No acceleration on this record: the history is not evidence about this interval, so it
+            // is cleared rather than reused across a gap.
+            recentMovements.removeAll()
         }
 
         return Outcome(countedTicks: delta, measuredSeconds: coverage, isCoverageInterval: true)

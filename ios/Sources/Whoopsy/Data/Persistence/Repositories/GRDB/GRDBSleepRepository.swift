@@ -47,6 +47,7 @@ public final class GRDBSleepRepository: SleepRepository, Sendable {
             // the data alone, which is the mistake `SleepSession.hasWhoopSleepNeed` exists to undo.
             sleepStages: session.sleepStages.isEmpty ? nil : session.sleepStages,
             source: source,
+            stillnessSpine: session.stillnessSpine?.rawValue,
             algorithm: session.algorithm?.rawValue,
             scoredThrough: session.scoredThrough
         )
@@ -86,6 +87,7 @@ public final class GRDBSleepRepository: SleepRepository, Sendable {
             // version from a build that no longer exists here — resolves to `nil`, which the page
             // treats as "no recorded version" and answers with one re-classification rather than
             // trusting a rule it cannot name.
+            stillnessSpine: SleepStillnessSpine(stored: record.stillnessSpine),
             algorithm: SleepAlgorithm(stored: record.algorithm),
             scoredThrough: record.scoredThrough
         )

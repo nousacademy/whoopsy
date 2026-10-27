@@ -46,15 +46,25 @@ public struct StepCounterSample: Sendable, Equatable {
     /// Whether byte 57 held the software counter rather than the hardware pedometer.
     public let counterIsSoftware: Bool
 
+    /// The record's mean acceleration, or `nil` when it carried none this build could trust.
+    ///
+    /// **Read by the step gate as a second opinion on the strap's own class.** A locomotion class
+    /// with a still wrist is the shape of the defect this field exists for: measured 2026-10-26, a
+    /// morning showed 300+ steps before the wearer left the bed, and the counter path was counting
+    /// because the *strap* called in-bed movement walking.
+    public let acceleration: AccelerationVector?
+
     public init(
         timestamp: Date,
         counter: UInt16,
         activityClass: UInt8?,
-        counterIsSoftware: Bool
+        counterIsSoftware: Bool,
+        acceleration: AccelerationVector? = nil
     ) {
         self.timestamp = timestamp
         self.counter = counter
         self.activityClass = activityClass
         self.counterIsSoftware = counterIsSoftware
+        self.acceleration = acceleration
     }
 }

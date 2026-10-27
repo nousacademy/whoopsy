@@ -126,10 +126,25 @@ public enum HeartRatePayloadDecoder {
             intervals.append(milliseconds(forTicks: ticks))
         }
 
+        // **The accelerometer, which the drain was throwing away.** R18 body 24 is three `f32` in
+        // g — mean acceleration X/Y/Z for that second — and it is the stillness signal the sleep
+        // classifier needs. The strap does *not* bank `R21` motion records in flash (measured
+        // 2026-10-26: every drained burst carried layouts 18 and 26, never 21), so a phone-away night
+        // had heart rate and no epoch at all while this field sat in every record read.
+        //
+        // Body 24 is payload 34: the body starts at payload 10, which is why the heart rate's body 1
+        // is read at payload 11. A magnitude outside 0.5–2 g is not a wrist under gravity and is
+        // refused rather than stored as a plausible-looking zero — the one wrong answer the
+        // stillness thresholds must never be handed.
+        let acceleration = Self.acceleration(inPayload: payload)
+
         return BiometricSample(
             timestamp: Date(timeIntervalSince1970: TimeInterval(unix)),
             heartRate: heartRate,
-            rrIntervalsMs: intervals.isEmpty ? nil : intervals)
+            rrIntervalsMs: intervals.isEmpty ? nil : intervals,
+            accelerometerX: acceleration?.x,
+            accelerometerY: acceleration?.y,
+            accelerometerZ: acceleration?.z)
     }
 
     // MARK: - Type 24 (4.0)
@@ -144,6 +159,37 @@ public enum HeartRatePayloadDecoder {
     /// **The sub-second field is deliberately not read.** It sits at payload 8 and no reference states
     /// its scale; the rest of the app keys samples on whole seconds, and a fabricated fraction is worse
     /// than whole-second precision.
+    /// The mean acceleration triplet `R18` body 24 carries — **the one reader both decoders use**.
+    ///
+    /// `HeartRatePayloadDecoder` puts it on the sample and `StepCounterPayloadDecoder` puts it on the
+    /// counter record; two copies of these offsets would be two chances to differ, and the step gate
+    /// and the sleep spine would then be reading different fields while both looked right.
+    ///
+    /// A magnitude outside **0.5–2 g** is refused: a wrist under gravity cannot leave that band, so
+    /// anything outside it is a misread rather than a still wearer. `0.0` in particular is free fall,
+    /// which would land on the *still* side of every threshold in this app.
+    public static func acceleration(inPayload payload: Data) -> AccelerationVector? {
+        guard let x = readFloat32(payload, at: 34),
+              let y = readFloat32(payload, at: 38),
+              let z = readFloat32(payload, at: 42)
+        else { return nil }
+        let vector = AccelerationVector(x: x, y: y, z: z)
+        guard vector.magnitude >= 0.5, vector.magnitude <= 2 else { return nil }
+        return vector
+    }
+
+    /// One `f32` little-endian, or `nil` for a field that is out of range or not finite.
+    ///
+    /// A bit-pattern read rather than a `Data` slice, so the offset is one number in the same
+    /// coordinate system as every other field this decoder reads.
+    private static func readFloat32(_ data: Data, at offset: Int) -> Double? {
+        guard offset >= 0, offset + 3 < data.count else { return nil }
+        let bits = readUInt32(data, at: offset)
+        let value = Float(bitPattern: bits)
+        guard value.isFinite else { return nil }
+        return Double(value)
+    }
+
     private static func decodeWhoop4Historical(frame: WhoopRawFrame) -> BiometricSample? {
         guard let profile = WhoopProtocolProfile.profile(for: frame.generation),
               frame.type == profile.packetTypes.historicalData,

@@ -66,6 +66,12 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
     /// row carries WHOOP's figures, not this app's provenance. `SleepRecord+SyncRow` passes `nil`.
     public let algorithm: String?
 
+    /// Which stillness source produced this night — `motion` or `samples`; see `SleepStillnessSpine`.
+    ///
+    /// Local-only for the same reason as `algorithm`: it describes evidence this app gathered. A row
+    /// written before `v38`, and every imported row, holds NULL.
+    public let stillnessSpine: String?
+
     /// The newest epoch or sample instant the classification included, or `nil` before `v37`.
     ///
     /// Local-only for the same reason as `algorithm`, and the same shape `strains.scoredThrough` has.
@@ -87,6 +93,7 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         sleepDebt: Double? = nil,
         sleepStages: [SleepStageSegment]? = nil,
         source: String? = nil,
+        stillnessSpine: String? = nil,
         algorithm: String? = nil,
         scoredThrough: Date? = nil
     ) {
@@ -105,6 +112,7 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         self.sleepDebt = sleepDebt
         self.sleepStages = sleepStages
         self.source = source
+        self.stillnessSpine = stillnessSpine
         self.algorithm = algorithm
         self.scoredThrough = scoredThrough
     }
@@ -126,6 +134,7 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         case sleepStages = "sleep_stages"
         case source
         case algorithm
+        case stillnessSpine = "stillness_spine"
         case scoredThrough = "scored_through"
     }
 }

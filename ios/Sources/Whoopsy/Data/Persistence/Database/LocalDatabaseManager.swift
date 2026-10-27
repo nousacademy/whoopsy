@@ -991,6 +991,21 @@ public actor LocalDatabaseManager {
                 """, arguments: [SleepAlgorithm.whoopExport.rawValue, WhoopExportImporter.sourceLabel])
         }
 
+        // **v38: which stillness spine produced the night.** An imported night has none, a night from
+        // a connected phone came from `R21` motion, and a phone-away night can only come from the
+        // accelerometer carried by `R18` — a weaker source that must be able to say so. Rows written
+        // before this column existed were all motion nights, because no other source existed then.
+        migrator.registerMigration("v38_sleep_stillness_spine") { db in
+            try Self.addMissingColumns(
+                to: SleepRecord.databaseTableName,
+                columns: [("stillness_spine", .text)],
+                in: db)
+            try db.execute(sql: """
+                UPDATE \(SleepRecord.databaseTableName) SET stillness_spine = ?
+                WHERE algorithm = ?
+                """, arguments: [SleepStillnessSpine.motion.rawValue, SleepAlgorithm.stagerV1.rawValue])
+        }
+
         try migrator.migrate(queue)
     }
 

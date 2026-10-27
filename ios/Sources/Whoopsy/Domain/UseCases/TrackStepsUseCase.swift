@@ -231,7 +231,8 @@ public actor TrackStepsUseCase {
             counter: sample.counter,
             seconds: sample.timestamp.timeIntervalSince1970,
             activityClass: sample.activityClass,
-            softwareOverride: sample.counterIsSoftware)
+            softwareOverride: sample.counterIsSoftware,
+            acceleration: sample.acceleration)
 
         let day = Calendar.current.startOfDay(for: sample.timestamp)
 

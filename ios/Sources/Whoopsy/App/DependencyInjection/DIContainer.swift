@@ -28,6 +28,8 @@ public final class DIContainer: @unchecked Sendable {
     /// than per screen, on `trackStepsUseCase`'s rule — one process-lifetime owner of the loop.
     public let refreshStrainUseCase: RefreshStrainUseCase
     public let analyzeSleepUseCase: AnalyzeSleepUseCase
+    /// Classifies the nights a drain delivered, then publishes them — see `RefreshNightsUseCase`.
+    public let refreshNightsUseCase: RefreshNightsUseCase
     public let analyzeStressUseCase: AnalyzeStressUseCase
     public let analyzeSleepStressUseCase: AnalyzeSleepStressUseCase
     public let manageBLEConnectionUseCase: ManageBLEConnectionUseCase
@@ -205,6 +207,10 @@ public final class DIContainer: @unchecked Sendable {
         offlineMaps: any OfflineMapRendering = UnavailableOfflineMaps()
     ) {
         self.useMockBLE = useMockBLE
+        // **Which bundle is this?** One line, at the only moment a process has exactly one container.
+        // A capture can otherwise show a log from a build nobody names, which cost two rounds of
+        // diagnosis on 2026-10-26 — see `AppBuildStamp`.
+        CaptureLog.shared.append("APP_START \(AppBuildStamp.describe())")
         let db = LocalDatabaseManager.shared
         // Built before the BLE repository, which is handed it: the manager resolves a strap's
         // generation from these choices, so the store has to exist first.
@@ -394,6 +400,11 @@ public final class DIContainer: @unchecked Sendable {
 
         // Derived on read, like the other no-schema metrics: nothing here writes, so pointing it at
         // any day is safe — which is what distinguishes it from the calculate use cases.
+        self.refreshNightsUseCase = RefreshNightsUseCase(
+            analyze: analyzeSleepUseCase,
+            repository: sleepRepository
+        )
+
         self.analyzeStressUseCase = AnalyzeStressUseCase(
             biometricRepository: biometricRepository
         )
@@ -417,7 +428,8 @@ public final class DIContainer: @unchecked Sendable {
         )
         self.drainCoordinator = DrainCoordinator(
             sync: self.syncHistoricalDataUseCase,
-            strain: self.refreshStrainUseCase
+            strain: self.refreshStrainUseCase,
+            nights: self.refreshNightsUseCase
         )
 
         // **The database, not the repositories.** It reads through `LocalDatabaseSnapshotting`, which

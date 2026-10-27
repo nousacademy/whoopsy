@@ -31,16 +31,21 @@ public actor DrainCoordinator {
 
     private let sync: SyncHistoricalDataUseCase
     private let strain: RefreshStrainUseCase
+    /// Turns a drained range into stored nights. Optional so a test about the retry does not need an
+    /// analyzer; production wiring passes it (`MainContainerView`).
+    private let nights: RefreshNightsUseCase?
     private let retryDelay: Duration
     private var isRunning = false
 
     public init(
         sync: SyncHistoricalDataUseCase,
         strain: RefreshStrainUseCase,
+        nights: RefreshNightsUseCase? = nil,
         retryDelay: Duration = DrainCoordinator.defaultRetryDelay
     ) {
         self.sync = sync
         self.strain = strain
+        self.nights = nights
         self.retryDelay = retryDelay
     }
 
@@ -66,6 +71,11 @@ public actor DrainCoordinator {
                     (attempt \(attempt, privacy: .public) of \(Self.maximumAttempts, privacy: .public))
                     """)
                 await strain.refresh(from: outcome.oldestRecord, to: outcome.newestRecord)
+                // **The night is classified here, not when a screen is opened.** A drain writes
+                // samples; `sleeps` is written by the analyzer, and until it runs Home draws a dash
+                // for a night the phone is holding. Measured 2026-10-26: 32,274 records drained and
+                // the sleep ring still empty until the sleep page was visited.
+                await nights?.refresh(from: outcome.oldestRecord, to: outcome.newestRecord)
                 if answered { return outcome }
             } catch {
                 AppLogger.ble.warning("""
@@ -77,6 +87,7 @@ public actor DrainCoordinator {
                 // carries the range for exactly this.
                 if let range = (error as? WhoopSyncError)?.recordRange {
                     await strain.refresh(from: range.oldest, to: range.newest)
+                    await nights?.refresh(from: range.oldest, to: range.newest)
                     answered = true
                 }
             }

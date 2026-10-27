@@ -197,6 +197,23 @@ public struct HistoricalDrainSession: Sendable {
         }
     }
 
+    /// The layout selector of every type-47 record in the current batch, and how many of each.
+    ///
+    /// **The per-batch `layout=` field names only the newest record**, which is an `R18` in every
+    /// ordinary minute and therefore says nothing about whether motion records arrived at all.
+    /// `R21` is one record per 30 seconds — ~2 among 60 — so it is invisible to that field and
+    /// visible here. This exists because a night with motion records but no motion *epochs* and a
+    /// night with no motion records at all look identical from outside, and only this separates them.
+    private var batchLayoutCounts: [UInt8: Int] = [:]
+
+    /// The payload size last seen for each record layout in this batch.
+    ///
+    /// **A layout's decoder is gated on an exact length**, so "the records arrived" and "the records
+    /// decoded" are different facts: `R21` must be 1,229 bytes and `R18` 109. When a layout is present
+    /// and its decoder still rejects it, this is the number that says why — and it costs one integer
+    /// per layout rather than a line per record.
+    private var batchLayoutBytes: [UInt8: Int] = [:]
+
     /// Every frame type the current batch carried, and how many of each, reset at each `HISTORY_END`.
     ///
     /// **This is instrumentation today and the count gate's input tomorrow.** It is recorded at the top
@@ -326,6 +343,8 @@ public struct HistoricalDrainSession: Sendable {
 
         if frame.type == types.historicalData {
             recordCount += 1
+            batchLayoutCounts[frame.seq, default: 0] += 1
+            batchLayoutBytes[frame.seq] = frame.payload.count
             lastActivity = now
             // Every record's stamp, not only the five the log prints: the newest one is what decides
             // whether the batch that ends after it reached the live edge. See `newestRecordTimestamp`.
@@ -414,6 +433,16 @@ public struct HistoricalDrainSession: Sendable {
                 .sorted { $0.key < $1.key }
                 .map { String(format: "%02X\u{00D7}%d", $0.key, $0.value) }
                 .joined(separator: ",")
+            // Record layouts, not frame types: `18×58,21×2` says two motion records rode in that
+            // minute, which the `layout=` field above cannot.
+            let batchLayouts = batchLayoutCounts
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key)×\($0.value)" }
+                .joined(separator: ",")
+            let layoutBytes = batchLayoutBytes
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key):\($0.value)" }
+                .joined(separator: ",")
             // **The count gate, read and not yet obeyed.** Gen 5 declares how many frames the burst
             // carried; Gen 4's field at the same offset is a batch counter, so the read is gated by the
             // envelope. What the log needs is both numbers side by side: `counted=47` against
@@ -453,6 +482,8 @@ public struct HistoricalDrainSession: Sendable {
             newestRecordLayout = nil
             firstRecordTimestamp = nil
             batchTypeCounts = [:]
+            batchLayoutCounts = [:]
+            batchLayoutBytes = [:]
             let stalled = stalledBatchCount
 
             AppLogger.ble.notice("""
@@ -463,7 +494,8 @@ public struct HistoricalDrainSession: Sendable {
                 newestLayout=\(batchLayout.map { String($0) } ?? "none", privacy: .public) \
                 recordsSoFar=\(seen, privacy: .public) stalled=\(stalled, privacy: .public) \
                 \(countsText, privacy: .public) \(cursorText, privacy: .public) \
-                repeat=\(repeated, privacy: .public) types=\(batchTypes, privacy: .public)
+                repeat=\(repeated, privacy: .public) types=\(batchTypes, privacy: .public) \
+                layouts=\(batchLayouts, privacy: .public) bytes=\(layoutBytes, privacy: .public)
                 """)
             // **The same line into the file that outlives the log's two-minute window.**
             // `CaptureLog.shared` is `Documents/capture.txt`, capped and rotating, and it exists
@@ -476,7 +508,8 @@ public struct HistoricalDrainSession: Sendable {
                     + "newest=\(batchNewest?.ISO8601Format() ?? "-") "
                     + "layout=\(batchLayout.map { String($0) } ?? "-") "
                     + "soFar=\(seen) stalled=\(stalled) liveEdge=\(atEdge) "
-                    + "\(countsText) \(cursorText) repeat=\(repeated) types=\(batchTypes)")
+                    + "\(countsText) \(cursorText) repeat=\(repeated) types=\(batchTypes) "
+                    + "layouts=\(batchLayouts) bytes=\(layoutBytes)")
             guard let token else { return .none }
             if stalledBatchCount >= Self.maximumStalledBatches {
                 // Acknowledged either way — the strap is waiting — but the drain stops rather than

@@ -392,6 +392,10 @@ public struct HomeDashboardView: View {
                     // once, and the score is rewritten as the day is scored — so without this the ring
                     // holds whatever it read at launch for as long as Home stays up.
                     viewModel.observeStrain()
+                    // The night's live feed, on the same argument: a drain classifies the night after
+                    // `load` has read the day, and without this the ring stays a dash until the user
+                    // leaves and comes back — measured 2026-10-26 on a 32,274-record morning drain.
+                    viewModel.observeNights()
                     await viewModel.load(for: selectedDate)
                 }
                 .onChange(of: selectedDate) { _, newDate in

@@ -143,7 +143,8 @@ public struct MainContainerView: View {
                     manage: container.manageBLEConnectionUseCase,
                     streamUseCase: container.streamBiometricsUseCase,
                     trackSteps: container.trackStepsUseCase,
-                    refreshStrain: container.refreshStrainUseCase),
+                    refreshStrain: container.refreshStrainUseCase,
+                    refreshNights: container.refreshNightsUseCase),
                 recoveryViewModel: RecoveryViewModel(
                     calculate: container.calculateRecoveryUseCase,
                     repository: container.recoveryRepository,
@@ -271,6 +272,11 @@ public struct MainContainerView: View {
                 // is skipped while a drain is in flight, and a strap with nothing new answers in one
                 // cheap batch.
                 await container.drainCoordinator.drain()
+                // **A foreground also considers today's night on its own.** The coordinator classifies
+                // the range a drain covered; a drain whose cursor already passed the night delivers
+                // nothing, and the records sitting in storage are precisely the case this covers. One
+                // indexed read when the night is already stored, so a steady state costs nothing.
+                await container.refreshNightsUseCase.refresh(from: nil, to: nil)
                 // A foreground is the moment a day that changed while the app was suspended gets
                 // scored, without waiting for the five-minute tick.
                 await container.refreshStrainUseCase.refreshToday()

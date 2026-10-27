@@ -74,6 +74,66 @@ public final class AnalyzeSleepUseCase: Sendable {
         return (ninePM, tenAM)
     }
 
+    /// One 30-second stillness window, and which sensor supplied it.
+    ///
+    /// The source travels with the window because a night can be built from both — see
+    /// ``stillnessWindows(motionEpochs:sampleEpochs:)`` and `SleepStillnessSpine.merged`.
+    public struct StillnessWindow: Sendable, Equatable {
+        public let start: Date
+        public let end: Date
+        public let meanMagnitudeG: Double
+        public let source: SleepStillnessSpine
+
+        public init(start: Date, end: Date, meanMagnitudeG: Double, source: SleepStillnessSpine) {
+            self.start = start
+            self.end = end
+            self.meanMagnitudeG = meanMagnitudeG
+            self.source = source
+        }
+    }
+
+    /// The stillness spine over one read window: `R21` where it exists, `R18`'s accelerometer
+    /// everywhere else.
+    ///
+    /// **Keyed on `MotionEpochGrid.index`, because the two producers already agree on the grid** —
+    /// `RecordMotionUseCase` writes epochs on it and `SampleStillnessMath` now reads it too. The
+    /// merge is therefore a dictionary replace rather than a tolerance: same index means same
+    /// thirty seconds, and `motion` overwrites `samples` because a 100 Hz buffer is stronger evidence
+    /// than one averaged vector per second.
+    ///
+    /// **Not "one source for the night", which is what this replaced.** That rule was measured wrong
+    /// on the night of 2026-10-26/27: the phone recorded two evening hours of `R21` and was away for
+    /// the rest, so motion epochs *existed* and the sample spine was never computed — 13 hours of the
+    /// only evidence there was went unread and the night was refused. Presence of one source in one
+    /// part of the window says nothing about the rest of it.
+    public static func stillnessWindows(
+        motionEpochs: [MotionEpoch],
+        sampleEpochs: [SampleStillnessMath.Epoch]
+    ) -> [StillnessWindow] {
+        var byIndex: [Int: StillnessWindow] = [:]
+        for epoch in sampleEpochs {
+            byIndex[MotionEpochGrid.index(for: epoch.start)] = StillnessWindow(
+                start: epoch.start, end: epoch.end,
+                meanMagnitudeG: epoch.meanMagnitudeG, source: .samples)
+        }
+        for epoch in motionEpochs {
+            byIndex[MotionEpochGrid.index(for: epoch.start)] = StillnessWindow(
+                start: epoch.start, end: epoch.end,
+                meanMagnitudeG: epoch.meanMagnitudeG, source: .motion)
+        }
+        return byIndex.keys.sorted().compactMap { byIndex[$0] }
+    }
+
+    /// The spine a night's epochs came from — one source, or both.
+    ///
+    /// A pure function of the sources, so §13 can pin that a night straddling the two producers is
+    /// recorded as `merged` rather than told it was supported by whichever one happened to come first.
+    public static func spine(of sources: [SleepStillnessSpine]) -> SleepStillnessSpine {
+        let distinct = Set(sources)
+        if distinct.count > 1 { return .merged }
+        return distinct.first ?? .samples
+    }
+
     /// The night's own resting heart rate, or `nil` when the window is too thin to estimate one.
     ///
     /// **The lowest third's mean**, which is the same estimator `CalculateRecoveryUseCase` applies to
@@ -163,6 +223,12 @@ public final class AnalyzeSleepUseCase: Sendable {
             \(morningEnd.description, privacy: .public), samples=\(samples.count, privacy: .public), \
             first=\(firstSample, privacy: .public), last=\(lastSample, privacy: .public)
             """)
+        // **The same facts into the file a phone capture can read.** `os.log` is minutes deep and
+        // unreachable without a cable; "no night" on a morning ring and the number that explains it
+        // have to survive together, or the next question costs another round trip.
+        CaptureLog.shared.append(
+            "SLEEP window=\(prevEvening.ISO8601Format())..\(morningEnd.ISO8601Format()) "
+                + "samples=\(samples.count) first=\(firstSample) last=\(lastSample)")
 
         guard samples.count >= Self.minimumEpochSamples else {
             let minimum = Self.minimumEpochSamples
@@ -170,6 +236,8 @@ public final class AnalyzeSleepUseCase: Sendable {
                 Sleep analysis: absent — \(samples.count, privacy: .public) samples in the window, below \
                 the \(minimum, privacy: .public) an epoch needs.
                 """)
+            CaptureLog.shared.append(
+                "SLEEP absent reason=samples samples=\(samples.count) minimum=\(minimum)")
             return nil
         }
 
@@ -179,15 +247,44 @@ public final class AnalyzeSleepUseCase: Sendable {
         // happened would still become a session. The strap's motion is the independent signal: the
         // recorder writes one epoch per 30 seconds, and a window it never filled is reported as
         // absent rather than guessed at from heart rate alone.
+        //
+        // **Two sources for that one signal, merged window by window, and the merge is the rule.**
+        // `R21` motion records are what a *connected* phone records; the strap does not bank them in
+        // flash (measured 2026-10-26 — every drained burst carried layouts 18 and 26, never 21), so a
+        // phone-away night arrived with 54,869 samples and no epoch. But `R18` itself carries mean
+        // acceleration X/Y/Z once `HeartRatePayloadDecoder` reads it, so the stillness evidence was in
+        // every record the drain wrote. `SampleStillnessMath` folds those into the same 30-second
+        // windows and the same magnitude scale.
+        //
+        // **The choice belongs to the window, not to the night.** The first version picked one source
+        // for the whole span — samples only when no motion epoch existed at all — and the overnight run
+        // of 2026-10-27 broke it: a phone connected for two evening hours and away for the night gave
+        // 242 `R21` epochs, every one of them awake, and the thirteen hours of `R18` stillness that
+        // held the actual night was discarded. `motion` wins where both exist, because it is 100 Hz
+        // per axis rather than one averaged vector per second; `samples` fills every window it left
+        // empty. A night is refused only when neither source holds evidence.
         let motionEpochs = try await motionRepository.getMotionEpochs(
             from: prevEvening, to: morningEnd)
-        guard !motionEpochs.isEmpty else {
+        let sampleEpochs = SampleStillnessMath.epochs(from: samples)
+        let windows = Self.stillnessWindows(
+            motionEpochs: motionEpochs, sampleEpochs: sampleEpochs)
+        let motionWindowCount = windows.filter { $0.source == .motion }.count
+
+        guard !windows.isEmpty else {
             AppLogger.algorithms.notice("""
-                Sleep analysis: absent — no motion epochs in the window. A heart-rate-only night is \
-                not a measurement: motion is what separates sleep from lying still awake.
+                Sleep analysis: absent — no stillness windows. Neither motion records nor the \
+                accelerometer carried by the samples says anything about how still the wrist was, and \
+                a heart rate alone cannot separate sleep from lying still awake.
                 """)
+            CaptureLog.shared.append(
+                "SLEEP absent reason=motion samples=\(samples.count) motionEpochs=0 sampleEpochs=0")
             return nil
         }
+        CaptureLog.shared.append(
+            "SLEEP inputs samples=\(samples.count) motionEpochs=\(motionEpochs.count) "
+                + "sampleEpochs=\(sampleEpochs.count) windows=\(windows.count) "
+                + "motionWindows=\(motionWindowCount) "
+                + "sampleWindows=\(windows.count - motionWindowCount)")
 
         // Classify 30-second epochs. Stages are assigned here and **nothing is summed**: the sums are
         // taken below, over the epochs the night actually holds, so a trim cannot leave a duration
@@ -216,7 +313,8 @@ public final class AnalyzeSleepUseCase: Sendable {
             """)
 
         var epochs: [(
-            start: Date, end: Date, stage: SleepStageType, avgHR: Double, motionMean: Double
+            start: Date, end: Date, stage: SleepStageType, avgHR: Double, motionMean: Double,
+            source: SleepStillnessSpine
         )] = []
 
         // The hourly curve carries **motion beside heart rate** — the two signals the onset decision
@@ -228,7 +326,7 @@ public final class AnalyzeSleepUseCase: Sendable {
         // rather than a filter per epoch: thirteen hours of 1 Hz samples against ~1,500 epochs is
         // otherwise tens of millions of comparisons.
         var sampleIndex = 0
-        for motion in motionEpochs {
+        for motion in windows {
             var epochSamples: [BiometricSample] = []
             while sampleIndex < samples.count, samples[sampleIndex].timestamp < motion.end {
                 if samples[sampleIndex].timestamp >= motion.start {
@@ -257,7 +355,7 @@ public final class AnalyzeSleepUseCase: Sendable {
 
             epochs.append(
                 (start: motion.start, end: motion.end, stage: stage, avgHR: avgEpochHR,
-                 motionMean: motionMean))
+                 motionMean: motionMean, source: motion.source))
 
             let hour = calendar.component(.hour, from: motion.start)
             hourlyRates[hour, default: []].append(Int(avgEpochHR.rounded()))
@@ -312,6 +410,10 @@ public final class AnalyzeSleepUseCase: Sendable {
                 \(Int(SleepOnsetMath.minimumSleepRunSeconds), privacy: .public) s. A night whose \
                 motion never settles is not a night.
                 """)
+            CaptureLog.shared.append(
+                "SLEEP absent reason=onset epochs=\(epochs.count) asleep=\(asleep) "
+                    + "required=\(Int(SleepOnsetMath.minimumSleepRunSeconds))s "
+                    + "ceiling=\(Int(onsetCeiling))")
             return nil
         }
 
@@ -452,7 +554,10 @@ public final class AnalyzeSleepUseCase: Sendable {
             // **The decision records itself.** The version is what the sleep page compares against to
             // decide whether a re-classification is owed, and the watermark is the newest input this
             // run actually saw — both taken from the arrays it just classified rather than re-read,
-            // so they cannot describe a different window than the night does.
+            // so they cannot describe a different window than the night does. The spine is the same
+            // kind of fact: the sources the night's own epochs came from, which is `merged` when the
+            // phone was recording for part of it and away for the rest.
+            stillnessSpine: Self.spine(of: night.map(\.source)),
             algorithm: .current,
             scoredThrough: Self.inputEdge(samples: samples, epochs: motionEpochs)
         )

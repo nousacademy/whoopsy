@@ -99,6 +99,12 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
 
     public let sleepStages: [SleepStageSegment]
 
+    /// Which signal evidenced the stillness this night rests on — see `SleepStillnessSpine`.
+    ///
+    /// `nil` for an imported night (WHOOP's own classification, no spine of ours) and for a row
+    /// written before `v38`.
+    public let stillnessSpine: SleepStillnessSpine?
+
     /// Which rule classified this night, or `nil` on a row written before `v37` carried one.
     ///
     /// **The column that lets the page read a night instead of recomputing it.** A night is a decision
@@ -129,6 +135,7 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
         sleepDebtSeconds: TimeInterval? = nil,
         hasWhoopSleepNeed: Bool = false,
         sleepStages: [SleepStageSegment] = [],
+        stillnessSpine: SleepStillnessSpine? = nil,
         algorithm: SleepAlgorithm? = nil,
         scoredThrough: Date? = nil
     ) {
@@ -147,6 +154,7 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
         self.sleepDebtSeconds = sleepDebtSeconds
         self.hasWhoopSleepNeed = hasWhoopSleepNeed
         self.sleepStages = sleepStages
+        self.stillnessSpine = stillnessSpine
         self.algorithm = algorithm
         self.scoredThrough = scoredThrough
     }

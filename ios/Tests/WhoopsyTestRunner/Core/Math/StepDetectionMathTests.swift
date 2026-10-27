@@ -28,6 +28,7 @@ enum StepTests {
         try await StrapEventDecoderTests.run()
         try await StrapConditionReportTests.run()
         try await DiagnosticsTests.run()
+        try await AppBuildStampTests.run()
         try await DeviceInformationPayloadTests.run()
         try await StepAccumulatorTests.run()
         try await StepCounterAccumulatorTests.run()

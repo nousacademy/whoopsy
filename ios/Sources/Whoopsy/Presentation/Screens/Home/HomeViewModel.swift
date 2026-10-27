@@ -253,10 +253,15 @@ import SwiftUI
     /// move.
     private let refreshStrain: RefreshStrainUseCase
 
+    /// Classifies the nights a drain delivered. Optional so a test that draws a day without a strap
+    /// does not have to build an analyzer; production wiring passes it (`MainContainerView`).
+    private let refreshNights: RefreshNightsUseCase?
+
     private var task: Task<Void, Never>?
     private var deviceTask: Task<Void, Never>?
     private var stepsTask: Task<Void, Never>?
     private var strainTask: Task<Void, Never>?
+    private var nightsTask: Task<Void, Never>?
 
     /// The day `load(for:)` last read, so a live write can be matched against the day on screen.
     private var loadedDay: Date?
@@ -268,6 +273,10 @@ import SwiftUI
     /// The same counter for the day's strain, kept separate from the step one because the two writers
     /// flush on different schedules and one must not be able to excuse the other's stale read.
     private var liveStrainWrites = 0
+
+    /// The same counter for the night, kept separate for the same reason: a classification that lands
+    /// while a read is in flight is newer than the read and must survive it.
+    private var liveSleepWrites = 0
 
     public init(
         recoveryRepository: any RecoveryRepository,
@@ -281,7 +290,8 @@ import SwiftUI
         manage: ManageBLEConnectionUseCase,
         streamUseCase: StreamBiometricsUseCase,
         trackSteps: TrackStepsUseCase,
-        refreshStrain: RefreshStrainUseCase
+        refreshStrain: RefreshStrainUseCase,
+        refreshNights: RefreshNightsUseCase? = nil
     ) {
         self.recoveryRepository = recoveryRepository
         self.sleepRepository = sleepRepository
@@ -294,6 +304,7 @@ import SwiftUI
         self.manage = manage
         self.trackSteps = trackSteps
         self.refreshStrain = refreshStrain
+        self.refreshNights = refreshNights
         self.streamUseCase = streamUseCase
     }
 
@@ -377,6 +388,43 @@ import SwiftUI
         }
     }
 
+    /// Follows the nights `RefreshNightsUseCase` classifies after a drain.
+    ///
+    /// `observeStrain()`'s sibling, and for the same reason: `load(for:)` reads `sleeps` once per day
+    /// selection, and a night classified after that read — which is exactly what a morning drain
+    /// produces — would otherwise stay a dash until something else re-ran the load. No screen has to
+    /// be opened for the ring to fill.
+    ///
+    /// Idempotent, on `observeDevice()`'s rule.
+    public func observeNights() {
+        guard nightsTask == nil, let refreshNights else { return }
+        let stream = refreshNights.nightUpdates
+        nightsTask = Task { [weak self] in
+            for await written in stream {
+                guard !Task.isCancelled else { return }
+                self?.applyLiveNight(written)
+            }
+        }
+    }
+
+    /// Folds one classified night in, if it belongs to the day on screen.
+    ///
+    /// A night for another day is dropped rather than queued, for `applyLiveStrain`'s reason: the screen
+    /// draws one day, and last night is not an older version of tonight.
+    private func applyLiveNight(_ written: SleepSession) {
+        let loaded = loadedDay?.ISO8601Format() ?? "-"
+        guard let loadedDay, written.date.startOfDay == loadedDay else {
+            // The other half of the `NIGHTS` trail: published for a day this screen is not drawing.
+            CaptureLog.shared.append(
+                "NIGHTS dropped night=\(written.date.ISO8601Format()) loaded=\(loaded)")
+            return
+        }
+        liveSleepWrites += 1
+        sleep = written
+        CaptureLog.shared.append(
+            "NIGHTS applied night=\(written.date.ISO8601Format()) loaded=\(loaded)")
+    }
+
     /// Folds one written row into the ring, if it belongs to the day on screen.
     ///
     /// A row for another day is dropped rather than queued: the screen draws one day, and yesterday's
@@ -407,6 +455,7 @@ import SwiftUI
         loadedDay = day
         let stepWritesBefore = liveStepWrites
         let strainWritesBefore = liveStrainWrites
+        let sleepWritesBefore = liveSleepWrites
 
         do {
             // The VO₂ estimate's only non-per-day input, started with the other reads so it overlaps
@@ -458,7 +507,11 @@ import SwiftUI
             // and has already been folded in by `applyLiveStrain`. Assigning would put the older
             // figure back under a ring the user just watched move.
             if liveStrainWrites == strainWritesBefore, loadedDay == day { strain = readStrain }
-            sleep = try await sl
+            // The night, with the same guard the strain read makes: a classification that landed
+            // while these reads were in flight is newer than this answer, and assigning would put the
+            // dash back under a ring the user just watched fill.
+            let readSleep = try await sl
+            if liveSleepWrites == sleepWritesBefore, loadedDay == day { sleep = readSleep }
             previousDaySleep = try await slPrevious
             workouts = try await w
             receptiveInactivities = try await ra
