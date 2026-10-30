@@ -11,6 +11,18 @@ import Whoopsy
 /// failed cloud call leaves **every local row exactly where it was**, not that it reports an error.
 enum PurgeDaysUseCaseTests {
 
+    /// Records the forced re-scores the purge asks for, so a block can tell "the score was revisited"
+    /// from "it was left against a window that no longer exists".
+    actor SpyRescorer: RecoveryRescoring {
+        private(set) var calls: [Bool] = []
+
+        @discardableResult
+        func refreshToday(now: Date, force: Bool) async -> RecoveryMetric? {
+            calls.append(force)
+            return nil
+        }
+    }
+
     /// A `DayPurgeStore` that counts its calls and removes nothing, so a block can tell "the database
     /// was asked" from "it was not" without a real table.
     actor CountingPurgeStore: DayPurgeStore {
@@ -55,14 +67,21 @@ enum PurgeDaysUseCaseTests {
         do {
             let cloud = SpyCloudSync()
             let store = CountingPurgeStore()
+            let rescorer = SpyRescorer()
             let settings = InMemorySyncSettingsRepository(SyncSettings(destination: .cloud))
-            let useCase = PurgeDaysUseCase(cloud: cloud, store: store, settingsStore: settings)
+            let useCase = PurgeDaysUseCase(
+                cloud: cloud, store: store, settingsStore: settings, rescorer: rescorer)
 
             let report = try await useCase.run(from: first, to: today)
 
             let calls = await cloud.calls
             assertTest(calls == [.purge(from: first, to: today)],
                        "The purge reaches the database once, over the range it was given: \(calls)")
+            let rescores = await rescorer.calls
+            assertTest(rescores == [true],
+                       "…and the day's recovery is re-scored once, **forced** — the baseline is a mean "
+                           + "over the trailing thirty days that have rows, so removing days from that "
+                           + "window staleness the score in a way its own watermark cannot see: \(rescores)")
             assertTest(report.remote != nil,
                        "…and reports what the database removed rather than leaving it unstated")
             assertTest(report.local.total > 0 && report.message.contains("Deleted 3 days"),
@@ -74,8 +93,10 @@ enum PurgeDaysUseCaseTests {
             let cloud = SpyCloudSync()
             await cloud.fail(with: .unreachable(message: "no route to host"))
             let store = CountingPurgeStore()
+            let rescorer = SpyRescorer()
             let settings = InMemorySyncSettingsRepository(SyncSettings(destination: .cloud))
-            let useCase = PurgeDaysUseCase(cloud: cloud, store: store, settingsStore: settings)
+            let useCase = PurgeDaysUseCase(
+                cloud: cloud, store: store, settingsStore: settings, rescorer: rescorer)
 
             var refused = false
             do {
@@ -92,6 +113,9 @@ enum PurgeDaysUseCaseTests {
             let storeCalls = await store.calls
             assertTest(storeCalls.isEmpty,
                        "…and the phone was not touched at all: \(storeCalls.count) call(s)")
+            let rescoreCalls = await rescorer.calls
+            assertTest(rescoreCalls.isEmpty,
+                       "…nor was the day's score revisited, because nothing changed")
         }
 
         // ── The range rules, refused before anything is asked of either side ─────────────────────

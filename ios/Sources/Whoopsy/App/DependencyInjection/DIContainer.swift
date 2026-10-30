@@ -386,10 +386,6 @@ public final class DIContainer: @unchecked Sendable {
         // scheduled client would make the button refuse for eighteen hours of the day — and because
         // the purge deletes *nothing* locally when the database call fails, the button would simply do
         // nothing at the wrong time of day, which is the worst shape this feature could have.
-        self.purgeDaysUseCase = PurgeDaysUseCase(
-            cloud: restoreCloud,
-            store: db,
-            settingsStore: syncSettings)
         // The other six resources get the same local-first treatment as recovery: a decorator on the
         // configured branch, the bare GRDB repository otherwise. Strains and workouts add the read-back
         // half — the only three resources (recoveries included) whose `CloudSync` port has a read — and
@@ -460,6 +456,16 @@ public final class DIContainer: @unchecked Sendable {
             calculate: self.calculateRecoveryUseCase,
             repository: self.recoveryRepository,
             sleepRepository: self.sleepRepository)
+
+        // Built here rather than beside the other use cases because it takes the recovery writer: a
+        // purge changes the window today's score was computed against, so it forces one re-score after
+        // it lands — see `PurgeDaysUseCase.run`. The client is `restoreCloud`, for the reason RESTORE
+        // gets it: a purge is a person pressing a button, and the hour is theirs.
+        self.purgeDaysUseCase = PurgeDaysUseCase(
+            cloud: restoreCloud,
+            store: db,
+            settingsStore: syncSettings,
+            rescorer: self.refreshRecoveryUseCase)
 
         self.analyzeSleepUseCase = AnalyzeSleepUseCase(
             biometricRepository: biometricRepository,

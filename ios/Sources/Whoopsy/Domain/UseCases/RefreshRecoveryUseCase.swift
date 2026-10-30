@@ -21,7 +21,7 @@ import Foundation
 /// `RefreshNightsUseCase` and `RefreshStrainUseCase` are called from, so the three writers that turn
 /// sensor data into stored rows share one trigger and a page never has to be open for a day to become
 /// current.
-public actor RefreshRecoveryUseCase {
+public actor RefreshRecoveryUseCase: RecoveryRescoring {
 
     private let calculate: CalculateRecoveryUseCase
     private let repository: any RecoveryRepository
@@ -84,7 +84,7 @@ public actor RefreshRecoveryUseCase {
     /// refuses the day are all ordinary absences, and a background writer that failed must leave the
     /// stored row exactly as it was.
     @discardableResult
-    public func refreshToday(now: Date = Date()) async -> RecoveryMetric? {
+    public func refreshToday(now: Date = Date(), force: Bool = false) async -> RecoveryMetric? {
         let day = calendar.startOfDay(for: now)
 
         guard let night = try? await sleepRepository.getSleepSession(for: day) else {
@@ -121,7 +121,11 @@ public actor RefreshRecoveryUseCase {
             logCheck("foreign-source")
             return nil
         }
-        if let stored, !Self.isOwed(
+        // **`force` is the purge's, and only the purge's.** Deleting a *different* day moves neither
+        // this night nor its watermark, but it changes the baseline window the score was computed
+        // against — so the row is stale in a way its own audit fields cannot see. Everything below the
+        // gate still applies: a foreign row is still not this scorer's to replace.
+        if !force, let stored, !Self.isOwed(
             edge: edge, storedEdge: stored.scoredThrough, algorithm: stored.algorithm)
         {
             logCheck("current")

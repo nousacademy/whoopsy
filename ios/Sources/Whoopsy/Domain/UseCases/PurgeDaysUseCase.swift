@@ -116,17 +116,20 @@ public actor PurgeDaysUseCase {
     private let cloud: any CloudSync
     private let store: any DayPurgeStore
     private let settingsStore: any SyncSettingsRepository
+    private let rescorer: (any RecoveryRescoring)?
     private let calendar: Calendar
 
     public init(
         cloud: any CloudSync,
         store: any DayPurgeStore,
         settingsStore: any SyncSettingsRepository,
+        rescorer: (any RecoveryRescoring)? = nil,
         calendar: Calendar = .current
     ) {
         self.cloud = cloud
         self.store = store
         self.settingsStore = settingsStore
+        self.rescorer = rescorer
         self.calendar = calendar
     }
 
@@ -158,6 +161,16 @@ public actor PurgeDaysUseCase {
         }
 
         let local = try await store.purgeMeasuredDays(from: first, to: last)
+
+        // **The score outlives the days it was computed against.** Recovery is a z-score pair over the
+        // trailing thirty days *that have rows*, so removing days from that window changes today's
+        // baseline while moving neither the night nor the row's watermark — the gate in
+        // `RefreshRecoveryUseCase` would skip it forever. One forced pass closes that, and only when
+        // something was actually removed: a purge that found nothing has changed nothing to rescore.
+        if !local.isEmpty {
+            await rescorer?.refreshToday(now: Date(), force: true)
+        }
+
         return Report(days: days, local: local, remote: remote)
     }
 }
