@@ -176,9 +176,19 @@ public struct Spo2CandidateAccumulator: Sendable {
             unclassified += 1
         }
 
-        // Only in-band readings carry the evidence the offset scan needs; a dump of zeros would
-        // spend the budget proving nothing.
-        guard observation.band == .inBand, rawLines.count < Self.maximumRawLines else { return nil }
+        // **The first three records of a drain, whatever band they are in.**
+        //
+        // It used to be the first three *in-band* ones, on the reasoning that a dump of zeros proves
+        // nothing. Measured 2026-10-30: 389 consecutive drains produced `in-band=0`, so the rule meant
+        // the nineteen neighbour bytes were **never once dumped** — and those neighbours are the whole
+        // of the offset-specificity scan the reference's own validation used (`frame 74–92`, with byte
+        // 82 winning it). A probe that only prints evidence for the answer it has already found cannot
+        // say whether the byte moved on a generation the reference did not decompile.
+        //
+        // Three records an hour is a rounding error beside the drain's `DRAIN_BATCH` lines, and each
+        // line carries its own `band=` and `sleep=` so a zero record is still a measurement of two
+        // things: where the byte is not, and what the strap's own sleep state was at that instant.
+        guard rawLines.count < Self.maximumRawLines else { return nil }
         let line = observation.captureLine
         rawLines.append(line)
         return line

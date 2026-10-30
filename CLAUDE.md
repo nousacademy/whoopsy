@@ -153,7 +153,7 @@ The real suite lives under `ios/Tests/WhoopsyTestRunner/` (a hand-rolled assert 
 **Read the summary line, not the scrollback:**
 
 ```
-SUITE sections=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25 assertions=3635 failed=0 exit=0
+SUITE sections=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25 assertions=3637 failed=0 exit=0
 ```
 
 `sections=` is the field that catches a dropped section, `assertions=` the field that catches a section that ran but stopped asserting, and the exit code is trustworthy. Sections live in `Support/SectionRegistry.swift`'s `testSections()`, which `runSections(_:)` iterates and the `Task` awaits inside a `do`/`catch`, and `finishSuite` is the single exit path for every outcome — an unobserved throw, or a hang at the 30 s timeout, would otherwise idle out the `RunLoop` and exit **0**. A `WHOOPSY_SECTIONS` value naming a section that does not exist exits 1 rather than running nothing and reporting success.

@@ -725,10 +725,15 @@ MAE ≤ 1.0 points, with byte 82 still winning the 74–92 scan** on each.
 
 **This app therefore instruments the byte and never a metric.** `Spo2CandidateProbe` reads payload
 70/71 and payload 63–81 (frame 74–92) from an R18 record, and `Spo2CandidateAccumulator` classifies
-every record into the four bands above. A drain emits **at most three raw lines** (the first in-band
-records, with the nineteen neighbour bytes) and **one summary** — counts per band, the in-band mean,
-range and the first/last in-band timestamps — through `os.log` at `.notice` and to
-`Documents/spo2-candidate.txt`, which the two `Info.plist` file-sharing keys expose in Files. It
+every record into the four bands above. A drain emits **at most three raw lines** — the
+first three records **whatever band they are in**, each carrying the nineteen neighbour bytes — and
+**one summary**: counts per band, the in-band mean, range and the first/last in-band timestamps. Both go
+through `os.log` at `.notice` and to `Documents/spo2-candidate.txt`, which the two `Info.plist`
+file-sharing keys expose in Files. **The raw dump used to take the first three *in-band* records, and on
+a strap whose byte is never populated that meant the neighbours were never dumped at all** — measured
+2026-10-30, hundreds of consecutive drains at `in-band=0`, so the `frame 74–92` scan this field's
+validation rests on had no material on this hardware. A zero record is a measurement of two things: where
+the byte is not, and what the strap's own sleep state was at that instant. It
 writes no row, no `BiometricSample.spO2Percentage`, and no screen value. The exported recovery rows'
 `spo2_percentage` column remains an import of what the official app already recorded, not something
 this app derived.

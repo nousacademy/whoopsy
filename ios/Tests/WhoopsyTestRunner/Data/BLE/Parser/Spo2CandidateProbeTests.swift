@@ -161,37 +161,55 @@ enum Spo2CandidateProbeTests {
             accumulator.summary() == nil && !accumulator.hasObservations,
             "A drain that saw no record produces no summary at all, so the log cannot report a night "
                 + "of zeros the strap never sent")
+        // ── The raw dump is the first three records, whatever band they are in ─────────────────────
+        //
+        // It used to be the first three *in-band* records, on the reasoning that a dump of zeros proves
+        // nothing. That rule had a blind spot the hardware made fatal: measured 2026-10-30, hundreds of
+        // consecutive drains produced `in-band=0`, so the nineteen neighbour bytes were **never once
+        // dumped** — and those neighbours are the offset-specificity scan the reference's validation
+        // used. A zero record is still a measurement: it says where the byte is not, and what the
+        // strap's own sleep state was at that instant.
+        var emitted: [String] = []
+        let neighbours = Array(repeating: UInt8(0x00), count: 19)
+
+        func record(unix: UInt32, value: UInt8, sleepState: UInt8 = 0x20) -> String? {
+            let line = accumulator.observe(Spo2CandidateObservation(
+                unix: unix, value: value, sleepState: sleepState, neighbours: neighbours))
+            if let line { emitted.append(line) }
+            return line
+        }
+
         assertTest(
-            accumulator.observe(Spo2CandidateObservation(
-                unix: 1_700_000_000, value: 0, sleepState: 0, neighbours: [])) == nil,
-            "A record outside 70–100 does not spend the raw-line budget")
+            record(unix: 1_699_999_940, value: 0, sleepState: 0) != nil,
+            "An absent record is dumped — the case this change exists for, since an all-zero drain is "
+                + "what every drain has produced on this strap so far")
 
         let inBand = [97, 98, 99, 96]
-        var emitted: [String] = []
         for (index, value) in inBand.enumerated() {
-            let observation = Spo2CandidateObservation(
-                unix: 1_700_000_000 + UInt32(index * 60),
-                value: UInt8(value),
-                sleepState: 0x20,
-                neighbours: Array(repeating: 0x00, count: 19))
-            accumulator.observe(Spo2CandidateObservation(
-                unix: observation.unix, value: 1, sleepState: 0x20, neighbours: []))   // diagnostic
-            accumulator.observe(Spo2CandidateObservation(
-                unix: observation.unix, value: 0xA0, sleepState: 0x20, neighbours: [])) // sentinel
-            if let line = accumulator.observe(observation) { emitted.append(line) }
+            let unix = 1_700_000_000 + UInt32(index * 60)
+            _ = record(unix: unix, value: 1)     // diagnostic
+            _ = record(unix: unix, value: 0xA0)  // sentinel
+            _ = record(unix: unix, value: UInt8(value))
         }
+
         assertTest(
             emitted.count == Spo2CandidateAccumulator.maximumRawLines,
-            "The raw dump is capped at three in-band records however long the drain, while the counters "
-                + "still cover every record: a night is tens of thousands of frames and a file is not")
+            "Three records are dumped however long the drain, while the counters still cover every "
+                + "one: a night is tens of thousands of frames and a file is not")
         assertTest(
-            emitted.first?.contains("value=97") == true
-                && emitted.first?.contains("band=in-band") == true
-                && emitted.first?.contains("asleep=true") == true
-                && emitted.first?.contains("sleep=0x20") == true
+            emitted.first?.contains("value=0") == true
+                && emitted.first?.contains("band=absent") == true
                 && emitted.first?.contains("neighbours=[") == true,
-            "A dumped line carries the raw value, its band, the sleep state and the neighbour bytes — the "
-                + "evidence the offset scan needs, with nothing rendered as a reading")
+            "…and the first of them is the absent one, carrying its band, its sleep state and its "
+                + "neighbour bytes — the material the frame 74–92 scan has never had")
+        assertTest(
+            emitted.dropFirst().allSatisfy { $0.contains("neighbours=[") },
+            "Every dumped line carries the neighbours, so a non-zero byte in an unexpected neighbour "
+                + "is visible without a second capture")
+        assertTest(
+            emitted.contains { $0.contains("asleep=true") || $0.contains("sleep=0x20") },
+            "…and the strap's own sleep state rides each line, because the field is populated only "
+                + "while the strap believes the wearer is asleep")
 
         let summary = accumulator.summary() ?? ""
         assertTest(
