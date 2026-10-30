@@ -67,7 +67,8 @@ public struct EnergyFlowMapView: View {
                 + "research figure of where emotions are felt in the body. Together they say where "
                 + "energy is said to enter, gather and leave — the crown, the heart, the lower belly, "
                 + "the palms and the soles. Nothing on it is measured, and nothing on it changes with "
-                + "your day; the ring above is this app's only figure.")
+                + "your day. This tab is a study of its own: it reads none of the app's records and "
+                + "writes none, so nothing here can move a figure elsewhere.")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
