@@ -7,7 +7,9 @@ import Sentry
 
 /// Installs the remote diagnostics sink, or leaves the app with none.
 ///
-/// **This file is the only place the app knows the vendor's name, and that is the layer rule.**
+/// **This file is the only place the app knows the vendor's name in code, and that is the layer
+/// rule** — the one other mention is the privacy caption on `LOGS`, which names the processor because
+/// a disclosure that omitted it would be the rule's letter at the cost of its point.
 /// `WhoopBLEManager` reports protocol facts into `Diagnostics` in the package, which names no SDK;
 /// the Sentry client lives here, in the app target, where the package is linked. So `make build` on
 /// the host and the 2,700-assertion suite compile `Diagnostics.swift` and never compile this — the

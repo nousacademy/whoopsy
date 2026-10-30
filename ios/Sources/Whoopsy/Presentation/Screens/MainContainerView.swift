@@ -47,11 +47,10 @@ public struct MainContainerView: View {
     /// just written — which is why the move off Settings was a rename-with-shrink rather than a shared
     /// instance. See `LocalDataViewModel`'s own note.
     ///
-    /// **It was `SettingsViewModel` and the type it is now is not the type `More → Settings` draws.**
-    /// The four import/export methods moved here verbatim; what stayed behind is the Privacy toggle,
-    /// which is the whole of that page now. So the app holds two instances of what used to be one type,
-    /// and that is the deliberate part: `SettingsViewModel` is down to two dependencies and has no
-    /// opinion about whoop history at all.
+    /// **It was `SettingsViewModel`, and that type is deleted.** The four import/export methods moved
+    /// here verbatim, and the Privacy toggle — the last thing the old type held — followed on
+    /// 2026-10-30, which left `More` with no row and took the tab with it. So the app holds one
+    /// instance of what used to be two, and the rename-with-shrink is finally just a rename.
     ///
     /// Stored rather than computed, for `deviceViewModel`'s reason: `body` is a `ViewBuilder` and
     /// re-evaluates, so a computed property would be rebuilt on every pass.
@@ -81,10 +80,6 @@ public struct MainContainerView: View {
     /// **It is built here because `MoreView` stopped taking a container**, and that is a fix rather
     /// than a tidy-up: the row used to construct this inline in its `NavigationLink`'s destination
     /// closure, which is re-evaluated on every push, so the page got a fresh instance each time — the
-    /// anti-pattern `MainContainerView`'s own comment on the deleted `Device` row names. Storing it
-    /// here puts the construction back at the one wiring point, which is the rule.
-    private let settingsViewModel: SettingsViewModel
-
     /// The Health tab's subject, and the Home card's — **one instance, two surfaces**: the tab's card
     /// draws the same five bands the sheet does, so a second instance would be a second read of the
     /// same rows and a chance for the tab and the sheet to disagree about the night.
@@ -125,7 +120,6 @@ public struct MainContainerView: View {
             keyStore: container.syncKeyStore,
             restore: container.restoreFromCloudUseCase,
             missingCloudKey: container.missingCloudKey)
-        self.settingsViewModel = SettingsViewModel(repository: container.preferencesRepository)
         self.healthMonitor = HealthMonitorViewModel(
             recoveryRepository: container.recoveryRepository,
             sleepRepository: container.sleepRepository,
@@ -286,9 +280,7 @@ public struct MainContainerView: View {
             // recovery ring keeps its own instance for `RecoveryDetailView`.
             HealthTabView(healthMonitor: healthMonitor)
                 .tabItem { Label("Health", systemImage: "heart.fill") }
-            MoreView(settingsViewModel: settingsViewModel)
 
-            .tabItem { Label("More", systemImage: "ellipsis.circle") }
         }.tint(Theme.livePulseCyan).preferredColorScheme(.dark)
         // **The foreground half of the link's recovery.** A standing connect survives suspension, so
         // this is not the mechanism that keeps the strap connected while the app is away — the BLE
@@ -428,47 +420,5 @@ extension MainContainerView {
                 }
             }
         }
-    }
-}
-
-/// The `More` tab, which is one row and no longer needs the container.
-///
-/// **It took a `DIContainer` until this page's settings surface moved**, and the reason it no longer
-/// does is worth keeping: its `Settings` row built a `SettingsViewModel` **inside the `NavigationLink`'s
-/// destination closure**, which is the exact shape this file's own comment on the deleted `Device` row
-/// calls out — a destination closure is re-evaluated on every push, so the page got a fresh view model
-/// each time. There is now only one thing left to hand over, so the view model itself comes down as a
-/// parameter, and the type that used to be constructed here is not constructed here at all.
-private struct MoreView: View {
-    let settingsViewModel: SettingsViewModel
-
-    var body: some View {
-        NavigationStack {
-            List {
-                // **This list held four rows and now holds one, on the user's instruction given a row
-                // at a time: Profile, then Device, then one more.** Do not restore any of the three as a
-                // convenience, and do not read their absence as an oversight:
-                //
-                // - **Profile** is reached from Home's day-bar row, and only from there now.
-                // - **Device** is reached from Home's status badge, and only from there now — it was
-                //   the row whose inline construction taught this file why a view model is passed to a
-                //   destination rather than built inside its closure, and that lesson outlived the row.
-                // - **The third** went with its page, and the page, its view model and the use case
-                //   behind it are all deleted.
-                //
-                // The one rule this list still has to keep: `Settings` is here and nowhere else, so a
-                // new row added above it needs its own door or it is a page nothing can reach.
-                //
-                // **What is behind it changed on the same instruction and the row did not.** The
-                // imports and the export moved one tab deeper, onto the profile control at the other
-                // end of Home's day bar, so this page is the Anonymous diagnostics toggle alone. The
-                // row survives because the user kept it; do not read the shrunk page as the row
-                // outliving its purpose, and do not move the toggle to the profile page to "finish"
-                // the sweep — the LOGS tab is about data, and this is about the app.
-                NavigationLink("Settings") {
-                    SettingsDashboardView(viewModel: settingsViewModel)
-                }
-            }.navigationTitle("More")
-        }.preferredColorScheme(.dark)
     }
 }

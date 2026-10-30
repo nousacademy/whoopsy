@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The profile page: three tabbed panes over the app's own record of the person using it.
 ///
-/// **It is a `Form`, like `SettingsDashboardView` beside it, and not one of the app's dark card
+/// **It is a `Form`, and not one of the app's dark card
 /// screens.** That is a decision about what kind of page this is: a card screen in this app draws
 /// readings, and `BIOMETRICS` has none — every field there is an input, and the platform's own `Form`
 /// styling is what makes a field look editable rather than like a figure the app measured. The
@@ -597,6 +597,39 @@ public struct ProfileDashboardView: View {
     /// reason — the runner has no renderer, so words typed into a `body` are words nothing can read.
     @ViewBuilder
     private var logsTab: some View {
+        // **The Privacy section, which was all of `More → Settings`.** The user moved it onto this
+        // pane on 2026-10-30 (*"lets add it to profile -> logs instead"*), and the row that carried it
+        // went with it: this was the last thing behind `More`, so that tab had nothing left to open.
+        //
+        // It is first rather than last because it is the one row here that is not about data. Every
+        // section below it moves history in or out; this one is a statement about the app, and a
+        // reader deciding whether to trust the imports should meet it before them.
+        Section("Privacy") {
+            Toggle("Anonymous diagnostics", isOn: Binding(
+                get: { localDataViewModel.preferences.analyticsEnabled },
+                set: { localDataViewModel.preferences.analyticsEnabled = $0
+                       Task { await localDataViewModel.savePreferences() } }))
+            // **The second sentence is the one that has to stay true, and the third names who
+            // receives it.** The toggle starts the diagnostics sink, and the sink forwards what
+            // `Diagnostics.record` gives it — counts, frame types, sequence numbers and payload
+            // lengths. A caption that only said what the switch does *not* do would be accurate and
+            // still misleading once it does something, so both halves are stated beside the
+            // recipient: a person deciding whether to send their strap's metadata to a third party
+            // is entitled to the third party's name, and "a diagnostics key" is not a name.
+            //
+            // **Naming it here does not break the layer rule.** That rule keeps the *protocol code*
+            // from naming an SDK, so a host build and the suite never compile one; `SentryDiagnostics`
+            // is still the only file that imports it. A privacy disclosure that omitted the processor
+            // would be the rule's letter at the cost of its point.
+            Text(
+                "Whoopsy is local-first; this preference never enables cloud biometric "
+                + "uploads. Turned on — and only with a Sentry key configured — it sends "
+                + "anonymous strap metadata (frame types, counts and payload sizes) to Sentry. "
+                + "Never heart rate, R-R intervals or oxygen readings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
         Section("Apple Health") {
             Toggle("HealthKit sync", isOn: Binding(
                 get: { localDataViewModel.preferences.healthKitSyncEnabled },

@@ -3,8 +3,8 @@ import SwiftUI
 
 /// The `LOGS` tab: every way data enters and leaves this app.
 ///
-/// **This is `SettingsViewModel` under a different name with the profile fields shorn off**, and both
-/// halves of that are deliberate. The user's decision was that the whole import/export surface moves off
+/// **It was `SettingsViewModel`'s successor and is now its replacement**, and both halves of that are
+/// deliberate. The user's decision was that the whole import/export surface moves off
 /// `More → Settings` and onto the profile page's `LOGS` tab — WHOOP history, Zero fasting, Apple Health
 /// and the JSON+CSV export, all four — and the structural question that leaves is which type owns them.
 ///
@@ -14,7 +14,8 @@ import SwiftUI
 /// pages that can be pushed one on top of the other, so a shared instance would have them fighting over
 /// one `status` string and one `isImporting` flag: finishing an import on one would rewrite the other's
 /// footer under a page that is no longer on screen. It also keeps the name honest, since a
-/// `SettingsViewModel` living on the Profile page would lie about what it is.
+/// `SettingsViewModel` living on the Profile page would have lied about what it is — and that type is
+/// deleted now, so the argument stands as history rather than as a name in the tree.
 ///
 /// **The four methods and their doc comments moved verbatim.** Their arguments are about these actions
 /// rather than about the page they were drawn on — the HealthKit result being the only honest signal of
@@ -22,7 +23,8 @@ import SwiftUI
 /// from `load()`, the fasting import being the one that writes a session with no measurement behind it —
 /// and re-deriving them here would be the way those arguments got lost.
 ///
-/// **What is left on `SettingsViewModel` is the Privacy toggle**, which is the whole of that page now.
+/// **The Privacy toggle is here too**, beside the imports: it was the whole of `More → Settings`
+/// until the user moved it onto this pane, and that page went with it.
 @MainActor @Observable public final class LocalDataViewModel {
 
     public var preferences = AppPreferences()
@@ -79,6 +81,22 @@ import SwiftUI
     /// `healthKitSyncEnabled` is set, and a reader who opened the profile page to type their weight has
     /// not asked for a 30-day HealthKit query. Tying it to the tab is what makes "when `LOGS` opens"
     /// literal.
+    /// Saves the pane's preferences, then tells the diagnostics sink where the toggle now stands.
+    ///
+    /// **The ordering is the point, and it came across from `SettingsViewModel` verbatim.** A sink is
+    /// installed at launch with the toggle's *last saved* value; flipping the switch is the only way it
+    /// changes during a run, and the forward has to happen after the write so a crash between the two
+    /// cannot leave the switch drawn on while the sink stayed off.
+    ///
+    /// **And this is the pane's second subject rather than a fourth pane.** `LOGS` is where a history
+    /// comes from and goes; the diagnostics switch is a statement about the app, which is why it spent
+    /// its life on `More → Settings` instead. The user moved it here on 2026-10-30 — *"lets add it to
+    /// profile -> logs instead"* — and the page it left was that row and nothing else.
+    public func savePreferences() async {
+        await repository.save(preferences)
+        Diagnostics.setEnabled(preferences.analyticsEnabled)
+    }
+
     public func load() async {
         preferences = await repository.load()
         healthKitAvailable = healthKit.isAvailable

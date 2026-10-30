@@ -32,7 +32,6 @@ existing, and each name links to the implementation.
 | `StepsDetailView` | [StepsDetailView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Steps/StepsDetailView.swift#L20) | The steps trend page Home's `STEPS` tile pushes: `W`/`M`/`6M` windows ending on an anchor the chevrons move, the measured-day average above a bar chart, and a footnote saying how many days were measured. |
 | `ReadingTrendDetailView` | [ReadingTrendDetailView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Trends/ReadingTrendDetailView.swift#L17) | One reading's trend page, pushed by Home's `RHR`, `HRV` and `VO₂ MAX (EST.)` panels: `W`/`M`/`6M`, the average, the comparison with the previous window, a typical-range band, and the latest reading marked on the line. The HRV form narrows to one metric; the RHR form does not need to; the VO₂ form plots an **estimate** and says so. |
 | `StressDetailView` | [StressDetailView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Stress/StressDetailView.swift#L18) | The day's Stress Monitor, pushed by Home's tile: a 0–3 gauge carrying the **latest** window and its time, the **last few hours** as a live line, and a sentence naming the day's average, the time spent in the high band and which reference the score is against. It seeds from Home's already-computed `StressDay` and its `StressLiveViewModel` extends the day while the page is open. |
-| `SettingsDashboardView` | [SettingsDashboardView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Settings/SettingsDashboardView.swift#L20) | `More → Settings`, which is the Anonymous diagnostics toggle and nothing else — the imports and export moved to the profile page's `LOGS` pane. |
 | `ReceptiveInactivityPickerView` | [ReceptiveInactivityPickerView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Activity/ReceptiveInactivityPickerView.swift#L26) | The name picker the receptive sheet's `NAME` row pushes: a flat list over `ReceptiveInactivityCatalog`. |
 
 ### There were five, and the Strain and Sleep tabs are gone on the user's instruction
@@ -86,20 +85,19 @@ which of the two happened is the thing to check before adding a row back:**
   handed a stored instance rather than constructed at the destination.
 
 - **The imports and the export left this page without a row being removed**, which is the one entry
-
-  here that is not a removal. `More → Settings` still lists `Settings`, and what is behind it is the
-
-  Anonymous diagnostics toggle alone: the Apple Health sync, the WHOOP and Zero fasting imports and
-
-  the JSON + CSV export all moved one tab deeper, onto the profile page's `LOGS` pane, on the user's
-
-  instruction. **The row survives and the page is one switch** — do not read the shrunk page as the
-
-  row outliving its purpose, and do not move the toggle across to "finish" the sweep: `LOGS` is about
-
-  where a history comes from and goes, and this is a statement about the app. It is the only one of
-
-  the four entries where what moved was the page's *contents* rather than a row.
+  here that is not a removal: the Apple Health sync, the WHOOP and Zero fasting imports and the JSON +
+  CSV export all moved one tab deeper, onto the profile page's `LOGS` pane, while `Settings` was still
+  a row and still held a switch.
+- **Then the switch crossed too, and the row went with it.** On 2026-10-30 the user asked for the
+  Anonymous diagnostics toggle to live on `LOGS` (*"lets add it to profile -> logs instead"*), which
+  reversed the advice this file used to carry — that `LOGS` is about data and the toggle is about the
+  app. The pane gains a `Privacy` section above the imports, `LocalDataViewModel.savePreferences()`
+  owns the write and the `Diagnostics.setEnabled` forward, and `SettingsDashboardView`,
+  `SettingsViewModel` and `Screens/Settings/` are deleted. **`More` had nothing left to list, so
+  `MoreView` and its tab are deleted** — the app has two tabs, Home and Health. The caption now names
+  **Sentry**, because a disclosure that says "a diagnostics key" is the layer rule's letter at the
+  cost of its point: a person deciding whether to send their strap's metadata to a third party is
+  entitled to know who receives it.
 
 
 
