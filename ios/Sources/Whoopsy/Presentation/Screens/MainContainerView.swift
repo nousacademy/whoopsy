@@ -306,7 +306,7 @@ public struct MainContainerView: View {
             // Strain, and renaming them to match a tab label would be a sweep this instruction did not
             // ask for.
             NavigationStack {
-                StrainDetailView(viewModel: energyViewModel, date: Date())
+                StrainDetailView(viewModel: energyViewModel, date: Date(), showsEnergyMap: true)
             }
             .tabItem { Label("Energy", systemImage: "figure.stand") }
 

@@ -98,7 +98,20 @@ which of the two happened is the thing to check before adding a row back:**
   `figure.stand` icon and today's `StrainDetailView` behind it, which is the page Home's strain ring
   pushes, wrapped in the tab's own `NavigationStack` and seeded with its own `StrainViewModel` so the
   two never share a day. `Energy` is the tab's name and the figure is still `Strain` everywhere else in
-  the tree; the ring and this page are one integral, and a label is not a rename. The caption now names
+  the tree; the ring and this page are one integral, and a label is not a rename.
+
+**The tab carries a body map, and it is a map rather than a figure.** `EnergyFlowMapView` draws one
+front-facing body with the geometry three sources agree on: seven centres from crown to root, divine
+energy entering through the crown, earth energy rising from the soles, the two meeting at the heart and
+leaving through the palms, the lower dantian below the navel drawn as the store, and the three
+constrictions — throat, heart, hips — the rising channel passes through. The sources are a chakra flow
+chart, a qigong instruction for drawing earth qi in through the hands and feet, and a research figure
+of where emotions are felt in the body; the last contributes the regions rather than a flow, which is
+why the torso is drawn as one. **Nothing on it is measured and nothing on it moves with the day**, and
+the card's caption says so — the ring above is the page's only figure, and a visualisation of a number
+without a producer is the fabrication class this repo treats as a defect. The numbered badges follow
+the legend's order rather than the page's geometry, because a badge that disagrees with its legend is
+the same fault one layer over. The caption now names
   **Sentry**, because a disclosure that says "a diagnostics key" is the layer rule's letter at the
   cost of its point: a person deciding whether to send their strap's metadata to a third party is
   entitled to know who receives it.

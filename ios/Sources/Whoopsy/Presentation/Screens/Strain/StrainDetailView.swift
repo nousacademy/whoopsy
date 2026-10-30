@@ -43,9 +43,18 @@ public struct StrainDetailView: View {
     /// to whatever day Home is showing behind the push cannot move it.
     private let date: Date
 
-    public init(viewModel: StrainViewModel, date: Date) {
+    /// The energy map card, drawn only where the page **is** a tab.
+    ///
+    /// **Off by default because the same page is pushed from Home's strain ring**, and the map is the
+    /// Energy tab's own subject rather than a reading about one day: a person who tapped a ring to see
+    /// yesterday's strain did not ask for a diagram of where a tradition says energy enters. The tab
+    /// passes `true`; every push keeps the default.
+    private let showsEnergyMap: Bool
+
+    public init(viewModel: StrainViewModel, date: Date, showsEnergyMap: Bool = false) {
         _viewModel = State(initialValue: viewModel)
         self.date = date
+        self.showsEnergyMap = showsEnergyMap
     }
 
     public var body: some View {
@@ -69,6 +78,12 @@ public struct StrainDetailView: View {
                     activityCard
 
                     comparisonBadge
+                }
+
+                // After the day's figure rather than before it: this page's subject is the strain, and
+                // the map is a map rather than a reading — it belongs beneath the thing that is one.
+                if showsEnergyMap {
+                    EnergyFlowMapView()
                 }
             }
             .padding()
