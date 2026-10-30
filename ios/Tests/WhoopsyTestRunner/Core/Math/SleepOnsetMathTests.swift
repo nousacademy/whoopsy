@@ -443,5 +443,46 @@ enum SleepOnsetMathTests {
                 assertTest(false, "The onset absence rule threw: \(error)")
             }
         }
+
+        // ── The data-edge verdict, which is what decides whether a night may still grow ─────────────
+        //
+        // **The rule is a hole test rather than an "anything after" test**, and the difference is a
+        // night frozen at a fragment: a classifier run that overlaps a drain sees a few live epochs
+        // past the night's end, and under the old test that was evidence of a wake.
+        let nightEnd = Date(timeIntervalSince1970: 1_800_000_000)
+        let grace: TimeInterval = SleepReclassification.extensionGraceSeconds
+
+        assertTest(grace == 600,
+                   "The grace is the classifier's own onset threshold — data within ten minutes of a "
+                       + "night's end is data the night may still be growing into")
+
+        assertTest(
+            SleepOnsetMath.endsAtDataEdge(nightEnd: nightEnd, laterEpochStarts: [], grace: grace),
+            "Nothing after the night means the evidence ended with it, so the night may still grow")
+
+        assertTest(
+            !SleepOnsetMath.endsAtDataEdge(
+                nightEnd: nightEnd,
+                laterEpochStarts: [nightEnd.addingTimeInterval(60), nightEnd.addingTimeInterval(300)],
+                grace: grace),
+            "…and evidence that resumes inside the grace is that evidence continuing, so this night "
+                + "ended at a wake")
+
+        assertTest(
+            SleepOnsetMath.endsAtDataEdge(
+                nightEnd: nightEnd,
+                laterEpochStarts: [nightEnd.addingTimeInterval(20 * 60)],
+                grace: grace),
+            "…while evidence that resumes twenty minutes later is a hole, not a wake — the night's "
+                + "coverage stopped where it ended and a later drain may fill the gap")
+
+        assertTest(
+            !SleepOnsetMath.endsAtDataEdge(
+                nightEnd: nightEnd,
+                laterEpochStarts: [nightEnd.addingTimeInterval(4 * 3600), nightEnd.addingTimeInterval(60)],
+                grace: grace),
+            "The **nearest** later epoch decides, not the farthest: a live tail hours away does not "
+                + "outvote evidence that resumed a minute after the end, and the input is a set rather "
+                + "than a sequence, so its order changes nothing")
     }
 }

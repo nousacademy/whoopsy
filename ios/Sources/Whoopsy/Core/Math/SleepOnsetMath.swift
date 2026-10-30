@@ -128,4 +128,30 @@ public enum SleepOnsetMath {
         guard let first = runs.first, let last = runs.last else { return nil }
         return (onset: first.onset, wake: last.wake)
     }
+
+    /// Whether a night's end is the **edge of the evidence** rather than a detected wake.
+    ///
+    /// **The question is what happens after the night, not whether anything does.** The stored night
+    /// used to record "ended at the data edge" only when no epoch followed it at all, and a night
+    /// classified while a drain was still running could fail that test on a handful of live epochs at
+    /// the tail — recording *trimmed at a wake* for a night whose evidence had actually stopped where
+    /// it ended. The reclassification gate then treats everything after the end as wake time and the
+    /// night is frozen at a fragment, which is exactly what was measured on 2026-10-30.
+    ///
+    /// So the test is a **hole**: evidence that resumes within `grace` is that evidence continuing, and
+    /// evidence that resumes later than that means the night ended at a coverage edge — the strap was
+    /// banked, the drain had not caught up, the phone had gone. No later epoch at all is the same
+    /// answer for the same reason.
+    ///
+    /// **A hole is self-healing where a grace window would not be.** Once the drain fills it, the test
+    /// stops answering `true`, so this costs one re-classification per night rather than the churn that
+    /// made the gate reject "any input newer than the night".
+    public static func endsAtDataEdge(
+        nightEnd: Date,
+        laterEpochStarts: [Date],
+        grace: TimeInterval
+    ) -> Bool {
+        guard let next = laterEpochStarts.min() else { return true }
+        return next.timeIntervalSince(nightEnd) > grace
+    }
 }

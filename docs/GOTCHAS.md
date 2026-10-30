@@ -805,6 +805,15 @@ window count and the `p10`/median/`p90`/max of `meanMagnitudeG` against the ceil
 `p90` above the ceiling is a calibration fault rather than a restless night, and `n=0` next to a night
 that exists is the sample spine having produced nothing at all.
 
+**The verdict that froze it was a rule, not the data, and that rule is repaired in `stager-v2`.** A night
+recorded *ended at the data edge* only when **no** epoch followed it, so a classification that overlapped
+a drain — a few live epochs at the tail, the night's own records still arriving — stamped *trimmed at a
+wake*. Everything after that end is then wake time by the gate's own rule, and the row never moves again.
+The test is now a **hole**: evidence resuming within the onset grace is the same night continuing,
+evidence resuming later means the night ended where its coverage did. A hole is self-healing — filling it
+stops the answer being `true` — which is what a grace window is not, and why the gate does not go back to
+churning on every foreground.
+
 **And the third probe exists because the stillness spine's input had never been checked.**
 `AccelerometerCandidateProbe` dumps `R18` body 24's three `f32` per drained record, gated on the same
 0.5–2 g band `HeartRatePayloadDecoder` refuses outside, with a per-drain `in-band=` summary. The

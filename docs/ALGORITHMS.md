@@ -1758,8 +1758,15 @@ debt a **reader**, not a new role.
 
 **A night is a decision rather than a reading**, so a row that cannot say which rule made it cannot be
 trusted to be current — and the app's answer used to be to re-decide on every open. Since `v37` a
-classified night carries `algorithm` (`SleepAlgorithm.current`, `stager-v1`) and `scored_through`, the
-newest epoch end or sample instant the classification actually read. The page re-classifies only when
+classified night carries `algorithm` (`SleepAlgorithm.current`, `stager-v2`) and `scored_through`, the
+newest epoch end or sample instant the classification actually read. **`stager-v2` changed one thing and
+it is not the staging: the night's data-edge verdict.** A night recorded *ended at the data edge* only
+when no epoch at all followed it, so a run overlapping a drain saw a few live epochs past the end,
+stamped *trimmed at a wake*, and froze the row at a fragment for the rest of its life. The verdict is now
+a **hole** test — evidence resuming within `SleepReclassification.extensionGraceSeconds` is the same
+night continuing, evidence resuming later means the night ended at a coverage edge and may still grow —
+which is self-healing where a grace window would churn, because filling the hole stops the answer being
+`true`. The page re-classifies only when
 the rule changed, the input grew past that watermark, or the row predates the columns; otherwise it
 reads the row. An inconclusive re-classification — no motion yet, fewer samples than an epoch, the
 drain still arriving — **keeps** the stored night, because a short read is not a verdict. The one case

@@ -454,12 +454,15 @@ public final class AnalyzeSleepUseCase: Sendable {
         let night = epochs.filter { $0.start < period.wake && $0.end > period.onset }
         guard let firstEpoch = night.first, let lastEpoch = night.last else { return nil }
 
-        // **Did the night end where the input ended, rather than at a detected wake?** True when the
-        // retaining run reaches the last epoch the classifier was handed — the shape a drain that had
-        // not finished leaves behind, and the one fact that tells the reclassification gate this night
-        // may still be growing. A night trimmed at a real wake has epochs after its end, so the two
-        // differ. See `SleepSession.endedAtDataEdge`.
-        let endedAtDataEdge = lastEpoch.end >= (epochs.last?.end ?? lastEpoch.end)
+        // **Did the night end where the evidence ended, rather than at a detected wake?** The rule is
+        // `SleepOnsetMath.endsAtDataEdge`'s, and it is a *hole* test rather than an "anything after"
+        // test — a night classified while a drain was still running used to see a handful of live
+        // epochs past its end, record *trimmed at a wake*, and freeze itself at a fragment. See that
+        // function for the measurement and for why a hole is self-healing where a grace window is not.
+        let endedAtDataEdge = SleepOnsetMath.endsAtDataEdge(
+            nightEnd: lastEpoch.end,
+            laterEpochStarts: epochs.map(\.start).filter { $0 >= lastEpoch.end },
+            grace: SleepReclassification.extensionGraceSeconds)
 
         var lightSec: TimeInterval = 0
         var deepSec: TimeInterval = 0
