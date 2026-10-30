@@ -95,6 +95,11 @@ public struct RecoveryDetailView: View {
             viewModel.observeRecovery()
             await viewModel.load(for: date)
         }
+        // **Pull to recompute.** A score can be right for its inputs and still be stale: recovery is
+        // scored against the trailing thirty days that have rows, so a purge — or an import, or a
+        // restored day — changes the window without moving the night. This is the reader's way to say
+        // "recompute this day" when nothing else will.
+        .refreshable { await viewModel.recalculate() }
         .preferredColorScheme(.dark)
     }
 

@@ -94,6 +94,24 @@ import SwiftUI
     /// `score: 0, hrvValueMs: 0, restingHeartRate: 0` **over** whatever was stored, wiping a row and
     /// its `source` label on the way past. Reading first is still the rule, and `shouldCompute` is
     /// still the only gate that lets a recompute through — see it for what that gate now protects.
+    /// Recompute the day this page is on, **bypassing the freshness gate**.
+    ///
+    /// **The gate answers "has the night moved?", and one thing changes a score without moving it: the
+    /// baseline window.** Recovery is a pair of z-scores over the trailing thirty days that have rows,
+    /// so deleting days from that history — which is exactly what the purge does — changes the mean and
+    /// spread the day was scored against while leaving both the night and the row's watermark untouched.
+    /// The gate would then keep the stale number for good, and nothing on the row can notice.
+    ///
+    /// Pulling down on the page is the reader saying *recompute this*, so this is what that means. It is
+    /// the same call the purge makes for itself after it removes something; the control exists because a
+    /// score can also go stale without a purge — an import, a restored day, a baseline that crossed the
+    /// three-observation floor.
+    public func recalculate() async {
+        guard let refreshRecovery, let day = loadedDay else { return }
+        await refreshRecovery.refreshToday(now: day, force: true)
+        await load(for: day)
+    }
+
     public func load(for date: Date) async {
         let started = Date()
         let day = date.startOfDay
