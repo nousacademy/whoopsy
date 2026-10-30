@@ -80,6 +80,14 @@ public struct MainContainerView: View {
     /// **It is built here because `MoreView` stopped taking a container**, and that is a fix rather
     /// than a tidy-up: the row used to construct this inline in its `NavigationLink`'s destination
     /// closure, which is re-evaluated on every push, so the page got a fresh instance each time — the
+    /// The Energy tab's subject — **a third `StrainViewModel`, and a second one beside Home's.**
+    ///
+    /// The rule `strainViewModel`'s comment states is the reason it is not shared: Home pushes a strain
+    /// page seeded with the day on screen, and this tab keeps a private day seeded to `Date()`. One
+    /// instance would let paging either one move the other's day, which is exactly the fault
+    /// `RecoveryDetailView`'s two copies were separated for.
+    private let energyViewModel: StrainViewModel
+
     /// The Health tab's subject, and the Home card's — **one instance, two surfaces**: the tab's card
     /// draws the same five bands the sheet does, so a second instance would be a second read of the
     /// same rows and a chance for the tab and the sheet to disagree about the night.
@@ -120,6 +128,13 @@ public struct MainContainerView: View {
             keyStore: container.syncKeyStore,
             restore: container.restoreFromCloudUseCase,
             missingCloudKey: container.missingCloudKey)
+        self.energyViewModel = StrainViewModel(
+            repository: container.strainRepository,
+            workoutRepository: container.workoutRepository,
+            stepRepository: container.stepRepository,
+            refresh: container.refreshStrainUseCase,
+            biometricRepository: container.biometricRepository,
+            userProfileRepository: container.userProfileRepository)
         self.healthMonitor = HealthMonitorViewModel(
             recoveryRepository: container.recoveryRepository,
             sleepRepository: container.sleepRepository,
@@ -280,6 +295,20 @@ public struct MainContainerView: View {
             // recovery ring keeps its own instance for `RecoveryDetailView`.
             HealthTabView(healthMonitor: healthMonitor)
                 .tabItem { Label("Health", systemImage: "heart.fill") }
+            // **The Energy tab: today's strain, and it owns its own `NavigationStack`** because it is a
+            // tab rather than a pushed page — `StrainDetailView` deliberately has none, so the screen
+            // that *is* a tab supplies the chrome and the day.
+            //
+            // **The name is the user's, and it is the reference's current one for this figure**: the
+            // ring Home draws and the page this pushes are both the day's strain integral, which the
+            // app has called Strain everywhere since it was written. Nothing about the maths moved —
+            // only what the tab is called — so every identifier, row and doc comment still says
+            // Strain, and renaming them to match a tab label would be a sweep this instruction did not
+            // ask for.
+            NavigationStack {
+                StrainDetailView(viewModel: energyViewModel, date: Date())
+            }
+            .tabItem { Label("Energy", systemImage: "figure.stand") }
 
         }.tint(Theme.livePulseCyan).preferredColorScheme(.dark)
         // **The foreground half of the link's recovery.** A standing connect survives suspension, so

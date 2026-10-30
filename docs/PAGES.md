@@ -94,7 +94,11 @@ which of the two happened is the thing to check before adding a row back:**
   app. The pane gains a `Privacy` section above the imports, `LocalDataViewModel.savePreferences()`
   owns the write and the `Diagnostics.setEnabled` forward, and `SettingsDashboardView`,
   `SettingsViewModel` and `Screens/Settings/` are deleted. **`More` had nothing left to list, so
-  `MoreView` and its tab are deleted** — the app has two tabs, Home and Health. The caption now names
+  `MoreView` and its tab are deleted** — and a third tab returned the same day as **`Energy`**: a
+  `figure.stand` icon and today's `StrainDetailView` behind it, which is the page Home's strain ring
+  pushes, wrapped in the tab's own `NavigationStack` and seeded with its own `StrainViewModel` so the
+  two never share a day. `Energy` is the tab's name and the figure is still `Strain` everywhere else in
+  the tree; the ring and this page are one integral, and a label is not a rename. The caption now names
   **Sentry**, because a disclosure that says "a diagnostics key" is the layer rule's letter at the
   cost of its point: a person deciding whether to send their strap's metadata to a third party is
   entitled to know who receives it.
