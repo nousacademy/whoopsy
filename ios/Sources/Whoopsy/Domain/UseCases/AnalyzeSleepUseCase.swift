@@ -351,8 +351,17 @@ public final class AnalyzeSleepUseCase: Sendable {
 
         // The hourly curve carries **motion beside heart rate** — the two signals the onset decision
         // reads, printed together so a night where they disagree is visible in one line.
-        var hourlyRates: [Int: [Int]] = [:]
-        var hourlyAccels: [Int: [Double]] = [:]
+        // **Per hour, per spine.** The two stillness statistics sit at different floors — measured
+        // 2026-10-30 on one night, `motion` sat close to the 1.05 ceiling while `samples` sat far
+        // below it — so an hour judged by one is a different test from an hour judged by
+        // the other, and an onset that lands late can be either signal failing or the spine changing.
+        // Keeping them apart here is what makes the two distinguishable in one line an hour.
+        struct HourTally {
+            var rates: [Int] = []
+            var motionAccel: [Double] = []
+            var sampleAccel: [Double] = []
+        }
+        var hourly: [Int: HourTally] = [:]
 
         // One pass over the HR samples, bucketed into the recorder's 30-second windows. A pointer
         // rather than a filter per epoch: thirteen hours of 1 Hz samples against ~1,500 epochs is
@@ -390,25 +399,41 @@ public final class AnalyzeSleepUseCase: Sendable {
                  motionMean: motionMean, source: motion.source))
 
             let hour = calendar.component(.hour, from: motion.start)
-            hourlyRates[hour, default: []].append(Int(avgEpochHR.rounded()))
-            hourlyAccels[hour, default: []].append(motionMean)
+            var tally = hourly[hour] ?? HourTally()
+            tally.rates.append(Int(avgEpochHR.rounded()))
+            if motion.source == .motion {
+                tally.motionAccel.append(motionMean)
+            } else {
+                tally.sampleAccel.append(motionMean)
+            }
+            hourly[hour] = tally
         }
 
         // The curve, one line an hour. `.notice` so it survives into a log archive read after the run;
         // the ratio against the profile's resting rate is the number the onset threshold is expressed
         // in, so it is printed beside the raw mean rather than left to be recomputed.
-        for hour in hourlyRates.keys.sorted() {
-            let rates = hourlyRates[hour]!.filter { $0 > 0 }
+        func meanText(_ values: [Double]) -> String {
+            guard !values.isEmpty else { return "-" }
+            return "\(String(format: "%.3f", values.reduce(0, +) / Double(values.count)))(\(values.count))"
+        }
+
+        for hour in hourly.keys.sorted() {
+            guard let tally = hourly[hour] else { continue }
+            let rates = tally.rates.filter { $0 > 0 }
             guard !rates.isEmpty else { continue }
             let mean = rates.reduce(0, +) / rates.count
             let ratio = String(format: "%.2f", Double(mean) / max(1, Double(profile.restingHeartRate)))
-            let accel = hourlyAccels[hour].map {
-                String(format: "%.3f", $0.reduce(0, +) / Double($0.count))
-            } ?? "none"
-            AppLogger.algorithms.notice("""
-                Sleep HR curve: \(hour, privacy: .public):00 mean=\(mean, privacy: .public) bpm \
-                (\(ratio, privacy: .public)×resting), accel=\(accel, privacy: .public)
-                """)
+            let line = "SLEEP hour=\(hour) mean=\(mean) ratio=\(ratio) "
+                + "motionAccel=\(meanText(tally.motionAccel)) "
+                + "sampleAccel=\(meanText(tally.sampleAccel)) "
+                + "max=\(String(format: "%.3f", max(tally.motionAccel.max() ?? 1, tally.sampleAccel.max() ?? 1))) "
+                + "ceiling=\(String(format: "%.1f", onsetCeiling))"
+            AppLogger.algorithms.notice("\(line, privacy: .public)")
+            // **The same line into the file**, because this is the one that says which signal stopped
+            // a run and which spine was judging: `motionAccel` / `sampleAccel` against `ceiling` is the
+            // stillness test, `mean` against `ratio` is the heart-rate one, and the counts say which
+            // spine owned the hour.
+            CaptureLog.sleepDecision(line)
         }
 
         // ── Where the night begins and ends ──────────────────────────────────────────────────────
