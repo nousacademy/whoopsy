@@ -111,6 +111,9 @@ let package = Package(
                 .process("Data/Resources/ZeroFasting/fasts.json"),
                 .process("Data/Resources/Custom/dreams.json"),
                 .process("Data/Resources/LifeTables/lifeTables.json"),
+                // The Energy tab's figure: a supplied illustration, cropped and re-toned into pale line art by
+                // `tmp/tools/bodyart.swift`. Seven bundled files now.
+                .process("Data/Resources/Energy/body.png"),
             ]
         ),
         .executableTarget(

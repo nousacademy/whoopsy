@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// The human body as the app's three reference diagrams draw it, and the flow they describe.
 ///
@@ -9,32 +14,53 @@ import SwiftUI
 /// strap measures. What the drawing does is put their **geometry** in one place: where each tradition
 /// says energy enters, gathers and leaves, on one body.
 ///
+/// **The body is a supplied illustration**, cropped to the figure and re-toned into pale line art by
+/// `scripts/prepare-energy-figure.swift` so it reads on a dark card; the overlay is measured against *that* image
+/// rather than drawn from scratch. The tool's landmark table is what `Mark` records, and a different
+/// figure means re-measuring it rather than nudging pixel values until it looks right.
+///
 /// **No figure on this view comes from a reading.** There is no value, no band and no colour that
 /// changes with the day — deliberately, because the app's rule is that a visualisation of a number
-/// needs a producer, and there is no producer for a chakra. The measured figure on this page is the
-/// ring above it; this card is the map those traditions share, and the caption draws that line.
+/// needs a producer, and there is no producer for a chakra. This tab is a study of its own and reads
+/// none of the app's records; the caption says both things.
 ///
 /// ## What the three sources contribute
 ///
 /// - **Energy-flow map**: a central column of seven centres from crown to root; *divine* energy
 ///   entering through the crown and travelling to the heart; *earth* energy entering through the feet
 ///   and rising; *kundalini* rising from the base; the two merging **at the heart** and leaving
-///   through the palms. Three constrictions — throat, heart and hips — that the rising channel is drawn
-///   through.
+///   through the palms. Three constrictions — throat, heart and hips.
 /// - **Qigong instruction**: the same body read as **three dantian** — lower (below the navel), middle
 ///   (chest), upper (between the brows) — with earth qi drawn in through the **hands and feet** and
 ///   *stored* in the lower one. That is why the palms are drawn as intakes here rather than only as
 ///   outlets, and why the lower dantian is ringed twice.
 /// - **Emotion mapping**: not drawn as a flow at all. It contributes one fact the other two do not
-///   state — that these regions are where people **feel** things — which is the reason the torso is
-///   drawn as regions rather than as a tube.
+///   state — that these regions are where people **feel** things — which is why the torso carries two
+///   faint washes rather than being left as a tube.
 ///
 /// The numbers on the drawing are this view's own index, matched to the legend under it. They are not
 /// a sequence to follow and not a score.
 public struct EnergyFlowMapView: View {
 
-    /// The drawing's own coordinate space, scaled to whatever width the card gives it.
-    private static let canvas = CGSize(width: 300, height: 480)
+    /// The figure's own proportions, measured off the bundled image after it was cropped to the body:
+    /// 241 × 535 pixels, so every landmark is a fraction of the drawn height and none is an eyeballed
+    /// pixel value.
+    private enum Mark {
+        static let aspect: CGFloat = 241.0 / 535.0
+        static let height: CGFloat = 440
+
+        static let crown: CGFloat = 0.005
+        static let brow: CGFloat = 0.055
+        static let throat: CGFloat = 0.145
+        static let heart: CGFloat = 0.270
+        static let solar: CGFloat = 0.350
+        static let navel: CGFloat = 0.410
+        static let root: CGFloat = 0.500
+
+        static let hand: CGFloat = 0.515
+        static let handInset: CGFloat = 0.075
+        static let feet: CGFloat = 0.980
+    }
 
     public init() {}
 
@@ -42,22 +68,8 @@ public struct EnergyFlowMapView: View {
         VStack(alignment: .leading, spacing: 14) {
             SectionLabel("Energy flow")
 
-            GeometryReader { proxy in
-                let scale = min(proxy.size.width / Self.canvas.width, 1.0)
-                // **The outer frame reserves the *scaled* size.** `scaleEffect` is a render transform
-                // and leaves the layout size alone, so a view scaled up inside an unscaled frame
-                // overflows its card — measured on the simulator, where the feet were drawn over the
-                // tab bar. Reserving `canvas × scale` and anchoring the transform top-leading is what
-                // makes the card's height and the picture's height the same number.
-                drawing
-                    .frame(width: Self.canvas.width, height: Self.canvas.height)
-                    .scaleEffect(scale, anchor: .topLeading)
-                    .frame(
-                        width: Self.canvas.width * scale,
-                        height: Self.canvas.height * scale,
-                        alignment: .topLeading)
-            }
-            .frame(height: Self.canvas.height)
+            figure
+                .frame(maxWidth: .infinity)
 
             legend
 
@@ -82,144 +94,110 @@ public struct EnergyFlowMapView: View {
             + "leaving through the palms, with the lower dantian below the navel. Not a measurement."))
     }
 
-    // MARK: - The drawing
+    // MARK: - The figure
 
-    private var drawing: some View {
-        ZStack {
-            bodySilhouette
-                .stroke(Theme.textMuted.opacity(0.7), style: StrokeStyle(lineWidth: 1.4, lineJoin: .round))
+    private var figure: some View {
+        let width = Mark.height * Mark.aspect
+        return ZStack {
+            figureImage?
+                .resizable()
+                .scaledToFit()
+                .frame(width: width, height: Mark.height)
 
-            regions
-            centralColumn
-            divineFlow
-            earthFlow
-            heartMerge
-            dantian
-            constrictions
-            centres
-            callouts
+            torsoWashes(width: width)
+            centralColumn(width: width)
+            divineFlow(width: width)
+            earthFlow(width: width)
+            heartMerge(width: width)
+            dantian(width: width)
+            constrictions(width: width)
+            centres(width: width)
+            badges(width: width)
         }
-        // The body is drawn around `x = 130` in its own terms; the canvas is 300 wide so the numbered
-        // badges have margin to sit in. Twenty points of shift centres the figure in the space left.
-        .offset(x: 20)
-        .frame(width: Self.canvas.width, height: Self.canvas.height)
+        .frame(width: width, height: Mark.height)
     }
 
-    /// A front-facing figure, symmetric about `x = 130`, with the palms turned out and the feet apart —
-    /// the pose all three sources use, because each of them needs the hands and the feet visible.
-    private var bodySilhouette: Path {
-        Path { path in
-            // Head.
-            path.addEllipse(in: CGRect(x: 103, y: 18, width: 54, height: 60))
-
-            // Neck and torso: shoulders wide, waist in, hips out again.
-            path.move(to: CGPoint(x: 116, y: 76))
-            path.addLine(to: CGPoint(x: 116, y: 92))
-            path.addCurve(
-                to: CGPoint(x: 74, y: 120),
-                control1: CGPoint(x: 96, y: 96), control2: CGPoint(x: 80, y: 104))
-            path.addLine(to: CGPoint(x: 84, y: 196))
-            path.addCurve(
-                to: CGPoint(x: 96, y: 262),
-                control1: CGPoint(x: 86, y: 220), control2: CGPoint(x: 90, y: 244))
-            path.addLine(to: CGPoint(x: 89, y: 420))
-            path.addLine(to: CGPoint(x: 110, y: 420))
-            path.addLine(to: CGPoint(x: 118, y: 300))
-            path.addLine(to: CGPoint(x: 126, y: 420))
-            path.addLine(to: CGPoint(x: 147, y: 420))
-            path.addLine(to: CGPoint(x: 140, y: 262))
-            path.addCurve(
-                to: CGPoint(x: 176, y: 196),
-                control1: CGPoint(x: 160, y: 244), control2: CGPoint(x: 172, y: 220))
-            path.addLine(to: CGPoint(x: 186, y: 120))
-            path.addCurve(
-                to: CGPoint(x: 144, y: 92),
-                control1: CGPoint(x: 180, y: 104), control2: CGPoint(x: 164, y: 96))
-            path.addLine(to: CGPoint(x: 144, y: 76))
-
-            // Arms, out to the palms and back.
-            path.move(to: CGPoint(x: 74, y: 120))
-            path.addCurve(
-                to: CGPoint(x: 40, y: 250),
-                control1: CGPoint(x: 58, y: 150), control2: CGPoint(x: 44, y: 200))
-            path.addLine(to: CGPoint(x: 60, y: 256))
-            path.addCurve(
-                to: CGPoint(x: 90, y: 140),
-                control1: CGPoint(x: 62, y: 205), control2: CGPoint(x: 76, y: 162))
-
-            path.move(to: CGPoint(x: 186, y: 120))
-            path.addCurve(
-                to: CGPoint(x: 220, y: 250),
-                control1: CGPoint(x: 202, y: 150), control2: CGPoint(x: 216, y: 200))
-            path.addLine(to: CGPoint(x: 200, y: 256))
-            path.addCurve(
-                to: CGPoint(x: 170, y: 140),
-                control1: CGPoint(x: 198, y: 205), control2: CGPoint(x: 184, y: 162))
-        }
+    /// The supplied figure, loaded **by URL** rather than by name.
+    ///
+    /// `Image("body", bundle: .module)` resolved to nothing on the simulator while
+    /// `Bundle.module.url(forResource:)` answered the file — proven with a probe that printed the
+    /// resolved path on the screen. Loading the same URL into a platform image takes the name lookup
+    /// out of the question, and a missing asset then draws nothing rather than an empty rectangle.
+    private var figureImage: Image? {
+        guard let url = Bundle.module.url(forResource: "body", withExtension: "png") else { return nil }
+        #if canImport(UIKit)
+        guard let image = UIImage(contentsOfFile: url.path) else { return nil }
+        return Image(uiImage: image)
+        #elseif canImport(AppKit)
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        return Image(nsImage: image)
+        #else
+        return nil
+        #endif
     }
 
-    /// The three regions the emotion figure colours — head, chest and belly. Drawn faintly, because
-    /// their point is that the body *has* regions, not that any of them is doing something today.
-    private var regions: some View {
+    /// The two regions the emotion figure colours — chest and belly — as faint washes, because their
+    /// point is that the body *has* regions, not that either is doing something today.
+    private func torsoWashes(width: CGFloat) -> some View {
         Group {
-            Circle().fill(Theme.sleepIndigo.opacity(0.10))
-                .frame(width: 74, height: 74).position(x: 130, y: 48)
-            RoundedRectangle(cornerRadius: 34)
-                .fill(Theme.recoveryYellow.opacity(0.08))
-                .frame(width: 104, height: 66).position(x: 130, y: 150)
-            RoundedRectangle(cornerRadius: 28)
-                .fill(Theme.recoveryGreen.opacity(0.07))
-                .frame(width: 76, height: 62).position(x: 130, y: 224)
+            Ellipse()
+                .fill(Theme.recoveryYellow.opacity(0.10))
+                .frame(width: width * 0.58, height: Mark.height * 0.12)
+                .position(x: width / 2, y: Mark.height * Mark.heart)
+            Ellipse()
+                .fill(Theme.recoveryGreen.opacity(0.09))
+                .frame(width: width * 0.46, height: Mark.height * 0.11)
+                .position(x: width / 2, y: Mark.height * Mark.navel)
         }
     }
 
-    /// The seven centres, crown to root, on the column every one of the sources draws down the spine.
-    private var centralColumn: some View {
+    /// The dashed column every one of the sources draws from crown to root.
+    private func centralColumn(width: CGFloat) -> some View {
         Path { path in
-            path.move(to: CGPoint(x: 130, y: 34))
-            path.addLine(to: CGPoint(x: 130, y: 268))
+            path.move(to: CGPoint(x: width / 2, y: Mark.height * Mark.crown))
+            path.addLine(to: CGPoint(x: width / 2, y: Mark.height * Mark.root))
         }
         .stroke(Theme.textMuted.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
     }
 
     /// Divine energy: down through the crown, along the column, gathering at the heart.
-    private var divineFlow: some View {
+    private func divineFlow(width: CGFloat) -> some View {
         Group {
             ForEach(0..<3, id: \.self) { index in
                 Path { path in
-                    let x = 114.0 + Double(index) * 16
-                    path.move(to: CGPoint(x: x, y: 2))
-                    path.addLine(to: CGPoint(x: x, y: 26))
+                    let x = width / 2 + (CGFloat(index) - 1) * width * 0.09
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: Mark.height * Mark.brow))
                 }
-                .stroke(Theme.livePulseCyan.opacity(0.85), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                .stroke(Theme.livePulseCyan.opacity(0.9), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
             }
             Path { path in
-                path.move(to: CGPoint(x: 130, y: 30))
-                path.addLine(to: CGPoint(x: 130, y: 136))
+                path.move(to: CGPoint(x: width / 2, y: Mark.height * 0.03))
+                path.addLine(to: CGPoint(x: width / 2, y: Mark.height * Mark.heart))
             }
             .stroke(
                 LinearGradient(
-                    colors: [Theme.livePulseCyan.opacity(0.95), Theme.livePulseCyan.opacity(0.35)],
+                    colors: [Theme.livePulseCyan.opacity(0.95), Theme.livePulseCyan.opacity(0.3)],
                     startPoint: .top, endPoint: .bottom),
-                style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
         }
     }
 
-    /// Earth energy: up from the soles to the root, and on into the lower dantian.
-    private var earthFlow: some View {
+    /// Earth energy: up from the soles to the root, and the rising channel above it.
+    private func earthFlow(width: CGFloat) -> some View {
         Group {
-            ForEach([92.0, 168.0], id: \.self) { x in
+            ForEach([0.36, 0.64], id: \.self) { fraction in
                 Path { path in
-                    path.move(to: CGPoint(x: x, y: 446))
-                    path.addLine(to: CGPoint(x: x, y: 414))
-                    path.addLine(to: CGPoint(x: 130, y: 268))
+                    let x = width * CGFloat(fraction)
+                    path.move(to: CGPoint(x: x, y: Mark.height * 1.005))
+                    path.addLine(to: CGPoint(x: x, y: Mark.height * (Mark.feet - 0.03)))
+                    path.addLine(to: CGPoint(x: width / 2, y: Mark.height * Mark.root))
                 }
-                .stroke(Theme.recoveryGreen.opacity(0.75), style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+                .stroke(Theme.recoveryGreen.opacity(0.8), style: StrokeStyle(lineWidth: 1.7, lineCap: .round))
             }
-            // Kundalini: the base of the spine to the heart, drawn thicker as it climbs.
             Path { path in
-                path.move(to: CGPoint(x: 130, y: 262))
-                path.addLine(to: CGPoint(x: 130, y: 140))
+                path.move(to: CGPoint(x: width / 2, y: Mark.height * Mark.root))
+                path.addLine(to: CGPoint(x: width / 2, y: Mark.height * Mark.heart))
             }
             .stroke(
                 LinearGradient(
@@ -230,65 +208,74 @@ public struct EnergyFlowMapView: View {
     }
 
     /// Where the two are said to meet, and where they leave: the heart, then out along each arm.
-    private var heartMerge: some View {
+    private func heartMerge(width: CGFloat) -> some View {
         Group {
-            Circle().fill(Theme.recoveryYellow.opacity(0.22))
-                .frame(width: 30, height: 30).position(x: 130, y: 140)
+            Circle().fill(Theme.recoveryYellow.opacity(0.20))
+                .frame(width: width * 0.20, height: width * 0.20)
+                .position(x: width / 2, y: Mark.height * Mark.heart)
             Circle().fill(Theme.recoveryYellow)
-                .frame(width: 9, height: 9).position(x: 130, y: 140)
+                .frame(width: 8, height: 8)
+                .position(x: width / 2, y: Mark.height * Mark.heart)
 
-            ForEach([PathEdge.left, PathEdge.right], id: \.self) { edge in
+            ForEach([-1.0, 1.0], id: \.self) { side in
                 Path { path in
-                    let hand = edge == .left ? CGPoint(x: 50, y: 252) : CGPoint(x: 210, y: 252)
-                    path.move(to: CGPoint(x: 130, y: 140))
+                    let hand = CGPoint(
+                        x: width / 2 + CGFloat(side) * width * (0.5 - Mark.handInset),
+                        y: Mark.height * Mark.hand)
+                    path.move(to: CGPoint(x: width / 2, y: Mark.height * Mark.heart))
                     path.addCurve(
                         to: hand,
-                        control1: CGPoint(x: edge == .left ? 96 : 164, y: 150),
-                        control2: CGPoint(x: hand.x + (edge == .left ? 6 : -6), y: 200))
+                        control1: CGPoint(
+                            x: width / 2 + CGFloat(side) * width * 0.22,
+                            y: Mark.height * 0.33),
+                        control2: CGPoint(x: hand.x, y: Mark.height * 0.42))
                 }
-                .stroke(Theme.recoveryYellow.opacity(0.55), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
+                .stroke(Theme.recoveryYellow.opacity(0.5), style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
             }
         }
     }
 
-    private enum PathEdge: Hashable { case left, right }
-
-    /// The two dantian the qigong source names, and the storage the lower one is for.
-    private var dantian: some View {
+    /// The dantian the qigong source names, and the storage the lower one is for.
+    private func dantian(width: CGFloat) -> some View {
         Group {
-            Circle().strokeBorder(Theme.recoveryGreen.opacity(0.6), lineWidth: 1.2)
-                .frame(width: 40, height: 40).position(x: 130, y: 224)
-            Circle().strokeBorder(Theme.recoveryGreen.opacity(0.35), lineWidth: 1)
-                .frame(width: 58, height: 58).position(x: 130, y: 224)
-            Circle().strokeBorder(Theme.textMuted.opacity(0.5), lineWidth: 1)
-                .frame(width: 34, height: 34).position(x: 130, y: 150)
+            Circle().strokeBorder(Theme.recoveryGreen.opacity(0.55), lineWidth: 1.1)
+                .frame(width: width * 0.30, height: width * 0.30)
+                .position(x: width / 2, y: Mark.height * Mark.navel)
+            Circle().strokeBorder(Theme.recoveryGreen.opacity(0.3), lineWidth: 1)
+                .frame(width: width * 0.44, height: width * 0.44)
+                .position(x: width / 2, y: Mark.height * Mark.navel)
+            Circle().strokeBorder(Theme.textMuted.opacity(0.45), lineWidth: 1)
+                .frame(width: width * 0.26, height: width * 0.26)
+                .position(x: width / 2, y: Mark.height * Mark.heart)
         }
     }
 
     /// The three constrictions the rising channel is drawn through — throat, heart and hips.
     ///
-    /// The legend names them, so they are drawn: a legend row that describes something absent from the
+    /// The legend names them, so they are drawn: a legend row describing something absent from the
     /// picture is the same fault as a number with no producer, one layer over.
-    private var constrictions: some View {
-        ForEach([96.0, 140.0, 236.0], id: \.self) { y in
+    private func constrictions(width: CGFloat) -> some View {
+        ForEach([Mark.throat, Mark.heart, Mark.root], id: \.self) { y in
             Ellipse()
-                .strokeBorder(Theme.textSecondary.opacity(0.45), lineWidth: 1)
-                .frame(width: y == 140 ? 92 : 78, height: 16)
-                .position(x: 130, y: y)
+                .strokeBorder(Theme.textSecondary.opacity(0.35), lineWidth: 1)
+                .frame(width: width * (y == Mark.heart ? 0.62 : 0.50), height: 12)
+                .position(x: width / 2, y: Mark.height * y)
         }
     }
 
     /// Seven centres, coloured by the traditional spectrum from root to crown.
-    private var centres: some View {
-        ForEach(Array(Self.chakraY.enumerated()), id: \.offset) { index, y in
+    private func centres(width: CGFloat) -> some View {
+        ForEach(Array(Self.chakraY.enumerated()), id: \.offset) { index, fraction in
             Circle()
                 .fill(Self.chakraColors[index])
-                .frame(width: index == 3 ? 10 : 7, height: index == 3 ? 10 : 7)
-                .position(x: 130, y: y)
+                .frame(width: index == 3 ? 9 : 6.5, height: index == 3 ? 9 : 6.5)
+                .position(x: width / 2, y: Mark.height * fraction)
         }
     }
 
-    private static let chakraY: [Double] = [40, 62, 96, 140, 176, 212, 258]
+    private static let chakraY: [CGFloat] = [
+        0.030, Mark.brow, Mark.throat, Mark.heart, Mark.solar, Mark.navel, Mark.root,
+    ]
 
     private static let chakraColors: [Color] = [
         .purple, .indigo, .blue, Theme.recoveryGreen, Theme.recoveryYellow, .orange, Theme.recoveryRed,
@@ -296,37 +283,35 @@ public struct EnergyFlowMapView: View {
 
     /// **Numbers, and no words.** The first draft wrote each label beside its badge, and on a 390-point
     /// phone every one of the six collided with the figure or ran off the card — a 9-point sentence
-    /// needs about ninety points that the margins do not have. The sentences live in the legend below,
+    /// needs about ninety points the margins do not have. The sentences live in the legend below,
     /// where they are legible, and the drawing keeps only what it is good at: a place.
-    private var callouts: some View {
+    private func badges(width: CGFloat) -> some View {
         Group {
-            // **Numbered in the order the legend reads, which is the order the flow runs**: in
-            // through the crown, in through the soles, meeting at the heart, up through the
-            // constrictions, out through the palms, stored in the lower dantian. The first draft
-            // numbered them by position down the page and the legend said something else at every
-            // number — the pairing is the whole of what a badge is for.
-            callout(1, at: CGPoint(x: 176, y: 20))
-            callout(2, at: CGPoint(x: 78, y: 440))
-            callout(3, at: CGPoint(x: 176, y: 140))
-            callout(4, at: CGPoint(x: 70, y: 300))
-            callout(5, at: CGPoint(x: 40, y: 252))
-            callout(6, at: CGPoint(x: 176, y: 224))
+            // Numbered in the order the legend reads, which is the order the flow runs: in through the
+            // crown, in through the soles, meeting at the heart, up through the constrictions, out
+            // through the palms, stored in the lower dantian.
+            badge(1, x: width * 1.08, y: Mark.height * 0.030)
+            badge(2, x: width * 0.22, y: Mark.height * 0.925)
+            badge(3, x: width * 1.08, y: Mark.height * Mark.heart)
+            badge(4, x: width * 0.22, y: Mark.height * 0.600)
+            badge(5, x: width * 0.02, y: Mark.height * Mark.hand)
+            badge(6, x: width * 1.08, y: Mark.height * Mark.navel)
         }
     }
 
-    private func callout(_ number: Int, at point: CGPoint) -> some View {
+    private func badge(_ number: Int, x: CGFloat, y: CGFloat) -> some View {
         Text("\(number)")
             .font(.system(size: 9, weight: .bold))
             .foregroundStyle(Theme.backgroundDark)
             .frame(width: 15, height: 15)
             .background(Circle().fill(Theme.textSecondary))
-            .position(x: point.x, y: point.y)
+            .position(x: x, y: y)
     }
 
     // MARK: - The legend
 
-    /// The same six numbers, in the order the flow runs — in down the crown, up from the soles, merge,
-    /// and out. Written here so the drawing carries no sentence too small to read.
+    /// The same six numbers, in the order the flow runs. Written here so the drawing carries no
+    /// sentence too small to read.
     private var legend: some View {
         VStack(alignment: .leading, spacing: 5) {
             legendRow(1, "Divine energy enters through the crown and travels down the centre.")
