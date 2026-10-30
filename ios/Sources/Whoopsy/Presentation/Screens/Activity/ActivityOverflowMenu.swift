@@ -118,6 +118,26 @@ public enum ActivityOverflowMenu {
         ]
     }
 
+    /// The sleep page's menu: **one acting row and the way out**, and no `Delete`.
+    ///
+    /// **A night has no delete, and that is a decision rather than an omission.** Removing a stored
+    /// night would orphan the day it keys — Recovery is scored from it, the ring and the page are drawn
+    /// from it, and the row is what the classifier's watermark says it has already seen — so the app's
+    /// one destructive control stays the activity page's, where the row is the user's own recording.
+    /// What the sleep page *can* correct is when the night ran, which is the `Edit` row here.
+    ///
+    /// The shape is the stored activity menu's minus the destructive row: one card of actions, then
+    /// `Cancel` alone, so the same gap and the same radius put the way out where a reader of either
+    /// menu already looks for it.
+    public static let nightGroups: [[Entry]] = [
+        [
+            Entry(title: "Edit", action: .edit),
+        ],
+        [
+            Entry(title: "Cancel", action: .cancel),
+        ],
+    ]
+
     /// Every row, top to bottom — the flat reading of `groups`, which stays the one definition of the
     /// menu's contents and their order.
     ///

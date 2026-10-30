@@ -15,6 +15,21 @@ public enum WhoopHardwareGeneration: String, CaseIterable, Identifiable, Sendabl
     case standardBleHR = "Standard BLE Heart Rate"
     case simulator = "Whoop Simulator"
 
+    /// The model's name **on a screen**, which is a different thing from its raw value.
+    ///
+    /// **The raw value is the storage key** — `UserDefaultsStrapModelRepository` persists the chosen
+    /// model as `rawValue` — so it keeps its shipped spelling even where that spelled a brand. This is
+    /// what a view draws: the model alone, with the make implied by the app.
+    public var displayName: String {
+        switch self {
+        case .whoop4: return "4.0"
+        case .whoop5: return "5.0"
+        case .whoop5MG: return "5.0 MG"
+        case .standardBleHR: return "Standard BLE Heart Rate"
+        case .simulator: return "Strap Simulator"
+        }
+    }
+
     /// The model a strap's own Device Information Service reports, or `nil` when the string names
     /// none of them.
     ///

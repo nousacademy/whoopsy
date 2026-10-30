@@ -69,6 +69,6 @@ public struct FastingImportAction: Sendable, Equatable {
         title: "IMPORT FASTING HISTORY",
         caption: "Loads " + fileName + " — the Zero app's own fasting history — as activities filed "
             + "under the day each fast started. A fast has no heart rate or strain behind it, so those "
-            + "figures stay blank. Unlike the WHOOP imports this one skips nothing, because a fast's "
+            + "figures stay blank. Unlike the strap imports this one skips nothing, because a fast's "
             + "id is its own; re-importing is therefore safe, but a fast you deleted will come back.")
 }

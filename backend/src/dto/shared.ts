@@ -152,3 +152,57 @@ export const UserHeaderSchema = z.object({
  * diffs, so an unstable parameter order would show up as a spurious change on every regeneration.
  */
 export const RequestHeaderSchema = TokenHeaderSchema.merge(UserHeaderSchema);
+
+/**
+ * The query a range delete takes: two calendar days, inclusive at both ends.
+ *
+ * **`from`/`to` rather than `days`/`endingOn`**, which is the shape the range *read* uses, and the
+ * difference is not a preference. A read asks "the last N days from here" and the server resolves the
+ * other end; a delete names the days it is about to remove, because a caller that has to be sure which
+ * days went should send both ends rather than trust a subtraction it did not perform. It is also why
+ * both are required: an omitted `to` would make the endpoint's effect depend on the server's UTC today,
+ * and a delete whose reach depends on a timezone is one a phone eight hours away cannot predict.
+ *
+ * **Inclusive at both ends**, matching `listRange` and the `date >= ? AND date <= ?` predicate every
+ * day-keyed adapter already uses — one bound convention for the two operations over the same column,
+ * so a client can read a range and delete exactly what it read. A day-key is fixed-width text, so the
+ * `from <= to` check is a string comparison and is a total order over valid days.
+ */
+export const DayRangeQuerySchema = z
+  .object({
+    from: DayKeySchema.openapi({
+      description: "The oldest day in the range, inclusive.",
+      example: "2026-10-20",
+    }),
+    to: DayKeySchema.openapi({
+      description: "The newest day in the range, inclusive.",
+      example: "2026-10-22",
+    }),
+  })
+  .refine((range) => range.from <= range.to, {
+    message: "`from` must not be later than `to`",
+    path: ["from"],
+  });
+
+/**
+ * What a range delete answers with: how many rows the database reported removing.
+ *
+ * **`0` is a real answer and does not mean the request failed** — a range that holds nothing is the
+ * state the caller was asking for, and a replayed delete is exactly that. The distinction that matters
+ * to a client is between this and a refusal, which is a non-2xx with an error envelope, and the two are
+ * never confused here.
+ *
+ * It is the database's own `meta.changes` rather than a count this layer took first: counting and then
+ * deleting is two statements racing each other, and the number reported should be what the delete did.
+ */
+export const DeleteResultSchema = z
+  .object({
+    deleted: z.number().int().nonnegative().openapi({
+      description:
+        "How many rows the database removed. `0` means the range held nothing — a real answer, and the one a replayed delete gets.",
+      example: 3,
+    }),
+  })
+  .openapi("DeleteResult", {
+    description: "The outcome of a range delete.",
+  });

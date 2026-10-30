@@ -29,7 +29,12 @@ public final class GRDBRecoveryRepository: RecoveryRepository, Sendable {
             skinTemp: recovery.skinTemperatureCelsius,
             spo2: recovery.spO2Percentage,
             respiratoryRate: recovery.respiratoryRate,
-            source: source
+            source: source,
+            // The two audit fields, written here as they are read back: the formula that made the
+            // row and the newest input it included. Both local-only — `RecoveryRecord.syncRow`
+            // deliberately does not carry them.
+            algorithm: recovery.algorithm?.rawValue,
+            scoredThrough: recovery.scoredThrough
         )
         try await db.saveRecovery(record)
     }
@@ -57,7 +62,11 @@ public final class GRDBRecoveryRepository: RecoveryRepository, Sendable {
             skinTemperatureCelsius: record.skinTemp,
             spO2Percentage: record.spo2,
             respiratoryRate: record.respiratoryRate,
-            source: record.source
+            source: record.source,
+            // A row written before `v39` has neither, and the optional is what says so rather than
+            // defaulting to the current version — see `RecoveryAlgorithm.init(stored:)`.
+            algorithm: RecoveryAlgorithm(stored: record.algorithm),
+            scoredThrough: record.scoredThrough
         )
     }
 }

@@ -80,6 +80,16 @@ const SELECT_RANGE = `
   ORDER BY date ASC
 `;
 
+/**
+ * The range delete — the table's only write that does not name a row's values.
+ *
+ * The same `date >= ? AND date <= ?` predicate `SELECT_RANGE` reads with, and the `user_id` bind is
+ * first and is not optional: it is the partition. The count comes from the statement's own
+ * `meta.changes` rather than from a preceding `SELECT COUNT(*)`, which would be a second statement
+ * racing this one.
+ */
+const DELETE_RANGE = `DELETE FROM step_counts WHERE user_id = ? AND date >= ? AND date <= ?`;
+
 export class D1StepCountRepository implements StepCountRepository {
   constructor(private readonly db: D1Database) {}
 
@@ -184,6 +194,13 @@ export class D1StepCountRepository implements StepCountRepository {
     // number as the first send rather than reporting zero.
     return results.reduce((total, result) => total + result.meta.changes, 0);
   }
+
+  async deleteRange(userId: string, from: string, to: string): Promise<number> {
+    const result = await this.db.prepare(DELETE_RANGE).bind(userId, from, to).run();
+    // `0` is a real answer — the range held nothing — and it is what a replayed delete gets.
+    return result.meta.changes;
+  }
+
 }
 
 /**

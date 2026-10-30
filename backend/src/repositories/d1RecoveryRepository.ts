@@ -115,6 +115,20 @@ const SELECT_RANGE = `
   ORDER BY date ASC
 `;
 
+/**
+ * The range delete — the table's only write that does not name a row's values.
+ *
+ * **The same `date >= ? AND date <= ?` predicate `SELECT_RANGE` reads with**, so a caller can read a
+ * range and delete exactly what it read. The `user_id` bind is first and is not optional: it is the
+ * partition, and a delete that could reach another caller's rows would be the one statement in this
+ * Worker capable of touching data it was never given.
+ *
+ * No `RETURNING` and no preceding `SELECT COUNT(*)`. The count comes from the statement's own
+ * `meta.changes`, which is what was actually removed; counting first would be a second statement
+ * racing this one.
+ */
+const DELETE_RANGE = `DELETE FROM recoveries WHERE user_id = ? AND date >= ? AND date <= ?`;
+
 export class D1RecoveryRepository implements RecoveryRepository {
   constructor(private readonly db: D1Database) {}
 
@@ -146,6 +160,14 @@ export class D1RecoveryRepository implements RecoveryRepository {
     // A day with no row is simply not in the array. There is nothing to filter out and nothing to
     // fill in: the absence is already the shape of the answer.
     return results.map(toRecovery);
+  }
+
+  async deleteRange(userId: string, from: string, to: string): Promise<number> {
+    const result = await this.db.prepare(DELETE_RANGE).bind(userId, from, to).run();
+
+    // The driver's own tally. `meta.changes` is what the statement removed, so a range that held
+    // nothing answers `0` — a real answer, and the one a replayed delete gets.
+    return result.meta.changes;
   }
 
   async upsert(recovery: Recovery): Promise<Recovery> {

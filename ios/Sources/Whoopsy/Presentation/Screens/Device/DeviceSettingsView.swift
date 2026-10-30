@@ -144,7 +144,7 @@ public struct DeviceSettingsView: View {
     /// `WHOOP DISCONNECTED`, and a subject that had been typed as a state word would put the same
     /// sentence on the page twice in two sizes — which is the defect this arrangement fixes rather
     /// than one it introduces. §14 sweeps all six arms against it.
-    public nonisolated static let subject = "WHOOP DEVICE"
+    public nonisolated static let subject = "STRAP DEVICE"
 
     /// The relation, the state, and what to do about it — three fields rather than one composed
     /// sentence, because they are three different weights of type on the screen.
@@ -184,22 +184,22 @@ public struct DeviceSettingsView: View {
         case .disconnected:
             return Hero(
                 lead: "NOT CONNECTED TO",
-                stateWord: "WHOOP DISCONNECTED",
+                stateWord: "STRAP DISCONNECTED",
                 sentence: "Tap 'Pair a Device' on the ADVANCED tab to continue.")
         case .scanning:
             return Hero(
                 lead: "NOT CONNECTED TO",
-                stateWord: "SEARCHING FOR WHOOP",
+                stateWord: "SEARCHING FOR STRAP",
                 sentence: "Keep the strap nearby and awake. A scan links to the first strap this app hears.")
         case .connecting:
             return Hero(
                 lead: "NOT CONNECTED TO",
-                stateWord: "CONNECTING TO WHOOP",
+                stateWord: "CONNECTING TO STRAP",
                 sentence: "Linking to the strap. This takes a few seconds.")
         case .connected:
             return Hero(
                 lead: "CONNECTED TO",
-                stateWord: "WHOOP CONNECTED",
+                stateWord: "STRAP CONNECTED",
                 sentence: "The strap is linked. Sync history to pull in anything it recorded while this app was closed.")
         case .syncing:
             return Hero(
@@ -209,7 +209,7 @@ public struct DeviceSettingsView: View {
         case .error:
             return Hero(
                 lead: "NOT CONNECTED TO",
-                stateWord: "WHOOP ERROR",
+                stateWord: "STRAP ERROR",
                 sentence: "The link dropped unexpectedly. Tap 'Pair a Device' on the ADVANCED tab to try again.")
         }
     }
@@ -1011,7 +1011,7 @@ public struct DeviceSettingsView: View {
                 // The envelope named here is the selected model's own, because there are two of them
                 // and the sentence used to name the 4.0 unconditionally. A 5.0 framed with the 4.0's
                 // envelope is not a message that strap rejects — it is a different one.
-                Text("Commands are framed with the WHOOP \(viewModel.protocolEnvelopeName) envelope recorded in docs/BLE_PROTOCOL.md.")
+                Text("Commands are framed with the \(viewModel.protocolEnvelopeName) envelope recorded in docs/BLE_PROTOCOL.md.")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
                 // Said plainly rather than left to the docs: the envelopes match independent
@@ -1024,7 +1024,7 @@ public struct DeviceSettingsView: View {
             } else {
                 Label("No proprietary protocol", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(Theme.recoveryYellow)
-                Text("This model has no WHOOP packet envelope, so nothing is framed for it and only the standard heart-rate service is read.")
+                Text("This model has no proprietary packet envelope, so nothing is framed for it and only the standard heart-rate service is read.")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
             }

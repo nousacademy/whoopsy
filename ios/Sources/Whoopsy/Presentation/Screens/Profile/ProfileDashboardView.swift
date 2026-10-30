@@ -410,52 +410,74 @@ public struct ProfileDashboardView: View {
     /// control beside it. The draft is what keeps the middle state honest — the picker's opening
     /// position is a control's position, like a slider's, and it does not become the user's birthday
     /// until they actually move it. Until then the form stays clean and `SAVE` stays greyed.
+    ///
+    /// **The label is a visible eyebrow in all three states, and it had to become one.** The three
+    /// controls were built with `DatePicker("BIRTHDAY", …).labelsHidden()`, so the row drew a bare dash
+    /// (or a bare date control) with nothing naming it — the accessibility label was the only place the
+    /// word existed. A reader looking for the birthday field read the row as an unexplained dash and
+    /// concluded the field was missing, while the column behind it had been collecting the value since
+    /// `v20`. Nothing about the data moved; the name on the row did.
     @ViewBuilder
     private var birthdayRow: some View {
-        if let birthday = viewModel.birthday {
-            HStack(spacing: 8) {
-                DatePicker(
-                    "BIRTHDAY",
-                    selection: Binding(
-                        get: { birthday },
-                        set: { viewModel.birthday = $0.startOfDay }),
-                    displayedComponents: .date)
-                    .labelsHidden()
+        VStack(alignment: .leading, spacing: 6) {
+            eyebrow("BIRTHDAY")
 
-                Spacer(minLength: 0)
+            if let birthday = viewModel.birthday {
+                inputBox {
+                    HStack(spacing: 8) {
+                        DatePicker(
+                            "BIRTHDAY",
+                            selection: Binding(
+                                get: { birthday },
+                                set: { viewModel.birthday = $0.startOfDay }),
+                            displayedComponents: .date)
+                            .labelsHidden()
 
+                        Spacer(minLength: 0)
+
+                        Button {
+                            viewModel.birthday = nil
+                            draftBirthday = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear birthday")
+                    }
+                }
+            } else if draftBirthday != nil {
+                inputBox {
+                    DatePicker(
+                        "BIRTHDAY",
+                        selection: Binding(
+                            get: { draftBirthday ?? Date() },
+                            set: { newValue in
+                                draftBirthday = newValue
+                                viewModel.birthday = newValue.startOfDay
+                            }),
+                        displayedComponents: .date)
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
                 Button {
-                    viewModel.birthday = nil
-                    draftBirthday = nil
+                    draftBirthday = Date()
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(Theme.textMuted)
+                    inputBox {
+                        HStack {
+                            Text(ActivityFigure.dash).foregroundStyle(Theme.textMuted)
+                            Spacer(minLength: 0)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Clear birthday")
+                .accessibilityLabel("Add a birthday")
             }
-        } else if draftBirthday != nil {
-            DatePicker(
-                "BIRTHDAY",
-                selection: Binding(
-                    get: { draftBirthday ?? Date() },
-                    set: { newValue in
-                        draftBirthday = newValue
-                        viewModel.birthday = newValue.startOfDay
-                    }),
-                displayedComponents: .date)
-                .labelsHidden()
-        } else {
-            Button {
-                draftBirthday = Date()
-            } label: {
-                HStack {
-                    Text(ActivityFigure.dash).foregroundStyle(Theme.textMuted)
-                    Spacer(minLength: 0)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Add a birthday")
+
+            Text("Feeds your age — the sleep score's population prior and the Health tab's Whoopsy Age.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -682,8 +704,71 @@ public struct ProfileDashboardView: View {
             }
         }
 
+        purgeSection
+
         if !localDataViewModel.status.isEmpty {
             Section { Text(localDataViewModel.status).font(.footnote) }
+        }
+    }
+
+    /// The one control in this app that removes data.
+    ///
+    /// **It is last on the pane, after every import and export, and that is the order the risk is in.**
+    /// `LOGS` is about where a history comes from and where it goes; this is the only row that asks for
+    /// history to stop existing, so it sits after the ones that add to it rather than between them.
+    ///
+    /// **Two dates and a confirmation rather than a sheet.** A `.sheet` here would be the app's fourth,
+    /// and this is a `Form` row set like `BIRTHDAY` rather than a task with its own page; the
+    /// irreversibility is carried by `confirmationDialog`, whose wording is `LocalDataViewModel`'s and
+    /// which the runner can assert because it is a property rather than a literal in a `body`.
+    ///
+    /// **`DELETE` is drawn in `Theme.recoveryRed`** through `cardLabel`'s `tint`, the same parameter the
+    /// storage pane's greyed run button uses — so the one destructive control on the page is the one red
+    /// card, and the colour is not a second thing to keep in step with the words.
+    @ViewBuilder
+    private var purgeSection: some View {
+        Section {
+            DatePicker(
+                "FROM",
+                selection: Binding(
+                    get: { localDataViewModel.purgeFrom },
+                    set: { localDataViewModel.purgeFrom = $0.startOfDay }),
+                displayedComponents: .date)
+
+            DatePicker(
+                "TO",
+                selection: Binding(
+                    get: { localDataViewModel.purgeTo },
+                    set: { localDataViewModel.purgeTo = $0.startOfDay }),
+                displayedComponents: .date)
+
+            Button(role: .destructive) {
+                localDataViewModel.isConfirmingPurge = true
+            } label: {
+                cardLabel("DELETE", systemImage: "trash", tint: Theme.recoveryRed)
+            }
+            .buttonStyle(.plain)
+            .disabled(localDataViewModel.isPurging || !localDataViewModel.canPurge)
+
+            if localDataViewModel.isPurging {
+                Text("Deleting…").font(.footnote).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Delete days")
+        } footer: {
+            Text(localDataViewModel.purgeCaption)
+        }
+        .confirmationDialog(
+            localDataViewModel.purgeConfirmationTitle,
+            isPresented: Binding(
+                get: { localDataViewModel.isConfirmingPurge },
+                set: { localDataViewModel.isConfirmingPurge = $0 }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                Task { await localDataViewModel.purgeDays() }
+            }
+            Button("Cancel", role: .cancel) {}
         }
     }
 
@@ -881,6 +966,17 @@ public struct ProfileDashboardView: View {
             if syncViewModel.hasSpan {
                 Section {
                     runRow(title: SyncStorageViewModel.runTitle)
+                }
+            }
+
+            // **RESTORE is not gated on a span, and putting it inside the block above was the bug.**
+            // The phone this control exists for is one that is *missing days*, and such a phone has
+            // never drawn a span — so a restore drawn only beside `SYNC` was invisible exactly when it
+            // was needed. It is drawn whenever this build has a database behind it; `canRestore` greys
+            // it while a run is going.
+            if syncViewModel.isCloudConfigured {
+                Section {
+                    restoreRow
                 }
             }
 
@@ -1142,6 +1238,35 @@ public struct ProfileDashboardView: View {
     /// than disappearing under the reader's finger, which is also why the gate there is the span and not
     /// `canRun`. `saveButton`'s treatment one pane over: the tint and the `disabled` gate both read off
     /// one value, because `.buttonStyle(.plain)` with a custom background does not grey itself.
+    /// The restore control, drawn under `SYNC`: the one path that fills this phone from the database.
+    ///
+    /// It is **not** gated on a span, unlike the row above — a phone missing days has not drawn one, and
+    /// the question it is asking is "give me the last thirty". The caption states what it replaces,
+    /// because unlike `SYNC` this control writes over days the phone holds.
+    private var restoreRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                Task { await syncViewModel.restoreFromCloud() }
+            } label: {
+                cardLabel(
+                    SyncStorageViewModel.restoreTitle,
+                    tint: syncViewModel.canRestore ? Theme.textPrimary : Theme.textMuted)
+            }
+            .buttonStyle(.plain)
+            .disabled(!syncViewModel.canRestore)
+
+            Text(SyncStorageViewModel.restoreCaption)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if syncViewModel.isRestoring {
+                HStack(spacing: 8) { ProgressView(); Text("Restoring…").font(.caption) }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
     private func runRow(title: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
@@ -1171,6 +1296,18 @@ public struct ProfileDashboardView: View {
     /// It is a function rather than a `Text` at each call site so the five labels cannot drift apart in
     /// size, weight or tracking: the reference draws them as a set, and a set is exactly what five
     /// copies are free to stop being.
+    /// The bordered box an entry on this pane sits in — one definition, because the `BIRTHDAY` row's
+    /// control has to be the same object as the text fields' and not a near-copy of it.
+    private func inputBox<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Theme.homeCard, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Theme.cardBorder, lineWidth: 1))
+    }
+
     private func eyebrow(_ title: String) -> some View {
         Text(title)
             .font(.caption2.weight(.bold))
@@ -1199,21 +1336,17 @@ public struct ProfileDashboardView: View {
         VStack(alignment: .leading, spacing: 6) {
             eyebrow(title)
 
-            HStack(spacing: 8) {
-                TextField(ActivityFigure.dash, text: text)
-                    .numericKeyboard(decimal: decimal)
-                    .monospacedDigit()
+            inputBox {
+                HStack(spacing: 8) {
+                    TextField(ActivityFigure.dash, text: text)
+                        .numericKeyboard(decimal: decimal)
+                        .monospacedDigit()
 
-                if let unit {
-                    Text(unit).foregroundStyle(Theme.textMuted)
+                    if let unit {
+                        Text(unit).foregroundStyle(Theme.textMuted)
+                    }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Theme.homeCard, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Theme.cardBorder, lineWidth: 1))
 
             // Its own `Text`, and not a `**bold**` run inside a string built with `+`: a concatenated
             // `String` takes `Text`'s `StringProtocol` overload, which does not parse Markdown, and

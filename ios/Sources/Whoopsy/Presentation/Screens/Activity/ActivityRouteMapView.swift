@@ -36,12 +36,26 @@ public struct ActivityRouteMapView: View {
     /// module this package never compiles and therefore cannot name. See the initialiser that sets it.
     private let mapSurface: AnyView?
 
+    /// The surface the **expanded** card draws, when it is not this module's to draw.
+    ///
+    /// `nil` means *use this module's own map*, drawn interactively — which is the right answer for
+    /// every build this package compiles and for `UnavailableOfflineMaps`. It is non-`nil` only when
+    /// the `App/Map/` seam supplied an offline surface, because that module's map cannot be made
+    /// interactive from here: its gesture options are set in a file this package never compiles, so
+    /// the expanded drawing has to be built there and handed in beside the card's.
+    private let expandedMapSurface: AnyView?
+
+    /// Whether the map is expanded. Card state and nothing else: expansion changes the frame the same
+    /// surface is drawn in, so the route, the renderer and the access to the map are untouched by it.
+    @State private var isMapExpanded = false
+
     /// - Parameter unit: defaults to the device's own measurement system. It is a parameter at all so
     ///   that a preview or a future caller can state one, and so that this view holds no locale read.
     public init(route: ActivityRoute, unit: ActivityRoute.Unit = .forLocale(.current)) {
         self.route = route
         self.unit = unit
         self.mapSurface = nil
+        self.expandedMapSurface = nil
     }
 
     /// The same card, drawing a map supplied from outside this module.
@@ -70,11 +84,13 @@ public struct ActivityRouteMapView: View {
     public init(
         route: ActivityRoute,
         unit: ActivityRoute.Unit = .forLocale(.current),
-        mapSurface: AnyView
+        mapSurface: AnyView,
+        expandedMapSurface: AnyView? = nil
     ) {
         self.route = route
         self.unit = unit
         self.mapSurface = mapSurface
+        self.expandedMapSurface = expandedMapSurface
     }
 
     /// The label above the map, and the heading the page's other blocks already use — the row above it
@@ -140,26 +156,44 @@ public struct ActivityRouteMapView: View {
     // MARK: - The drawing
 
     private var map: some View {
-        VStack(spacing: 0) {
-            surface
-                .frame(height: Self.mapHeight - Self.captionHeight)
+        // **The expand control is a sibling of the card, not a child of it.** The card below is one
+        // accessibility element that speaks the route's sentence; a button drawn inside it would be
+        // swallowed by that and unreachable by a screen reader. Beside it, the map speaks and the
+        // control is its own stop.
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                surface
+                    .frame(height: Self.mapHeight - Self.captionHeight)
 
-            caption
+                caption
+            }
+            // The clip wraps both halves, so the caption's bottom corners are rounded to the map's top
+            // ones by one shape rather than by two that have to be kept in step — and it wraps whichever
+            // surface is drawn, which is what keeps the offline card's corners from being a second shape
+            // that has to be kept in step with this one.
+            .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+            // The map is a drawing, and a `Map`'s own accessibility tree is a set of place names that say
+            // nothing about this session. The card's whole accessible content is the sentence, which
+            // `ActivityRoute` composes so the runner can assert it.
+            //
+            // It is applied to the card rather than to the `MapKit` map alone so that the offline surface
+            // is described by the same sentence — a route is a route either way, and which SDK drew it is
+            // not something a screen reader should have to say.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(route.spokenSummary(in: unit))
+
+            MapExpandButton { isMapExpanded = true }
         }
-        // The clip wraps both halves, so the caption's bottom corners are rounded to the map's top
-        // ones by one shape rather than by two that have to be kept in step — and it wraps whichever
-        // surface is drawn, which is what keeps the offline card's corners from being a second shape
-        // that has to be kept in step with this one.
-        .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
-        // The map is a drawing, and a `Map`'s own accessibility tree is a set of place names that say
-        // nothing about this session. The card's whole accessible content is the sentence, which
-        // `ActivityRoute` composes so the runner can assert it.
-        //
-        // It is applied to the card rather than to the `MapKit` map alone so that the offline surface
-        // is described by the same sentence — a route is a route either way, and which SDK drew it is
-        // not something a screen reader should have to say.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(route.spokenSummary(in: unit))
+        // **The same map, in a larger frame and with its gestures back.** Nothing about the route is
+        // rebuilt for the expanded drawing: `expandedSurface` is the card's own map — `MapKit` or the
+        // seam's `AnyView` — with interaction turned on, which is the only difference between the two
+        // (`MapFullScreenView`'s type comment carries the argument).
+        .mapExpansion(isPresented: $isMapExpanded) {
+            AnyView(
+                MapFullScreenView(
+                    content: AnyView(expandedSurface),
+                    spoken: route.spokenSummary(in: unit)))
+        }
     }
 
     /// The picture above the caption: this module's `MapKit` map, or the one handed in.
@@ -171,7 +205,23 @@ public struct ActivityRouteMapView: View {
         if let mapSurface {
             mapSurface
         } else {
-            liveMap
+            liveMap(interactive: false)
+        }
+    }
+
+    /// The picture the full-screen cover draws: the same route, and — the one difference — a map the
+    /// user may pan and zoom.
+    ///
+    /// **Interaction is the whole reason there are two surfaces.** The card's map is inert because it
+    /// sits in a scrolling page; the cover has no page behind it, so the gestures the card suppresses
+    /// come back. `MapKit` takes it as `interactionModes` here; the offline SDK's set is decided inside
+    /// `App/Map/` and arrives through `expandedMapSurface`.
+    @ViewBuilder
+    private var expandedSurface: some View {
+        if let expandedMapSurface {
+            expandedMapSurface
+        } else {
+            liveMap(interactive: true)
         }
     }
 
@@ -199,8 +249,8 @@ public struct ActivityRouteMapView: View {
     /// each gesture off by name. That difference is why the rule is repeated rather than inherited —
     /// see `MapboxRouteMapView` in `App/Map/`, which is the one place it can be broken without anything
     /// in this package noticing.
-    private var liveMap: some View {
-        Map(initialPosition: position, interactionModes: []) {
+    private func liveMap(interactive: Bool) -> some View {
+        Map(initialPosition: position, interactionModes: interactive ? [.pan, .zoom] : []) {
             MapPolyline(coordinates: coordinates)
                 .stroke(
                     Theme.routeLine,

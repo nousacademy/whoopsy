@@ -26,6 +26,27 @@ public struct RecoveryMetric: Identifiable, Equatable, Sendable {
     /// it describes this phone's history rather than the record's own fields.
     public let source: String?
 
+    /// Which formula produced this row, as `recoveries.algorithm` holds it, or `nil` on a row written
+    /// before `v39`.
+    ///
+    /// **The same field `StrainScore` and `SleepSession` carry, for the same reason and one table
+    /// later.** A day is re-scored when the version is not `RecoveryAlgorithm.current` rather than
+    /// when a migration guesses which rows are stale — which is what three `v29`–`v31` recovery
+    /// migrations did, each clearing a day because nothing on the row could say who made it.
+    public let algorithm: RecoveryAlgorithm?
+
+    /// The newest input instant this row included, as `recoveries.scored_through` holds it.
+    ///
+    /// **The durable form of what used to be a process's memory.** `RefreshRecoveryUseCase` kept the
+    /// night watermark it had scored against in a dictionary, so every relaunch re-scored today —
+    /// reading the whole night's samples and a thirty-day baseline — to reproduce a row already on
+    /// disk. Stored on the row, the same comparison works after a cold start, and the work happens
+    /// only when a drain has actually rewritten the night.
+    ///
+    /// **Local-only**: it describes what this phone has read, not a field of the record, so the sync
+    /// mapper does not carry it — the same rule `StrainScore.scoredThrough` follows.
+    public let scoredThrough: Date?
+
     /// The label `CalculateRecoveryUseCase` writes for a **scored** day.
     public static let strapSource = "strap"
 
@@ -62,7 +83,9 @@ public struct RecoveryMetric: Identifiable, Equatable, Sendable {
         respiratoryRate: Double? = nil,
         hrvBaselineDeltaMs: Double? = nil,
         rhrBaselineDeltaBpm: Int? = nil,
-        source: String? = nil
+        source: String? = nil,
+        algorithm: RecoveryAlgorithm? = nil,
+        scoredThrough: Date? = nil
     ) {
         self.id = id
         self.date = date
@@ -77,6 +100,8 @@ public struct RecoveryMetric: Identifiable, Equatable, Sendable {
         self.hrvBaselineDeltaMs = hrvBaselineDeltaMs
         self.rhrBaselineDeltaBpm = rhrBaselineDeltaBpm
         self.source = source
+        self.algorithm = algorithm
+        self.scoredThrough = scoredThrough
     }
 
     /// Whether this day holds an actual measurement, as opposed to a placeholder for a day that had

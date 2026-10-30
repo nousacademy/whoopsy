@@ -67,13 +67,16 @@ describe("an unmatched path", () => {
   });
 
   it("echoes the method back, so a reader can tell two similar paths apart", async () => {
-    const response = await SELF.fetch(`${BASE}/v1/recoveries`, {
+    // `PATCH` rather than `DELETE`: the day-keyed resources grew a range delete (the app's purge), so
+    // `DELETE /v1/recoveries` is a real route now. What this asserts is unchanged — the funnel names
+    // the method it could not match — and `profile` is the resource that still has no delete at all.
+    const response = await SELF.fetch(`${BASE}/v1/profile`, {
       method: "DELETE",
       headers: { ...authHeaders() },
     });
     const body = (await response.json()) as { error: { message: string } };
 
     expect(response.status).toBe(404);
-    expect(body.error.message).toBe("no route for DELETE /v1/recoveries");
+    expect(body.error.message).toBe("no route for DELETE /v1/profile");
   });
 });

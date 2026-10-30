@@ -183,6 +183,43 @@ propose for straps that cannot get motion — and why neither is needed when the
 
 **`v37` gives the row the same pair `v35` gave `strains`:** `algorithm` (the rule, `SleepAlgorithm.current`) and `scored_through` (the newest epoch end or sample instant the classification actually read, taken from the arrays it classified rather than re-read). The page now answers three questions in order — imported? never touch it; version matches and the analyzer can see nothing newer? read the row; otherwise? classify again. A re-classification that comes back empty **keeps** the stored night unless the row's version is one this build no longer has, which is the only case where today's rule is entitled to deny yesterday's night. §15 pins both halves: the watermark rule as a pure function, and the keep-versus-delete pair through the real page and a real database.
 
+**"New input" means input inside the night, and the first version meant anywhere in the morning.**
+`SleepReclassification.isOwed` compared the row's `scoredThrough` watermark with the newest sample in the
+whole 21:00 → 10:00 read window, so every sample after waking made the stored night owed. Measured
+2026-10-27: `NIGHTS … owed=true saved` twice inside two minutes with identical start and end, a full
+reclassification on every foreground and every open of the sleep page — each folding tens of thousands of
+samples to reproduce the same night — and each save published to Home, which redrew the ring. An hour of
+awake samples cannot change a night; a night ends when the wrist starts moving. The rule now takes the
+stored `endTime` and counts input inside it, or within `extensionGraceSeconds` (the classifier's own
+ten-minute run) after it. **And a re-classification that reproduced the same night is no longer
+published** — `execute` always writes, because advancing the watermark is what stops the next check, but
+`SleepSession.drawsSame(as:)` compares what a screen draws (not `id` or `scoredThrough`, which
+`Equatable` would trip on) and only a changed drawing reaches `nightUpdates`. The sleep page also stopped
+clearing `week` and `sleepScore` before its reads: the page is pushed for one day and can never load two,
+so the clear only blanked the chart and the ring for the length of the load.
+
+**The grace had a blind spot: a night that ended because its data did, rather than because its wearer
+woke.** Measured 2026-10-28, a night saved as 23:05–23:59 stayed a 54-minute night while seven hours of
+later records arrived — the gate called all of it wake time. Two attempts to infer the difference from the
+row's own instants both failed, and the capture says why: the stored watermark was **07:10** while the end
+was **23:59**. The watermark is `inputEdge`, the max of the newest sample and the newest epoch, so it says
+*what input the run read*, not *what could change the night* — and a night cannot grow on heart-rate-only
+samples.
+
+**The fix is to record the fact rather than infer it.** `v40` adds `sleeps.ended_at_data_edge`: the
+classifier knows whether its retaining run reached the last epoch it was handed (the data edge) or stopped
+before it (a detected wake), and that one boolean is the discriminator. `isOwed` then answers by record —
+`true` means any newer input still belongs to the night however late it arrives, `false` takes the grace,
+and `nil` (every row written before `v40`) is owed one re-classification, which stamps the verdict. Nothing
+is backfilled: guessing `false` would restore exactly the bug. §15 pins all three branches, and the
+`NIGHTS check day=… watermark=… end=… edge=… dataEdge=… owed=…` line puts the whole decision in
+`capture.txt`.
+
+**The lesson repeats the entry above it:** a field derived from the same inputs as the value it guards
+cannot independently vouch for that value. The watermark described the night's input, and the night's end
+described its output; the missing fact — *did the input stop, or did the night?* — had to be stored on its
+own.
+
 **The column names are snake_case here and camelCase on `strains`,** and that is `CodingKeys` rather than taste: `SleepRecord` declares them, so `scored_through` is the column; `StrainRecord` declares none, so `scoredThrough` is. A migration that guesses wrong creates a column nothing writes and the insert fails at launch with `no such column`.
 
 ## A worn strap banks at full rate with no phone; a strap off the wrist banks almost nothing.
@@ -208,6 +245,17 @@ without recording whether the strap was on a body — the next such test should 
 ## The oxygen candidate is instrumentation, and no screen or row may read it as a measurement.
 
 The community reference's `spo2_candidate_82` is a decompile-sourced reading of the official app's `spo2_pct`: the 5.0/MG `R18` record's **frame byte 82**, which is payload `[71]` under the 11-byte origin, with the sleep-state byte beside it at frame 81 / payload 70 and neighbours to scan at frame 74–92 / payload 63–81. It reads as a percentage **on one strap**: eight nights tracked the app at +0.99 with ~0.4 points' mean error, and byte 82 was the only offset in its window to win the specificity scan. It does **not** on another: two nights on a second device moved in the opposite direction, which is why the community reference keeps it behind instrumentation and why this app does too. **The tri-mode gate is what makes the byte legible**: 70–100 is a reading, bit 7 (`0x80`, `0xA0`) is a saturation sentinel, another sub-70 nonzero value is a diagnostic code, 0 is the awake/idle state, and 101–127 is unclassified. Printing the raw byte would turn a diagnostic into a desaturation and a sentinel into 160 %. `Spo2CandidateProbe` classifies every drained record and `Spo2CandidateAccumulator` writes at most three raw lines (value, sleep state and the nineteen neighbours) plus one summary (per-band counts, in-band mean/range, first/last stamp) to `.notice` and `Documents/spo2-candidate.txt`; **it writes no `BiometricSample.spO2Percentage`, no `recoveries.spo2_percentage` and no screen value**, and the import's stored `spo2_percentage` column stays what the official app recorded rather than anything derived here. Promotion needs **≥2 devices × ≥5 paired nights, Pearson r ≥ 0.7, MAE ≤ 1.0 points**, with byte 82 still winning the 74–92 scan on each. **The 4.0 has no path at all**: its type-24 record carries raw red/IR ADC scalars at record `[31]`/`[66]` with no wavelength labels and no AC/DC waveform, so ratio-of-ratios cannot be formed, and no `GET_SPO2` command exists on either generation. The `CaptureLog` sink is capped and rotating at ~64 KB and writes into the app's own Documents; the two `Info.plist` sharing keys expose that directory in Files and add no network path. `docs/BLE_PROTOCOL.md` §4 carries the offsets and the validation bar.
+
+**The same rule now covers a second candidate.** The community reference names a skin-temperature `u16`
+(raw ÷ 100, 5–45 °C) at "byte 73" of the same record, and the two offset conventions this codebase
+already uses disagree about where that byte is: the accelerometer is *body 24* at payload 34
+(`payload = 10 + body`), the oxygen candidate *frame 82* at payload 71 (`payload = frame − 11`). So
+`SkinTemperatureCandidateProbe` reads **both** origins (payload 83 and payload 62), gates each on the
+plausible range and logs both to `Documents/skin-temperature-candidate.txt` with the record's stamp —
+it writes no sample, no row and no screen value. Picking one origin would produce a number that still
+reads as a temperature; two candidates and the gate are what make the wrong one visible. One drained
+night against a known reading settles it, and then the field is one line in
+`HeartRatePayloadDecoder`.
 
 ## A drained record's timestamp is verified as a field and unverified as a value, and the failure files history onto a wrong day rather than onto no day.
 
@@ -271,7 +319,7 @@ The children (`workout_route_points`, `workout_splits`) ride **inside** the row,
 
 ## The two absence codes on the wire are different words, and they are read by name.
 
-`recovery(onDay:)` translates `404` + code `no_measurement_for_day` to `nil`; `workout(id:)` translates `404` + code `not_found` to `nil`. A `nil` return is therefore **not** an error — both sources merge by one comparison rather than by a thrown error — and the codes are distinct because the absences are different shapes: a day has no measurement, an id has no row. **`strains` reuses `no_measurement_for_day` rather than minting a third word**, because its absence is the day-shaped one — but the *behaviour* behind the same code differs from recoveries', and the difference is on the wire: `hasMeasurement` rides a strain row as a **required** field, so `strain(on:)` passes a `200` through as a row **regardless of the flag** and translates only a genuine `404` into `nil`. A `kilojoules == 0` row is a legitimate measured value and must not be mistaken for an absence. `UnconfiguredCloudSync` keeps the same twenty-five methods and throws `.unreachable` from every one rather than returning `nil`, because an unreachable server is not a day without a measurement.
+`recovery(onDay:)` translates `404` + code `no_measurement_for_day` to `nil`; `workout(id:)` translates `404` + code `not_found` to `nil`. A `nil` return is therefore **not** an error — both sources merge by one comparison rather than by a thrown error — and the codes are distinct because the absences are different shapes: a day has no measurement, an id has no row. **`strains` reuses `no_measurement_for_day` rather than minting a third word**, because its absence is the day-shaped one — but the *behaviour* behind the same code differs from recoveries', and the difference is on the wire: `hasMeasurement` rides a strain row as a **required** field, so `strain(on:)` passes a `200` through as a row **regardless of the flag** and translates only a genuine `404` into `nil`. A `kilojoules == 0` row is a legitimate measured value and must not be mistaken for an absence. `UnconfiguredCloudSync` keeps the same twenty-six methods and throws `.unreachable` from every one rather than returning `nil`, because an unreachable server is not a day without a measurement.
 
 ## `SyncKeyStore`'s read is a write on the first call, and `SyncStatusLog` keeps its two day-sets disjoint — both are `actor`s for the same class of reason.
 
@@ -332,9 +380,110 @@ A resting heart rate of 52 against a mean of 52.4 is genuinely below it, but a r
 
 WHOOP publishes the model's shape (HRV + heart rate + motion, a 14-day personal baseline, a 0–3 scale banded 1.0/2.0) and none of its constants, so every threshold in `StressMath` is this app's own and **this app's number will not agree with the WHOOP app's** — the same bargain `SleepNeedMath` documents. Two things about it will otherwise read as bugs: `minimumRRIntervals` is **load-bearing**, because `HeartRateVariabilityMath.calculateRMSSD` returns `0.0` on insufficient data and a zero RMSSD scores as *maximum* stress; and the tile renders `—` far more often than a number, because samples exist only for days the app was running with the strap connected and the export carries no R-R series at all. The full model is in `docs/ALGORITHMS.md` §5.
 
-## The Stress Monitor chart follows three rules that are not styling choices.
+## A live stress window must land on the stored day's grid, and a day with no personal baseline is scored against its own preceding hours.
 
-The y-axis is **fixed at 0–3** and never auto-scaled (auto-scaling draws a calm day and a wired day as the same picture); a gap longer than `windowSeconds × 1.5` **breaks the line** rather than interpolating, because an ineligible window is unmeasured and joining across it draws a reading nobody took; and **no windows means no chart at all** — not an empty frame, not a zero line, since a flat line at zero is the strongest possible claim of calm. The fill's gradient stops come from `StressMath.lowMediumBandEdge`/`.mediumHighBandEdge` divided by the scale, so it must not type `1.0`/`2.0` itself. The fill is a `Shape` and not a `Path` built in the view: `path(in:)` receives the frame, so the stops land on the score scale — a `Path` in a `ZStack` is graded over its own bounding box and the band colours move with the data.
+The live half of the Stress Monitor (`StressLiveViewModel`) scores a five-minute window while the page
+is open, and three things make that the *same* measurement as the stored day rather than a lookalike.
+
+**The grid.** `AnalyzeStressUseCase` anchors its buckets on the first sample inside the day's waking
+window, so bucket starts are that instant plus whole `windowSeconds` steps — a live window cut from
+`Date()` instead folds a different five minutes and draws a line whose points are not the day's. The
+view model therefore takes a **stored** window's start as its anchor, which is on that grid because the
+analyzer's own starts are, and steps from there.
+
+**The reference.** The personal baseline — the previous fortnight's waking hours, one point per day —
+needs `StressMath.minimumBaselineDays` (3) days that carry still windows, and it used to gate the whole
+model: below three days there was no `StressDay` at all. That was wrong for a **live** monitor, and the
+failure is specific rather than cosmetic — it reported the absence of *history* as an absence of
+stress, and left the tile and the page dead for the first three days of wearing the strap. A
+day with no personal baseline is now scored against its own preceding hours instead: each window
+against the windows of the same day inside `StressMath.recentBaselineSpan` (6 h) before it, floor
+`StressMath.minimumRecentWindows` (12, one hour at this cadence), strictly before the window so it
+never contributes to its own reference, and over a **wall-clock span** so the same day's data always
+reproduces the same scores. `StressDay.baseline` is `nil` exactly when that happened, which is how the
+live page knows to rebuild each window's reference from the windows' own `features` — which is why
+`StressWindow` carries them.
+
+**The consequence, stated rather than hidden.** A recent baseline is a local reference: a day that is
+uniformly elevated has no contrast within it and reads as average, and the score answers *"how does
+this five minutes compare with your last few hours?"* rather than *"how does it compare with your
+fortnight?"*. The page names which one it is showing, and the personal baseline takes over as soon as
+three days of daytime stillness exist. Neither path opens a day with no measurable window on it: the
+reference is a fact about inputs, and a day nothing measured has none.
+
+## The Stress Monitor chart follows four rules that are not styling choices.
+
+The mark is **one bar per five-minute window**, not a line: a window is a measurement over a span, and a polyline implied a value at every instant between two windows, including the ones nothing measured — which is why it also needed a dot at each peak to be readable. The y-axis is **fixed at 0–3** and never auto-scaled (auto-scaling draws a calm day and a wired day as the same picture); an ineligible window **draws no bar at all**, since a gap is unmeasured and a zero-height bar is the strongest possible claim of calm; and **no windows means no chart at all** — not an empty frame, not a row of zero bars. The bars' colour is `StressMath.Band.gradient`, whose stops are `lowMediumBandEdge`/`mediumHighBandEdge` divided by the scale, so the view must not type `1.0`/`2.0` itself. **The bars are a mask over one full-height `Rectangle` filled with that gradient**, never a gradient applied per bar: a `LinearGradient` on a bar is graded over that bar's own height, so a short bar and a tall one would put "high" at different heights — the same defect as a `Path` graded in a `ZStack` rather than a `Shape` receiving the frame.
+
+## An edit is not a re-measurement: it carries every field and advances the watermark so re-classification cannot undo it, and a night has no delete.
+
+The `SLEEP` row's page (`SleepDetailView`) — not the ring's (`SleepPerformanceView`) — has a `•••` whose `Edit` changes **only the night's two bounds** — the user's instruction was *"only
+time"* — so `SleepSession.withEditedTimes` copies every other field through: the stage totals, the need,
+the provenance (the save hands `saveSleepSession(_:source:)` the `whoop_export` label back, because
+`hasWhoopSleepNeed` is read off exactly that string) and the stillness spine. An edit is a correction to
+*when* the night ran, not a claim about how it went.
+
+**The watermark is the half that makes the edit stick.** `shouldReclassify` re-runs a stored night when
+its newest input is later than `scoredThrough`, so a row whose watermark stayed at the old end could be
+re-analysed by the next foreground or drain and silently redraw the times the user just set. The copy
+advances `scoredThrough` to the edit instant: the edit happened after every record the night can hold,
+so the claim is honest, and only input arriving *later* — which for a finished night is nothing — can
+move past it.
+
+The span is validated where it is a rule rather than in the view: `SleepTimeEditDraft` refuses an end at
+or before the start (a zero-length night divides the chart's axis by zero) and a span over 24 hours (the
+row is keyed by its day, and a longer "night" would describe two). The draft's rules are asserted in the
+suite; the sheet's layout is not, because nothing here has a renderer.
+
+**The menu is `ActivityOverflowMenu.nightGroups` and the drawing is shared.** `Edit` alone, then
+`Cancel` in a card of its own; a night carries no `Delete` because removing one would orphan the
+day its Recovery, ring and re-classification watermark are keyed to, so the app's one destructive
+control stays on the activity page. The scrim, card and row geometry live in
+`OverflowMenuOverlay`, lifted out of `ActivityDetailView` when this page needed the same menu.
+
+## A Health Monitor row counts readings, and its page bands them.
+
+Home's **HEALTH MONITOR** card, above `My Day`, draws WHOOP's five vitals as `n/5 METRICS`. **`n` is a
+count of `recoveries` fields the day actually holds** — `hrv`, `resting_heart_rate`, `respiratory_rate`,
+`spO2_percentage`, `skin_temperature` — and the card says `ALL MEASURED`, not the reference's
+`WITHIN RANGE`.
+
+That wording is the rule, not a placeholder: the **row** is a count, and the reference's caption is a
+*verdict* the row cannot support. The verdict lives one tap away, on `HealthMonitorView`, where
+`HealthMonitorReadings` bands each figure — the mean ± one standard deviation of the last
+`RecoveryScoring.baselineWindow` nights, the same window every other "typical" figure uses, with blood
+oxygen on the clinical 95–100 % range instead because a personal band on a metric that barely moves calls
+a normal night low. **Two surfaces, two claims**: the row says what was measured, the page says where
+each figure sits, and neither says the other's sentence. Flipping the row's caption to `WITHIN RANGE`
+without giving it the page's read is the change this entry exists to stop.
+
+**The gate is presence, and the count has an honest empty answer.** A strap-classified day carries two
+of the five (HRV and resting heart rate); an imported day carries all five; a day with no `recoveries`
+row is `0/5`. The card draws on every day, because a monitor whose subject is *which of my vitals do I
+have* can answer "none" — hiding it would leave an unmeasured day indistinguishable from a missing
+feature. **Flipping the caption to `WITHIN RANGE` without building the five bands is the change this
+entry exists to stop.**
+
+## The app's copy never names the strap's maker.
+
+On 2026-10-29 the user asked for the brand out of the interface — *"remove all 'whoop' references and
+instead of 'whoop age' lets do 'whoopsy age'"* — so every **user-visible** string now says *the strap*,
+*the strap maker*, *the import* or *the published guidance*, and the Healthspan dial reads
+`WHOOPSY AGE`. The device page's subject is `STRAP DEVICE` and its six state words begin `STRAP`;
+import errors, the export's own figure descriptions and the scan line follow the same rule.
+
+**What deliberately still says WHOOP, and why.** Three kinds of occurrence are not copy and were left
+alone: **identifiers** (`WhoopBLEManager`, `WhoopRawFrame`, `WhoopDevice`), **the persisted source
+label** `whoop_export` in `sleeps.source` / `recoveries.source` — it is a stored value that the import
+and the sync both read, so renaming it would orphan every row — and **`docs/` plus the code's own doc
+comments**, which are the record of what the references and the filings say. `WhoopHardwareGeneration`'s
+raw values are also unmoved, because `UserDefaultsStrapModelRepository` persists them; what a screen
+draws is its `displayName` (`4.0`, `5.0`, `5.0 MG`, `Strap Simulator`), added for exactly that split.
+
+**The trap:** a new user-visible string that names the maker will not fail any build or assertion. The
+suite pins the two strings where a brand was load-bearing — `DeviceSettingsView.subject` and the six
+distinct state words — and nothing else, so the rule is kept by reading this entry rather than by a
+test.
 
 ## Home's collapsing rings header is a `PreferenceKey`, and it writes no `@State`.
 
@@ -342,7 +491,7 @@ iOS 17 has **no scroll-geometry API** — `onScrollGeometryChange` is iOS 18 and
 
 ## A failing migration crashes the app at launch.
 
-`LocalDatabaseManager.init` calls `fatalError` on a migration error. Test a migration against the real dev database before trusting it; the reset is `rm ~/Library/Application\ Support/whoopsy.sqlite`. **`LocalDatabaseManager` has no path-injecting initialiser** — `init(inMemory:)` or the `~/Library/Application Support` default are the only two — and on macOS `FileManager.url(for: .applicationSupportDirectory,…)` does **not** follow a `HOME` override, so a host-side tool that writes through it lands in the developer's own dev database however the process is launched. The simulator app is unaffected (its container is separate); a host tool that must not touch the dev database has to be given one by *temporarily moving that file aside*, not by re-pointing `HOME`.
+`LocalDatabaseManager.init` calls `fatalError` on a migration error. Test a migration against the real dev database before trusting it; the reset is `rm ~/Library/Application\ Support/whoopsy.sqlite`. **`LocalDatabaseManager`'s path-injecting initialiser is `init(fileURL:)`**, which the pool test uses to open a real file under `tmp/`; `init(inMemory:)` and the `~/Library/Application Support` default are the other two. On macOS `FileManager.url(for: .applicationSupportDirectory,…)` does **not** follow a `HOME` override, so a host-side tool that writes through it lands in the developer's own dev database however the process is launched. The simulator app is unaffected (its container is separate); a host tool that must not touch the dev database has to be given one by *temporarily moving that file aside*, not by re-pointing `HOME`.
 
 ## Day-keyed writes must be snapped to `date.startOfDay`.
 
@@ -370,7 +519,7 @@ Because the window is inclusive at both ends and runs from `endingOn - days`, th
 
 ## `.toolbar(_:for: .tabBar)` is unavailable on macOS, and Home is built for both.
 
-`swift build` is this repo's edit/compile loop and the test runner links its objects, so the unguarded modifier breaks the fast path while `xcodebuild` for the simulator stays green — it reports `error: 'tabBar' is unavailable in macOS` and nothing else does. Home wraps it in a `#if os(iOS)` helper (`View.hidingTabBar(_:)`) for that reason. This is one member of a family that also holds `#if canImport(HealthKit)` being true on the host, `keyboardType` (→ `View.numericKeyboard(decimal:)`) and the whole of `ActivityKit`: **a green iOS build is not a green host build, and vice versa** — run both.
+`swift build` is this repo's edit/compile loop and the test runner links its objects, so the unguarded modifier breaks the fast path while `xcodebuild` for the simulator stays green — it reports `error: 'tabBar' is unavailable in macOS` and nothing else does. Home wraps it in a `#if os(iOS)` helper (`View.hidingTabBar(_:)`) for that reason. This is one member of a family that also holds `#if canImport(HealthKit)` being true on the host, `keyboardType` (→ `View.numericKeyboard(decimal:)`) and the whole of `ActivityKit`: **a green iOS build is not a green host build, and vice versa** — run both. **`fullScreenCover` is the second modifier in that family, and the one a new control is most likely to reach for**: the map cards' expand control presents `MapFullScreenView` through `View.mapExpansion(isPresented:content:)`, which is a `fullScreenCover` on iOS and a `sheet` on the Mac. The cards are compiled by `make build`, so an unguarded call breaks the fast path exactly as the tab-bar modifier does.
 
 ## It hides the tab bar only from the tab's *root* view, never from a pushed destination — and the failure is silent.
 
@@ -417,7 +566,8 @@ The card is system state, not app state: an app killed mid-session leaves a lock
 
 ## The offline map is one object split into two halves, and the split is the layer rule rather than a design preference.
 
-`USE OFFLINE MAP` — the second switch on `LiveSessionView`, beside `RECORD ROUTE` and off by default — makes a session download a Mapbox tile region around where it started, and the activity detail page then draws that region instead of `MapKit`'s live tiles. The capability is therefore two protocols: **`OfflineMapServing`** in `Domain/Repositories/` is the control surface (`isSupported`, `state(for:)`, `download(regionID:latitude:longitude:onProgress:)`, `cancelDownload()`, `delete(regionID:)`) and is all `LiveSessionUseCase` may see; **`OfflineMapRendering`** in `Presentation/` adds the two drawing members — `map(route:unit:regionID:)` for a session with a path and `map(area:regionID:)` for one without — and is what can draw. `Presentation → Domain ← Data` runs one way, so a single protocol carrying either `map(...)` could not live in `Domain`, and a single one carrying `state(for:)` could not live in `Presentation`. **Two drawing members rather than one optional route**, because the two cards carry different values: a route is a path with a length and a speed, an area is a frame around the downloaded ground with neither, and folding the second into the first would make the no-route case a mode of the route card instead of its own. Both take the same `regionID` and both are resolved by the same `RouteMapRenderer.resolve(session:state:)`, so `.ready` is the only state that draws offline on either card and a failure anywhere still falls back to `MapKit`. **It is one object, not two**: `DIContainer.offlineMaps` is stored as `any OfflineMapRendering` and handed to `LiveSessionUseCase` as `any OfflineMapServing`, so there is no second instance that could disagree about which tiles are on disk. The two switches are **mutually exclusive** at the user's own instruction — *"only one of those buttons to be switched on"* — so turning one on turns the other off: `setRouteRecording(true)` tears the offline region down and `setOfflineMap(true)` stops the route. The division of labour is unchanged underneath that: `RECORD ROUTE` decides *whether there is a path* (it is still the only producer of `workout_route_points`) while `USE OFFLINE MAP` decides *which SDK draws it*, and with the route off the offline switch asks for location itself, takes one fix and releases it, because a tile region needs a centre (the route-fix borrowing path this made unreachable is deleted rather than left as a branch). `LiveSessionView` draws the live map above END from the same pair: the route's own points while `isRecordingRoute`, the downloaded area once `offlineMapState == .ready`, and **nothing at all** for either absence — one point is not a route and a downloading region is not a map. **The decision is the user's and is made before signal is lost** — never inferred from a connectivity check, because this app has no networking code to check with and a hiker in a dead zone cannot be asked the question once they are in one.
+`USE OFFLINE MAP` — the second of `LiveSessionView`'s two map toggles, beside `USE LIVE MAP` and off by default — makes a session download a Mapbox tile region around where it started, and the activity detail page then draws the session's route on that region instead of on `MapKit`'s live tiles. The capability is therefore two protocols: **`OfflineMapServing`** in `Domain/Repositories/` is the control surface (`isSupported`, `state(for:)`, `download(regionID:latitude:longitude:onProgress:)`, `cancelDownload()`, `delete(regionID:)`) and is all `LiveSessionUseCase` may see; **`OfflineMapRendering`** in `Presentation/` adds the two drawing members — `map(route:unit:regionID:)` for a session with a path and `map(area:regionID:)` for one without — and is what can draw. `Presentation → Domain ← Data` runs one way, so a single protocol carrying either `map(...)` could not live in `Domain`, and a single one carrying `state(for:)` could not live in `Presentation`. **Two drawing members rather than one optional route**, because the two cards carry different values: a route is a path with a length and a speed, an area is a frame around the downloaded ground with neither, and folding the second into the first would make the no-route case a mode of the route card instead of its own. Both take the same `regionID` and both are resolved by the same `RouteMapRenderer.resolve(session:state:)`, so `.ready` is the only state that draws offline on either card and a failure anywhere still falls back to `MapKit`. **It is one object, not two**: `DIContainer.offlineMaps` is stored as `any OfflineMapRendering` and handed to `LiveSessionUseCase` as `any OfflineMapServing`, so there is no second instance that could disagree about which tiles are on disk. The two toggles are **a map choice, and both record the route** — the user's own correction of the first implementation, in two steps: *"those two buttons are just for which map gets used, two maps can't be used at the same time"*, then *"record route is bad wording, maybe should be 'USE LIVE MAP', they both record the route, just one is offline the other is live"*. So `USE LIVE MAP` and `USE OFFLINE MAP` are exclusive as **maps** — choosing one releases the other, and `RouteMapRenderer` draws one card — while the **route keeps running across the switch**: it starts with either and stops only when the last one goes off. The first implementation conflated the two. The live switch was labelled `RECORD ROUTE` and was the only thing that started the path, the offline switch stopped it, and turning the route on tore the downloaded region down — so a session could never hold both a path and the tiles that would draw it, and the offline route card was unreachable code on a phone. **One `CLLocationManager` is the constraint underneath**: `LocationTracking.start()` replaces the current stream rather than adding a reader, so the offline map never opens a second one — choosing it starts the route, and the region's centre is the first plausible point the route files. `routeStreamEnded` is what ends that wait when the GPS never delivers at all, rather than making a blind session sit out the ten-second timeout. `LiveSessionView` draws **one** map above END: the Mapbox card once the region is `.ready`, with the route drawn on it because both maps record one; the `MapKit` route card while the live map is the choice; and nothing while a download is merely in flight.
+**The decision is the user's and is made before signal is lost** — never inferred from a connectivity check, because this app has no networking code to check with and a hiker in a dead zone cannot be asked the question once they are in one.
 
 **A downloaded region has no geometry to read back, so the centre is persisted on the workout row — `v23`'s two columns — and that is what lets a route-less session draw anything at all.** Mapbox's `TileRegion` is an id and a tile count; there is no polygon to hand a map, which is why the download's centre and radius live in this app rather than being asked of the SDK. `workouts.offline_region_center_latitude`/`_longitude` are nullable and undefaulted (`addMissingColumns`, so a shipped migration is untouched), written by `LiveSessionUseCase.end()` from the fix the download already took, and cleared with `offlineRegionID`. They are **deliberately local-only**: a tile region belongs to one phone's tile store, so `WorkoutRecord+SyncRow` drops them on the way out and a row arriving from a sync stores `nil` — the two columns are the one place the "a fifteenth property is a compile error" rule has a named exception. **`offlineArea` requires both the region id and the centre**, so a row written before `v23` — or one from a sync — truthfully draws nothing rather than inventing a place. The area card's frame is `ActivityOfflineArea`: a box `visibleSpanFraction` (0.75) of `OfflineMapCoverage.radiusMeters` on a side, longitude widened by `1/cos(latitude)`, refused at an implausible centre or a cosine at the pole. `MapboxSetup.radiusMeters` forwards that same `radiusMeters` for the download circle, so the frame and the downloaded ground cannot drift.
 
@@ -439,6 +589,33 @@ The **public** `pk.…` token lives in `ios/App/Config/Whoopsy.local.xcconfig`, 
 
 `LiveSessionAccumulator` accumulates `Σ min(5.0, Δt)` as its denominator — the same clamp `CalculateStrainUseCase` applies — so a figure computed from `samples.count / 60` is a fabricated duration of exactly the kind the deleted workout HUD shipped, and on a 1 Hz stream the two coincide, which is what makes it invisible. The five band percentages are deliberately **not** `WholePercentMath.wholePercents(ofSeconds:)`: that helper makes a column sum to exactly 100, which would claim the five zones cover the session, where time below zone 1 is a real part of it that belongs to no band — the same reason `workouts.csv`'s `HR Zone n %` block sums to at most 100 and 45 of its 673 rows read `0` in every band. **Time below zone 1 is not weightless any more, though it stays bandless**: the low-intensity band in `StrainAccumulatorMath.loadDelta` credits a heart rate above resting but below zone 1 at weight 1.0 with `zone: nil`, so it contributes *load* while contributing no *zone duration*. `strain` is `nil` until a sample arrives, `0.0` once one arrives at or below resting, and a small positive figure once one arrives above resting but below zone 1; a calorie figure is `nil` whenever no weight is on file. **Those percentages have no screen reader, and the screen's bar is not them.** The live session screen draws a *position* scale — the five bands laid end to end with a white mark where the current heart rate sits — which answers "where is the reading" rather than "where did the session's time go", so it consumes `Snapshot.bandScalePosition` and not `zonePercents`. `StrainAccumulatorMath.bandScalePosition(forHeartRate:zones:)` reads the scale's two ends off the session's own `[HeartRateZone]` table (zone 1's floor and zone 5's ceiling) rather than recomputing them from `zoneReserveFractions`, so a profile whose reserve falls under `computeZones`'s 20 bpm floor still marks against the bands it was scored on — and its clamp is the ordinary case, because a heart rate at rest is below zone 1 by construction. The three fields `zoneSeconds`, `zonePercents` and `recentHeartRates` are kept and asserted with no screen reader: they are the only observable form of the state behind the two denominator rules above, and deleting them would drop §18's assertions.
 
+
+## A strength figure is this app's own definition, and a measured zone day is not compared against an imported baseline.
+
+The strain page's card draws four rows, and **two of them were dashes for a stated reason until 2026-10-27**.
+The zone rows had one producer — WHOOP's `HR Zone n %` block out of the bundled export — so a session this
+app recorded itself (no block, by design) showed nothing even though the strap had recorded every beat.
+The fix reuses the activity page's rule rather than writing a second one: a session's band time comes from
+`ZoneTimeMath.totals` over its own samples when they exist, and from the block when they do not, measured
+first. **`ActivityZoneRow`'s rule and `StrainDayActivity`'s are the same rule, and the second must not grow
+a variation.**
+
+**The comparison is the part that is easy to get wrong.** The strain page's zone baseline is a mean over
+the trailing thirty days of *blocks* — that history is read as rows, and folding thirty days of samples per
+page open is not affordable. Printing a measured day's figure against that mean would put two producers
+under one arrow, which is the defect `ActivityZoneBaseline` refuses for the same reason. So the baseline is
+withheld whenever every session behind the day's figure was measured
+(`StrainDayActivity.ZoneTime.isMeasuredOnly`), and the row draws its figure with no marker rather than a
+comparison it cannot stand behind.
+
+**`STRENGTH ACTIVITY TIME` had no producer at all**, and the honest reason was that WHOOP's list marks a
+subset with `^` and no public source enumerates them: the support article renders no list to a fetch and a
+search finds only the definition, not the membership. So the app defines its own set — the four catalogue
+entries that are unambiguously resistance training, in `WhoopActivityCatalog.strengthActivities` — and a
+strength figure is **this app's**, not a reproduction of WHOOP's. Two consequences are deliberate: the
+figure is a session's whole measured span rather than a subset, and a day holding a workout but no strength
+session prints `0:00`, because no time spent on strength work is a reading, while the day with no workouts
+at all is `nil` — the same day the whole card is absent on.
 ## `UserProfile` carries eleven fields and `user_profiles` stores eight of them, so every unbacked one is a number this app invented — and a body metric is the dangerous kind.
 
 `weightKg: 75.0`, `heightCm: 178.0` and a `-28`-year birth date were initialiser defaults that no row could override, and `GRDBUserProfileRepository.getUserProfile()` returns a hardcoded `maxHeartRate: 190 / restingHeartRate: 60` when no row exists at all. A defaulted `weightKg` is the dangerous kind, because `CalculateStrainUseCase` feeds it into `StrainAccumulatorMath.estimateCalories` — so a calorie figure rests on a body the user never described. `v16_profile_weight` adds that column nullable and undefaulted — NULL is the honest value for a fact nobody supplied, exactly as `source` documents — `UserProfile.weightKg` is optional with it, and `estimateCalories` returns `nil` rather than a number when it is absent. **`v20_profile_body_fields` finishes the sweep, and it is where the rule's second half is written down.** It adds `name`, `birthDate`, `gender` and `heightCm` — all nullable, all undefaulted — and the three invented defaults go with them: `"Athlete"`, a birthday 28 years before *now* (not merely invented but **unstable**, being relative to the moment of construction, so a defaulted column would have moved at every launch), and `178.0` cm. **Those four are a different category from the weight and saying so is the point**: they are *declared* facts — the user supplies them, the user is the sensor, and they feed no model, being saved and read back onto the form and consumed by nothing else in `ios/Sources/`. The rule this app holds was never "collect nothing unread"; it is **"do not let the app invent a number"**, and a fact the user types is the opposite of an invention. `178.0` cm is the failure the rule actually names, and it is a collected field that makes it one: an invented default is worst exactly where the mockup invites the user to correct it, because that is when the app reports its own number back as theirs. The two heart rates deliberately stay non-optional and keep their defaults: they are the inputs the Karvonen zones cannot be built without, so an absent one is not an absence a screen can draw, it is a zone table that cannot be computed at all. **When adding a field to `UserProfile`, check whether a stored column backs it** — `grep -rn "<field>" ios/Sources/` for a consumer first, and add the column or leave the field out rather than letting an initialiser default divide into something. **And when adding a column to `user_profiles`, carry it through the mapper in both directions**: GRDB's `save` is INSERT-or-UPDATE over the **whole row**, so a `saveUserProfile` left carrying fewer fields than `UserProfileRecord` declares silently writes `NULL` over the rest on every save — no throw, no log, and it surfaces as a form that is empty on the second launch. §18's round trip is the assertion that sees it, and it is why the record's own doc comment points at the repository.
@@ -542,7 +719,13 @@ The export's `Recovery score %` column is not written anywhere: the importer fee
 
 `requestAuthorization` completes `true` even when the user taps "Don't Allow", so no code can report "access granted". The import result is the only honest signal, which is what `HealthImportSummary` carries.
 
-## Five files are bundled and read through `Bundle.module` — three CSVs and two JSONs.
+## Six files are bundled and read through `Bundle.module` — three CSVs and three JSONs.
+
+The third JSON is `Data/Resources/LifeTables/lifeTables.json`, generated by
+`scripts/build-life-tables.py` from NCHS's published life tables. **It is committed and is
+deliberately not one of the files `create-data-files` writes placeholders for**: a placeholder life
+table would be fabricated mortality data, which is the one kind of placeholder this repo must never
+hand a screen. `Bundle.module` resolves it like the other five.
 
 `physiological_cycles.csv`, `sleeps.csv` and `workouts.csv` are declared in `Package.swift` (`resources: [.process(...)]`); `journal_entries.csv` alone stays on disk unbundled and is read by nothing. **All four CSVs live in `Data/Resources/Whoop/`, one directory per producer app** — `ZeroFasting/` beside it is the same arrangement for a different one, and `Custom/` is the third — and `.process` on an explicit file path **flattens the file into the bundle's root**, so the lookups pass no `subdirectory:` and the directory is an organisation rather than part of the resource path. The `.gitignore` pattern names `Whoop/*.csv` and not `Resources/*.csv`, because `Resources/` has no tracked file at all: a fresh clone has no such directory, which is what `scripts/create-data-files.sh` creates it for. **The fourth resource is a JSON and not a CSV**: `Data/Resources/ZeroFasting/fasts.json`, the trimmed `fast_data` array of a real Zero fasting export, read by `ZeroFastingParser` through `Bundle.module` on the same rule. Its source `biodata.json` is 599 KB across 19 top-level keys of which this app reads one, so it is projected down to 46,584 bytes rather than bundled — the projection command is in `README.md` §Building and the `{"fast_data": []}` placeholder a fresh clone needs is written by `scripts/create-data-files.sh` beside the other four placeholders, and the whole `ZeroFasting/` directory is gitignored because it is a real person's record. **The name is a constant on the importer** — `ZeroFastingImporter.bundledResourceName`, `"fasts"` — rather than a literal inside `bundledFastsURL()`, on `WhoopExportFile.rawValue`'s rule that the mapping from a control to a file is one value instead of a filename spelled out in two places; §20 asserts it, and the other half of that decision is a fact about what `Package.swift` processes. **It is the resource's name and deliberately not the name on the button**: the user's correction — *"so my modified version was fasts.json, in UI refer to it as "biodata.json" as thats what zero gives when exporting"* — puts the producer's name in the caption (`FastingImportAction.fileName`, pinned by §18) while the trimmed copy keeps its own, so a caption edit cannot drag the resource along with it and vice versa. **The fifth resource is that same shape one directory over, and it is where the naming rule gets its second instance.** `Data/Resources/Custom/dreams.json` is the owner's own dream notes — 62 records over 57 days — drawn from `Custom/dreams.csv` by a generator the owner keeps outside this repository, read by `InactivityImporter` through `Bundle.module` on the same no-`subdirectory:` rule, and bundled for the same reason: the file *is* the import. **Its directory is the first that names no producer app at all, and the naming rule inverts on it**: `Whoop/` and `ZeroFasting/` each hold another service's export of a record that service measured, while this is the owner's own log — so the **resource** is named for the file (`InactivityImporter.bundledResourceName`, `"dreams"`, pinned by §21) while the **type, the section and the button** are named for the row the import produces (`InactivityRow`, `InactivityImporter`, `InactivityImportAction.sectionTitle` — `"Receptive inactivities"`, the same two words as the Home card it fills — and the button's `IMPORT RECEPTIVE INACTIVITIES`, all pinned by §18). That is `fasts` sitting behind a button that says `biodata.json` seen from the other side, and both are one rule: the name on screen answers to a reader and the name of the resource answers to `Package.swift`, so neither can drag the other. **The header deviation is deliberate and is recorded rather than smoothed over** — `Apple Health`, `Whoop` and `Zero Fasting` each name the app a file came *from*, and this one names the row it produces, because there is no producer app to name. **The privacy consequence is stated rather than left implicit**: `Custom/` is gitignored because those notes are the most identifying thing in this repository precisely because nothing about them looks like data, and bundling the generator's output ships 26 KB of that prose inside the app binary — a consequence of importing the notes at all, since the file has to be in the bundle for any import to read it. `ZeroFastingImporter.importBundledFasts()` **throws** `.notBundled` when the file is absent rather than returning `0`, and **since the three-button change every WHOOP import follows that rule too**: this file *is* the import, and so is each of the three CSVs now that they have a button apiece. **`workouts.csv` is bundled for its `HR Zone 1 %`…`5 %` block and its `Activity name` column, and for nothing else** — neither is in any other file, and between them they are the only producer of the strain page's two `HEART RATE ZONES` rows and of Home's `ACTIVITIES` row labels. It repeats columns the cycle file already has, which is why it shares a row type and a date walk with it rather than adding a fourth, and `WhoopExportParser.parseWorkouts` **requires** `Workout start time` and `Workout end time`, so pointing it at either sleep file throws `missingColumns` rather than importing nothing and reporting success. (`Activity name` is required by neither — it is the one field on that row read without being required, because a name has a natural absence where a measurement does not, so a file lacking the column imports and every row takes the fallback.) **`sleeps.csv` is bundled for its eight nap rows and nothing else** — `Nap` exists only in that file, and its 910 non-nap rows carry the same 910 wake onsets as the cycle file, set-for-set, so those 8 naps are its entire unique contribution. The two files share their sleep columns, which is why one parser reads both, and what keeps them apart is that `WhoopExportParser.parseNaps` **requires** the `Nap` column: pointed at the cycle file it throws `missingColumns(["Nap"])` rather than reading the whole file, filtering to zero rows, and reporting a successful import of nothing. Never use `Bundle.main` for any of them: the app target's resource phase is empty. **`Bundle.module` traps rather than returning `nil`** when the resource bundle itself is missing, so a lookup must stay inside the user-initiated action and never run at launch — which is why **all five imports `throw` `.notBundled` when their file is absent** rather than one of them reporting `0`. `importBundledNaps()` and `importBundledWorkouts()` used to answer `0`, because they were extras folded into a button whose real subject was the cycle file; **they are gone**, and `WhoopExportImporter.importBundled(_:)` now throws for the two side files exactly as `ZeroFastingImporter.importBundledFasts()` always has, because with three buttons each file *is* its own import and there is nothing to report but the failure. That is what lets `WhoopImportSummary`'s `.workouts` arm read `workoutsWritten == 0` as the day skip alone instead of as one of two indistinguishable causes. Parse their dates with a fixed format: the export writes `2026-08-22 00:17:13`, so `ISO8601DateFormatter` returns `nil` and a parser built on it drops every row with no error. `docs/TODO.md` §1, §2 and §4 carry the per-column inventory.
 
@@ -565,7 +748,144 @@ Note the missing `CODE_SIGNING_ALLOWED=NO` — that flag is for the device build
 
 ## Repositories answer from local storage and nothing else.
 
-There are no fallback sources: `GRDBRecoveryRepository`/`GRDBSleepRepository`/`GRDBStrainRepository` take only `db:`, and a day with nothing stored returns `nil` (or an empty history) rather than a substituted row. Anything else makes "no data" indistinguishable from a measurement, which is the failure mode every no-data rule in this file exists to prevent. `RecoveryRepository.getLocalRecovery(for:)` reads identically to `getRecovery(for:)`; it is kept as a separate name because it is what a caller *about to write* should call, and the name is the only place that intent is recorded.
+There are no fallback sources: `GRDBRecoveryRepository`/`GRDBSleepRepository`/`GRDBStrainRepository` take only `db:`, and a day with nothing stored returns `nil` (or an empty history) rather than a substituted row. **The cloud decorators were the exception that proved it, and the exception is gone.** They answered a local miss from the database — unconditionally for the three history windows — so on a `.cloud` install a screen's content could depend on a request, and a Home load measured at 32–39 s on 2026-10-27 was waiting on none of it. `DIContainer` now constructs all seven with a closed read window, so their cloud branch is unreachable by construction; a fresh install is filled instead by `RestoreFromCloudUseCase`, the one deliberate pull, which runs on a launch that finds no days **or when the user presses `RESTORE`**, and writes what it finds into the phone's own tables through the sync stores. **The press is the one call this app makes outside its window** — every other request is refused between midnight and 18:00 Eastern — because the app's traffic is a schedule and a person pressing a button is not, which is why `DIContainer` builds the restore's client open and `restoreIfNeeded` keeps the window check instead. Anything else makes "no data" indistinguishable from a measurement, which is the failure mode every no-data rule in this file exists to prevent. `RecoveryRepository.getLocalRecovery(for:)` reads identically to `getRecovery(for:)`; it is kept as a separate name because it is what a caller *about to write* should call, and the name is the only place that intent is recorded.
+
+## An estimate about the person is read from the last measured day, never from the day on screen.
+
+**Measured 2026-10-29, on the Health tab's Whoopsy Age dial: it drew `—` on a phone holding eighty
+years of history.** The rule is not about the dial. The tab asks `HealthMonitorViewModel.load(for: Date())`
+— *today* — and a day with no measurement has no `recoveries` row, because this app stores no
+placeholder for one. That is the absence rule working exactly as designed, and it is fatal to any figure
+that reads only the day it was opened on: `Home` opens on today, and after any gap today is empty. The
+estimate was computed from `getRecovery(for: today)` returning `nil`, so the risk profile was `nil`, so
+there was no multiplier, so there was no age — while the same database held hundreds of measured nights
+behind it.
+
+**The fix is a second window and a printed date, in that order.** When the day holds no measurement the
+view model reads back at most `healthspanLookbackDays` (365) — `endingOn: day`, so a row written after the
+day on screen can never leak backwards — and takes the **last** row holding a measurement, which is the
+most recent only because the repository promises oldest-first (`mostRecentMeasured(in:)` states the order
+rather than trusting it: a reversed read would pick the oldest night in the window and still look
+plausible). 365 rather than unbounded: past a year the profile describes someone the wearer may no longer
+be, and a dash says that better than a stale number. And the card then **prints the day** — *"From your
+last measured day, Aug 22, 2026"* — because a number that is right and undated is a number that reads as
+today's.
+
+**The general rule, which is why this is here and not only in `docs/PAGES.md`:** a page whose subject is
+*the person* must not source its inputs from *the day the page happens to open on*. Fitness, resting rate
+and step count are facts about a body; the calendar is not what they are indexed by. The tell is a screen
+that dashes while the database is full — and the remedy is to ask *which day was this actually measured*,
+not to fill the gap with a zero.
+
+**Two riders, both found in the same repair.** A dash cannot say which of three different things is
+missing, so `LongevityAbsence` carries the reason (no measured night / no birth date / no life table) and
+the card prints the matching sentence — one of them is a field the reader can fill in immediately. And the
+`BIRTHDAY` row that answer points at had existed since `v20` and drew a bare, unlabelled `—`, because its
+three controls were built with `DatePicker("BIRTHDAY", …).labelsHidden()`; the field was reported as
+missing by the person it belonged to, while the column behind it was collecting the value. A control whose
+only name is its accessibility label is a control with no name.
+
+## A night's evidence is rotated out by the drain that produced it, and the stillness spine's input was never validated.
+
+**Measured 2026-10-30, on a night the app reported as its first thirty-one minutes.** The owner sent
+both capture files and the two probe dumps; the `NIGHTS check` line that survived carried a stored end
+hours before a watermark that had reached the following morning, with `dataEdge=false owed=false` — so
+the classifier had seen the night's input and still ended the night where it did, and the gate that
+re-opens a night as it grows had already decided not to. **The line that would have said *why* —
+`SLEEP inputs`, with
+the per-spine window counts — was gone**: `capture.txt` is capped at 64 KB and one morning drain writes
+hundreds of `DRAIN_BATCH` lines, so the classifier's four lines a day rotate out behind the drain's
+thousands. Two nights of logs therefore could not separate *judged awake* from *had no windows*, and the
+two need opposite repairs.
+
+**The fixes are instrumentation, deliberately, because neither the data nor the log could decide.** A
+fourth capture file (`Documents/sleep.txt`) takes every `SLEEP`/`NIGHTS` line beside the shared one, so a
+night's decision survives the next drain. `AnalyzeSleepUseCase.logStillness` prints, **per spine**, the
+window count and the `p10`/median/`p90`/max of `meanMagnitudeG` against the ceiling that judges it — a
+`p90` above the ceiling is a calibration fault rather than a restless night, and `n=0` next to a night
+that exists is the sample spine having produced nothing at all.
+
+**And the third probe exists because the stillness spine's input had never been checked.**
+`AccelerometerCandidateProbe` dumps `R18` body 24's three `f32` per drained record, gated on the same
+0.5–2 g band `HeartRatePayloadDecoder` refuses outside, with a per-drain `in-band=` summary. The
+prefix's other two probes each answered an ambiguous offset; this one answers the one that the whole
+sleep classification rests on, and it was the only one never asked.
+
+**The thread this comes from matters as much as the fix.** One earlier night was refused with a few
+hundred epochs over a thirteen-hour window, its hourly curve printing only the hours at the edges; a
+night in between printed every hour. A night whose stillness comes only from the connected edges is a
+night whose span is the connected window — which is exactly the thirty-one-minute answer above.
+
+## A page that recomputes on open must draw the stored row first, and bound how often it recomputes.
+
+**Two faults in one shape, measured 2026-10-27 on the ring pages.** The Recovery page recomputed today's
+row *before* assigning what it had read, so opening the ring blanked a day that was already on disk while
+the whole night's samples and a thirty-day baseline were folded. And its gate could never converge:
+`shouldCompute` answers true while a night exists and the stored row is RMSSD, and a recompute writes an
+RMSSD row — so every push of the ring recomputed the same morning again. **The calculation left the page entirely.** `RefreshRecoveryUseCase` is now the only writer of a recovery
+row: it runs from the foreground after the night refresh, and scores a day only when the stored row says
+it has not seen this night. **That used to be the process's memory, and the memory was the remaining
+bug:** the first foreground of every launch re-scored today to reproduce a row already on disk, because
+nothing on the row could say what it had been computed from. `v39` gave `recoveries` the pair `strains`
+and `sleeps` already had — `algorithm` and `scored_through`, both local-only — so `isOwed` is now two
+questions asked of two columns: is the formula current, and has the night's edge moved past the stored
+watermark. A relaunch behaves like a second foreground. The one thing that still lives in the process is
+a **refusal** (the scorer declined a night, so no row carries the watermark); it is remembered per edge,
+which costs one attempt per launch instead of one per foreground. The ring page reads and nothing else,
+so a ring tap can no longer start a calculation. **The sleep page's own heavy card left the critical path
+the same way**: `AnalyzeSleepStressUseCase` reads up to `StressMath.baselineDays` prior nights of samples,
+and `SleepViewModel` now resolves it off the page — the card appears when the model lands, and
+`SleepStressCache` remembers the answer per night and per watermark so a pushed-and-popped page does not
+pay twice in a launch. The same shape governs the other two pages: the strain
+page's `refreshToday()` is now off the load's critical path (its result arrives through `observeStrain`),
+and the sleep page's re-classification is gated by the night's own end (see the stored-night entry above).
+
+**The clear is the part that bites, and Home had it too.** `HomeViewModel.load` nil'd `sleepScore` at its
+start, and `HomeDashboardView`'s `.task` re-runs whenever the screen is shown again — so every return
+from the sleep page blanked the ring *before* the reload's first read, and on a real database a load is
+seconds. Measured 2026-10-27 from the user's own report ("the sleep ring empties out"). The clear is now
+conditional on the day actually changing: a same-day reload **keeps** the figure it is about to
+recompute, a load that throws leaves the last good one drawn, and only a day being left behind is
+cleared — its score must not stand in for the new day's. `HomeSleepRingTests` (§14) pins both
+directions.
+
+**Then the same conditional produced the opposite bug, reported the same day: "data from previously
+looked at day remains".** Because only `sleepScore` was cleared, stepping the day bar left the previous
+day's night, activities, steps and stress on screen until each of their reads returned — and *for good*
+if one of them threw, because the `catch` deliberately keeps what it had. Every per-day value is now
+cleared together when the day changes, on **all four** screens that can show two days: Home, the sleep
+page (one view-model instance reused for whichever day Home pushes), strain, and recovery (the tab's
+`Date()` moves at midnight). A same-day reload still clears nothing. Both directions are pinned — Home in
+§14, the sleep page in §15 — with a repository that fails the second load, which is the only way the
+carry-over is observable: a *successful* load for an empty day replaces the values anyway, so only a
+failed one can show what was left behind.
+**All three write a `… load day=… ms=…` line into `capture.txt`**, so the next report is a measurement
+rather than a theory.
+
+## One serialized connection is every screen's read latency, so the store is a pool and its reads leave the actor.
+
+**Measured 2026-10-27, from the user's report that the Recovery and Sleep pages took "a few seconds" to
+fill on a phone that already held the row.** Nothing on either page computes — they read — so the wait
+was not work, it was queueing, and there were two queues. `LocalDatabaseManager` held a single
+`DatabaseQueue`, which serialises *every* operation the app makes, reads included: one screen's read
+waits for the strain tick's whole-day fold, a drain's bulk write, or the recovery scorer's night read.
+And the manager is an `actor`, so a synchronous method held its mailbox for the whole call as well — a
+pool behind an actor would not have helped.
+
+**Both halves were needed.** On disk the store is now a **`DatabasePool`** (WAL, one writer, concurrent
+snapshot readers); in memory it stays a `DatabaseQueue`, because a pool has no file to open. And the
+read methods are **`nonisolated`** — they touch only `dbQueue`, which is `Sendable`, the argument
+`rekeyMislabelledStepDays` already recorded — so they run off the actor and a long call cannot hold the
+mailbox. Writes stay isolated: SQLite has one writer anyway, and the ordering work belongs where the
+mailbox is.
+
+Two consequences to keep in mind. **A read now sees a snapshot taken when it started**, so a page that
+begins reading while a writer is mid-transaction answers from before it — which is what a pool means and
+is why nothing may assume two separate repository calls see one another's writes. And **the pool is the
+arm every device build launches on while every host test opens an in-memory queue**, so it needed a test
+of its own: §7's `LocalDatabasePoolTests` opens a real file under `tmp/`, migrates it, writes through it
+and reads back. Without that block the pool would be compiled and never executed — the shape of a
+migration that crashes the app at launch with a green suite.
 
 ## A day that was not measured gets no row, and the same test must be on both sides of the write.
 
@@ -634,9 +954,11 @@ The gate is `ActivityFigure.isFast`, above. `ActivityDetailViewModel.loadFasting
 
 **The toggle starts and closes the SDK rather than filtering afterwards**, because Sentry's options are fixed at `start`: re-assigning `enableLogs` after the fact changes nothing. `SentryDiagnosticsSink` is `@unchecked Sendable` behind an `NSLock` because `record` arrives on the BLE queue while `setEnabled` arrives on the main actor, and the two flags have to move together. With no DSN — every clone, since `WHOOPSY_SENTRY_DSN` expands to `""` — `install` returns without installing a sink, `Diagnostics.record` returns immediately, and no socket is opened; the toggle is then a switch with nothing behind it, which is the honest state of an unconfigured build. §16 asserts the seam itself (delivery, the empty-attribute event, the toggle, replacement and `install(nil)`); it cannot see the metadata rule, which is a property of the call sites.
 
-## A destination is a switch and not a mode, and nothing anywhere removes a row — that is the user's own ruling.
+## A destination is a switch and not a mode, and the only thing that removes a row is the day purge — and it deletes from the database first.
 
 *"if a DB is selected, it doesnt purge anything, it just switches where data will be stored to."* So a write goes to this phone **and nowhere else**; the once-a-day run at 18:00 Eastern is the only uploader, because a step row is written once a second and a per-save mirror exhausted the deployment's call budget. A read answers locally and reaches the database only on a miss **inside that window**, and `SyncSettings` is one destination, the span the user drew, and the day of the last automatic run. **The whole provenance model went with the purge it existed for**: the two cutoffs, the two boundary predicates that decided which side of one a day was on, and `pendingWork`. A settings value an older build left in `UserDefaults` is **deliberately not migrated** — it is orphaned, and a migration would be a second place the old shape is still believed. §22.7 is the sweep that fails the moment a `delete` returns, on the port, on the seven stores or in a resource it no longer serves. **And a local delete is not a delete while the destination is the API — it is a cache eviction.** The next read is a local miss, the decorator reaches the database, and a writer that seeds itself from that read (`TrackStepsUseCase`) resumes from the cloud's copy: measured 2026-10-20, a repaired 47k step row came straight back on the launch that cleared it. Clear a day locally with the destination on `DEVICE STORAGE`, or correct the database copy — the phone's next write-through fixes it only once it is writing again.
+
+**That last sentence is now a control rather than advice, and the order in it is the whole design.** On 2026-10-29 the same owner asked for three calibration-era days to be removed *"in cloud, those 3 days should be removed, use sync api"*, and `PurgeDaysUseCase` does exactly the two steps the failure above prescribes — the database first, then the phone — as one operation. **A failed server call aborts and deletes nothing locally**: a purge that cleared the phone and reported a server failure would produce precisely the state this entry records, so the refusal is the feature rather than an edge case. The ruling it replaced was the owner's own (*"if a DB is selected, it doesnt purge anything"*) and so is this one; what did not change is that nothing else deletes — no per-row door, no delete on a batch, nothing a sync can reach for — and §22's sweep was rewritten to say *exactly one* rather than *none*.
 
 ## A cumulative motion counter's delta is not a step, and the source byte is part of the rule.
 
@@ -662,7 +984,7 @@ The same trap has a second form: **an empty `HISTORY_END` is the end of the buff
 
 ## A stored metric row must record the formula that produced it, and a parameter change is a version bump.
 
-`strains` held a score and no record of how it was computed, so a row written before the motion term existed and one written after were indistinguishable — and the day the model was retuned, nothing could say which figures would move. The fix is `StrainAlgorithm` on the row, a `strainAlgorithms` catalogue in both databases (local `v35`, D1 `0009`), and the version on the wire. **The discipline is the part that will be forgotten**: any change to a zone weight, the low-intensity band, `k_day`, the gap clamp or the motion weight table is a **new version string, a new seed row and a new enum case**, never an edit in place — an edited weight leaves every historical row claiming a formula it was not computed with, which is worse than no provenance at all. Three copies describe the same model (the enum, the seed rows, `docs/ALGORITHMS.md` §2.b) and a §25 assertion pins `StrainAlgorithm.current` against the newest catalogue row so they cannot drift; nothing, though, can catch a tune that forgets to add the case. **A synced row from an older client must not erase a stored version** — absent means *this client does not know*, not *clear it* — and a nil arriving in a sync is written as NULL only when nothing was stored.
+`strains` held a score and no record of how it was computed, so a row written before the motion term existed and one written after were indistinguishable — and the day the model was retuned, nothing could say which figures would move. The fix is `StrainAlgorithm` on the row, a `strainAlgorithms` catalogue in both databases (local `v35`, D1 `0009`), and the version on the wire. **The discipline is the part that will be forgotten**: any change to a zone weight, the low-intensity band, `k_day`, the gap clamp or the motion weight table is a **new version string, a new seed row and a new enum case**, never an edit in place — an edited weight leaves every historical row claiming a formula it was not computed with, which is worse than no provenance at all. Three copies describe the same model (the enum, the seed rows, `docs/ALGORITHMS.md` §2.b) and a §25 assertion pins `StrainAlgorithm.current` against the newest catalogue row so they cannot drift; nothing, though, can catch a tune that forgets to add the case. **A synced row from an older client must not erase a stored version** — absent means *this client does not know*, not *clear it* — and a nil arriving in a sync is written as NULL only when nothing was stored. **Recovery was the last metric row without the pair, and `v39` gave it both.** A `recoveries` row could say neither which formula produced it nor what input it had seen, which is why three migrations (`v29`–`v31`) existed only to clear days by guess; now `algorithm` and `scored_through` let `RefreshRecoveryUseCase` ask *is this row current* and *has the night moved* instead. Nothing is backfilled — an older row genuinely does not know, and stamping `scorerV1` on it would be the migration making the claim the column exists to prevent.
 
 ## A survey edit that rebuilds a value drops every field it does not name.
 

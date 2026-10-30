@@ -135,9 +135,16 @@ public struct UnconfiguredCloudSync: CloudSync {
         throw failure()
     }
 
-    /// One sentence, built once, so all twenty-five methods fail identically and a caller cannot tell from
+    /// The one requirement whose failure is **load-bearing rather than inert**: a caller about to
+    /// delete days asks this first and aborts on the throw, so an unconfigured build cannot be talked
+    /// into a local-only purge that the next launch would undo.
+    public func purge(from: Date, to: Date) async throws -> PurgeTally {
+        throw failure()
+    }
+
+    /// One sentence, built once, so all twenty-six methods fail identically and a caller cannot tell from
     /// the message which one it reached — which is right, because the answer is the same for all
-    /// twenty-five.
+    /// twenty-six.
     private func failure() -> CloudSyncError {
         .unreachable(
             message: "this build has no database behind it: \(missingKey) is not set in Info.plist")

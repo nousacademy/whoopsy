@@ -181,6 +181,58 @@ public struct HoursOfSleepChartSeries: Equatable, Sendable {
     /// night really had.
     public static let maximumGapSeconds: TimeInterval = 300
 
+    /// The instant a position on the x axis stands for: `0` is the night's start, `1` its end.
+    ///
+    /// **This is what the chart's draggable cursor reads**, and it lives here rather than in the view
+    /// for the repo's standing reason — the runner has no renderer, so a mapping written into a
+    /// gesture is a mapping nothing can assert. The fraction is clamped to the axis, because a finger
+    /// can leave the plot at either end and a time outside the night would name an instant this chart
+    /// never drew.
+    public func time(atFraction fraction: Double) -> Date {
+        let clamped = min(1, max(0, fraction))
+        return start.addingTimeInterval(clamped * end.timeIntervalSince(start))
+    }
+
+    /// The reading nearest an instant, or `nil` when the nearest one is further away than
+    /// `maximumGapSeconds`.
+    ///
+    /// **The cursor's heart rate**, and the gap rule is the chart's own: a window the strap did not
+    /// measure is a break in the trace, so a cursor sitting in one gets no value rather than the
+    /// nearest reading from the far side of the hole — which would print a number that belongs to a
+    /// different part of the night.
+    ///
+    /// Binary search on the sorted points rather than a scan: the cursor asks this on every drag
+    /// change, and a night's series is a sample a second.
+    public func value(atFraction fraction: Double) -> Double? {
+        guard !points.isEmpty else { return nil }
+        let instant = time(atFraction: fraction)
+
+        // First index whose time is at or after the instant.
+        var low = 0
+        var high = points.count
+        while low < high {
+            let mid = (low + high) / 2
+            if points[mid].time < instant { low = mid + 1 } else { high = mid }
+        }
+
+        let candidates = [low - 1, low].filter { $0 >= 0 && $0 < points.count }
+        guard let nearest = candidates.min(by: {
+            abs(points[$0].time.timeIntervalSince(instant))
+                < abs(points[$1].time.timeIntervalSince(instant))
+        }) else { return nil }
+
+        let distance = abs(points[nearest].time.timeIntervalSince(instant))
+        guard distance <= Self.maximumGapSeconds else { return nil }
+        return points[nearest].bpm
+    }
+
+    /// The inverse of `time(atFraction:)`, for placing a cursor at a measured instant.
+    public func fraction(at time: Date) -> Double {
+        let duration = end.timeIntervalSince(start)
+        guard duration > 0 else { return 0 }
+        return min(1, max(0, time.timeIntervalSince(start) / duration))
+    }
+
     /// The night's readings, or `nil` when it has none to plot.
     ///
     /// Two absences are collapsed deliberately, because the screen renders both as `No Data`: a night

@@ -6,7 +6,7 @@ import SwiftUI
 /// ## The card is the route card minus the caption
 ///
 /// The page's map card is `ActivityRouteMapView`, and this is its sibling for the one case that card
-/// cannot serve: `USE OFFLINE MAP` on with `RECORD ROUTE` off. The same label, the same height, the same
+/// cannot serve: the offline map chosen and the route still under two fixes. The same label, the same height, the same
 /// corner radius and the same non-interactive rule — what is missing is the caption, because an area has
 /// no distance and no speed to print, and a bar holding two dashes would claim two measurements this
 /// session never took.
@@ -28,15 +28,24 @@ public struct ActivityOfflineAreaMapView: View {
     /// compiles, exactly as on the route card.
     private let mapSurface: AnyView?
 
+    /// The expanded drawing, when the offline SDK supplies it — `ActivityRouteMapView.expandedMapSurface`,
+    /// whose argument this card inherits rather than restates.
+    private let expandedMapSurface: AnyView?
+
+    /// See `ActivityRouteMapView.isMapExpanded` — the same card state, for the same reason.
+    @State private var isMapExpanded = false
+
     public init(area: ActivityOfflineArea) {
         self.area = area
         self.mapSurface = nil
+        self.expandedMapSurface = nil
     }
 
     /// The same card, drawing a map supplied from outside this module.
-    public init(area: ActivityOfflineArea, mapSurface: AnyView) {
+    public init(area: ActivityOfflineArea, mapSurface: AnyView, expandedMapSurface: AnyView? = nil) {
         self.area = area
         self.mapSurface = mapSurface
+        self.expandedMapSurface = expandedMapSurface
     }
 
     /// `ActivityRouteMapView.title` is `Route` because there is a route in it. Nothing is drawn on this
@@ -56,14 +65,26 @@ public struct ActivityOfflineAreaMapView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel(Self.title)
 
-            surface
-                .frame(height: Self.mapHeight)
-                .clipShape(
-                    RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
-                // The map is a drawing, so its own place names are suppressed for the same reason the
-                // route card suppresses them: the sentence is the whole accessible content.
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(area.spokenSummary)
+            // The expand control sits beside the card for the route card's reason: the card is one
+            // accessibility element, and a button inside it would be swallowed by the sentence.
+            ZStack(alignment: .topTrailing) {
+                surface
+                    .frame(height: Self.mapHeight)
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+                    // The map is a drawing, so its own place names are suppressed for the same reason the
+                    // route card suppresses them: the sentence is the whole accessible content.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(area.spokenSummary)
+
+                MapExpandButton { isMapExpanded = true }
+            }
+            .mapExpansion(isPresented: $isMapExpanded) {
+                AnyView(
+                    MapFullScreenView(
+                        content: AnyView(expandedSurface),
+                        spoken: area.spokenSummary))
+            }
         }
     }
 
@@ -72,12 +93,27 @@ public struct ActivityOfflineAreaMapView: View {
         if let mapSurface {
             mapSurface
         } else {
-            // The route card's live map minus its content: no polyline, no markers, no gesture. The
-            // style excludes points of interest and the page's dark scheme darkens it, so this card and
-            // the route card are the same surface with and without a path on it.
-            Map(initialPosition: position, interactionModes: [])
-                .mapStyle(.standard(pointsOfInterest: .excludingAll))
+            liveArea(interactive: false)
         }
+    }
+
+    /// The full-screen drawing — the same frame, with the map pannable and zoomable. See
+    /// `ActivityRouteMapView.expandedSurface`.
+    @ViewBuilder
+    private var expandedSurface: some View {
+        if let expandedMapSurface {
+            expandedMapSurface
+        } else {
+            liveArea(interactive: true)
+        }
+    }
+
+    /// The route card's map minus its content: no polyline, no markers, and the card's own gesture
+    /// rule. The style excludes points of interest and the page's dark scheme darkens it, so this card
+    /// and the route card are the same surface with and without a path on it.
+    private func liveArea(interactive: Bool) -> some View {
+        Map(initialPosition: position, interactionModes: interactive ? [.pan, .zoom] : [])
+            .mapStyle(.standard(pointsOfInterest: .excludingAll))
     }
 
     /// `ActivityOfflineArea.region`'s four numbers as MapKit's own type — the one construction, as on

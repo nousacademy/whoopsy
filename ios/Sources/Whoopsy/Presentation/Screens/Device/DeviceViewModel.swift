@@ -97,7 +97,7 @@ import SwiftUI
     /// What the sync caption calls the envelope, e.g. `4.0`. Falls back to the model's own name when
     /// the catalog frames nothing, which only happens on the branch that prints no caption.
     public var protocolEnvelopeName: String {
-        protocols.protocolEnvelopeName(connectedModel) ?? connectedModel.rawValue
+        protocols.protocolEnvelopeName(connectedModel) ?? connectedModel.displayName
     }
 
     /// The honest caveat under that caption — **and it differs per generation, because the two have
@@ -259,7 +259,7 @@ import SwiftUI
         defer { isScanning = false }
         do {
             try await manage.startScanning()
-            status = "Scanning for nearby WHOOP straps…"
+            status = "Scanning for nearby straps…"
         } catch {
             status = error.localizedDescription
         }

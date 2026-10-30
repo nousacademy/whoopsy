@@ -113,18 +113,36 @@ enum MapboxSetup {
     /// without a path on it, and a gesture switched off for one must be off for the other — a map that
     /// pans inside a card inside a page is the conflict this exists to prevent, and it would not stop
     /// being one because the session happened to record no route.
-    static var cardGestures: GestureOptions {
+    static var cardGestures: GestureOptions { gestures(enabled: false) }
+
+    /// **The expanded map's set: pan and zoom, and nothing that turns the map.** The card turns
+    /// everything off because it lives inside a scrolling page; the full-screen cover has no page to
+    /// fight, so the two the user asked for come back — and rotation and pitch stay off on purpose.
+    /// A map tilted by a two-finger drag on the way into a pinch draws the route at an angle, and a
+    /// route read at an angle is a route read wrong; the user's own words for the feature were "pan
+    /// and zoom" rather than "a live map".
+    ///
+    /// `simultaneousRotateAndPinchZoomEnabled` is off for the same reason and not by omission: on, a
+    /// pinch that drifts rotates the map *while* zooming, which is the accident described above
+    /// arriving by the one gesture the feature exists for.
+    ///
+    /// **The map is still bounded by `maximumZoom`** — the viewport ceiling is the download's own, so
+    /// an expanded map cannot be pinched past the levels on disk and into blank ground.
+    static var expandedGestures: GestureOptions { gestures(enabled: true) }
+
+    /// The one constructor, and the only place the ten names are written.
+    static func gestures(enabled: Bool) -> GestureOptions {
         GestureOptions(
-            panEnabled: false,
-            pinchEnabled: false,
+            panEnabled: enabled,
+            pinchEnabled: enabled,
             rotateEnabled: false,
             simultaneousRotateAndPinchZoomEnabled: false,
-            pinchZoomEnabled: false,
-            pinchPanEnabled: false,
+            pinchZoomEnabled: enabled,
+            pinchPanEnabled: enabled,
             pitchEnabled: false,
-            doubleTapToZoomInEnabled: false,
-            doubleTouchToZoomOutEnabled: false,
-            quickZoomEnabled: false)
+            doubleTapToZoomInEnabled: enabled,
+            doubleTouchToZoomOutEnabled: enabled,
+            quickZoomEnabled: enabled)
     }
 
     /// The keys Mapbox stores alongside a region and a style pack. Metadata is Mapbox's own field and

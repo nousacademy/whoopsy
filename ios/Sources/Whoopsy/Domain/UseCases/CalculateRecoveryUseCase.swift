@@ -199,7 +199,42 @@ public final class CalculateRecoveryUseCase: Sendable {
         let spO2Values = overnightSamples.compactMap { $0.spO2Percentage }
         let avgSpO2 = spO2Values.isEmpty ? nil : BaselineStatisticsMath.mean(spO2Values)
 
+        // **The score's own arithmetic, in the file a phone capture can read.** A "why is my recovery
+        // 60%?" question is unanswerable from the figure: the composite is a pair of z-scores plus the
+        // sleep term, and the two spreads are what turn today's readings into them. This line prints
+        // every input that `BaselineStatisticsMath.computeRecoveryScore` was handed, computed with
+        // the same `zScore` it uses — so the answer is a lookup rather than a re-derivation.
+        if let scoring {
+            let zHRV = BaselineStatisticsMath.zScore(
+                value: hrvValueMs, mean: scoring.hrvBaselineMeanMs,
+                stdDev: scoring.hrvBaselineStdDevMs)
+            let zRHR = BaselineStatisticsMath.zScore(
+                value: Double(restingHR), mean: scoring.rhrBaselineMean,
+                stdDev: scoring.rhrBaselineStdDev)
+            CaptureLog.shared.append(
+                "RECOVERY score day=\(date.startOfDay.ISO8601Format()) score=\(scoring.score) "
+                    + "hrv=\(hrvValueMs) base=\(String(format: "%.1f", scoring.hrvBaselineMeanMs))"
+                    + "±\(String(format: "%.1f", scoring.hrvBaselineStdDevMs)) "
+                    + "z=\(String(format: "%.2f", zHRV)) "
+                    + "rhr=\(restingHR) base=\(String(format: "%.1f", scoring.rhrBaselineMean))"
+                    + "±\(String(format: "%.1f", scoring.rhrBaselineStdDev)) "
+                    + "z=\(String(format: "%.2f", zRHR)) "
+                    + "sleep=\(String(format: "%.2f", sleepPerformance)) "
+                    + "baselineDays=\(measuredDays)")
+        }
+
         let source = hasBaseline ? RecoveryMetric.strapSource : RecoveryMetric.measurementSource
+        // **The two audit fields, stamped at the one place a row is built.** The algorithm is the
+        // formula this file is applying; the watermark is the newest input it actually read. The
+        // night is the whole of this day's input — the HRV window, the resting rate, the spO2 and
+        // skin temperature all come from its samples — so the night's own `scoredThrough` is the
+        // honest edge, and its end is the fallback for a night that carries none (an imported one,
+        // which `RefreshRecoveryUseCase` never re-scores anyway).
+        //
+        // **It is the same edge the refresher compares against**, which is what makes a stored row
+        // self-describing: a launch reads this value and can say whether anything newer has arrived
+        // without folding the night to find out.
+        let inputEdge = sleepSession.scoredThrough ?? sleepSession.endTime
         let recovery = RecoveryMetric(
             date: date.startOfDay,
             // The reserved `0` on an unscored day. `hasScore` is false for it, so nothing draws it.
@@ -213,7 +248,9 @@ public final class CalculateRecoveryUseCase: Sendable {
             respiratoryRate: sleepSession.respiratoryRate,
             hrvBaselineDeltaMs: scoring?.hrvBaselineDeltaMs,
             rhrBaselineDeltaBpm: scoring?.rhrBaselineDeltaBpm,
-            source: source
+            source: source,
+            algorithm: .current,
+            scoredThrough: inputEdge
         )
 
         try await recoveryRepository.saveRecovery(recovery, source: source)

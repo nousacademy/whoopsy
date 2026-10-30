@@ -602,3 +602,99 @@ describe("the chunk's transaction", () => {
     expect(await rowCount(ALICE)).toBe(0);
   });
 });
+
+/**
+ * The range delete — the Worker's only removal operation.
+ *
+ * Five properties, and each one is a way a delete goes wrong rather than a variation on a happy path:
+ * it removes **exactly** the days named and no neighbour; the bounds are **inclusive** at both ends,
+ * which is the same convention `GET /` reads with; it is **replayable**, so a retried request is a
+ * `0` rather than a failure or a second removal; it cannot reach **another partition**; and a reversed
+ * or over-wide range is a `400` that leaves the table alone.
+ */
+describe("a range of days removed", () => {
+  function erase(query: string, userId = ALICE): Promise<Response> {
+    return SELF.fetch(`${BASE}/v1/recoveries?${query}`, {
+      method: "DELETE",
+      headers: { ...authHeaders(userId) },
+    });
+  }
+
+  async function seed(end = "2026-10-25", n = 5): Promise<void> {
+    const response = await postBatch({ rows: batchRows(end, n) });
+    expect(response.status).toBe(200);
+  }
+
+  it("removes the days named and leaves both neighbours", async () => {
+    // Six days, 20–25 October, so the deleted pair (21–22) has a neighbour on each side.
+    await seed("2026-10-25", 6);
+    const response = await erase("from=2026-10-21&to=2026-10-22");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ deleted: 2 });
+    expect(await rowCount(ALICE)).toBe(4);
+    // Inclusive at both ends: the first and last day of the range are gone, the days beside them are
+    // not. A half-open implementation would leave `to` behind and still report `2`.
+    expect((await read("/v1/recoveries/2026-10-20")).status).toBe(200);
+    expect((await read("/v1/recoveries/2026-10-21")).status).toBe(404);
+    expect((await read("/v1/recoveries/2026-10-22")).status).toBe(404);
+    expect((await read("/v1/recoveries/2026-10-23")).status).toBe(200);
+  });
+
+  it("answers 0 the second time, rather than failing or removing a neighbour", async () => {
+    await seed();
+    await erase("from=2026-10-21&to=2026-10-22");
+
+    const again = await erase("from=2026-10-21&to=2026-10-22");
+
+    // `0` is a real answer — the range holds nothing, which is the state the caller asked for — and
+    // it is the whole reason a replayed request is safe.
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ deleted: 0 });
+    expect(await rowCount(ALICE)).toBe(3);
+  });
+
+  it("cannot reach another caller's days", async () => {
+    await seed("2026-10-25", 5);
+    const response = await postBatch({ rows: batchRows("2026-10-25", 5) }, BOB);
+    expect(response.status).toBe(200);
+
+    await erase("from=2026-10-20&to=2026-10-25");
+
+    expect(await rowCount(ALICE)).toBe(0);
+    expect(await rowCount(BOB)).toBe(5);
+  });
+
+  it("refuses a reversed range and leaves the table alone", async () => {
+    await seed();
+
+    const response = await erase("from=2026-10-25&to=2026-10-20");
+    const body = (await response.json()) as ErrorWire;
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("invalid_request");
+    // The schema refuses it before the service is reached, so the message is the query schema's —
+    // `from` is the field it is reported against, which is what a client needs to see. The service
+    // restates the rule for a caller that arrives through no schema at all.
+    expect(body.error.message).toContain("must not be later than");
+    expect(await rowCount(ALICE)).toBe(5);
+  });
+
+  it("refuses a range wider than the cap, and accepts one exactly at it", async () => {
+    await seed();
+
+    const tooWide = await erase("from=2026-01-01&to=2026-02-01");
+    expect(tooWide.status).toBe(400);
+    expect(((await tooWide.json()) as ErrorWire).error.message).toContain("at most 31");
+
+    // 31 days inclusive: the boundary is asserted from the inside, so an off-by-one in the cap fails
+    // here rather than quietly refusing a legitimate range.
+    const atCap = await erase("from=2026-01-01&to=2026-01-31");
+    expect(atCap.status).toBe(200);
+  });
+
+  it("refuses a value that is not a calendar day", async () => {
+    const response = await erase("from=2026-02-31&to=2026-03-02");
+    expect(response.status).toBe(400);
+  });
+});

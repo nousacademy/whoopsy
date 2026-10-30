@@ -644,18 +644,65 @@ public struct WhoopsyAPIClient: Sendable {
         return try decode(UserProfileDTO.self, from: data)
     }
 
+    // MARK: - The one removal
+
+    /// Delete every stored day in `[from, to]` for one resource, and answer with how many rows went.
+    ///
+    /// **The client's first verb other than `GET`/`PUT`/`POST`, and the only request it makes whose
+    /// success depends on a query rather than on a body or a path.** Nothing in `perform`/`check` had
+    /// to change for it: a 2xx is a success and anything else is the API's error envelope, which is
+    /// exactly how every other method here is written.
+    ///
+    /// `path` is the resource's mounted path, passed in rather than switched on here — `SyncedResource`
+    /// owns that list, and a second copy of the four strings in the transport would be a copy that can
+    /// disagree with the one §22 checks against the contract.
+    ///
+    /// The bounds are day keys and are **inclusive at both ends** on the server: this method names the
+    /// range it means rather than translating one, because unlike a read there is no window arithmetic
+    /// between the caller and the wire.
+    public func deleteDays(path: String, from: String, to: String) async throws -> Int {
+        let request = try await makeRequest(
+            method: "DELETE",
+            path: path.hasPrefix("/") ? String(path.dropFirst()) : path,
+            query: [URLQueryItem(name: "from", value: from), URLQueryItem(name: "to", value: to)])
+        let (data, response) = try await perform(request)
+        try check(response, data)
+        return try decode(PurgeResultDTO.self, from: data).deleted
+    }
+
+    /// What a range delete answers with. One field, and `0` is a real answer rather than a failure.
+    public struct PurgeResultDTO: Decodable, Sendable {
+        public let deleted: Int
+    }
+
     // MARK: - The transport
 
     private func perform(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         // **The one gate every call passes through.** A closed window throws before a socket is
         // opened, so no read, write or retry can spend a request outside 18:00–midnight Eastern.
-        guard isCallWindowOpen() else { throw CloudSyncError.outsideWindow }
+        //
+        // **Every request is also written to `capture.txt`, here and nowhere else.** The audit this
+        // answers — "what does opening Home actually send" — cannot be taken from os.log (minutes
+        // deep, unreachable without a cable), and a request count read off the code is a claim about
+        // intent rather than about what ran. One line per completed call, one for a call the window
+        // refused, one per failure: method, path, status, milliseconds, bytes. No health value is on
+        // a path, so this is metadata in the same sense `DRAIN_BATCH` is.
+        let method = request.httpMethod ?? "?"
+        let path = request.url?.path ?? "-"
+        let started = Date()
+        func elapsed() -> Int { Int(Date().timeIntervalSince(started) * 1000) }
+
+        guard isCallWindowOpen() else {
+            CaptureLog.shared.append("API \(method) \(path) skipped=outsideWindow")
+            throw CloudSyncError.outsideWindow
+        }
 
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
         } catch {
+            CaptureLog.shared.append("API \(method) \(path) error=\(elapsed())ms")
             // Every `URLSession` failure lands here — no route, a refused connection, a timeout, a
             // cancelled task — and every one of them means the same thing to a caller: no answer was
             // received. They are not distinguished further because nothing above could act on the
@@ -667,6 +714,8 @@ public struct WhoopsyAPIClient: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw CloudSyncError.malformed(message: "the answer to \(request.url?.path ?? "the request") was not an HTTP response")
         }
+        CaptureLog.shared.append(
+            "API \(method) \(path) status=\(http.statusCode) \(elapsed())ms bytes=\(data.count)")
         return (data, http)
     }
 

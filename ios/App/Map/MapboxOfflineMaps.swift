@@ -261,11 +261,18 @@ final class MapboxOfflineMaps: OfflineMapRendering {
         // The card is `Presentation`'s — this supplies the picture inside a frame the card has fixed,
         // and the caption, the corner radius and the accessibility sentence are the same code the
         // `MapKit` card runs. See `ActivityRouteMapView.init(route:unit:mapSurface:)`.
+        // **Two drawings of one view, and they differ only in whether the map moves.** The card's
+        // surface turns every gesture off (`MapboxSetup.cardGestures`) because it sits in a scrolling
+        // page; the expanded one turns them on, and its gesture set lives here rather than in
+        // `Presentation` because only this module can set it. Handing both in is what keeps the
+        // full-screen map the same map rather than a second one built beside it.
         AnyView(
             ActivityRouteMapView(
                 route: route,
                 unit: unit,
-                mapSurface: AnyView(MapboxRouteMapView(route: route))))
+                mapSurface: AnyView(MapboxRouteMapView(route: route)),
+                expandedMapSurface: AnyView(
+                    MapboxRouteMapView(route: route, isInteractive: true))))
     }
 
     /// The area card's picture, for a session that downloaded a map and recorded no route.
@@ -278,7 +285,9 @@ final class MapboxOfflineMaps: OfflineMapRendering {
         AnyView(
             ActivityOfflineAreaMapView(
                 area: area,
-                mapSurface: AnyView(MapboxAreaMapView(area: area))))
+                mapSurface: AnyView(MapboxAreaMapView(area: area)),
+                expandedMapSurface: AnyView(
+                    MapboxAreaMapView(area: area, isInteractive: true))))
     }
 
     // MARK: - The one-time walk

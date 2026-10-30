@@ -560,7 +560,7 @@ public enum WorkoutWireMapper {
     ///   as array bounds.
     ///
     /// **The route-point heart rate is the rule that bites, and the answer to it is to skip the row
-    /// and never to trim the array.** A live session with `RECORD ROUTE` on can collect its first GPS
+    /// and never to trim the array.** A session with either map chosen can collect its first GPS
     /// fixes before the accumulator has seen a heart-rate sample, and those fixes are stamped with the
     /// documented `0` sentinel — so a row this app produced can hold route points the API will not
     /// take. Dropping those points would send a *different route* from the one on disk, which is

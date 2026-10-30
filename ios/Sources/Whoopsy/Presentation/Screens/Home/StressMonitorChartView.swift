@@ -1,6 +1,11 @@
 import SwiftUI
 
-/// The Stress Monitor's day, drawn as a line across the full 24 hours.
+/// The Stress Monitor's series, drawn as one bar per five-minute window.
+///
+/// **Bars, not a line**, and that is the reference's shape rather than a styling preference: a window
+/// is a five-minute measurement, so its height is a quantity standing over the stretch of time it
+/// covers. A polyline joined the points and implied a value at every instant between them — including
+/// the instants no window measured — and it needed a marker at each peak to be readable at all.
 ///
 /// Hand-rolled `Shape`s and a `GeometryReader`, like `HypnogramChartView` and the Recovery trend
 /// chart. Nothing in this project uses Swift Charts and this is not the place to start.
@@ -19,8 +24,9 @@ import SwiftUI
 /// this view's one addition beyond the reference image and the only thing on it that says what it
 /// does not know.
 ///
-/// With no windows at all the chart draws **nothing**: no frame, no axes, no zero line. A flat line at
-/// zero is a measurement, and a day whose samples yielded no eligible window was never measured. The
+/// **A gap is a gap**: an ineligible window draws no bar, and no bar is not a bar of zero height.
+/// With no windows at all the chart draws **nothing**: no frame, no axes, no zero line. A row of zero
+/// bars is a measurement, and a day whose samples yielded no eligible window was never measured. The
 /// caller's caption carries that absence in words.
 public struct StressMonitorChartView: View {
     /// The day's scored windows. Order is not required — they are sorted here.
@@ -33,10 +39,25 @@ public struct StressMonitorChartView: View {
     /// it falls inside the day.
     public let now: Date?
 
-    public init(windows: [StressWindow], day: Date, now: Date? = nil) {
+    /// The span to plot, or `nil` for the whole calendar day.
+    ///
+    /// **The detail page passes a trailing span and the tile passes `nil`.** The tile is a day's
+    /// summary, so its line is the day; the page is a live monitor, and a line the width of a whole
+    /// day is mostly empty when the last two hours are what the reader came for. A custom span draws
+    /// no waking shading either — the axis no longer *is* the day, so shading its ends would claim
+    /// hours outside the chart.
+    public let range: Range<Date>?
+
+    public init(
+        windows: [StressWindow],
+        day: Date,
+        now: Date? = nil,
+        range: Range<Date>? = nil
+    ) {
         self.windows = windows
         self.day = day
         self.now = now
+        self.range = range
     }
 
     /// The plot's height, excluding the hour labels beneath it. A `GeometryReader` has no intrinsic
@@ -78,17 +99,13 @@ public struct StressMonitorChartView: View {
             Gridlines(values: [StressMath.lowMediumBandEdge, StressMath.mediumHighBandEdge])
                 .stroke(Theme.ringTrack, lineWidth: 1)
 
-            BandArea(runs: runs)
+            // The bars are a **mask over one full-height gradient** rather than a per-bar fill: a
+            // `LinearGradient` applied to each bar is graded over that bar's own height, so a short
+            // bar and a tall one would put "high" at different heights — the defect the token's own
+            // doc comment names. Masked, every bar reads the same scale the axis is drawn on.
+            Rectangle()
                 .fill(bandGradient)
-                .opacity(0.30)
-
-            LinePath(runs: runs)
-                .stroke(
-                    Theme.textPrimary,
-                    style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-
-            DotPath(runs: runs, radius: 3.5)
-                .fill(Theme.textPrimary)
+                .mask(BarsShape(bars: bars, slotFraction: slotFraction))
 
             if let nowFraction {
                 TimeMarker(fraction: nowFraction)
@@ -111,17 +128,33 @@ public struct StressMonitorChartView: View {
 
     private var hourLabels: some View {
         GeometryReader { proxy in
-            ForEach(Self.hourTicks, id: \.self) { hour in
-                if let tick = Calendar.current.date(byAdding: .hour, value: hour, to: dayStart) {
-                    Text(tick.formattedHour())
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(Theme.textMuted)
-                        .fixedSize()
-                        .position(
-                            x: labelX(for: tick, width: proxy.size.width),
-                            y: proxy.size.height / 2)
-                }
+            ForEach(ticks, id: \.self) { tick in
+                Text(tick.formattedHour())
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Theme.textMuted)
+                    .fixedSize()
+                    .position(
+                        x: labelX(for: tick, width: proxy.size.width),
+                        y: proxy.size.height / 2)
             }
+        }
+    }
+
+    /// The instants the axis is labelled at.
+    ///
+    /// A whole day carries WHOOP's own four: midnight, 6 AM, noon, 6 PM. A trailing span carries its
+    /// two ends and two points between them, read off the span itself rather than off the clock —
+    /// a six-hour window ending at 14:20 labels 08:20, 11:20, 14:20, and rounding those to the hour
+    /// would put the label under a different part of the line than the one it names.
+    private var ticks: [Date] {
+        guard let range else {
+            return Self.hourTicks.compactMap {
+                Calendar.current.date(byAdding: .hour, value: $0, to: dayStart)
+            }
+        }
+        let length = range.upperBound.timeIntervalSince(range.lowerBound)
+        return [0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0].map {
+            range.lowerBound.addingTimeInterval(length * $0)
         }
     }
 
@@ -134,10 +167,13 @@ public struct StressMonitorChartView: View {
 
     // MARK: - The day's bounds
 
-    private var dayStart: Date { day.startOfDay }
+    /// The plot's left edge: midnight for a whole day, the span's own start otherwise.
+    private var dayStart: Date { range?.lowerBound ?? day.startOfDay }
 
+    /// The plot's right edge. See `dayStart`.
     private var dayEnd: Date {
-        Calendar.current.date(byAdding: .day, value: 1, to: dayStart)
+        if let range { return range.upperBound }
+        return Calendar.current.date(byAdding: .day, value: 1, to: dayStart)
             ?? dayStart.addingTimeInterval(86_400)
     }
 
@@ -150,12 +186,17 @@ public struct StressMonitorChartView: View {
     /// `nil` rather than clamped to an edge: a marker pinned to the axis is a claim that the time is
     /// at the axis. A past day has no "now" on it at all.
     private var nowFraction: Double? {
+        // A trailing span *ends* at now, so the marker would sit on the axis — a dashed line pinned
+        // to the edge claims the time is at the axis, which is what this value refuses to draw.
+        guard range == nil else { return nil }
         guard let now, now >= dayStart, now <= dayEnd else { return nil }
         return now.timeIntervalSince(dayStart) / dayLength
     }
 
     /// The hours this model cannot score, which on a full-day axis are always its two ends.
     private var unscoredSpans: [Range<Date>] {
+        // A custom span is not a day, so it has no unscored ends to shade; see `range`.
+        guard range == nil else { return [] }
         guard let waking = StressMath.wakingWindow(on: dayStart) else { return [] }
         var spans: [Range<Date>] = []
         if waking.lowerBound > dayStart { spans.append(dayStart..<waking.lowerBound) }
@@ -165,26 +206,24 @@ public struct StressMonitorChartView: View {
 
     // MARK: - The series
 
-    /// The day's windows in data terms, split wherever the record is not continuous.
+    /// The windows on the axis, in data terms — one bar each.
     ///
-    /// A gap longer than one and a half windows ends a run, and the next window starts a new one.
-    /// Ineligible windows — the strap moving, or too few beats — are **unmeasured**, and joining
-    /// across one would draw a reading nobody took. A break is the honest rendering of a hole.
-    private var runs: [[PlotPoint]] {
-        let ordered = windows.sorted { $0.start < $1.start }
-        let gap = StressMath.windowSeconds * 1.5
-        var runs: [[PlotPoint]] = []
-        var current: [StressWindow] = []
+    /// **No run-splitting any more, and no joining across a gap.** Each bar is drawn from the window
+    /// that produced it, so an ineligible window — the strap moving, or too few beats — simply has no
+    /// bar, which is the honest rendering of a hole. The old line had to break itself into runs to say
+    /// the same thing.
+    private var bars: [PlotPoint] {
+        // Only what the axis covers: a point outside it would be drawn at a fraction below zero or
+        // past the frame, and a `Shape` handed such a fraction paints over its neighbours.
+        windows
+            .filter { $0.start >= dayStart && $0.start <= dayEnd }
+            .sorted { $0.start < $1.start }
+            .map(plotPoint)
+    }
 
-        for window in ordered {
-            if let last = current.last, window.start.timeIntervalSince(last.start) > gap {
-                runs.append(current.map(plotPoint))
-                current = []
-            }
-            current.append(window)
-        }
-        if !current.isEmpty { runs.append(current.map(plotPoint)) }
-        return runs
+    /// One window's width as a fraction of the axis — the slot its five minutes occupy.
+    private var slotFraction: Double {
+        min(1, StressMath.windowSeconds / dayLength)
     }
 
     private func plotPoint(_ window: StressWindow) -> PlotPoint {
@@ -217,73 +256,38 @@ public struct StressMonitorChartView: View {
         }
     }
 
-    /// The area between the line and zero.
-    private struct BandArea: Shape {
-        let runs: [[PlotPoint]]
-
-        func path(in rect: CGRect) -> Path {
-            var path = Path()
-            for run in runs {
-                guard let first = run.first, let last = run.last else { continue }
-                path.move(to: CGPoint(x: Scale.x(first.timeFraction, in: rect), y: rect.maxY))
-                for point in run {
-                    path.addLine(
-                        to: CGPoint(
-                            x: Scale.x(point.timeFraction, in: rect),
-                            y: Scale.y(point.score, in: rect)))
-                }
-                path.addLine(to: CGPoint(x: Scale.x(last.timeFraction, in: rect), y: rect.maxY))
-                path.closeSubpath()
-            }
-            return path
-        }
-    }
-
-    /// The line itself. Runs of one point are skipped — `DotPath` draws those.
-    private struct LinePath: Shape {
-        let runs: [[PlotPoint]]
-
-        func path(in rect: CGRect) -> Path {
-            var path = Path()
-            for run in runs where run.count > 1 {
-                guard let first = run.first else { continue }
-                path.move(
-                    to: CGPoint(
-                        x: Scale.x(first.timeFraction, in: rect),
-                        y: Scale.y(first.score, in: rect)))
-                for point in run.dropFirst() {
-                    path.addLine(
-                        to: CGPoint(
-                            x: Scale.x(point.timeFraction, in: rect),
-                            y: Scale.y(point.score, in: rect)))
-                }
-            }
-            return path
-        }
-    }
-
-    /// A lone scored window, drawn as a point.
+    /// One bar per scored window: its five minutes wide, its score tall.
     ///
-    /// A polyline through a single point draws nothing at all, and the value was still measured — a
-    /// day whose only eligible window is one five-minute stretch is a real, thin reading. Drawing a
-    /// flat segment instead would invent a duration the strap never recorded.
-    private struct DotPath: Shape {
-        let runs: [[PlotPoint]]
-        let radius: CGFloat
+    /// The width is a **fraction of the axis** rather than a constant, so the same code draws a day
+    /// (where a window is a third of a percent of the width and the bars read as one dense series)
+    /// and a six-hour span (where the same window is nearly five points wide). A constant width
+    /// would either vanish on the tile or overlap on the page.
+    ///
+    /// A scored window of `0.0` is a real reading, so it is drawn at a minimum height rather than as
+    /// nothing — the difference between "calm" and "not measured" is the whole reason this chart has
+    /// a gap rule.
+    private struct BarsShape: Shape {
+        let bars: [PlotPoint]
+        let slotFraction: Double
 
         func path(in rect: CGRect) -> Path {
             var path = Path()
-            for run in runs where run.count == 1 {
-                guard let point = run.first else { continue }
-                let centre = CGPoint(
-                    x: Scale.x(point.timeFraction, in: rect),
-                    y: Scale.y(point.score, in: rect))
-                path.addEllipse(
-                    in: CGRect(
-                        x: centre.x - radius,
-                        y: centre.y - radius,
-                        width: radius * 2,
-                        height: radius * 2))
+            guard slotFraction > 0, !bars.isEmpty else { return path }
+            let slot = rect.width * CGFloat(slotFraction)
+            let width = max(1, slot * 0.62)
+            let radius = min(width / 2, 1.5)
+            let minimumHeight: CGFloat = 1.5
+
+            for bar in bars {
+                let top = Scale.y(bar.score, in: rect)
+                let height = max(minimumHeight, rect.maxY - top)
+                let x = Scale.x(bar.timeFraction, in: rect) + (slot - width) / 2
+                let frame = CGRect(
+                    x: x,
+                    y: max(rect.minY, rect.maxY - height),
+                    width: width,
+                    height: min(height, rect.height))
+                path.addRoundedRect(in: frame, cornerSize: CGSize(width: radius, height: radius))
             }
             return path
         }

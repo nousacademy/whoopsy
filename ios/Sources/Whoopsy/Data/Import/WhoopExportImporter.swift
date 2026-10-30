@@ -570,7 +570,12 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
                         spO2Percentage: row.bloodOxygenPercent,
                         respiratoryRate: row.respiratoryRate,
                         hrvBaselineDeltaMs: scoring.hrvBaselineDeltaMs,
-                        rhrBaselineDeltaBpm: scoring.rhrBaselineDeltaBpm)
+                        rhrBaselineDeltaBpm: scoring.rhrBaselineDeltaBpm,
+                        // The formula that scored it, recorded like every other computed row — the
+                        // import runs `RecoveryScoring`, so this is this app's arithmetic and not
+                        // WHOOP's. `scoredThrough` stays `nil`: an imported day has no night this
+                        // app drained, and the refresher never rewrites a non-local row anyway.
+                        algorithm: .current)
 
                     try await recoveryRepository.saveRecovery(recovery, source: Self.sourceLabel)
                     scoredSeries.append(recovery)
@@ -591,7 +596,8 @@ public struct WhoopExportImporter: WhoopExportImporting, Sendable {
                         skinTemperatureCelsius: row.skinTempCelsius,
                         spO2Percentage: row.bloodOxygenPercent,
                         respiratoryRate: row.respiratoryRate,
-                        source: RecoveryMetric.measurementSource)
+                        source: RecoveryMetric.measurementSource,
+                        algorithm: .current)
                     try await recoveryRepository.saveRecovery(
                         measurement, source: RecoveryMetric.measurementSource)
                     scoredSeries.append(measurement)

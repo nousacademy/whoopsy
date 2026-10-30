@@ -4,7 +4,22 @@ import GRDB
 public actor LocalDatabaseManager {
     public static let shared = LocalDatabaseManager()
 
-    private let dbQueue: DatabaseQueue
+    /// A **pool** on disk rather than a queue, so a page's read does not wait behind the app's own
+    /// heavy reads and writes. `DatabaseQueue` serialises every operation the app makes — reads
+    /// included — so a screen opened while the strain tick folded a day, or a drain was writing a
+    /// bulk of samples, sat waiting for the whole of it; measured 2026-10-27, that was the "few
+    /// seconds" a ring took to fill on a phone that already held the row. A pool gives each read its
+    /// own WAL snapshot, so read latency is the read's own cost and not the queue's backlog.
+    ///
+    /// **It is half of the fix.** The other half is that these reads are `nonisolated`: the actor
+    /// used to serialise them even with a pool behind it, because a synchronous actor method holds
+    /// the mailbox for its whole duration. They touch only `dbQueue`, which is `Sendable`, so they
+    /// can leave the actor — `rekeyMislabelledStepDays` already did, for the same reason. Writers
+    /// stay isolated: there is one writer in SQLite anyway, and keeping them on the actor means the
+    /// ordering work lands where the mailbox is rather than on every caller.
+    ///
+    /// An in-memory database keeps a `DatabaseQueue`, because a `DatabasePool` has no file to open.
+    private let dbQueue: any DatabaseWriter
 
     public init(inMemory: Bool = false) {
         do {
@@ -23,14 +38,35 @@ public actor LocalDatabaseManager {
             config.readonly = false
             config.qos = .utility
 
-            self.dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
+            self.dbQueue = inMemory
+                ? try DatabaseQueue(path: dbPath, configuration: config)
+                : try DatabasePool(path: dbPath, configuration: config)
             try Self.runMigrations(on: dbQueue)
         } catch {
             fatalError("Failed to initialize GRDB database: \(error)")
         }
     }
 
-    private static func runMigrations(on queue: DatabaseQueue) throws {
+    /// Opens a file-backed database at a caller's path — **the suite's door to the pool arm.**
+    ///
+    /// The application's own initialiser takes the pool on every launch, but an in-memory test cannot
+    /// reach it (`DatabasePool` has no file to open), so without this the writer every device build
+    /// actually uses would be compiled and never run. This opens the same way, migrations included.
+    public init(fileURL: URL) {
+        do {
+            var config = Configuration()
+            config.readonly = false
+            config.qos = .utility
+
+            let pool = try DatabasePool(path: fileURL.path, configuration: config)
+            self.dbQueue = pool
+            try Self.runMigrations(on: pool)
+        } catch {
+            fatalError("Failed to initialize GRDB database: \(error)")
+        }
+    }
+
+    private static func runMigrations(on queue: any DatabaseWriter) throws {
         var migrator = DatabaseMigrator()
 
         migrator.registerMigration("v1_create_tables") { db in
@@ -697,7 +733,7 @@ public actor LocalDatabaseManager {
         // `v19` added the region id and that is a join key into Mapbox's tile store — enough to
         // find the tiles and not enough to frame them, because `TileRegion` exposes no geometry.
         // A session with a route draws the route, so the id sufficed until a session downloaded a
-        // map with `RECORD ROUTE` off: its detail page then held tiles on disk and nothing to
+        // map and recorded no usable path: its detail page then held tiles on disk and nothing to
         // point the camera at. These two columns are where that missing centre lives — see
         // `OfflineMapCenter` for the full argument.
         //
@@ -1006,6 +1042,44 @@ public actor LocalDatabaseManager {
                 """, arguments: [SleepStillnessSpine.motion.rawValue, SleepAlgorithm.stagerV1.rawValue])
         }
 
+        // **v39: the recovery row's provenance, the last computed row that had none.** `strains` got
+        // the pair in `v35` and `sleeps` in `v37`; a recovery row could say neither which formula
+        // produced it nor what input it had seen, so a later estimator could not tell a current row
+        // from its predecessor's — three migrations (`v29`–`v31`) existed only to clear days by guess.
+        //
+        // **Nothing is backfilled, and that is the rule rather than an omission.** A row written
+        // before these columns holds neither fact, and filling either in would be this migration
+        // inventing a claim: `scorerV1` may not be written onto a row that an older model made, and a
+        // `scored_through` guessed from the row's own `date` would say the night was read when it was
+        // not. NULL is the honest value, and the first foreground re-scores the day once — which is
+        // the behaviour every install had before this column existed, so the cost is one calculation.
+        //
+        // `scored_through` is snake_case here because `RecoveryRecord` declares its `CodingKeys`, the
+        // same reason `v37`'s is — a camelCase column would be created and never written.
+        migrator.registerMigration("v39_recovery_provenance") { db in
+            try Self.addMissingColumns(
+                to: RecoveryRecord.databaseTableName,
+                columns: [("algorithm", .text), ("scored_through", .datetime)],
+                in: db)
+        }
+
+        // **v40: whether a night ended at the data edge or at a detected wake.** The reclassification
+        // gate needs that distinction and nothing on the row could supply it: `endTime` and
+        // `scoredThrough` are both derivable from the same input, so a night cut short by a drain that
+        // had not finished is indistinguishable from one trimmed at a real wake once the trim is more
+        // than a few minutes. Measured 2026-10-28: a 54-minute night stayed on screen because the gate
+        // read seven hours of later records as wake time and never looked again.
+        //
+        // **Nothing is backfilled**, and here that is what makes the heal work: a NULL means *no
+        // verdict recorded*, which the gate answers with one re-classification — the run then stamps
+        // the fact. Guessing `false` from the old gap heuristic would restore exactly the bug.
+        migrator.registerMigration("v40_sleep_data_edge") { db in
+            try Self.addMissingColumns(
+                to: SleepRecord.databaseTableName,
+                columns: [("ended_at_data_edge", .boolean)],
+                in: db)
+        }
+
         try migrator.migrate(queue)
     }
 
@@ -1077,8 +1151,8 @@ public actor LocalDatabaseManager {
     /// version is the one `StrainAlgorithm.current` names. Without that assertion the catalogue could
     /// silently stop describing the code — a parameter would be tuned, the writer would keep stamping
     /// the old name, and every row would claim a formula it was not computed with.
-    public func strainAlgorithmCatalogue() throws -> [StrainAlgorithmRecord] {
-        try dbQueue.read { db in
+    public nonisolated func strainAlgorithmCatalogue() async throws -> [StrainAlgorithmRecord] {
+        try await dbQueue.read { db in
             try StrainAlgorithmRecord.order(Column("createdAt").asc).fetchAll(db)
         }
     }
@@ -1103,7 +1177,7 @@ public actor LocalDatabaseManager {
         let rows = [
             StrainAlgorithmRecord(
                 version: StrainAlgorithm.whoopExport.rawValue,
-                formula: "WHOOP's own Day Strain, read from the bundled export and stored verbatim.",
+                formula: "The export's own Day Strain, read from the bundled file and stored verbatim.",
                 parameters: "{}",
                 notes: """
                     Not this app's computation. The export carries no R-R series, so feeding it to the \
@@ -1148,7 +1222,7 @@ public actor LocalDatabaseManager {
                     """,
                 notes: """
                     Adds the wrist-motion term so work that does not raise the heart rate counts. \
-                    The weight table is this app's calibration, not WHOOP's: a hard 8-hour manual day \
+                    The weight table is this app's calibration, not the strap maker's: a hard 8-hour manual day \
                     is about +3 ring points over a quiet one.
                     """,
                 createdAt: seedDate(2026, 10, 23)),
@@ -1176,8 +1250,8 @@ public actor LocalDatabaseManager {
     /// rather than written into this method: `exportAllRows()` needs the same answer inside its own
     /// read block, and two copies of a `sqlite_master` query are two definitions of "which tables does
     /// this app have" that a filter like `NOT LIKE 'sqlite_%'` is free to drift between.
-    public func existingTableNames() throws -> [String] {
-        try dbQueue.read { db in try Self.tableNames(in: db) }
+    public nonisolated func existingTableNames() async throws -> [String] {
+        try await dbQueue.read { db in try Self.tableNames(in: db) }
     }
 
     private static func tableNames(in db: Database) throws -> [String] {
@@ -1199,8 +1273,8 @@ public actor LocalDatabaseManager {
     ///
     /// Returns `[]` for a table that does not exist rather than throwing, so a caller asserting on a
     /// missing table sees an empty list instead of an error it has to distinguish from a real one.
-    public func columnNames(in table: String) throws -> [String] {
-        try dbQueue.read { db in
+    public nonisolated func columnNames(in table: String) async throws -> [String] {
+        try await dbQueue.read { db in
             guard try db.tableExists(table) else { return [] }
             return try db.columns(in: table).map(\.name)
         }
@@ -1227,8 +1301,8 @@ public actor LocalDatabaseManager {
     /// Table names are interpolated into the SQL because SQLite has no bind parameter for an
     /// identifier. They come from `sqlite_master` and not from a caller, and are quoted besides; the
     /// values in every row are read normally and never interpolated.
-    public func exportAllRows() throws -> LocalDataSnapshot {
-        try dbQueue.read { db in
+    public nonisolated func exportAllRows() async throws -> LocalDataSnapshot {
+        try await dbQueue.read { db in
             var tables: [String: [LocalDataRow]] = [:]
 
             for table in try Self.tableNames(in: db) {
@@ -1250,8 +1324,8 @@ public actor LocalDatabaseManager {
         }
     }
 
-    public func getRecovery(for date: Date) throws -> RecoveryRecord? {
-        try dbQueue.read { db in
+    public nonisolated func getRecovery(for date: Date) async throws -> RecoveryRecord? {
+        try await dbQueue.read { db in
             try RecoveryRecord.fetchOne(db, key: ["date": date.startOfDay])
         }
     }
@@ -1297,9 +1371,9 @@ public actor LocalDatabaseManager {
     /// `endingOn` defaults to now, so the "last N days" callers are unchanged — but it is a real
     /// parameter now rather than an assumption, because a screen showing an old day needs the window
     /// that ends on *that* day. See `historyWindow(days:endingOn:)` for why the bound matters.
-    public func getRecoveryHistory(days: Int, endingOn: Date = Date()) throws -> [RecoveryRecord] {
+    public nonisolated func getRecoveryHistory(days: Int, endingOn: Date = Date()) async throws -> [RecoveryRecord] {
         let window = Self.historyWindow(days: days, endingOn: endingOn)
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             try RecoveryRecord
                 .filter(Column("date") >= window.from)
                 .filter(Column("date") <= window.to)
@@ -1320,8 +1394,8 @@ public actor LocalDatabaseManager {
     /// Ascending is load-bearing rather than a convenience: the upload chunks this array and advances
     /// the boundary to each chunk's last row, so a shuffled read would move the boundary across days it
     /// had not sent.
-    public func syncRows(from: Date, to: Date) throws -> [RecoverySyncRow] {
-        try dbQueue.read { db in
+    public nonisolated func syncRows(from: Date, to: Date) async throws -> [RecoverySyncRow] {
+        try await dbQueue.read { db in
             try RecoveryRecord
                 .filter(Column("date") >= from.startOfDay)
                 .filter(Column("date") < to.startOfDay)
@@ -1362,8 +1436,8 @@ public actor LocalDatabaseManager {
     /// morning the night ended; `startTime` is the evening before, so a read that filtered on
     /// `startOfDay(startTime)` would miss every night it was asked about once the window's lower bound
     /// fell between the two.
-    public func syncSleepRows(from: Date, to: Date) throws -> [SleepSyncRow] {
-        try dbQueue.read { db in
+    public nonisolated func syncSleepRows(from: Date, to: Date) async throws -> [SleepSyncRow] {
+        try await dbQueue.read { db in
             try SleepRecord
                 .filter(Column("date") >= from.startOfDay)
                 .filter(Column("date") < to.startOfDay)
@@ -1399,8 +1473,8 @@ public actor LocalDatabaseManager {
         }
     }
 
-    public func getSleep(for date: Date) throws -> SleepRecord? {
-        try dbQueue.read { db in
+    public nonisolated func getSleep(for date: Date) async throws -> SleepRecord? {
+        try await dbQueue.read { db in
             try SleepRecord.fetchOne(db, key: ["date": date.startOfDay])
         }
     }
@@ -1416,9 +1490,9 @@ public actor LocalDatabaseManager {
     }
 
     /// See `getRecoveryHistory(days:endingOn:)`.
-    public func getSleepHistory(days: Int, endingOn: Date = Date()) throws -> [SleepRecord] {
+    public nonisolated func getSleepHistory(days: Int, endingOn: Date = Date()) async throws -> [SleepRecord] {
         let window = Self.historyWindow(days: days, endingOn: endingOn)
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             try SleepRecord
                 .filter(Column("date") >= window.from)
                 .filter(Column("date") <= window.to)
@@ -1440,8 +1514,8 @@ public actor LocalDatabaseManager {
 
     /// The naps taken on `date`'s day, earliest first. More than one in a day is possible, which is
     /// why this returns an array where `getSleep(for:)` returns a single row.
-    public func getNaps(on date: Date) throws -> [NapRecord] {
-        try dbQueue.read { db in
+    public nonisolated func getNaps(on date: Date) async throws -> [NapRecord] {
+        try await dbQueue.read { db in
             try NapRecord
                 .filter(Column("date") == date.startOfDay)
                 .order(Column("started_at").asc)
@@ -1479,8 +1553,8 @@ public actor LocalDatabaseManager {
     /// This is the only read this table has. A receptive inactivity has no end, so there is no
     /// `covering:` sibling — see `ReceptiveInactivityRepository` for why adding one would be a
     /// double-counting hazard rather than a harmless duplicate.
-    public func getReceptiveInactivities(on date: Date) throws -> [ReceptiveInactivityRecord] {
-        try dbQueue.read { db in
+    public nonisolated func getReceptiveInactivities(on date: Date) async throws -> [ReceptiveInactivityRecord] {
+        try await dbQueue.read { db in
             try ReceptiveInactivityRecord
                 .filter(Column("date") == date.startOfDay)
                 .order(Column("started_at").ascNullsLast, Column("name").asc)
@@ -1510,16 +1584,16 @@ public actor LocalDatabaseManager {
         }
     }
 
-    public func getStrain(for date: Date) throws -> StrainRecord? {
-        try dbQueue.read { db in
+    public nonisolated func getStrain(for date: Date) async throws -> StrainRecord? {
+        try await dbQueue.read { db in
             try StrainRecord.fetchOne(db, key: ["date": date.startOfDay])
         }
     }
 
     /// The newest day this phone holds a WHOOP-imported strain for. See
     /// `StrainRepository.getNewestImportedStrainDay()`.
-    public func getNewestImportedStrainDay() throws -> Date? {
-        try dbQueue.read { db in
+    public nonisolated func getNewestImportedStrainDay() async throws -> Date? {
+        try await dbQueue.read { db in
             try StrainRecord
                 .filter(Column("source") == StrainScore.importSource)
                 .order(Column("date").desc)
@@ -1528,9 +1602,9 @@ public actor LocalDatabaseManager {
     }
 
     /// See `getRecoveryHistory(days:endingOn:)`.
-    public func getStrainHistory(days: Int, endingOn: Date = Date()) throws -> [StrainRecord] {
+    public nonisolated func getStrainHistory(days: Int, endingOn: Date = Date()) async throws -> [StrainRecord] {
         let window = Self.historyWindow(days: days, endingOn: endingOn)
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             try StrainRecord
                 .filter(Column("date") >= window.from)
                 .filter(Column("date") <= window.to)
@@ -1554,8 +1628,8 @@ public actor LocalDatabaseManager {
     /// load-bearing rather than a convenience, for the recoveries' reason: the upload chunks this array
     /// and advances the boundary to each chunk's last row, so a shuffled read would move the boundary
     /// across days it had not sent.
-    public func syncStrainRows(from: Date, to: Date) throws -> [StrainSyncRow] {
-        try dbQueue.read { db in
+    public nonisolated func syncStrainRows(from: Date, to: Date) async throws -> [StrainSyncRow] {
+        try await dbQueue.read { db in
             try StrainRecord
                 .filter(Column("date") >= from.startOfDay)
                 .filter(Column("date") < to.startOfDay)
@@ -1618,8 +1692,8 @@ public actor LocalDatabaseManager {
     }
 
     /// The day's count, or `nil` when that day was never measured — see `StepRepository`.
-    public func getStepCount(for date: Date) throws -> StepCountRecord? {
-        try dbQueue.read { db in
+    public nonisolated func getStepCount(for date: Date) async throws -> StepCountRecord? {
+        try await dbQueue.read { db in
             try StepCountRecord.fetchOne(db, key: ["date": date.startOfDay])
         }
     }
@@ -1636,8 +1710,8 @@ public actor LocalDatabaseManager {
 
     /// Epochs whose **start** falls in `[from, to)` — the same half-open bound every other window
     /// read here uses, so a night's last epoch cannot be counted into the next day.
-    public func getMotionEpochs(from: Date, to: Date) throws -> [MotionEpochRecord] {
-        try dbQueue.read { db in
+    public nonisolated func getMotionEpochs(from: Date, to: Date) async throws -> [MotionEpochRecord] {
+        try await dbQueue.read { db in
             try MotionEpochRecord
                 .filter(Column("start") >= from)
                 .filter(Column("start") < to)
@@ -1647,9 +1721,9 @@ public actor LocalDatabaseManager {
     }
 
     /// See `getRecoveryHistory(days:endingOn:)`.
-    public func getStepCountHistory(days: Int, endingOn: Date = Date()) throws -> [StepCountRecord] {
+    public nonisolated func getStepCountHistory(days: Int, endingOn: Date = Date()) async throws -> [StepCountRecord] {
         let window = Self.historyWindow(days: days, endingOn: endingOn)
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             try StepCountRecord
                 .filter(Column("date") >= window.from)
                 .filter(Column("date") <= window.to)
@@ -1664,8 +1738,8 @@ public actor LocalDatabaseManager {
         }
     }
 
-    public func getProfile() throws -> UserProfileRecord? {
-        try dbQueue.read { db in
+    public nonisolated func getProfile() async throws -> UserProfileRecord? {
+        try await dbQueue.read { db in
             try UserProfileRecord.fetchOne(db, key: "primary")
         }
     }
@@ -1689,8 +1763,8 @@ public actor LocalDatabaseManager {
     /// `id` is `INTEGER PRIMARY KEY` (autoincrement), and the rows are inserted in array order inside
     /// a single write, so ascending `id` is exactly arrival order. This can only change a result that
     /// was already arbitrary.
-    public func getSamples(from startDate: Date, to endDate: Date) throws -> [BiometricSampleRecord] {
-        try dbQueue.read { db in
+    public nonisolated func getSamples(from startDate: Date, to endDate: Date) async throws -> [BiometricSampleRecord] {
+        try await dbQueue.read { db in
             try BiometricSampleRecord
                 .filter(Column("timestamp") >= startDate && Column("timestamp") <= endDate)
                 .order(Column("timestamp").asc, Column("id").asc)
@@ -1700,8 +1774,8 @@ public actor LocalDatabaseManager {
 
     /// The newest sample, by the same ordering as ``getSamples(from:to:)`` so the two agree about
     /// which row is "latest" when several share the newest timestamp.
-    public func getLatestSample() throws -> BiometricSampleRecord? {
-        try dbQueue.read { db in
+    public nonisolated func getLatestSample() async throws -> BiometricSampleRecord? {
+        try await dbQueue.read { db in
             try BiometricSampleRecord
                 .order(Column("timestamp").desc, Column("id").desc)
                 .fetchOne(db)
@@ -1713,8 +1787,8 @@ public actor LocalDatabaseManager {
     /// **Half-open and `LIMIT 1`**, where `getSamples` is inclusive and reads everything: the refresh
     /// asks this on every tick, and the bound is the one its caller means — the next day's samples are
     /// not this day's input.
-    public func getLatestSampleTimestamp(from startDate: Date, to endDate: Date) throws -> Date? {
-        try dbQueue.read { db in
+    public nonisolated func getLatestSampleTimestamp(from startDate: Date, to endDate: Date) async throws -> Date? {
+        try await dbQueue.read { db in
             try BiometricSampleRecord
                 .filter(Column("timestamp") >= startDate && Column("timestamp") < endDate)
                 .order(Column("timestamp").desc)
@@ -1723,8 +1797,8 @@ public actor LocalDatabaseManager {
     }
 
     /// The newest motion window whose `start` falls in `[from, to)` — the watermark's motion half.
-    public func getLatestMotionEpoch(from startDate: Date, to endDate: Date) throws -> MotionEpochRecord? {
-        try dbQueue.read { db in
+    public nonisolated func getLatestMotionEpoch(from startDate: Date, to endDate: Date) async throws -> MotionEpochRecord? {
+        try await dbQueue.read { db in
             try MotionEpochRecord
                 .filter(Column("start") >= startDate && Column("start") < endDate)
                 .order(Column("start").desc)
@@ -1735,6 +1809,67 @@ public actor LocalDatabaseManager {
     public func clearAllSamples() throws {
         try dbQueue.write { db in
             _ = try BiometricSampleRecord.deleteAll(db)
+        }
+    }
+
+    /// Remove every **measured** row for the calendar days `from…to`, inclusive at both ends.
+    ///
+    /// **The app's one delete of more than a row, and it deletes the inputs rather than only the
+    /// answers.** Removing `recoveries` alone would be undone by the next foreground:
+    /// `RefreshRecoveryUseCase` sees a night whose edge is past the stored watermark, re-folds it from
+    /// the samples, and writes the row back. That is why `biometric_samples` and `motionEpochs` are in
+    /// this list — they are what the scorers read, so a day that loses its samples is a day the
+    /// scorers have nothing to re-derive from.
+    ///
+    /// **One transaction, all or nothing.** A purge that stopped halfway would leave a day holding
+    /// steps but no recovery, which is a state no writer produces and no reader expects.
+    ///
+    /// **Three tables are deliberately untouched.** `workouts` and `receptive_inactivities` hold
+    /// sessions and notes the owner recorded rather than measurements a model produced, so a
+    /// calibration era does not make them wrong; `user_profiles` is not dated at all. That is the
+    /// scope the owner set for this operation, and it is the reason the tally has no field for them.
+    ///
+    /// The day bounds are snapped here as they are on every day-keyed write. The sample bound is
+    /// **half-open** (`< to.startOfNextDay`) because `timestamp` is an arrival instant rather than a
+    /// day key, and `endOfDay` is one second short of the range this means to cover.
+    @discardableResult
+    public func purgeMeasuredDays(from: Date, to: Date) throws -> DayPurgeTally {
+        let first = from.startOfDay
+        let last = to.startOfDay
+        let exclusiveEnd = last.startOfNextDay
+
+        // A reversed range matches nothing on every predicate below, so it is answered as the empty
+        // purge it is rather than as a failure — the caller (`PurgeDaysUseCase`) refuses it before it
+        // gets here, and a database that threw would be a second, differently-worded refusal.
+        guard first <= last else { return DayPurgeTally() }
+
+        return try dbQueue.write { db in
+            var tally = DayPurgeTally()
+
+            tally.recoveries = try RecoveryRecord
+                .filter(Column("date") >= first && Column("date") <= last)
+                .deleteAll(db)
+            tally.sleeps = try SleepRecord
+                .filter(Column("date") >= first && Column("date") <= last)
+                .deleteAll(db)
+            tally.strains = try StrainRecord
+                .filter(Column("date") >= first && Column("date") <= last)
+                .deleteAll(db)
+            tally.stepCounts = try StepCountRecord
+                .filter(Column("date") >= first && Column("date") <= last)
+                .deleteAll(db)
+            tally.naps = try NapRecord
+                .filter(Column("date") >= first && Column("date") <= last)
+                .deleteAll(db)
+            tally.motionEpochs = try MotionEpochRecord
+                .filter(Column("date") >= first && Column("date") <= last)
+                .deleteAll(db)
+            tally.samples = try BiometricSampleRecord
+                .filter(Column("timestamp") >= first)
+                .filter(Column("timestamp") < exclusiveEnd)
+                .deleteAll(db)
+
+            return tally
         }
     }
 
@@ -1838,8 +1973,8 @@ public actor LocalDatabaseManager {
     /// order — `timestamp` for the route, `elapsed` for the splits. That order is not a preference: the
     /// child tables have no `seq` column, so it is the only record of the sequence, and the wire binds
     /// its own `seq` from this array's index. Re-sorting here would be a second ordering rule.
-    public func syncWorkoutRows(from: Date, to: Date) throws -> [WorkoutSyncRow] {
-        try dbQueue.read { db in
+    public nonisolated func syncWorkoutRows(from: Date, to: Date) async throws -> [WorkoutSyncRow] {
+        try await dbQueue.read { db in
             let records = try WorkoutRecord
                 .filter(Column("date") >= from.startOfDay)
                 .filter(Column("date") < to.startOfDay)
@@ -1907,8 +2042,8 @@ public actor LocalDatabaseManager {
     /// `StepCountSyncStore` — so filtering here would answer a question the caller did not ask and would
     /// hide a day that exists. Whether such a row is worth sending is `StepCountWireMapper.isSendable`'s
     /// decision, one layer up, where it can name itself in a log.
-    public func syncStepCountRows(from: Date, to: Date) throws -> [StepCountSyncRow] {
-        try dbQueue.read { db in
+    public nonisolated func syncStepCountRows(from: Date, to: Date) async throws -> [StepCountSyncRow] {
+        try await dbQueue.read { db in
             try StepCountRecord
                 .filter(Column("date") >= from.startOfDay)
                 .filter(Column("date") < to.startOfDay)
@@ -1944,8 +2079,8 @@ public actor LocalDatabaseManager {
     /// this method promises.
     ///
     /// Half-open, on `syncRows(from:to:)`'s argument.
-    public func syncReceptiveInactivityRows(from: Date, to: Date) throws -> [ReceptiveInactivitySyncRow] {
-        try dbQueue.read { db in
+    public nonisolated func syncReceptiveInactivityRows(from: Date, to: Date) async throws -> [ReceptiveInactivitySyncRow] {
+        try await dbQueue.read { db in
             try ReceptiveInactivityRecord
                 .filter(Column("date") >= from.startOfDay)
                 .filter(Column("date") < to.startOfDay)
@@ -1983,8 +2118,8 @@ public actor LocalDatabaseManager {
     /// client that draws the form, never by a stored row — a row this method invented would be
     /// indistinguishable from one the user typed, and the calorie estimate divides by one of these
     /// fields.
-    public func syncProfileRow() throws -> UserProfileSyncRow? {
-        try dbQueue.read { db in
+    public nonisolated func syncProfileRow() async throws -> UserProfileSyncRow? {
+        try await dbQueue.read { db in
             try UserProfileRecord.fetchOne(db, key: "primary")?.syncRow
         }
     }
@@ -2001,8 +2136,8 @@ public actor LocalDatabaseManager {
 
     /// The workouts recorded on `date`'s day, earliest first. Several per day is normal, which is
     /// why this returns an array where `getStrain(for:)` returns one row.
-    public func getWorkouts(on date: Date) throws -> [WorkoutRecord] {
-        try dbQueue.read { db in
+    public nonisolated func getWorkouts(on date: Date) async throws -> [WorkoutRecord] {
+        try await dbQueue.read { db in
             try WorkoutRecord
                 .filter(Column("date") == date.startOfDay)
                 .order(Column("started_at").asc)
@@ -2049,8 +2184,8 @@ public actor LocalDatabaseManager {
     /// **Nothing here avoids a table scan.** `started_at` and `ended_at` are unindexed and no formulation
     /// bounds `started_at` from below, so the `date` index only halves it. At ~840 rows on a read that
     /// runs once per chevron tap that is fine, and it is noted here rather than indexed.
-    public func getWorkouts(covering day: Date) throws -> [WorkoutRecord] {
-        try dbQueue.read { db in
+    public nonisolated func getWorkouts(covering day: Date) async throws -> [WorkoutRecord] {
+        try await dbQueue.read { db in
             try WorkoutRecord
                 .filter(Column("date") <= day.startOfDay)
                 .filter(Column("ended_at") > day.startOfDay)
@@ -2059,8 +2194,8 @@ public actor LocalDatabaseManager {
         }
     }
 
-    public func getRoutePoints(for workoutId: String) throws -> [WorkoutRoutePointRecord] {
-        try dbQueue.read { db in
+    public nonisolated func getRoutePoints(for workoutId: String) async throws -> [WorkoutRoutePointRecord] {
+        try await dbQueue.read { db in
             try WorkoutRoutePointRecord
                 .filter(Column("workout_id") == workoutId)
                 .order(Column("timestamp").asc)
@@ -2068,8 +2203,8 @@ public actor LocalDatabaseManager {
         }
     }
 
-    public func getSplits(for workoutId: String) throws -> [WorkoutSplitRecord] {
-        try dbQueue.read { db in
+    public nonisolated func getSplits(for workoutId: String) async throws -> [WorkoutSplitRecord] {
+        try await dbQueue.read { db in
             try WorkoutSplitRecord
                 .filter(Column("workout_id") == workoutId)
                 .order(Column("elapsed").asc)
@@ -2082,8 +2217,8 @@ public actor LocalDatabaseManager {
     /// Ordered on `started_at` rather than `date`: those are the same instant snapped, so ordering on
     /// the snapped column would put a late-evening session and an early-morning one on the same day in
     /// an arbitrary order.
-    public func getLatestWorkout() throws -> WorkoutRecord? {
-        try dbQueue.read { db in
+    public nonisolated func getLatestWorkout() async throws -> WorkoutRecord? {
+        try await dbQueue.read { db in
             try WorkoutRecord.order(Column("started_at").desc).fetchOne(db)
         }
     }
@@ -2099,9 +2234,9 @@ public actor LocalDatabaseManager {
     /// result a set of *days* rather than of instants: a session started at 23:50 belongs to the day
     /// `getWorkouts(on:)` would find it on, and a range test on the raw instant would disagree with
     /// that lookup by one day at each boundary.
-    public func getWorkoutHistory(days: Int, endingOn: Date = Date()) throws -> [WorkoutRecord] {
+    public nonisolated func getWorkoutHistory(days: Int, endingOn: Date = Date()) async throws -> [WorkoutRecord] {
         let window = Self.historyWindow(days: days, endingOn: endingOn)
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             try WorkoutRecord
                 .filter(Column("date") >= window.from)
                 .filter(Column("date") <= window.to)
@@ -2131,6 +2266,14 @@ extension LocalDatabaseManager: LocalDatabaseSnapshotting {}
 /// sentence is visible at the point the app takes it on: neither of these is one of the app's
 /// repositories and neither has a subject.
 extension LocalDatabaseManager: RecoverySyncStore {}
+
+/// The purge's door, taken on here for the same reason and with a different subject: a span of days
+/// rather than one table.
+///
+/// **It is the only conformance in this block that removes anything.** The seven stores above insert
+/// and replace; this one deletes across seven tables in one transaction, and it is the single place in
+/// the app where a day stops existing. `PurgeDaysUseCase` is the only caller.
+extension LocalDatabaseManager: DayPurgeStore {}
 
 /// The sync's own door into `workouts`, taken on at the same choke point and for the same reason —
 /// with one difference the flat resource has no equivalent for.

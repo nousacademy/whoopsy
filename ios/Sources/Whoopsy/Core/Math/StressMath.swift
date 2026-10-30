@@ -48,6 +48,27 @@ public enum StressMath {
     /// Length of one scored window.
     public static let windowSeconds: TimeInterval = 300
 
+    /// How far back the **recent** baseline reaches when there is no personal one.
+    ///
+    /// A live monitor cannot wait a fortnight for a personal baseline, and a day's first windows are a
+    /// measurement whether or not three prior days exist. So a day with no personal baseline is scored
+    /// against its own preceding hours instead: each window against the windows of the same day inside
+    /// this span. Six hours is the "past few hours" the detail page draws, so the number and the line
+    /// above it are about the same stretch of time rather than two different ones.
+    ///
+    /// **This is a local reference, and its consequence is stated rather than hidden**: a day that is
+    /// uniformly elevated has no contrast within it and reads as average. The score answers *"how does
+    /// this five minutes compare with your last few hours?"* — which is what a live reading is asking —
+    /// and not *"how does it compare with your fortnight?"*, which needs the personal baseline.
+    public static let recentBaselineSpan: TimeInterval = 6 * 3600
+
+    /// Scored windows the recent baseline needs before it can say anything.
+    ///
+    /// Twelve is one hour at the model's own cadence: fewer priors than that and the mean and spread
+    /// are as much the window being scored as the hours before it (a window is excluded from its own
+    /// baseline, but six priors would still be a very thin description of "your last few hours").
+    public static let minimumRecentWindows = 12
+
     /// R-R intervals a window needs before its RMSSD is used.
     ///
     /// This guard is load-bearing rather than tidy: `HeartRateVariabilityMath.calculateRMSSD` returns

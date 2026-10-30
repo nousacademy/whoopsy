@@ -81,8 +81,8 @@ public struct WorkoutRecord: Codable, FetchableRecord, PersistableRecord, Sendab
     /// and `GRDBWorkoutRepository` reads it as no centre at all.
     ///
     /// **They are here because the id alone cannot frame a card.** Mapbox's `TileRegion` exposes no
-    /// geometry, so a session that turned `USE OFFLINE MAP` on while `RECORD ROUTE` was off would hold
-    /// tiles on disk and nothing for the detail page's map to look at. See `OfflineMapCenter`.
+    /// geometry, so a session whose route never reached two fixes would hold tiles on disk and nothing
+    /// for the detail page's map to look at. See `OfflineMapCenter`.
     ///
     /// **They are deliberately local-only**, unlike every other column on this record: the wire carries
     /// the region id and has no field for the centre, because the tiles are on one phone and another

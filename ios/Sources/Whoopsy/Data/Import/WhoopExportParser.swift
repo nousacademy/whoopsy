@@ -115,11 +115,11 @@ public enum WhoopExportError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .unreadable(let url):
-            return "The WHOOP export at \(url.lastPathComponent) could not be read."
+            return "The export at \(url.lastPathComponent) could not be read."
         case .notBundled:
-            return "This build does not include the WHOOP export file."
+            return "This build does not include the export file."
         case .missingColumns(let names):
-            return "This does not look like a WHOOP export — no \(names.joined(separator: ", ")) column."
+            return "This does not look like the expected export — no \(names.joined(separator: ", ")) column."
         case .unparseableDate(let line, let value):
             return "Line \(line) has an unreadable date: \"\(value)\"."
         case .unparseableTimezone(let line, let value):

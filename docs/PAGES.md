@@ -25,9 +25,13 @@ existing, and each name links to the implementation.
 
 | Screen | File | What it is |
 | :--- | :--- | :--- |
-| `RecoveryDashboardView` | [RecoveryDashboardView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Recovery/RecoveryDashboardView.swift#L14) | The Recovery **tab** — a `NavigationStack` around the day's figures, and nothing else. The figures are `RecoveryDetailView`, shared with Home's ring. |
+| `HealthTabView` | [HealthTabView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Health/HealthTabView.swift#L17) | The **Health tab**: a `NavigationStack` over four cards — Healthspan, Health Monitor, Blood Pressure Insights, Heart Screener. Only the second has a producer; the other three draw a dash and a sentence saying what would fill them. The Health Monitor card ticks each vital against its band and opens the same sheet Home's card does. **The Healthspan card stopped being all dashes on 2026-10-29**: its `WHOOPSY AGE` dial draws a risk-equivalent age from the bundled NCHS life table, and when it cannot it names which of the three halves is missing rather than leaving a bare dash — see the Whoopsy Age section below. |
+| `RecoveryDashboardView` | [RecoveryDashboardView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Recovery/RecoveryDashboardView.swift#L14) | The Recovery tab's page until 2026-10-29. **No longer drawn**: the tab is a heart with no destination, on the user's instruction, so this screen is kept unrendered and is one line from returning. It is a `NavigationStack` around the day's figures, which are `RecoveryDetailView`, still reached from Home's recovery ring. |
 | `RecoveryDetailView` | [RecoveryDetailView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Recovery/RecoveryDetailView.swift#L55) | One day's recovery statistics, with no navigation container of its own. Drawn twice: by the Recovery tab and by Home's recovery ring. |
-| `StrainDetailView` | [StrainDetailView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Strain/StrainDetailView.swift#L37) | One day's strain as the ring alone, with no navigation container. The only strain screen left; the tab it used to sit beside is deleted. |
+| `StrainDetailView` | [StrainDetailView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Strain/StrainDetailView.swift#L37) | One day's strain: the ring, and below it the four-row activity card on a day holding a workout. The only strain screen left; the tab it used to sit beside is deleted. |
+| `StepsDetailView` | [StepsDetailView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Steps/StepsDetailView.swift#L20) | The steps trend page Home's `STEPS` tile pushes: `W`/`M`/`6M` windows ending on an anchor the chevrons move, the measured-day average above a bar chart, and a footnote saying how many days were measured. |
+| `ReadingTrendDetailView` | [ReadingTrendDetailView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Trends/ReadingTrendDetailView.swift#L17) | One reading's trend page, pushed by Home's `RHR`, `HRV` and `VO₂ MAX (EST.)` panels: `W`/`M`/`6M`, the average, the comparison with the previous window, a typical-range band, and the latest reading marked on the line. The HRV form narrows to one metric; the RHR form does not need to; the VO₂ form plots an **estimate** and says so. |
+| `StressDetailView` | [StressDetailView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Stress/StressDetailView.swift#L18) | The day's Stress Monitor, pushed by Home's tile: a 0–3 gauge carrying the **latest** window and its time, the **last few hours** as a live line, and a sentence naming the day's average, the time spent in the high band and which reference the score is against. It seeds from Home's already-computed `StressDay` and its `StressLiveViewModel` extends the day while the page is open. |
 | `SettingsDashboardView` | [SettingsDashboardView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Settings/SettingsDashboardView.swift#L20) | `More → Settings`, which is the Anonymous diagnostics toggle and nothing else — the imports and export moved to the profile page's `LOGS` pane. |
 | `ReceptiveInactivityPickerView` | [ReceptiveInactivityPickerView.swift](../ios/Sources/Whoopsy/Presentation/Screens/Activity/ReceptiveInactivityPickerView.swift#L26) | The name picker the receptive sheet's `NAME` row pushes: a flat list over `ReceptiveInactivityCatalog`. |
 
@@ -135,7 +139,7 @@ build them.
 
 
 
-**The `BIRTHDAY` row has three states, and a compact `DatePicker` having no "no value" state is the whole of why.** Defaulting to `Date()` would draw *today* as the user's birthday until they corrected it — the fabrication `v20` deleted — and a fixed anchor like 1 Jan 1990 is the same invention with a different constant; a row that only toggled between a dash and a picker would **leave the field unclearable**. So an unset birthday draws the app's own `—` as a button, tapping it opens the picker **on a draft that writes nothing**, and a chosen birthday draws the picker with a trailing clear control. The draft is what keeps the middle state honest: the picker's opening position is a control's position, like a slider's, and it does not become the user's birthday until they move it — until then the form stays clean and `SAVE` stays greyed.
+**The `BIRTHDAY` row has three states, and a compact `DatePicker` having no "no value" state is the whole of why.** Defaulting to `Date()` would draw *today* as the user's birthday until they corrected it — the fabrication `v20` deleted — and a fixed anchor like 1 Jan 1990 is the same invention with a different constant; a row that only toggled between a dash and a picker would **leave the field unclearable**. So an unset birthday draws the app's own `—` as a button, tapping it opens the picker **on a draft that writes nothing**, and a chosen birthday draws the picker with a trailing clear control. **The row carries a visible `BIRTHDAY` eyebrow in all three states, and it did not use to.** The controls were built with `DatePicker("BIRTHDAY", …).labelsHidden()`, so the row drew a bare dash with nothing naming it — the word existed only in the accessibility label — and the field was reported to the author as *missing* while the `v20` column behind it was collecting the value. Nothing about the data moved; the name on the row did. The draft is what keeps the middle state honest: the picker's opening position is a control's position, like a slider's, and it does not become the user's birthday until they move it — until then the form stays clean and `SAVE` stays greyed.
 
 
 
@@ -179,13 +183,45 @@ build them.
 
 
 
+### `LOGS` ends in the app's only delete, and it deletes from the database first
+
+The pane that says where a history comes from and where it goes ends with the one control that asks
+for part of it to stop existing: a `FROM`/`TO` pair and a red `DELETE`, below every import and export
+rather than between them. **It is last because that is the order the risk is in** — the rows above add
+to a history and this one removes from it.
+
+**Two dates rather than a "before this day" control**, and the difference is a footgun rather than a
+preference: the owner's own case was three days in the middle of a two-year history, and a one-ended
+control would have taken everything earlier. The range is inclusive at both ends, capped at 31 days,
+and the caption names the scope — *recovery, sleep, strain, steps, naps, motion and heart-rate samples*
+— beside what survives it: **activities, fasts and notes dated inside the range**, because those are
+things the owner recorded rather than measurements a calibration produced.
+
+**What it removes is the inputs, not only the answers.** A purge that deleted `recoveries` and left the
+samples would be undone on the next foreground, when `RefreshRecoveryUseCase` finds a night whose edge
+is past the stored watermark and folds it again. `LocalDatabaseManager.purgeMeasuredDays` takes all
+seven tables in one transaction for that reason, and the `DayPurgeTally` it returns names each one so
+the status sentence can say that the samples went with the scores.
+
+**The database is called first, and a failure there deletes nothing here.** This is the pane's one
+refusal rather than the local-first degrade every other cloud call does, for the reason
+`docs/GOTCHAS.md` records: a local delete while the destination is the API is a *cache eviction*, and
+the day comes back. `PurgeDaysUseCase` therefore calls `CloudSync.purge`, throws
+`Refusal.cloudFailed` on any failure, and never reaches the store — and the sentence it prints says
+nothing was deleted rather than reporting a partial success.
+
+**The confirmation is the pane's only one.** `confirmationDialog` is the idiom the device page's two
+hardware commands already use, and its title is a value on the view model — `"Delete 3 days? This
+cannot be undone."` — rather than a literal in a `body`, so the runner can assert the number the reader
+is shown is the number the range covers.
+
 ### There is exactly one recording path, and it starts from the +
 
-**There is exactly one *recording* path, and it starts from the `+`.** `START ACTIVITY` opens `ActivityPickerView`, and the name it hands back is what the session records — that path is the only path that reaches `SaveWorkoutUseCase` and one of the two ways a `workouts` row is created, the other being the menu's measurement-free `ADD ACTIVITY` below. **The picker is also the only way to start a fast**, because `WhoopActivityCatalog` holds `Fast` and no menu row starts one; without that, the whole feature is unreachable. `HomeDashboardView.startSession(named:)` forks on `ActivityFigure.isFastName` — a fast goes to `startFast()` **and pushes nothing**, because the bar is its live indicator and its page is one tap away on that bar, while every other name goes to `start(name:)` and pushes `LiveSessionView`. Only the push is gated on `isRunning`; the fast path needs no such gate, since `startFast()` is idempotent and its bar is drawn from `activeFast`. **The fork is dispatched one turn later than the pick is read, and that hop is load-bearing**: the picker's row sets the binding and calls `dismiss()` in the same statement, so `NavigationStack` is asked for a pop and a push in one update, processes one transition per frame, and drops the push with the flag left `true` — which strands the hidden tab bar over a screen that never appeared and lets the next unrelated `true` push the session spuriously. **The `+` is the only way to *begin* a recording; it is no longer the only way to reach the screen.** The red bar below pushes the same view off the same use case, so a session the reader backed out of is one tap away — see the bar's own paragraph below for why that is a second route and not a second path. The activity detail page is the table's other mutator in both directions: its `Delete` removes a row and the children filed under it — the only destructive operation in the app — and its `EDIT ACTIVITY` sheet rewrites one in place through `WorkoutRepository.save`, which is INSERT-or-UPDATE by primary key, so an edit keeps the row's `id` and its day. `ADD ACTIVITY` is the table's **second creator**, and it is the one that writes a row no sensor produced: the row presents `AddActivitySheet`, whose `AddActivityDraft` clamps a picked name and a required start and end into a `WorkoutSession` carrying `WorkoutSession.manualSourceLabel` with nil strain, both heart rates absent, and no route, splits, zones or steps, and `HomeViewModel.saveActivity(_:on:)` writes it through `workoutRepository` before merging it into Home's day. **That page's one control is a `RECORD ROUTE` toggle, off by default**, and it is the only producer of `workout_route_points`: turning it on asks for location permission and streams GPS fixes into the session, each stamped with the heart rate in force at that moment. **What that toggle records is now drawn**, by a `ROUTE` map section at the bottom of the page — below the heart-rate panels and below both layouts, which is where the user asked for it — while `workout_splits` still has no producer at all, because there is no lap model. The section is **absent with no note** when the session has no route — which is every session this machine can show — **except a session that downloaded an offline map without recording a route**, which draws an `area` card in the same slot. That is the second reason the page has a map at all: the offline switch and the route switch are independent, and a user who took ten miles of tiles and then left `RECORD ROUTE` off would otherwise get a `.ready` region, a row carrying its id and centre, and no ground drawn anywhere. The area card is the route card minus the path **and minus the caption** — same `SectionLabel("Map")`, same 220 pt height and corner radius, same accessibility treatment, with the map drawing into the whole 220 because an area has no distance or speed to print and a bar of two dashes would claim two measurements — framed by `ActivityOfflineArea` on the persisted centre and drawn by the same renderer decision, so `.ready` is still the only state that draws offline and every other state draws the `MapKit` box. It is **absent, with no note, when there is no route *and* no area** — `zoneSection`'s precedent, a block simply not drawn, rather than `noHeartRateNote`'s always-drawn slot with a sentence in it — a note here would be a permanent fixture on every session and would have to name a toggle most readers never see. The rules live on the value and not in the map's `body`, for this repo's standing reason: **§19's route block is a pure value with no database behind it**, so it still asserts if a database block below it throws. **The card is a map with its caption *under* it, not an overlay on it, and the two `Annotation` titles are not drawn — both are measured corrections rather than styling.** The reference lays its figures over the map's foot, and that is what this was first built as; it does not survive contact with a real route. An overlay claims a fixed slice of a fixed height while the path's bottom margin is `spanPadding`'s share of a frame the map is free to widen, so the two are set against each other and the flag loses: measured on the iOS 26.5 simulator against a recorded route, the polyline's lowest drawn pixel sat at **171.3 pt of the card's 220** and the caption's top edge at **172.0**, so the 19 pt finish marker — centred on that point — was drawn under an 86%-opaque bar with the word `Finish` showing through it over the caption's own figures. The card therefore divides its 220 pt instead: `captionHeight` is 48 and the map draws into the 172 above it, which makes the two independent. That split also had to state a constant, because a `Map` has no intrinsic size and will not negotiate for the remainder — the bar is free to exceed its 48 and grows the card rather than clipping a figure. `.annotationTitles(.hidden)` removes the two words, which the reference has nowhere: it marks a route with a dot and a checkered flag and sets no text beside either. **That modifier is a `MapContent` modifier and not a `Map` view one** — it is declared on `MapContent` in the `_MapKit_SwiftUI` overlay, and a `MapContent` builder has no `Group` to hang it on — so it goes on each `Annotation` separately and a `Map`-level `.annotationTitles` is not a compile error away from working, it is simply not a member. The titles stay words rather than empty strings because hiding is a *display* modifier: it stops the drawing while leaving each mark described in the view tree.
+**There is exactly one *recording* path, and it starts from the `+`.** `START ACTIVITY` opens `ActivityPickerView`, and the name it hands back is what the session records — that path is the only path that reaches `SaveWorkoutUseCase` and one of the two ways a `workouts` row is created, the other being the menu's measurement-free `ADD ACTIVITY` below. **The picker is also the only way to start a fast**, because `WhoopActivityCatalog` holds `Fast` and no menu row starts one; without that, the whole feature is unreachable. `HomeDashboardView.startSession(named:)` forks on `ActivityFigure.isFastName` — a fast goes to `startFast()` **and pushes nothing**, because the bar is its live indicator and its page is one tap away on that bar, while every other name goes to `start(name:)` and pushes `LiveSessionView`. Only the push is gated on `isRunning`; the fast path needs no such gate, since `startFast()` is idempotent and its bar is drawn from `activeFast`. **The fork is dispatched one turn later than the pick is read, and that hop is load-bearing**: the picker's row sets the binding and calls `dismiss()` in the same statement, so `NavigationStack` is asked for a pop and a push in one update, processes one transition per frame, and drops the push with the flag left `true` — which strands the hidden tab bar over a screen that never appeared and lets the next unrelated `true` push the session spuriously. **The `+` is the only way to *begin* a recording; it is no longer the only way to reach the screen.** The red bar below pushes the same view off the same use case, so a session the reader backed out of is one tap away — see the bar's own paragraph below for why that is a second route and not a second path. The activity detail page is the table's other mutator in both directions: its `Delete` removes a row and the children filed under it — the only destructive operation in the app — and its `EDIT ACTIVITY` sheet rewrites one in place through `WorkoutRepository.save`, which is INSERT-or-UPDATE by primary key, so an edit keeps the row's `id` and its day. `ADD ACTIVITY` is the table's **second creator**, and it is the one that writes a row no sensor produced: the row presents `AddActivitySheet`, whose `AddActivityDraft` clamps a picked name and a required start and end into a `WorkoutSession` carrying `WorkoutSession.manualSourceLabel` with nil strain, both heart rates absent, and no route, splits, zones or steps, and `HomeViewModel.saveActivity(_:on:)` writes it through `workoutRepository` before merging it into Home's day. **That page's one control is a map choice between `USE LIVE MAP` and `USE OFFLINE MAP`, both off by default**, and either choice starts the session's route: turning one on asks for location permission and streams GPS fixes into the session, each stamped with the heart rate in force at that moment. **What that toggle records is now drawn**, by a `ROUTE` map section at the bottom of the page — below the heart-rate panels and below both layouts, which is where the user asked for it — while `workout_splits` still has no producer at all, because there is no lap model. The section is **absent with no note** when the session has no route — which is every session this machine can show — **except a session that downloaded an offline map without recording a route**, which draws an `area` card in the same slot. That is the second reason the page has a map at all: a session can hold a `.ready` region whose route never reached two fixes — an indoor session, or one stopped before the GPS settled — and would otherwise get a row carrying an id and centre with no ground drawn anywhere. The area card is the route card minus the path **and minus the caption** — same `SectionLabel("Map")`, same 220 pt height and corner radius, same accessibility treatment, with the map drawing into the whole 220 because an area has no distance or speed to print and a bar of two dashes would claim two measurements — framed by `ActivityOfflineArea` on the persisted centre and drawn by the same renderer decision, so `.ready` is still the only state that draws offline and every other state draws the `MapKit` box. It is **absent, with no note, when there is no route *and* no area** — `zoneSection`'s precedent, a block simply not drawn, rather than `noHeartRateNote`'s always-drawn slot with a sentence in it — a note here would be a permanent fixture on every session and would have to name a toggle most readers never see. The rules live on the value and not in the map's `body`, for this repo's standing reason: **§19's route block is a pure value with no database behind it**, so it still asserts if a database block below it throws. **The card is a map with its caption *under* it, not an overlay on it, and the two `Annotation` titles are not drawn — both are measured corrections rather than styling.** The reference lays its figures over the map's foot, and that is what this was first built as; it does not survive contact with a real route. An overlay claims a fixed slice of a fixed height while the path's bottom margin is `spanPadding`'s share of a frame the map is free to widen, so the two are set against each other and the flag loses: measured on the iOS 26.5 simulator against a recorded route, the polyline's lowest drawn pixel sat at **171.3 pt of the card's 220** and the caption's top edge at **172.0**, so the 19 pt finish marker — centred on that point — was drawn under an 86%-opaque bar with the word `Finish` showing through it over the caption's own figures. The card therefore divides its 220 pt instead: `captionHeight` is 48 and the map draws into the 172 above it, which makes the two independent. That split also had to state a constant, because a `Map` has no intrinsic size and will not negotiate for the remainder — the bar is free to exceed its 48 and grows the card rather than clipping a figure. `.annotationTitles(.hidden)` removes the two words, which the reference has nowhere: it marks a route with a dot and a checkered flag and sets no text beside either. **That modifier is a `MapContent` modifier and not a `Map` view one** — it is declared on `MapContent` in the `_MapKit_SwiftUI` overlay, and a `MapContent` builder has no `Group` to hang it on — so it goes on each `Annotation` separately and a `Map`-level `.annotationTitles` is not a compile error away from working, it is simply not a member. The titles stay words rather than empty strings because hiding is a *display* modifier: it stops the drawing while leaving each mark described in the view tree.
 
 
 
-**`LiveSessionView` carries a second toggle beside `RECORD ROUTE` — `USE OFFLINE MAP`, off by default — and the two are independent**, which is the user's own answer when asked: neither gates nor moves the other. It exists because of the user's own hike (*"i encountered the map issue for connectivity, let user decide if they wont have coverage in region"*), so the decision is theirs and is made **before** signal is lost — never inferred from a connectivity check, because the failure being defended against is the one where there is nothing left to check with. The division of labour is one sentence: **`RECORD ROUTE` decides whether there is a path**, and it is the only producer of `workout_route_points`; **`USE OFFLINE MAP` decides which SDK draws it**, on whichever of the activity detail page's two map cards the session has — the route card when there is a path, the area card when there is not — and the same renderer decision governs both. The offline card is a Mapbox tile region downloaded around the session's first GPS fix — a 10-mile radius capped at z14 — and a card draws it only while that region is `.ready`. **Every other state draws the `MapKit` card this page always drew**, which is the safety property the whole seam is shaped around: the worst outcome of a failed download is the old behaviour, and never a blank frame. Because the switches are independent, `USE OFFLINE MAP` with `RECORD ROUTE` off asks for location itself, takes the one fix it needs and releases it — it has no path to hitch a ride on. **The switch is offered only where an offline map is possible at all** (`OfflineMapRendering.isSupported`, `false` on every build whose `MBXAccessToken` is not a public token — an empty value, which is what a clone that never created the gitignored `ios/App/Config/Whoopsy.local.xcconfig` gets, or a secret pasted into the wrong file), so a clone that has not been through `README.md` §Building shows one toggle rather than two that half-work. The region's id is stored on the session's own row (`workouts.offline_region_id`, `v19`) and is `NULL` for every session recorded with the switch off, which is most of them. **So is the centre the download was taken around** (`offline_region_center_latitude`/`_longitude`, `v23`), because Mapbox's `TileRegion` carries no geometry to read back — and it is the reason a route-less session can draw an area at all. Those two columns are **local-only**: a tile region belongs to one phone's tile store, so the sync row drops them and a row arriving from the server stores `nil`. The page's `offlineArea` requires both the region id and the centre, so a row recorded before `v23` truthfully draws nothing.
+**`LiveSessionView` carries two toggles — `USE LIVE MAP` and `USE OFFLINE MAP`, both off by default — and they are a choice between two maps rather than two features.** Either records the session's route, and choosing one releases the other, because two maps are never drawn at once. The wording is the user's own correction of a first version that called the live one `RECORD ROUTE` — *"record route is bad wording, maybe should be 'USE LIVE MAP', they both record the route, just one is offline the other is live"*. It exists because of the user's own hike (*"i encountered the map issue for connectivity, let user decide if they wont have coverage in region"*), so the decision is theirs and is made **before** signal is lost — never inferred from a connectivity check, because the failure being defended against is the one where there is nothing left to check with. The division of labour is one sentence: **The map choice is what produces the path** — the route starts with either toggle and stops when the last one goes off, and `workout_route_points` has no other producer; **the chosen map decides which SDK draws it**, on whichever of the activity detail page's two map cards the session has — the route card when there is a path, the area card when there is not — and the same renderer decision governs both. The offline card is a Mapbox tile region downloaded around the session's first GPS fix — a 10-mile radius capped at z14 — and a card draws it only while that region is `.ready`. **Every other state draws the `MapKit` card this page always drew**, which is the safety property the whole seam is shaped around: the worst outcome of a failed download is the old behaviour, and never a blank frame. Because both maps record the route, the offline switch starts the route too: the fix that centres the region is the route's own first point rather than a second GPS stream, and the path keeps running after the download. **The switch is offered only where an offline map is possible at all** (`OfflineMapRendering.isSupported`, `false` on every build whose `MBXAccessToken` is not a public token — an empty value, which is what a clone that never created the gitignored `ios/App/Config/Whoopsy.local.xcconfig` gets, or a secret pasted into the wrong file), so a clone that has not been through `README.md` §Building shows one toggle rather than two that half-work. The region's id is stored on the session's own row (`workouts.offline_region_id`, `v19`) and is `NULL` for every session recorded with the switch off, which is most of them. **So is the centre the download was taken around** (`offline_region_center_latitude`/`_longitude`, `v23`), because Mapbox's `TileRegion` carries no geometry to read back — and it is the reason a route-less session can draw an area at all. Those two columns are **local-only**: a tile region belongs to one phone's tile store, so the sync row drops them and a row arriving from the server stores `nil`. The page's `offlineArea` requires both the region id and the centre, so a row recorded before `v23` truthfully draws nothing.
 
 
 
@@ -205,7 +241,7 @@ build them.
 
 
 
-**A workout row on Home is a `Button` that sets `presentedActivity`; the `SLEEP` row beside it is a `NavigationLink`, and it opens the same page the sleep ring does.** The user's instruction is that the two are one page — *"the sleep ring will link to same page that sleep shows on activity sleep tile"* — so both call sites read one `private var sleepDetail` rather than two literals that agree today, and a change to what that page is cannot reach the ring and miss the row. **Both are drawn by the same `HomeDashboardView.activityRow` helper, and the helper is still not wrapped** — only the `ForEach(viewModel.workouts)` call site is, and the `SLEEP` row's link goes around its own call, where the night is in hand: a sleep row is built from a `SleepSession` and has no workout behind it, so wrapping the helper would give it a destination that does not exist. That is the same no-control-without-a-destination rule that keeps the ACTIVITIES expand icon and the chevrons off this screen — and the row reaching a page is that rule *satisfied*, not an exception to it. **The two rows push by different mechanisms, and the tab bar is why the workout rows need theirs**: `.hidingTabBar` works only from a tab's *root* view and does nothing on a pushed destination, silently, so the flag that hides the bar while the activity page's bottom-anchored `•••` menu is up has to live on Home — and a view-based `NavigationLink` publishes no flag for Home to read, so those rows are a `navigationDestination(item:)` fed by `presentedActivity`. `SleepDetailView` has no such control and is the rings' own shape, so its row is an ordinary `NavigationLink` with `.buttonStyle(.plain)` — the rings' reason for that style applies here too: the default styles tint the label and add a hit shape, which would recolour the moon chip and the duration beside it. **The `item:` binding requires a `Hashable` item where a `NavigationLink` requires none**, which is why `WorkoutSession: Hashable` is spelled out on the entity — the link the `SLEEP` row uses needs no such conformance, since it carries no item. `ActivityDetailView` is still the pushed-page shape: no `NavigationStack` of its own, the session taken as a plain `let` on its view model, so a re-render of Home behind the push cannot re-point it at another session.
+**A workout row on Home is a `Button` that sets `presentedActivity`; the `SLEEP` row beside it is a `NavigationLink`.** It and the sleep ring opened one page until 2026-10-28; the row's page was then reduced to the reference's mock and the user's correction was *"i didnt want that link touched, only the sleep activity / tile"* — so the row opens `SleepDetailView` and the ring opens `SleepPerformanceView`, two expressions rather than one. The user's instruction is that the two are one page — *"the sleep ring will link to same page that sleep shows on activity sleep tile"* — so both call sites read one `private var sleepDetail` rather than two literals that agree today, and a change to what that page is cannot reach the ring and miss the row. **Both are drawn by the same `HomeDashboardView.activityRow` helper, and the helper is still not wrapped** — only the `ForEach(viewModel.workouts)` call site is, and the `SLEEP` row's link goes around its own call, where the night is in hand: a sleep row is built from a `SleepSession` and has no workout behind it, so wrapping the helper would give it a destination that does not exist. That is the same no-control-without-a-destination rule that keeps the ACTIVITIES expand icon and the chevrons off this screen — and the row reaching a page is that rule *satisfied*, not an exception to it. **The two rows push by different mechanisms, and the tab bar is why the workout rows need theirs**: `.hidingTabBar` works only from a tab's *root* view and does nothing on a pushed destination, silently, so the flag that hides the bar while the activity page's bottom-anchored `•••` menu is up has to live on Home — and a view-based `NavigationLink` publishes no flag for Home to read, so those rows are a `navigationDestination(item:)` fed by `presentedActivity`. `SleepDetailView` has no such control and is the rings' own shape, so its row is an ordinary `NavigationLink` with `.buttonStyle(.plain)` — the rings' reason for that style applies here too: the default styles tint the label and add a hit shape, which would recolour the moon chip and the duration beside it. **The `item:` binding requires a `Hashable` item where a `NavigationLink` requires none**, which is why `WorkoutSession: Hashable` is spelled out on the entity — the link the `SLEEP` row uses needs no such conformance, since it carries no item. `ActivityDetailView` is still the pushed-page shape: no `NavigationStack` of its own, the session taken as a plain `let` on its view model, so a re-render of Home behind the push cannot re-point it at another session.
 
 
 
@@ -222,6 +258,234 @@ build them.
 **The no-control-without-a-destination rule has no exception left, and it had two.** The `•••` was drawn inert while the page was matched to its reference, and the `Edit` row was drawn inert from the user's *"edit we will wire later"*. Both have destinations now, so anything added to a screen without one is the bug the rule describes rather than a repeat of a precedent.
 
 
+
+### The storage pane has two directions, and only one of them is automatic
+
+**`SYNC` sends a drawn span up; `RESTORE` pulls the last thirty days down.** The second is new, and it
+exists because of the first: since the repositories stopped answering a local miss from the API, a row
+this phone does not hold is blank on every screen by design — so the way a cloud install recovers one is
+deliberate rather than incidental. `RESTORE` needs no span (a phone missing days has not drawn one), is
+gated only on the build being configured, and **its caption says that it replaces** days the phone
+already holds. That sentence is the difference between it and `SYNC`, which only ever adds. **It is also
+the one control on this pane that ignores the 6 PM Eastern call window.** Every other request the app
+makes — `SYNC`, the engine's own run, the launch-time repair — is refused between midnight and 18:00
+because the app's traffic is a schedule, and a person pressing a button on a phone that is missing days
+is not one: the moment that is most true is the first launch after an uninstall, which can be any hour.
+`DIContainer` therefore builds the restore's client with the window held open, and
+`RestoreFromCloudUseCase.restoreIfNeeded` keeps the check itself, so the exemption is exactly one button
+wide. The automatic path remains for a genuinely fresh install: `RestoreFromCloudUseCase.restoreIfNeeded`
+runs on the first foreground, and it now requires **both** `recoveries` and `sleeps` to be empty before
+it acts — one store was enough until `RefreshRecoveryUseCase` began computing a recovery row on the
+phone, which made a recovery-only test report a populated device that had no nights at all.
+
+### The lock screen draws a panel while an activity records, and a summary once it has ended
+
+**The running session's lock-screen card is the user's own layout, supplied as a mock: *"when an activity is in progress … i want
+this panel to be displayed, without whoop logo"*.** So while `isRunning` the card draws the timer, a centre mark, the heart rate
+with its `bpm`, the five-band scale with a marker at the current reading, and the route's two figures. **A finished session leaves no
+card at all** — the user's second instruction: *"remove this for when session is ended on lock screen"* — so both `end` paths dismiss
+`.immediate` rather than `.default`, and the `ACTIVITY ENDED` summary the first build left up for hours is gone. The widget still
+carries that summary branch for the transient card the system tears down; nothing should be seen in it. **The centre mark is the activity's own glyph** — the first version left the ring empty because the mock's circle holds the
+strap maker's logo and drawing that would be another company's mark on this app's card, and the user replaced it with *"just add
+the glyph for the current activity"*. So the card draws what the `ACTIVITIES` card draws for the same name, composite included,
+and the symbol names are **pushed through the state** rather than resolved in the widget: the extension cannot import `Whoopsy`,
+and a second copy of the name → symbol table there is the drift `ActivityMark`'s move to `Domain` exists to prevent.
+**The bar is a position scale and not a distribution** — the same quantity the session screen's band row draws, which is why it
+carries a dot rather than a filled share, and why its five colours are copied from `HeartRateZoneIndex+Extensions.swift` into the
+widget's `Palette` (the extension cannot import `Whoopsy`, and the copy is greppable — the same trade `Palette`'s three original
+tokens already make). **The distance is the route card's own number**: `RouteDistance` in `Core` is the one haversine, read by
+`ActivityRoute` for the caption and by `LiveSessionUseCase` for the card, so the lock screen and the activity page cannot report
+two lengths for one run; the speed divides by the **route's own span**, not the session's elapsed time. **The timer yields to the reading, and that pair is the card's one layout rule.** A three-digit heart rate beside a long
+elapsed time truncated to `1…` in the first build — the figure a glance needs whole lost to a flexible row — so the bpm
+text is `fixedSize` at the row's `layoutPriority(1)` while the timer takes `minimumScaleFactor(0.7)`: a slightly smaller
+clock still counts, a truncated heart rate does not. Nothing on this machine lays a Live Activity out, so that correction
+is only checkable on a phone. §18 pins all three on the
+state the app pushes — including that the marker equals the session screen's snapshot, rather than a second computation of it — and
+the widget's layout itself is checked only on a phone.
+
+### The steps tile opens a trend, and the trend page has no goal line
+
+**The user's instruction was one sentence over a mock: *"for steps tile on home page when its clicked it
+should lead to this new steps page"*.** The mock is a `TREND VIEW` with a metric dropdown, a big
+average, a `W`/`M`/`6M` control, chevrons around a date range, a seven-bar chart, and a sentence
+congratulating the reader on meeting their step goal.
+
+**Three elements are not drawn, each for a reason the page states by omission.** The dropdown is a
+control with one option in this app — `STEPS` is the only trend page that exists — and a picker that
+opens a list of one is the inert-control defect everything else here avoids, so the header names the
+quantity instead. The goal sentence assumes a goal, and **nothing stores one**: a line claiming the
+user met a target would be a number this app invented, which is the fabrication class `ui-data-provenance`
+lists. What replaces it is the honest fact the chart cannot show — *"5 of 7 days measured. A day with no
+bar was not measured — the strap was not worn, so it is a gap rather than a day of no walking."*
+
+**The chart's three rules are `StepsTrend`'s, not the view's**, because the runner has no renderer: an
+unmeasured day is a **gap** and never a zero-height bar, the average is over measured days only (a
+window with none is `nil`, not `0`), and the axis ceiling is the next 5,000 above the tallest bar
+rather than the bar itself — an axis whose top is the data makes every window look full. `6M` plots one
+bar per **week**, a mean of the week's measured days, because 182 daily bars are a smear; the footnote
+says "weeks" there and "days" elsewhere, and the average is a mean of whichever unit the bars are.
+
+**The page opens on today and moves by its own chevrons**, which is why its view model takes no day from
+Home: `STEPS` is the one pushed destination whose subject is a window rather than the day on screen, and
+`canMoveForward` stops at today so a future range cannot be drawn as a page of gaps.
+
+### The stress tile opens its own day, and the page extends it live
+
+**The mock is WHOOP's Stress Monitor page:** a day header, a 0–3 arc with the figure, band and marker, the
+day's stress series as one band-graded bar per five-minute window, and a sentence counting time in the
+high zone. The user's
+instruction on it was one line — *"this is a live stress monitor"* — and the follow-up settled the cadence
+at a five-minute tick, which is the model's own window length.
+
+**The page seeds from Home's value rather than recomputing it.** Home already computes the day's
+`StressDay` to draw its tile, so `StressDetailView` takes it as a `let`. Recomputing from scratch would
+fold the same fortnight of samples twice (the model's baseline is the previous fourteen days' waking
+hours, and that read is the app's most expensive), and two evaluations could disagree, since every window
+is scored against a personal baseline.
+
+**What is live is the tail, not the day.** `StressLiveViewModel` scores each newly *completed* five-minute
+window after the last stored one, against the baseline the day carries (`StressDay.baseline`), and appends
+it — so the chart grows as the day does, a refused window leaves a gap rather than a guess, and no stored
+window is ever rescaled or replaced. It polls the unscored tail of the samples and the motion epochs every
+minute rather than subscribing to the live streams, because a drain writes samples no live stream saw and
+a connected strap writes motion epochs the samples do not carry; a minute's tail is a handful of rows
+where a full evaluation reads more than a million. The tick is the page's `.task`, so leaving the screen
+cancels it without a detached timer to stop.
+
+**The gauge is the newest window, with its time**, as the reference draws it — and the footnote states the
+day's average, because a page holding a five-minute figure beside a Home tile holding a day average would
+otherwise be one screen contradicting another. The **LIVE** marker beside the header is the same honesty:
+without it a reader returning to the screen would read the newest window as the average.
+
+**The chart is the last few hours, not the day**, which is what the reference draws and what a live monitor
+is for: a day-wide axis is mostly future when the page is opened at noon, and the reader came for the
+stretch that ends now. It is the same span the recent baseline reaches back over
+(`StressMath.recentBaselineSpan`), so the number and the bars below it describe one stretch of time. On a
+whole-day axis the chart shades the hours the model cannot score; on a custom span it shades nothing,
+because the axis is no longer the day and shading its ends would claim hours outside the chart.
+
+**The closing paragraph is written for the band the day landed in.** It opens by calling the day low,
+medium or high and saying what that means in the model's own terms — below the reference, up to a sigma
+above it, more than a sigma above — and then reports the time in the high band, or says in words that no
+window reached it. It used to say *"you spent X in the high stress zone"* on every day, which on a calm
+day is a sentence about a band the day never reached; that is the failure `StressDetailView.message`
+exists to make assertable, since no screenshot can show more than one band.
+
+**The reference the score is against is named on the page, and it is one of two.** A personal baseline —
+the previous fortnight's waking hours, one point per day — takes three days of daytime stillness to exist,
+and the model used to refuse a day entirely below that. That was wrong for live data: it reported the
+absence of *history* as an absence of stress, and left the tile and the page empty for the first three
+days. A day with no personal baseline is now scored against its own preceding hours instead — each
+five-minute window against the windows inside the previous six hours, floor twelve — so the monitor works
+on the first afternoon the strap is worn. The footnote says which of the two it is showing, because *"your
+fortnight"* and *"your last few hours"* are different claims, and the recent one cannot say that a whole
+uniformly-elevated day was stressful.
+
+**Five things from the reference are not drawn, each for a rule this app already holds.** The gear and the
+`i` button have no destinations; the zoom button would open an interaction that does not exist; the day
+chevrons would page into days whose stress has never been computed, and a pushed page takes its day as a
+plain `let`; and *"in line with a typical Thursday"* is a weekday baseline this app does not hold, so the
+footer states the time in the high band instead — counted from the windows' own five minutes, never from a
+difference between two instants, because the windows need not be contiguous and a gap belongs to no band.
+
+**Time in a band is `StressDay.seconds(in:)`**, one count times `StressMath.windowSeconds` through the one
+`StressWindow.band` mapping — so the page's sentence cannot put a window in two bands or in none.
+
+### The reading panels open trends, and the band is the app's own
+
+**The mocks are the steps page's shape with a line instead of bars:** average, `W`/`M`/`6M`, a
+comparison pill, a sentence against the previous window, a `TYPICAL RANGE` band behind the line, and the
+latest reading marked. The `HRV` panel's mock was supplied first and the `RHR` panel's next, and they
+are one page in two forms — `ReadingTrend` and `ReadingTrendDetailView`, parameterised by
+`ReadingTrend.Kind` — because the two differ only in a unit, a direction of "better" and one extraction,
+and writing the page twice would be two definitions of the same window arithmetic. Three things about
+it are decisions rather than drawing.
+
+**The page is in one metric, and it says which.** `recoveries` holds RMSSD from the strap and SDNN from
+the HealthKit import, and a trend that averaged them would put two distributions on one axis — the
+never-mix rule `docs/ALGORITHMS.md` treats as a correctness bug. `HRVTrend.make` narrows to the metric
+the newest measured row carries (the same rule as `RecoveryViewModel.displayedHrvMetric`) before it
+averages or plots anything, and the footnote names it.
+
+**The band is this app's derivation, not WHOOP's.** `TYPICAL RANGE` is the previous window's mean ± one
+sample standard deviation over its measured days, withheld below `minimumBaselineDays` — stated in the
+footnote because a band drawn in WHOOP's colours could otherwise read as WHOOP's baseline, whose anchor
+is the end of a slow-wave episode this app cannot measure. The same prior window supplies the pill and
+the sentence, so the comparison and the band describe one set of days.
+
+**The VO₂ panel opens the same page in an estimating form.** Its figure is not a row: it is
+`Vo2MaxMath.heartRateRatioEstimate` — 15.3 × the profile's assumed maximum over the day's resting rate —
+derived per day exactly as `MetricWeek` derives the panel's number, so the page and the panel cannot
+disagree about a day. That makes it the one form whose legend the reference's cannot be reproduced: the
+mock draws `MANUAL ENTRY` beside `WHOOP ESTIMATE`, and this app has neither a manual entry nor WHOOP's
+model, so the footnote's first sentence says *estimated, with a 4.7 mL/kg/min standard error, not a
+measurement* instead of inventing a second series. A profile this app cannot read leaves the page empty
+rather than anchored to an assumed maximum.
+
+**A gap breaks the line.** A day with no measured reading is neither a zero nor interpolated across:
+either draws a reading the app never took, and a straight segment through a missing week is the
+strongest possible claim that nothing happened in it. The axis covers the readings **and** the band, so
+the band is never clipped off the plot it is meant to be read against.
+
+### The Whoopsy Age is a risk-equivalent age, and it stands on the last measured day
+
+The Health tab's `WHOOPSY AGE` dial is the app's own answer to the reference's WHOOP Age, and the card
+says in one sentence what it is: **your measured profile's mortality risk, run through a life table,
+is the risk of the average person of that age in that population.** That is the standard construction
+rather than an invention — PhenoAge, GrimAge and CosinorAge all read their biological age back out the
+same way, and what differs between them is which inputs move the expectancy, not how the age is
+inverted from it.
+
+**Three of WHOOP's nine Healthspan inputs feed it**, because three are readings this app already
+stores: cardiorespiratory fitness (the profile's max rate over the day's resting rate, via
+`Vo2MaxMath`), steps per day, and resting heart rate. Each is a published hazard ratio against a
+stated reference, multiplied together and clamped — `MortalityRiskProfile` carries the citations and
+the clamp's argument. Sleep and strength time are deliberately left out and the card says why: sleep's
+mortality curve is J-shaped and this app will not invent a slope for it, and the published strength
+ratio is per week of a self-reported activity class rather than per minute a strap can count. Lean body
+mass — the eighth of WHOOP's nine — is drawn beside the dial from height, weight and sex, because it is
+a body fact the regressions can estimate and no measurement here can.
+
+**The years come from somebody else's publication.** `lifeTables.json` is generated by
+`scripts/build-life-tables.py` from NCHS's own spreadsheets (United States Life Tables, 2024, NVSR
+75-05, Tables 1–3), and the app checks its own integration of `q_x` against the published `e_x` before
+believing any of it. A multiplier acts on the force of mortality, not on the years — `q' = 1 − (1 − q)^HR`
+— and the age is then read back by inverting the table's monotone expectancy curve. The region is the
+device locale's; a country with no bundled table gets the multiplier and a sentence rather than another
+country's mortality.
+
+**It stands on the last measured day, and that was the fix that made the dial work.** The tab asks the
+view model to load *today*, and a day with no measurement has no `recoveries` row — that is this app's
+whole absence rule, not an edge case — so an estimate taken only from the day on screen dashed for
+anyone who had not slept with the strap since the last import, which is every reader after a gap. The
+fallback reads back up to a year and takes the most recent measured night, and **the card prints that
+day** so an older night's numbers never read as this morning's. A year is the bound rather than
+"everything": past a year the profile describes someone the wearer may no longer be, and a dash says
+that better than a stale number. This is the `## Pages` rule about a value being honest about *when* it
+was measured, applied to an estimate whose whole body is a measurement.
+
+**A dash is not an answer, and the card stopped giving one.** Three different things can leave the dial
+empty and each needs a different action from the reader — no measured night, no date of birth, or no
+life table for the region — so `HealthMonitorViewModel.LongevityAbsence` names which one it is and the
+card turns it into a sentence. The `BIRTHDAY` row this points at had existed on `BIOMETRICS` since
+`v20` and drew a bare, unlabelled dash; see the row's own entry for why it read as missing.
+
+### The map expands rather than becoming interactive in place
+
+**Both map cards carry one control, and it is expansion — the user's own ask: *"can we add ability for map to go fullscreen,
+give it an option to go full screen like two corner arrows, that are used for expansion"*.** So the route card and the area
+card each draw a two-corner-arrows button at their top-right, and it opens the same map over the whole screen. **The card cannot
+simply be made interactive instead**: it sits inside a scrolling page, where a drag means *move the map* to one view and *scroll
+the page* to the other (the reason `ActivityRouteMapView.liveMap` is `interactionModes: []`), so the gesture conflict is resolved
+by expanding — the cover has no page behind it, and there the map pans and zooms (and only those: a drifting pinch that rotated the map would draw the route at an angle).
+**That is why a card holds two surfaces rather than one.** `MapKit`'s difference is an argument — `interactionModes: .all` — but
+the offline SDK's gestures are set in `App/Map/`, a module this package never compiles, so the interactive drawing has to be built
+there and handed in beside the card's through `expandedMapSurface`; a card with none falls back to its own map, which is every
+build this package compiles and every build without the SDK. **The button is a sibling of the card, not a child**, because the card
+is one accessibility element that speaks the route's sentence and a button drawn inside it would be silent to VoiceOver. The
+overlay is a `fullScreenCover` on iOS and a sheet on the Mac — the cards compile for both, and `fullScreenCover` does not exist on
+macOS — and §19 pins the two symbols and the two spoken labels the two cards share, which is the part a screenshot of one card
+cannot check.
 
 ### Two types on that page are kept deliberately though nothing draws them
 

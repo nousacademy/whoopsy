@@ -74,7 +74,7 @@ public struct WhoopImportAction: Sendable, Equatable, Identifiable {
                 title: "IMPORT NAPS",
                 caption: "Loads the nap records out of sleeps.csv. A nap is filed on the day it was "
                     + "taken rather than the morning it ended, and it carries no performance figure — "
-                    + "WHOOP scores a nap against a whole night's need, which would read a "
+                    + "The export scores a nap against a whole night's need, which would read a "
                     + "deliberate afternoon rest as a very poor night.")
 
         case .workouts:

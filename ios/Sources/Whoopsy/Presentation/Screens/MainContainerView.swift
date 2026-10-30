@@ -85,6 +85,14 @@ public struct MainContainerView: View {
     /// here puts the construction back at the one wiring point, which is the rule.
     private let settingsViewModel: SettingsViewModel
 
+    /// The Health tab's subject, and the Home card's — **one instance, two surfaces**: the tab's card
+    /// draws the same five bands the sheet does, so a second instance would be a second read of the
+    /// same rows and a chance for the tab and the sheet to disagree about the night.
+    ///
+    /// Stored rather than computed for `deviceViewModel`'s reason: `body` re-evaluates, and the sheet
+    /// holds it in `@State`.
+    private let healthMonitor: HealthMonitorViewModel
+
     public init(container: DIContainer = .preview) {
         self.container = container
         // Two dependencies rather than one: the second is the `UNITS` preference, which is a
@@ -100,7 +108,11 @@ public struct MainContainerView: View {
             whoopExport: container.whoopExportImport,
             fasting: container.fastingImport,
             inactivities: container.inactivityImport,
-            exportUseCase: container.exportLocalDataUseCase)
+            exportUseCase: container.exportLocalDataUseCase,
+            // The pane's one removing control. Handed over rather than built here because the refusal
+            // it makes — delete nothing when the database cannot be reached — depends on this build's
+            // own configuration, which is `DIContainer`'s to know.
+            purge: container.purgeDaysUseCase)
         // One engine and the key this build is missing, and the split between them is the pane's whole
         // shape: the engine walks all seven resources, so there is no per-resource object for this pane
         // to hold — the selector that chose between three use cases went with the three cutoffs that
@@ -111,8 +123,15 @@ public struct MainContainerView: View {
         self.syncViewModel = SyncStorageViewModel(
             engine: container.syncEngine,
             keyStore: container.syncKeyStore,
+            restore: container.restoreFromCloudUseCase,
             missingCloudKey: container.missingCloudKey)
         self.settingsViewModel = SettingsViewModel(repository: container.preferencesRepository)
+        self.healthMonitor = HealthMonitorViewModel(
+            recoveryRepository: container.recoveryRepository,
+            sleepRepository: container.sleepRepository,
+            biometricRepository: container.biometricRepository,
+            stepRepository: container.stepRepository,
+            userProfileRepository: container.userProfileRepository)
         self.deviceViewModel = DeviceViewModel(
             manage: container.manageBLEConnectionUseCase,
             sync: container.syncHistoricalDataUseCase,
@@ -144,11 +163,13 @@ public struct MainContainerView: View {
                     streamUseCase: container.streamBiometricsUseCase,
                     trackSteps: container.trackStepsUseCase,
                     refreshStrain: container.refreshStrainUseCase,
-                    refreshNights: container.refreshNightsUseCase),
+                    refreshNights: container.refreshNightsUseCase,
+                    refreshRecovery: container.refreshRecoveryUseCase,
+                    restoreFromCloud: container.restoreFromCloudUseCase),
                 recoveryViewModel: RecoveryViewModel(
-                    calculate: container.calculateRecoveryUseCase,
                     repository: container.recoveryRepository,
-                    sleepRepository: container.sleepRepository),
+                    sleepRepository: container.sleepRepository,
+                    refreshRecovery: container.refreshRecoveryUseCase),
                 // A second `SleepViewModel` beside the Sleep tab's below, and for the same reason
                 // Home's `recoveryViewModel` is a second one beside the Recovery tab's: they are two
                 // screens with two days, and sharing one would make the pushed copy move the tab's
@@ -159,7 +180,8 @@ public struct MainContainerView: View {
                     napRepository: container.napRepository,
                     biometricRepository: container.biometricRepository,
                     analyzeSleepStress: container.analyzeSleepStressUseCase,
-                    userProfileRepository: container.userProfileRepository),
+                    userProfileRepository: container.userProfileRepository,
+                    refreshNights: container.refreshNightsUseCase),
                 // A third second-instance view model, on the same reasoning as the two above: Home's
                 // strain ring pushes a copy seeded with the day on screen, and the Strain tab's own
                 // `StrainViewModel` below keeps a private day it would otherwise share.
@@ -167,7 +189,26 @@ public struct MainContainerView: View {
                     repository: container.strainRepository,
                     workoutRepository: container.workoutRepository,
                     stepRepository: container.stepRepository,
-                    refresh: container.refreshStrainUseCase),
+                    refresh: container.refreshStrainUseCase,
+                    // The measured zone path, added so the card's two `HEART RATE ZONES` rows have a
+                    // producer on a day this app recorded. Both are handed over rather than reached
+                    // for, like every other dependency this screen is given.
+                    biometricRepository: container.biometricRepository,
+                    userProfileRepository: container.userProfileRepository),
+                // The steps trend page Home's `STEPS` tile pushes. Its subject is a window, not a day,
+                // which is why it is built here rather than derived from the selected date.
+                stepsViewModel: StepsViewModel(repository: container.stepRepository),
+                // The two reading trend pages, on the same window-not-a-day reasoning and reading the
+                // same `recoveries` rows every other surface does. Two instances: each page's window
+                // belongs to its reader.
+                hrvTrendViewModel: ReadingTrendViewModel(
+                    kind: .hrv, repository: container.recoveryRepository),
+                rhrTrendViewModel: ReadingTrendViewModel(
+                    kind: .restingHeartRate, repository: container.recoveryRepository),
+                vo2TrendViewModel: ReadingTrendViewModel(
+                    kind: .vo2Max,
+                    repository: container.recoveryRepository,
+                    userProfileRepository: container.userProfileRepository),
                 // The one device view model, built in `init` above and shared with More → Device, so
                 // pushing the page from either route reaches the same instance. See its declaration
                 // for why it is stored rather than computed.
@@ -190,6 +231,15 @@ public struct MainContainerView: View {
                 // app target linked Mapbox — the same value `makeActivityDetailViewModel`'s route card
                 // uses, handed down rather than read from `DIContainer` inside the screen.
                 offlineMaps: container.offlineMaps,
+                // The Stress Monitor page's live half. It seeds from the day Home computed and appends
+                // completed five-minute windows while the page is open, so it needs the samples and
+                // the motion epochs and nothing else — the baseline rides on `StressDay`.
+                stressMonitor: StressLiveViewModel(
+                    biometricRepository: container.biometricRepository,
+                    motionEpochRepository: container.motionEpochRepository),
+                // The Health Monitor sheet's subject: the night's recovery row, the history its bands
+                // are taken over, and the night's samples for its mean heart rate.
+                healthMonitor: healthMonitor,
                 // The activity detail page's view model, built here and handed over as a factory
                 // rather than as an instance.
                 //
@@ -226,12 +276,16 @@ public struct MainContainerView: View {
             // both were a single `struct` whose rules lived in `private var`s — so the suite's
             // assertion count is unmoved by their removal, which is the one thing no renderer could
             // have told us.
-            RecoveryDashboardView(
-                viewModel: RecoveryViewModel(
-                    calculate: container.calculateRecoveryUseCase,
-                    repository: container.recoveryRepository,
-                    sleepRepository: container.sleepRepository)
-            ).tabItem { Label("Recovery", systemImage: "waveform.path.ecg") }
+            // **The Recovery tab is a heart and no destination, on the user's instruction**
+            // (*"remove the link to recovery and replace icon with a heart icon, it will not link to
+            // anything yet"*), and the word under it is `Health` — the second half of that
+            // instruction, so the tab reads as a section that is coming rather than as the page it
+            // stopped being. `RecoveryDashboardView` still exists and is one line away — it is the
+            // page this tab used to draw — but drawing it here would be the link the instruction
+            // removed. Its `RecoveryViewModel` is therefore not built for this tab any more; Home's
+            // recovery ring keeps its own instance for `RecoveryDetailView`.
+            HealthTabView(healthMonitor: healthMonitor)
+                .tabItem { Label("Health", systemImage: "heart.fill") }
             MoreView(settingsViewModel: settingsViewModel)
 
             .tabItem { Label("More", systemImage: "ellipsis.circle") }
@@ -252,14 +306,20 @@ public struct MainContainerView: View {
                 // **The two catch-up runs yield to the first screen, and that is ordering rather than
                 // a timer for correctness.** Both are background work whose result no screen is
                 // waiting on: `runIfDue` uploads the span since the last sync, and `refreshToday`
-                // re-reads a whole day of samples and folds it. They share one `DatabaseQueue` with
-                // the reads Home is doing to draw its rings, so starting them in the same instant as
-                // the first `HomeViewModel.load` puts a day's fold and a week's upload ahead of the
-                // sleep ring in the queue — which is what "the ring took a while to populate on the
-                // first load" was, reported 2026-10-24. Nothing is lost by waiting: `lastDailySyncDay`
-                // still bounds the sync to one run an evening, and the five-minute tick would score
-                // the day anyway.
+                // re-reads a whole day of samples and folds it. They stay behind the first screen
+                // deliberately — reported 2026-10-24 as "the ring took a while to populate on the
+                // first load", which was a day's fold started in the same instant as
+                // `HomeViewModel.load`. The database is a pool with `nonisolated` reads now, so the
+                // ring no longer queues behind this work, but keeping the launch quiet is still the
+                // cheaper answer. Nothing is lost by waiting: `lastDailySyncDay` still bounds the sync
+                // to one run an evening, and the five-minute tick would score the day anyway.
                 try? await Task.sleep(for: .seconds(2))
+
+                // **Before the catch-up, and only on an empty phone.** A fresh install pointed at an
+                // existing database has no rows of its own, and this is the deliberate pull that gives
+                // it the last thirty days; on a phone that holds any day it returns without asking.
+                // It sits ahead of `runIfDue` so a restored device does not first upload an empty span.
+                await container.restoreFromCloudUseCase.restoreIfNeeded()
 
                 // **The catch-up that makes the schedule reliable.** A suspended app's 18:00 timer
                 // does not fire; opening the app after the window on an unmarked day runs it once,
@@ -277,6 +337,11 @@ public struct MainContainerView: View {
                 // nothing, and the records sitting in storage are precisely the case this covers. One
                 // indexed read when the night is already stored, so a steady state costs nothing.
                 await container.refreshNightsUseCase.refresh(from: nil, to: nil)
+                // **The night is what Recovery is scored from, so this runs after the refresh above
+                // and nowhere else.** A ring page reads; this one call is the whole of "the calculation
+                // happens once" — it scores a day only when the stored row says it has not seen this
+                // night (`recoveries.algorithm` and `recoveries.scored_through`, `v39`).
+                await container.refreshRecoveryUseCase.refreshToday()
                 // A foreground is the moment a day that changed while the app was suspended gets
                 // scored, without waiting for the five-minute tick.
                 await container.refreshStrainUseCase.refreshToday()

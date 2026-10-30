@@ -425,8 +425,11 @@ enum LiveSessionRecordingTests {
                 bleRepository: routeTelemetry, biometricRepository: EmptyBiometricStore())
             let gps = SpyLocationTracking()
             await MainActor.run { gps.permission = .undetermined }
+            // Bound rather than inline: the lock-screen card's own content is asserted below, and a
+            // spy nobody holds cannot be read.
+            let routeController = SpyLiveActivityController()
             let routeSession = LiveSessionUseCase(
-                controller: SpyLiveActivityController(),
+                controller: routeController,
                 locationTracking: gps,
                 streamBiometricsUseCase: routeStream,
                 saveWorkoutUseCase: SaveWorkoutUseCase(repository: routeWorkouts),
@@ -444,7 +447,7 @@ enum LiveSessionRecordingTests {
                 await MainActor.run { gps.startCount } == 0,
                 "…and starting a session does not touch the GPS at all")
 
-            await routeSession.setRouteRecording(true)
+            await routeSession.setLiveMap(true)
             assertTest(
                 await routeSession.isRecordingRoute,
                 "…and turning the toggle on starts the route")
@@ -478,6 +481,55 @@ enum LiveSessionRecordingTests {
                 await waitUntil { await routeSession.snapshot?.latestHeartRate == 150 },
                 "…and the session has a reading in force before the fixes that follow it arrive")
 
+            // ---- What the lock-screen card is pushed ----
+            //
+            // **The card's three new figures come off the same values the screen draws.** The distance
+            // is `RouteDistance`'s great-circle sum over the fixes the route filed — the same function
+            // the route card prints from — and the speed divides by the route's **own** span (five
+            // seconds here), not the session's elapsed time. The band position is the accumulator's,
+            // so the dot on the card and the bar on the screen cannot point at different zones.
+            let card = await waitUntil { await MainActor.run {
+                routeController.pushedStates.last.map { $0.distanceMeters != nil } ?? false
+            } }
+            let cardState = await MainActor.run { routeController.pushedStates.last }
+            assertTest(
+                card,
+                "The card is cardState a distance once the route has two fixes and a sample has arrived "
+                    + "(last state: \(String(describing: cardState?.distanceMeters)))")
+
+            // 0.0009° of latitude (≈100.1 m) and the same of longitude at 40.74° N (≈75.8 m) is
+            // ≈125.5 m of haversine — computed by hand, not by the function under test.
+            assertTest(
+                (cardState?.distanceMeters).map { $0 > 124 && $0 < 127 } ?? false,
+                "…and it is the great-circle length of the path, not the span between its ends "
+                    + "(got \(String(describing: cardState?.distanceMeters)) m, expected ≈125.5)")
+            assertTest(
+                (cardState?.averageSpeedMetersPerSecond).map { $0 > 24 && $0 < 26 } ?? false,
+                "…over the route's own five-second span, so the card's speed and the card's distance "
+                    + "are one measurement rather than two "
+                    + "(got \(String(describing: cardState?.averageSpeedMetersPerSecond)) m/s, expected ≈25.1)")
+            // **Equality with the screen's own snapshot, not a second computation.** The card's marker
+            // is only right if it is the same number the session screen's band row resolves, so the
+            // assertion compares the two rather than pinning a literal this fixture would have to
+            // re-derive from the zone table.
+            let onScreen = await routeSession.snapshot?.bandScalePosition
+            let sessionName = await routeSession.activityName
+            let expectedMark = ActivityGlyph.mark(for: sessionName)
+            assertTest(
+                cardState?.glyphSymbol == expectedMark.primary
+                    && cardState?.glyphSecondarySymbol == expectedMark.secondary,
+                "…and the card's mark is the activity's own, resolved through the app's one "
+                    + "name→symbol table rather than guessed in the widget "
+                    + "(card \(String(describing: cardState?.glyphSymbol)), expected "
+                    + "\(expectedMark.primary) for \(String(describing: sessionName)))")
+            assertTest(
+                cardState?.bandScalePosition != nil
+                    && cardState?.bandScalePosition == onScreen,
+                "…and the heart rate's place on the five-band scale is the snapshot's own value, so the "
+                    + "marker on the card and the bar on the screen cannot point at different zones "
+                    + "(card \(String(describing: cardState?.bandScalePosition)), screen "
+                    + "\(String(describing: onScreen)))")
+
             _ = await MainActor.run {
                 gps.yield(latitude: 40.7430, longitude: -73.9899, timestamp: t0.addingTimeInterval(15))
             }
@@ -491,7 +543,7 @@ enum LiveSessionRecordingTests {
 
             // ---- Turning it off, and back on ----
 
-            await routeSession.setRouteRecording(false)
+            await routeSession.setLiveMap(false)
             assertTest(
                 await routeSession.isRecordingRoute == false,
                 "Turning the toggle off stops the route")
@@ -506,7 +558,7 @@ enum LiveSessionRecordingTests {
                 "…and delivery really ended, rather than a flag being flipped over a stream that still "
                     + "runs — a stopped GPS that keeps yielding is the blue indicator staying up")
 
-            await routeSession.setRouteRecording(true)
+            await routeSession.setLiveMap(true)
             assertTest(
                 await waitUntil { await MainActor.run { gps.startCount } == 2 },
                 "Turning it back on starts a second stream, so the fixes already collected are kept "
@@ -589,7 +641,7 @@ enum LiveSessionRecordingTests {
                 offlineMaps: SpyOfflineMaps())
 
             await deniedSession.start()
-            await deniedSession.setRouteRecording(true)
+            await deniedSession.setLiveMap(true)
             let deniedRecording = await deniedSession.isRecordingRoute
             let deniedStarts = await MainActor.run { deniedGPS.startCount }
             assertTest(
@@ -637,7 +689,7 @@ enum LiveSessionRecordingTests {
                 bleRepository: routeTelemetry,
                 activeFastRepository: SpyActiveFastRepository(),
                 offlineMaps: SpyOfflineMaps())
-            await offSession.setRouteRecording(true)
+            await offSession.setLiveMap(true)
             let offError = await offSession.routeError
             assertTest(
                 offError != nil && offError?.contains("Settings") == false,

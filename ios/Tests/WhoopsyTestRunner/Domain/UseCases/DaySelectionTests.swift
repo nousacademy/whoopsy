@@ -113,11 +113,6 @@ enum DaySelectionTests {
 
             let recoveryViewModel = await MainActor.run {
                 RecoveryViewModel(
-                    calculate: CalculateRecoveryUseCase(
-                        biometricRepository: strapThatRecordedNothing,
-                        recoveryRepository: recoveryRepository,
-                        sleepRepository: sleepRepository,
-                        userProfileRepository: profile),
                     repository: recoveryRepository,
                     sleepRepository: sleepRepository)
             }

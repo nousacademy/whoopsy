@@ -30,24 +30,35 @@ import Whoopsy
 enum CloudSyncTests {
 
     static func run() async throws {
-        // MARK: The port — twenty-five doors, none of them a removal
+        // MARK: The port — twenty-six doors, and exactly one of them a removal
 
         let port = try sourceText(at: "Domain/Repositories/CloudSync.swift")
         let portMethods = declaredMethods(in: port)
 
-        // **The count is a tripwire rather than a contract.** Twenty-five is what the seven resources
-        // need now that every one reads as well as writes — two reads and two writes each for the six
-        // keyed resources (entries being the exception with one range read), and one read and one write
-        // for the singleton profile. A resource added later will make this fail, and that is the point:
-        // the failure sends its author to this file, where the sentence below is waiting to ask whether
-        // the new resource arrived with a delete.
-        assertTest(portMethods.count == 25,
-                   "`CloudSync` declares 25 methods — the port's whole vocabulary, and the number this "
+        // **The count is a tripwire rather than a contract.** Twenty-six is what the seven resources
+        // need — two reads and two writes each for the six keyed resources, one read and one write for
+        // the singleton profile — plus the single `purge`. A resource added later will make this fail,
+        // and that is the point: the failure sends its author here, where the sentence below is waiting
+        // to ask whether the new resource arrived with a *second* way to delete.
+        assertTest(portMethods.count == 26,
+                   "`CloudSync` declares 26 methods — the port's whole vocabulary, and the number this "
                        + "sweep is a tripwire for rather than a limit it enforces")
-        assertTest(portMethods.filter { $0.lowercased().contains("delete") }.isEmpty,
-                   "…and not one of them is a delete: \(portMethods.filter { $0.lowercased().contains("delete") })")
-        assertTest(portMethods.filter { $0.lowercased().contains("purge") }.isEmpty,
-                   "…nor a purge under another name")
+
+        // **The guarantee changed shape on 2026-10-29 and it did not weaken.** It used to be "no door is
+        // a delete"; it is now "exactly one door is, and it is the day purge". Both halves are asserted:
+        // one method may be named for removal, it must be `purge`, and it must take a *range* — because a
+        // per-row delete is what a sync would reach for to reconcile a difference, and a range is the
+        // shape of "these days are wrong" rather than "this row disagrees".
+        let removalMethods = portMethods.filter {
+            $0.lowercased().contains("purge") || $0.lowercased().contains("delete")
+        }
+        assertTest(removalMethods == ["purge"],
+                   "Exactly one method on the port is a removal, and it is `purge`: \(removalMethods)")
+        assertTest(port.contains("func purge(from: Date, to: Date) async throws -> PurgeTally"),
+                   "…and it takes a range of days rather than a row, a day or an id — the narrow "
+                       + "question is a range of one")
+        assertTest(removalMethods.count == 1,
+                   "…so a second removal under any other name is a change this sweep refuses")
 
         // The port's three families by name, so a method silently *replaced* rather than added is
         // visible: the count alone would accept one write swapped for one delete.
@@ -57,7 +68,7 @@ enum CloudSyncTests {
                        "The port still has `\(family)`, which is a door in and not a door out")
         }
 
-        // MARK: The seven stores — the phone's own doors, fourteen of them
+        // MARK: The seven stores — the phone's own doors, fourteen of them, none of them a removal
 
         let storeFiles = [
             "RecoverySyncStore", "WorkoutSyncStore", "StrainSyncStore", "SleepSyncStore",
@@ -75,6 +86,9 @@ enum CloudSyncTests {
             storeMethods.append(contentsOf: methods)
         }
         assertTest(storeMethods.count == 14, "…fourteen doors across the seven tables")
+        // **These seven are still swept for the absence, and that is the half that did not change.** The
+        // purge reaches its tables through `DayPurgeStore`, deliberately not through one of these; a
+        // store that grew a `delete` would be a second way into a table the sync owns.
         assertTest(storeMethods.filter { $0.lowercased().contains("delete") }.isEmpty,
                    "…and none of the fourteen is a delete: \(storeMethods.filter { $0.lowercased().contains("delete") })")
         assertTest(storeMethods.filter { $0.lowercased().contains("purge") }.isEmpty,
@@ -90,40 +104,49 @@ enum CloudSyncTests {
                    "The word does appear in `WorkoutSyncStore`'s prose, which is why this sweep reads "
                        + "declarations and never file text")
 
-        // MARK: The contract — what the server will answer for
+        // MARK: The contract — four deletes, on four named resources, and nowhere else
 
         let contractSlices = try contractText()
         let contract = contractSlices.joined(separator: "\n")
 
-        // The negative half. Spelled with the colon because that is the only form an operation key has
-        // in JSON — a `DELETE` route would appear as `"delete": {` and nothing else in the document
-        // would. Written as a search for the key rather than for the word, so the prose descriptions
-        // that legitimately discuss deletion do not have to be kept out of it.
-        assertTest(!contract.contains("\"delete\":"),
-                   "The contract mounts no delete operation, on any path: every resource the Worker "
-                       + "carries is reachable by a read and a write, and nothing it publishes can remove "
-                       + "a row")
+        // **Four, and the number is the assertion.** One per measured day-keyed resource. A fifth would
+        // be a resource the Worker removes and the app does not know about; a third would be a mount
+        // lost. Spelled with the colon because that is the only form an operation key has in JSON, so
+        // the prose descriptions that discuss deletion legitimately do not have to be kept out of it.
+        let deleteKeys = contract.components(separatedBy: "\"delete\":").count - 1
+        assertTest(deleteKeys == 4,
+                   "The contract mounts exactly four delete operations — one per measured day-keyed "
+                       + "resource — and nothing else: found \(deleteKeys)")
         assertTest(!contract.lowercased().contains("\"purge\":"),
-                   "…nor a purge spelled as its own verb")
+                   "…none of them is a separate verb; the operation is a `delete` on the collection")
 
-        // The positive controls, without which the two assertions above would pass over an empty string,
-        // a truncated file or the wrong document.
-        for verb in ["\"get\":", "\"post\":", "\"put\":"] {
+        // The paths those four sit on, decoded rather than pattern-matched, and compared with the app's
+        // own list. This is the assertion that keeps `SyncedResource.purgeable` and the Worker's mounts
+        // in step: a resource added to one and not the other is a purge that 404s every run.
+        let deletePaths = Set(pathsMounting("delete", in: contractSlices))
+        let expectedPaths = Set(SyncedResource.purgeable.map(\.path))
+        assertTest(deletePaths == expectedPaths,
+                   "…on exactly the paths the app purges: \(deletePaths.sorted()) against "
+                       + "\(expectedPaths.sorted())")
+
+        // The positive controls, without which the assertions above would pass over an empty string, a
+        // truncated file or the wrong document.
+        for verb in ["\"get\":", "\"post\":", "\"put\":", "\"delete\":"] {
             assertTest(contract.contains(verb),
                        "The contract does mount `\(verb.dropLast(1))` — so the sweeps above are over a "
                            + "document that really does declare operations")
         }
         assertTest(contract.contains("\"openapi\""), "…and it is the OpenAPI document beside the package")
 
-        // Every method the contract does declare, collected and swept as one list. This is the half that
-        // would catch a verb this file has never heard of rather than only the one it is looking for.
+        // Every verb the contract does declare, collected and swept as one list: a verb this file has
+        // never heard of still fails here.
         let verbs = Set(operationVerbs(in: contractSlices))
-        assertTest(verbs == ["get", "post", "put"],
-                   "The only verbs the Worker answers are get, post and put — so a delete arriving under "
-                       + "a spelling this sweep did not anticipate still fails here: \(verbs.sorted())")
+        assertTest(verbs == ["delete", "get", "post", "put"],
+                   "The only verbs the Worker answers are get, post, put and delete — the last of them "
+                       + "on four paths and no more: \(verbs.sorted())")
 
         // And the count of paths, for `SyncedResourceTests`' reason: a scan that read half the document
-        // would sweep half the contract, and every negative above would still hold.
+        // would sweep half the contract, and every assertion above would still hold.
         assertTest(contract.components(separatedBy: "\"paths\": {").count == contractSlices.count + 1,
                    "…and every one of the \(contractSlices.count) slices holds its own `paths` "
                        + "object, so the join swept the whole folder rather than its first file")
@@ -229,8 +252,25 @@ private func operationVerbs(in slices: [String]) -> [String] {
     // `parameters` or a `summary` beside its operations, which OpenAPI permits, fails the count here
     // rather than being quietly dropped out of the set below and taking a `DELETE` with it.
     let items = paths.values.flatMap(\.keys)
-    assertTest(items.count == 31,
-               "…and every path item holds nothing but an operation, sixteen gets, eight puts and "
-                   + "seven posts: \(items.count)")
+    assertTest(items.count == 35,
+               "…and every path item holds nothing but an operation, sixteen gets, eight puts, "
+                   + "seven posts and four deletes: \(items.count)")
     return items
+}
+
+/// The paths whose item mounts one verb — decoded, for `operationVerbs`' reason.
+///
+/// Used for the one question the verb set cannot answer: *where* the deletes are. Four of them is a
+/// count; four on the four measured day-keyed resources is the property that makes the app's purge and
+/// the Worker's mounts the same list.
+private func pathsMounting(_ verb: String, in slices: [String]) -> [String] {
+    var found: [String] = []
+    for text in slices {
+        guard let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let paths = object["paths"] as? [String: [String: Any]]
+        else { continue }
+        for (path, item) in paths where item[verb] != nil { found.append(path) }
+    }
+    return found
 }

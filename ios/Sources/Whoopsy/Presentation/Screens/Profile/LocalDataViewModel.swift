@@ -31,12 +31,24 @@ import SwiftUI
     public var export: LocalExportResult?
     public var isImporting = false
 
+    /// The range the delete control is pointed at, **snapped to `startOfDay` on every write** — the
+    /// `DatePicker` hands back an instant carrying the clock, and a day key built from it is a day key
+    /// built from a time that is not the user's midnight.
+    public var purgeFrom = Date().startOfDay
+    public var purgeTo = Date().startOfDay
+
+    /// Whether the confirmation is up. The delete is irreversible, and this app confirms the two
+    /// device commands for the same reason.
+    public var isConfirmingPurge = false
+    public var isPurging = false
+
     private let repository: any AppPreferencesRepository
     private let healthKit: any HealthKitSyncing
     private let whoopExport: any WhoopExportImporting
     private let fasting: any FastingImporting
     private let inactivities: any InactivityImporting
     private let exportUseCase: ExportLocalDataUseCase
+    private let purge: PurgeDaysUseCase
 
     public init(
         repository: any AppPreferencesRepository,
@@ -44,7 +56,8 @@ import SwiftUI
         whoopExport: any WhoopExportImporting,
         fasting: any FastingImporting,
         inactivities: any InactivityImporting,
-        exportUseCase: ExportLocalDataUseCase
+        exportUseCase: ExportLocalDataUseCase,
+        purge: PurgeDaysUseCase
     ) {
         self.repository = repository
         self.healthKit = healthKit
@@ -52,6 +65,7 @@ import SwiftUI
         self.fasting = fasting
         self.inactivities = inactivities
         self.exportUseCase = exportUseCase
+        self.purge = purge
     }
 
     public var healthKitUnavailableReason: String {
@@ -190,6 +204,74 @@ import SwiftUI
             let result = try await exportUseCase.execute()
             export = result
             status = result.message
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    // MARK: - The one control that removes data
+
+    /// How many calendar days the range covers, inclusive at both ends — `0` when it is reversed.
+    ///
+    /// The confirmation quotes it, because *"delete 3 days"* is a number a reader can check against
+    /// what they meant and *"delete these days"* is not.
+    public var purgeDayCount: Int {
+        let from = purgeFrom.startOfDay
+        let to = purgeTo.startOfDay
+        guard from <= to else { return 0 }
+        return (Calendar.current.dateComponents([.day], from: from, to: to).day ?? 0) + 1
+    }
+
+    /// Whether the range is one the use case will accept. The server's own two rules, so the button is
+    /// dark for a range that would be refused anyway rather than after a round trip.
+    public var canPurge: Bool {
+        let days = purgeDayCount
+        return days > 0 && days <= PurgeDaysUseCase.maximumDays
+    }
+
+    /// What the control says it will do — beside the dates and again in the confirmation.
+    ///
+    /// **It names what goes and what stays**, because the scope is a decision rather than an obvious
+    /// one: activities, fasts and notes dated inside the range survive, and a reader pressing DELETE on
+    /// three days should not have to discover that afterwards.
+    public var purgeCaption: String {
+        let days = purgeDayCount
+        guard days > 0 else {
+            return "The first day must not be later than the last."
+        }
+        guard days <= PurgeDaysUseCase.maximumDays else {
+            return "That range spans \(days) days; at most \(PurgeDaysUseCase.maximumDays) can be "
+                + "deleted at once. Delete it in pieces."
+        }
+        let range = days == 1 ? "this day" : "these \(days) days"
+        return "Removes every measured row for \(range) — recovery, sleep, strain, steps, naps, motion "
+            + "and heart-rate samples — here and, when the sync API is the destination, from the "
+            + "database. Activities, fasts and notes dated in the range are kept."
+    }
+
+    /// The confirmation dialog's title: the number, and the fact that there is no undo.
+    public var purgeConfirmationTitle: String {
+        let days = purgeDayCount
+        let dayWord = days == 1 ? "day" : "days"
+        return "Delete all measured data for \(days) \(dayWord)? This cannot be undone."
+    }
+
+    /// Remove the chosen range.
+    ///
+    /// **The sentence is the use case's own**, on `exportData`'s precedent: it counts what went on both
+    /// sides, which is a figure this view model has no way to compose — and the refusal it throws is a
+    /// sentence about *why nothing happened*, which is the more important half here. A purge that
+    /// failed because the database was unreachable must not read like a purge that succeeded.
+    ///
+    /// `isPurging` brackets it because this one really does change the database under the reader, which
+    /// is the rule the imports above it follow and the export deliberately does not.
+    public func purgeDays() async {
+        isPurging = true
+        defer { isPurging = false }
+
+        do {
+            let report = try await purge.run(from: purgeFrom, to: purgeTo)
+            status = report.message
         } catch {
             status = error.localizedDescription
         }

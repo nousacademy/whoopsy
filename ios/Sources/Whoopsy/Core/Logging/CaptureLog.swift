@@ -24,6 +24,41 @@ public final class CaptureLog: @unchecked Sendable {
     /// The SpO2 candidate probe's file, `Documents/spo2-candidate.txt`.
     public static let spo2Probe = CaptureLog(fileName: "spo2-candidate.txt")
 
+    /// The skin-temperature candidate probe's file, `Documents/skin-temperature-candidate.txt`.
+    ///
+    /// A third file rather than a third kind of line in the second: the two probes answer different
+    /// questions about different bytes, and a file is the unit a person can hand over — the SpO2 file
+    /// exists to be shared without also sharing the nearest thing to a temperature, and vice versa.
+    public static let skinTempProbe = CaptureLog(fileName: "skin-temperature-candidate.txt")
+
+    /// The sleep classifier's own decisions, `Documents/sleep.txt`.
+    ///
+    /// **A fourth file because a night's evidence was being rotated out by a drain.** Measured
+    /// 2026-10-30: `capture.txt` is capped at 64 KB and one morning drain writes hundreds of
+    /// `DRAIN_BATCH` lines, so by the time a night was questioned both the `SLEEP inputs` line and the
+    /// `NIGHTS check` line that would have explained it had gone — the two lines this app writes
+    /// *because* a night's shape is otherwise invisible. A classifier decision is a handful of lines a
+    /// day; the drain's noise is thousands. They rotate at the same rate only if they share a file.
+    ///
+    /// The same lines still go to `capture.txt` as well, so a capture taken for another reason is no
+    /// less complete than it was; this file is the copy that survives.
+    public static let sleep = CaptureLog(fileName: "sleep.txt")
+
+    /// The accelerometer candidate probe's file, `Documents/accelerometer-candidate.txt`.
+    ///
+    /// The third of the three probe files, and the one the sleep classifier's own stillness depends on:
+    /// `SampleStillnessMath` reads the triplet this probe dumps. See `AccelerometerCandidateProbe`.
+    public static let accelerometerProbe = CaptureLog(fileName: "accelerometer-candidate.txt")
+
+    /// Write one classifier line to both places it belongs: `capture.txt` and `sleep.txt`.
+    ///
+    /// One call rather than two `append`s at each site, so a line can never reach one file and not the
+    /// other — the failure that would make this whole arrangement silently half-work.
+    public static func sleepDecision(_ line: String) {
+        shared.append(line)
+        sleep.append(line)
+    }
+
     /// ~64 KB, from `docs/TODO.md` §5.
     public static let maximumBytes = 64 * 1024
 

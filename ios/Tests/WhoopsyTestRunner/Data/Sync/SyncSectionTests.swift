@@ -63,13 +63,33 @@ enum SyncSectionTests {
         // on the walk rather than on a description of it.
         try await SyncEngineTests.run()
 
-        // 22.6 — the pane's list read off the contract rather than typed beside it, so a resource the
+        // 22.6 — the one read path that reaches the API, and the three states in which it must not.
+        try await RestoreFromCloudUseCaseTests.run()
+
+        // …and the control that invokes it. Two names, and one of them has to warn: unlike `SYNC` the
+        // restore writes over days this phone already holds, so the caption says so rather than
+        // leaving it to be discovered.
+        assertTest(
+            SyncStorageViewModel.restoreTitle == "RESTORE",
+            "The pane's second control is named for what it does, beside `SYNC`")
+        assertTest(
+            SyncStorageViewModel.restoreCaption.contains("replaced"),
+            "…and its caption states that a restore replaces days the phone already holds, which is "
+                + "the one thing a reader must know before pressing it "
+                + "(\(SyncStorageViewModel.restoreCaption))")
+
+        // 22.7 — the pane's list read off the contract rather than typed beside it, so a resource the
         // Worker mounts and the app forgot cannot pass. Two files of text and one enum; no database.
         try await SyncedResourceTests.run()
 
-        // 22.7 — **the absence of a delete**, swept over the port, the seven store protocols and the
-        // committed contract. This is the assertion that fails if the purge comes back, and it is the
-        // one the whole arrangement around it exists to protect.
+        // 22.8 — **exactly one delete door, and it is the day purge**, swept over the port, the seven
+        // store protocols and the committed contract. The guarantee changed shape on 2026-10-29 and it
+        // did not weaken: one method on the port is a removal, it takes a range, and the contract
+        // mounts four `delete` operations on the four measured day-keyed resources and nothing else.
         try await CloudSyncTests.run()
+
+        // …and the purge's own rules: which side it visits first, and the refusal that deletes
+        // nothing when the database cannot be reached.
+        try await PurgeDaysUseCaseTests.run()
     }
 }

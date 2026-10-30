@@ -37,17 +37,48 @@ public struct LiveSessionActivityState: Sendable, Equatable {
     /// from still reading as live for those four hours.
     public let isRunning: Bool
 
+    /// Where `heartRate` sits across the five-band scale, as a `0…1` fraction — the lock-screen bar's
+    /// marker, resolved by `LiveSessionAccumulator` so the card and the session screen place the same
+    /// dot on the same scale. `nil` before any reading.
+    public let bandScalePosition: Double?
+
+    /// How far the session's route has gone, in metres, or `nil` with fewer than two plausible fixes.
+    /// Measured by `RouteDistance`, the rule the route card prints from.
+    public let distanceMeters: Double?
+
+    /// The route's average speed over its **own** span, or `nil` when there is no distance or no
+    /// span to divide by — never the session's elapsed time, which would report an average over
+    /// distance the app never measured.
+    public let averageSpeedMetersPerSecond: Double?
+
+    /// The session's activity mark, resolved through `ActivityMarkCatalog` — the app's one
+    /// name → symbol mapping — so the lock-screen card draws the same glyph the `ACTIVITIES` card does.
+    /// `nil` only for a session with no name yet, where the card draws the fallback's absence.
+    public let glyphSymbol: String?
+    /// The second symbol of a composite mark (`Fast` is `fork.knife` then `timer`), or `nil`.
+    public let glyphSecondarySymbol: String?
+
     public init(
         startedAt: Date,
         strain: Double? = nil,
         heartRate: Int? = nil,
         calories: Double? = nil,
-        isRunning: Bool = true
+        isRunning: Bool = true,
+        bandScalePosition: Double? = nil,
+        distanceMeters: Double? = nil,
+        averageSpeedMetersPerSecond: Double? = nil,
+        glyphSymbol: String? = nil,
+        glyphSecondarySymbol: String? = nil
     ) {
         self.startedAt = startedAt
         self.strain = strain
         self.heartRate = heartRate
         self.calories = calories
         self.isRunning = isRunning
+        self.bandScalePosition = bandScalePosition
+        self.distanceMeters = distanceMeters
+        self.averageSpeedMetersPerSecond = averageSpeedMetersPerSecond
+        self.glyphSymbol = glyphSymbol
+        self.glyphSecondarySymbol = glyphSecondarySymbol
     }
 }

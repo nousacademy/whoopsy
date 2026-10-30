@@ -53,20 +53,29 @@ public actor RefreshNightsUseCase {
         // **The line a capture needs when a ring does not fill.** Whether the refresher ran at all, on
         // which days, whether each was owed, and what the analyzer answered — one line per day, so
         // "unclassified" and "unclassifiable" can be told apart without opening a screen.
-        CaptureLog.shared.append(
+        CaptureLog.sleepDecision(
             "NIGHTS refresh range=\(oldest?.ISO8601Format() ?? "-")..\(newest?.ISO8601Format() ?? "-") "
                 + "days=\(days.count)")
         var written = 0
         for day in days {
-            let owed = await isOwed(day)
+            let decision = await isOwed(day)
+            let owed = decision.owed
             var outcome = "skip"
             if owed {
                 do {
                     if let session = try await analyze.execute(for: day) {
-                        hub.yield(session)
-                        written += 1
-                        outcome = "saved start=\(session.startTime.ISO8601Format()) "
-                            + "end=\(session.endTime.ISO8601Format())"
+                        // **Only a night that draws differently is published.** `execute` always writes
+                        // — the watermark it advances is the point — but a re-classification that
+                        // reproduced the same night must not hand it to the ring: that publish is what
+                        // made Home redraw on every foreground for a figure that had not changed.
+                        if decision.stored.map({ !session.drawsSame(as: $0) }) ?? true {
+                            hub.yield(session)
+                            written += 1
+                            outcome = "saved start=\(session.startTime.ISO8601Format()) "
+                                + "end=\(session.endTime.ISO8601Format())"
+                        } else {
+                            outcome = "current"
+                        }
                     } else {
                         outcome = "no-night"
                     }
@@ -76,7 +85,7 @@ public actor RefreshNightsUseCase {
             }
             let line = "NIGHTS day=\(day.ISO8601Format()) owed=\(owed) \(outcome)"
             AppLogger.database.notice("\(line, privacy: .public)")
-            CaptureLog.shared.append(line)
+            CaptureLog.sleepDecision(line)
         }
         return written
     }
@@ -124,16 +133,33 @@ public actor RefreshNightsUseCase {
     }
 
     /// `SleepViewModel.shouldReclassify`, in the one place both callers can read it.
-    private func isOwed(_ day: Date) async -> Bool {
+    ///
+    /// It answers with the stored row as well as the verdict, because the caller needs it twice: to
+    /// decide, and then to compare the re-classification against so an unchanged night is not
+    /// published. Reading it twice would be a second read that could disagree.
+    private func isOwed(_ day: Date) async -> (owed: Bool, stored: SleepSession?) {
         let stored = try? await repository.getSleepSession(for: day)
         // An imported night is WHOOP's own classification and is never re-run here.
-        if stored?.hasWhoopSleepNeed == true { return false }
-        guard let stored else { return true }
+        if stored?.hasWhoopSleepNeed == true { return (false, stored) }
+        guard let stored else { return (true, nil) }
         guard stored.algorithm == SleepAlgorithm.current,
               let watermark = stored.scoredThrough
-        else { return true }
+        else { return (true, stored) }
         let edge = try? await analyze.inputEdge(for: day)
-        return SleepReclassification.isOwed(watermark: watermark, inputEdge: edge)
+        let owed = SleepReclassification.isOwed(
+            watermark: watermark, inputEdge: edge, nightEnd: stored.endTime,
+            endedAtDataEdge: stored.endedAtDataEdge)
+        // **The three instants, for the capture that has to explain a skip.** A night left as a
+        // fragment is diagnosed from exactly this line: a stored end far behind a watermark that is
+        // itself far behind the edge says the row saw data the night did not include, and the
+        // figures make that arithmetically checkable rather than a theory.
+        CaptureLog.sleepDecision(
+            "NIGHTS check day=\(day.ISO8601Format()) "
+                + "watermark=\(watermark.ISO8601Format()) "
+                + "end=\(stored.endTime.ISO8601Format()) "
+                + "edge=\(edge?.ISO8601Format() ?? "-") "
+                + "dataEdge=\(stored.endedAtDataEdge.map { String(describing: $0) } ?? "-") owed=\(owed)")
+        return (owed, stored)
     }
 }
 

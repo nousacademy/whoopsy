@@ -1023,8 +1023,16 @@ sensor byte read as a pulse. **The type-24 record is now walked for heart rate a
 `HeartRatePayloadDecoder.decodeWhoop4Historical` reads the unix seconds at record `[7:11]`, the heart
 rate at `[17]`, the interval count at `[18]` and up to four **signed 16-bit milliseconds** at
 `[19+2i]`, requiring the record's minimum inner length of 89. **The rest of the record's header and
-body are still unread** — accelerometer samples, skin temperature, contact and resting heart rate
-have no consumer here, and nothing claims they do. `docs/TODO.md` §5 carries that half.
+body are still unread** — accelerometer samples, contact and resting heart rate have no consumer
+here, and nothing claims they do. **Skin temperature gained a probe on 2026-10-29**: the community
+reference names a `u16` raw ÷ 100 field at "byte 73" with a 5–45 °C plausible range, but the two
+conventions in use disagree about the origin that byte is counted from — the accelerometer is *body
+24* at payload 34 (`payload = 10 + body`), the oxygen candidate is *frame 82* at payload 71
+(`payload = frame − 11`) — so `SkinTemperatureCandidateProbe` reads **both** (payload 83 and payload
+62), gates each against the plausible range and logs both to
+`Documents/skin-temperature-candidate.txt`. It writes no sample, no row and no screen value; one
+drained night against a known reading settles which offset is real, and then the field is one line in
+`HeartRatePayloadDecoder`. `docs/TODO.md` §5 carries that half.
 
 **The R18 record also carries the oxygen candidate at payload `[71]`, and the app reads it as
 instrumentation rather than as a metric.** `Spo2CandidateProbe` classifies every drained record and

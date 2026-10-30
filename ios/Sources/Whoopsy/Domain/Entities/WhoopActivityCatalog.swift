@@ -156,6 +156,32 @@ public enum WhoopActivityCatalog {
     /// names in the same order, and a test sweeping one is sweeping the other.
     public static var allNames: [String] { strainActivities + recoveryActivities }
 
+    /// The catalogue's **resistance-training** names — the set a strength figure is summed over.
+    ///
+    /// **This is the app's list, and that is the honest way to say it.** WHOOP's own list marks a
+    /// subset with a `^` footnote ("contributes to Strength Activity Time in Healthspan"), but the
+    /// footnote is published as glyphs on a page that no longer renders them (checked 2026-10-27: the
+    /// support article returns no list, and no public source enumerates the marked names). So this is
+    /// the four entries of the catalogue that are unambiguously resistance training, stated as this
+    /// app's definition rather than as WHOOP's undocumented membership. A session named anything else
+    /// contributes nothing.
+    ///
+    /// **A session's whole span counts, not a subset of it.** That is the only strength quantity this
+    /// app can produce: `WorkoutSession.durationSeconds` of a session the user labelled a strength
+    /// activity. WHOOP's figure may be narrower — it is a Healthspan input they do not document — and
+    /// this app does not claim to reproduce it. It carries a producer where the row used to carry a
+    /// dash, which is the bar every other row on this card clears.
+    public static let strengthActivities: [String] = [
+        "Bodybuilding", "Functional Fitness", "Powerlifting", "Weightlifting",
+    ]
+
+    /// Whether a stored activity name is one of `strengthActivities`, compared the way the catalogue
+    /// compares every other name — through `ActivityName.normalised`.
+    public static func isStrength(_ name: String?) -> Bool {
+        guard let name = ActivityName.normalised(name) else { return false }
+        return strengthActivities.contains { ActivityName.normalised($0) == name }
+    }
+
     /// The names this catalogue offers that **WHOOP's published list does not carry** — the whole of
     /// the difference between it and the page it began as.
     ///

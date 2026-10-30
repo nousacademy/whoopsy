@@ -539,7 +539,7 @@ describe("the endpoints this shape does not have", () => {
     });
   });
 
-  it("has no DELETE, like every other resource here", async () => {
+  it("has no DELETE — one of the four resources that still has none", async () => {
     await put(fullProfile());
 
     const response = await SELF.fetch(`${BASE}/v1/profile`, {
@@ -547,8 +547,9 @@ describe("the endpoints this shape does not have", () => {
       headers: { ...authHeaders(ALICE) },
     });
 
-    // The standing convention rather than this resource's omission — `WorkoutRepository.delete(_:)` and
-    // `ReceptiveInactivityRepository.delete(_:)` both exist on the app's side with no counterpart here.
+    // The four measured day-keyed resources gained a range delete for the app's purge; this one did
+    // not, and neither did `workouts`, `receptive-inactivities` or `biometric-samples`. The port's
+    // `delete(_:)` on the app's side still has no counterpart here.
     // The row is asserted still present, because a `404` from a handler that *had* deleted and then
     // failed to report would be indistinguishable from this one.
     expect(response.status).toBe(404);

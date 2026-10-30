@@ -42,14 +42,36 @@ public struct StrapLinkBadge: View {
     public let state: WhoopConnectionState
     public let isCharging: Bool
 
+    /// The strap's charge band, when there is a reading — see `BatteryBand`.
+    ///
+    /// **Optional, and `nil` is not "full".** A dot with no band keeps the link colour, because an
+    /// unlinked strap has no battery to report and a red dot there would read as a dead strap rather
+    /// than an absent reading. The badge's figure uses the same gate (`WhoopDevice.batteryReading`),
+    /// so the dot and the percentage never disagree about whether a charge was measured.
+    public let band: BatteryBand?
+
     /// The colour behind the mark — `StrapGlyph`'s `surface`, passed on so the disc and the knockout
     /// ring are the same colour.
     public let surface: Color
 
-    public init(state: WhoopConnectionState, isCharging: Bool, surface: Color) {
+    public init(
+        state: WhoopConnectionState,
+        isCharging: Bool,
+        surface: Color,
+        band: BatteryBand? = nil
+    ) {
         self.state = state
         self.isCharging = isCharging
         self.surface = surface
+        self.band = band
+    }
+
+    /// The dot's colour: the charge band when one was measured, the link colour otherwise.
+    ///
+    /// **A pure function so §14 can assert it without a renderer** — the rule is which fact wins, and
+    /// that is exactly the kind of thing a screenshot of one strap at one charge cannot show.
+    public static func dotColor(band: BatteryBand?, state: WhoopConnectionState) -> Color {
+        band?.color ?? state.linkColor
     }
 
     /// Whether this pair draws the bolt. **A pure function so §14 can assert it without a renderer** —
@@ -74,7 +96,7 @@ public struct StrapLinkBadge: View {
             .accessibilityHidden(true)
         } else {
             Circle()
-                .fill(state.linkColor)
+                .fill(Self.dotColor(band: band, state: state))
                 .frame(width: Self.dotDiameter, height: Self.dotDiameter)
         }
     }

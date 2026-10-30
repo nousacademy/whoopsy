@@ -17,6 +17,24 @@ import SwiftUI
 /// comment carries that argument, and it is the reason the numbers on the left are drawn at all: a
 /// trace with no scale under it is a shape, not a reading.
 ///
+/// ## A draggable cursor reads the night's clock
+///
+/// Touching the plot puts a vertical rule under the finger, prints the instant it stands for in the
+/// label row beneath, and the heart rate there at the rule's other end — so the clock and the reading
+/// are read at one glance and never compete for a row. The label rows are the night's own two ends
+/// while nothing is held. The rule
+/// is white and solid where the night's bounds are grey and dashed: one is the reader's finger rather
+/// than a fact about the night, and the two must not be mistaken for one another. Releasing removes it;
+/// a rule left behind would be a mark nothing put there.
+///
+/// The mapping from a plot fraction to an instant is `HoursOfSleepChartSeries.time(atFraction:)` and
+/// the reading is `value(atFraction:)` — both on the series rather than in the gesture, so the parts
+/// of the cursor that are rules are asserted by the suite: the arithmetic, its clamping at both ends,
+/// and the hole rule, since a cursor in a stretch the strap did not measure prints no reading rather
+/// than the nearest one from the far side of the gap. The gesture itself is not,
+/// and the chart stays out of VoiceOver's way; the section's label above still describes the trace's
+/// bounds and size.
+///
 /// ## A run of one is drawn, and a gap is not bridged
 ///
 /// `runs` comes from the series, which split on a dropout. A run of two or more is stroked as one
@@ -27,6 +45,14 @@ public struct HoursOfSleepChartView: View {
 
     public let series: HoursOfSleepChartSeries
 
+    /// Where the draggable cursor is, as a fraction of the night, or `nil` when it is not being held.
+    ///
+    /// **View state, not model state**: it is a finger's position rather than a reading, it is not
+    /// stored, and it changes nothing the page prints. Holding it here keeps the gesture and the marks
+    /// it draws in one file. The mapping from a fraction to an instant is the series' own —
+    /// `time(atFraction:)` — so what the label says is asserted without a renderer.
+    @State private var cursorFraction: Double?
+
     public init(series: HoursOfSleepChartSeries) {
         self.series = series
     }
@@ -34,7 +60,7 @@ public struct HoursOfSleepChartView: View {
     /// Total height including the time labels beneath the plot, matching `StressMonitorChartView`'s
     /// pair so the two charts sit at the same weight on their screens. A `GeometryReader` has no
     /// intrinsic size, so something has to state one.
-    private static let totalHeight: CGFloat = 132
+    private static let totalHeight: CGFloat = 168
     private static let labelHeight: CGFloat = 15
 
     /// The gutter the y labels sit in, to the left of the plot.
@@ -82,8 +108,61 @@ public struct HoursOfSleepChartView: View {
 
             FootDots(radius: 2.5)
                 .fill(Theme.textSecondary.opacity(0.6))
+
+            // The draggable cursor. White and solid, where the night's bounds are grey and dashed —
+            // it is the reader's finger, not a fact about the night, and the two must not be
+            // mistaken for one another.
+            if let cursorFraction {
+                CursorLine(fraction: cursorFraction)
+                    .stroke(Theme.textPrimary, lineWidth: 1)
+            }
         }
         .frame(height: plotHeight)
+        // The cursor's reading, at the **opposite end of the rule from the time**: the clock sits
+        // under the axis and the heart rate over the trace, so a reader dragging sees both without
+        // the two labels competing for the same row. Nothing is drawn where the cursor sits in a gap
+        // the strap did not measure — see `HoursOfSleepChartSeries.value(atFraction:)`.
+        .overlay {
+            GeometryReader { proxy in
+                if
+                    let cursorFraction,
+                    let value = series.value(atFraction: cursorFraction)
+                {
+                    Text("\(Int(value.rounded())) bpm")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .monospacedDigit()
+                        .fixedSize()
+                        // The rule is drawn through this point, so the label carries the page's own
+                        // background: a capsule is what stops the line crossing the digits.
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Theme.backgroundDark))
+                        .position(
+                            x: Self.plotLabelX(for: cursorFraction, width: proxy.size.width),
+                            y: 9)
+                }
+            }
+        }
+        // The gesture sits on a clear rectangle **over** the plot rather than on the shapes: a
+        // stroked line has no fill to hit-test, and a `Shape`'s hit area is its bounding box, which
+        // would make the whole plot respond to a drag that never touched the trace.
+        .overlay {
+            GeometryReader { proxy in
+                Rectangle()
+                    .fill(Color.clear)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                let width = max(1, proxy.size.width)
+                                cursorFraction = min(1, max(0, value.location.x / width))
+                            }
+                            // Released, the cursor goes: a rule left behind would be a mark on the
+                            // night that nothing put there.
+                            .onEnded { _ in cursorFraction = nil })
+            }
+        }
     }
 
     private func yLabels(height: CGFloat) -> some View {
@@ -112,20 +191,59 @@ public struct HoursOfSleepChartView: View {
         return min(max(y, inset), max(inset, height - inset))
     }
 
-    /// No clamp and no inset: the two labels are the night's ends, so `HStack` + `Spacer` puts them
-    /// flush to the corners of the plot they belong to.
+    /// The night's two ends, or — while the cursor is held — the exact instant under it.
+    ///
+    /// **The ends are replaced rather than joined**, because the cursor's label is drawn at the
+    /// cursor's `x` and an end label at the same corner would be drawn over. A reader dragging to
+    /// either bound therefore still reads one unambiguous time under the line.
+    ///
+    /// The two-ended row is `HStack` + `Spacer` at the corners of the plot, with a **trailing inset
+    /// that is the screen's, not the plot's**: the sleep page draws this chart edge to edge, so
+    /// without it the end label's last glyph runs into the display's edge and reads as cut.
     private var timeLabels: some View {
-        HStack(spacing: 0) {
-            Text(series.start.formattedHourMinute())
-            Spacer(minLength: 4)
-            Text(series.end.formattedHourMinute())
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                if let cursorFraction {
+                    Text(series.time(atFraction: cursorFraction).formattedHourMinute())
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Theme.textPrimary)
+                        .fixedSize()
+                        .position(
+                            x: cursorLabelX(for: cursorFraction, width: proxy.size.width),
+                            y: proxy.size.height / 2)
+                } else {
+                    HStack(spacing: 0) {
+                        Text(series.start.formattedHourMinute())
+                        Spacer(minLength: 4)
+                        Text(series.end.formattedHourMinute())
+                    }
+                    // Offset by the gutter so the labels line up with the plot above them rather
+                    // than with the axis numbers, which are not a time.
+                    .padding(.leading, Self.axisLabelWidth)
+                    .padding(.trailing, 6)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        // Offset by the gutter so the labels line up with the plot above them rather than with the
-        // axis numbers, which are not a time.
-        .padding(.leading, Self.axisLabelWidth)
         .font(.system(size: 9, weight: .medium))
         .foregroundStyle(Theme.textMuted)
-        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Where the cursor's clock label sits: under the line, held far enough from either edge that a
+    /// time is not cut in half — the same clamp `StressMonitorChartView.labelX` makes, for the same
+    /// reason. The leading gutter is added because the label row starts where the axis numbers do.
+    private func cursorLabelX(for fraction: Double, width: CGFloat) -> CGFloat {
+        let inset: CGFloat = 26
+        let x = Self.axisLabelWidth + CGFloat(fraction) * max(0, width - Self.axisLabelWidth)
+        return min(max(x, inset), max(inset, width - inset))
+    }
+
+    /// The same clamp in the **plot's** own terms, for the reading drawn over the trace: this overlay
+    /// spans the plot and not the label row, so there is no gutter to add back.
+    private static func plotLabelX(for fraction: Double, width: CGFloat) -> CGFloat {
+        let inset: CGFloat = 24
+        let x = CGFloat(min(max(fraction, 0), 1)) * max(0, width)
+        return min(max(x, inset), max(inset, width - inset))
     }
 
     /// A gridline value as a label. Whole numbers by construction — see `HoursOfSleepChartAxis.lines` —
@@ -221,6 +339,19 @@ public struct HoursOfSleepChartView: View {
                         width: radius * 2,
                         height: radius * 2))
             }
+            return path
+        }
+    }
+
+    /// The reader's cursor: one vertical rule at a fraction of the plot's width.
+    private struct CursorLine: Shape {
+        let fraction: Double
+
+        func path(in rect: CGRect) -> Path {
+            var path = Path()
+            let x = rect.minX + CGFloat(min(max(fraction, 0), 1)) * rect.width
+            path.move(to: CGPoint(x: x, y: rect.minY))
+            path.addLine(to: CGPoint(x: x, y: rect.maxY))
             return path
         }
     }

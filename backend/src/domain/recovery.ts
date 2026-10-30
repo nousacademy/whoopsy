@@ -51,10 +51,17 @@ export interface Recovery {
 /**
  * The storage port for `recoveries`.
  *
- * Four methods: read one day, read a range of days, write one day, write many days. Nothing here
+ * Five methods: read one day, read a range of days, write one day, write many days, and remove a range
+ * of days. Nothing here
  * decides what a missing row *means* — `findByDay` answering `null` is a fact about storage, and
  * turning that into a 404 is the service's job — and nothing here takes a `Request`, a `Response` or
  * a status code.
+ *
+ * **The fifth is the only delete in the whole Worker, and it is range-shaped on purpose.** There is no
+ * `deleteDay` and no `delete(id)`: a caller asking to forget one day can name a range of one, so the
+ * narrower question is a special case rather than a second door — and a per-row delete would be a verb
+ * a sync could reach for to reconcile a difference, which is the thing this API has never done and
+ * still does not. See `docs/BACKEND.md` for why the ruling changed.
  *
  * The bulk write is the fourth and it is not `Promise.all` over `upsert`: the app's first sync sends
  * a nine-hundred-day history, and nine hundred round trips is a request that cannot finish. See
@@ -102,4 +109,18 @@ export interface RecoveryRepository {
    * `changes` tally, so it is a report of what was written rather than an echo of what was sent.
    */
   upsertMany(recoveries: readonly Recovery[]): Promise<number>;
+
+  /**
+   * Delete every row in `[from, to]`, **inclusive at both ends**, and answer with how many the
+   * database reported removing.
+   *
+   * The bounds are the ones `listRange` reads, so a caller can read a range and delete exactly what it
+   * read. `0` is a real answer: a range that holds nothing is the state the caller asked for, and it is
+   * what a replayed delete gets.
+   *
+   * **No read-back and no pre-count.** Counting first and then deleting is two statements racing each
+   * other, and the number a caller is told should be what the delete did rather than what a previous
+   * snapshot said.
+   */
+  deleteRange(userId: string, from: string, to: string): Promise<number>;
 }

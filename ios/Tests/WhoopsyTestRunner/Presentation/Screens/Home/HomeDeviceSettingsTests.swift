@@ -60,7 +60,7 @@ enum HomeDeviceSettingsTests {
                 + "layout bug rather than as a missing case.")
         assertTest(
             Set(deviceHeroes.map(\.stateWord)).count == connectionStates.count,
-            "All six state words are distinct. A copy-paste that left two cases saying `WHOOP CONNECTED` "
+            "All six state words are distinct. A copy-paste that left two cases saying `STRAP CONNECTED` "
                 + "satisfies every non-empty check above and puts one state's words on another's screen.")
         assertTest(
             DeviceSettingsView.hero(for: .disconnected).sentence.contains("Pair a Device"),
@@ -76,8 +76,8 @@ enum HomeDeviceSettingsTests {
         // sizes. The pair below is what fails if the subject is ever retyped as a state word, which is the
         // one edit that would restore it.
         assertTest(
-            DeviceSettingsView.subject == "WHOOP DEVICE",
-            "The header's subject is `WHOOP DEVICE` — the reference's own word for the hardware, and the "
+            DeviceSettingsView.subject == "STRAP DEVICE",
+            "The header's subject is `STRAP DEVICE` — this app's word for the hardware, and the "
                 + "half of the sentence `lead` completes. It is a constant on the view rather than a sixth "
                 + "field on `Hero`, because it is one value in all six arms and six copies are six places "
                 + "to drift.")
@@ -87,8 +87,8 @@ enum HomeDeviceSettingsTests {
             },
             "No state's `stateWord` or `sentence` equals the header's subject. **This is the assertion "
                 + "that fails if the header starts saying the state twice**: the header reads "
-                + "`NOT CONNECTED TO / WHOOP DEVICE` and the caption under the mark reads "
-                + "`WHOOP DISCONNECTED`, so a subject typed as a state word would put one fact on the page "
+                + "`NOT CONNECTED TO / STRAP DEVICE` and the caption under the mark reads "
+                + "`STRAP DISCONNECTED`, so a subject typed as a state word would put one fact on the page "
                 + "in two sizes — which is the arrangement this replaced.")
         assertTest(
             deviceHeroes.allSatisfy { !$0.lead.isEmpty } && Set(deviceHeroes.map(\.lead)).count == 2,
@@ -402,6 +402,35 @@ enum HomeDeviceSettingsTests {
             StrapLinkBadge.chargingDiameter > StrapLinkBadge.dotDiameter,
             "The charging badge is larger than the dot, because the bolt needs a frame inside the "
                 + "`StrapGlyph` knockout ring — at `dotDiameter` its tips would meet the ring")
+
+        // ── The dot's three bands ─────────────────────────────────────────────────────────────────
+        //
+        // WHOOP publishes one percentage→colour scale, and it is the wireless PowerPack's: green at
+        // 50–100, yellow at 20–49, red below 20. The sensor itself publishes only five red flashes
+        // below 5%. These assertions pin the boundaries, the colour each band draws, and the fact
+        // that no reading keeps the *link* colour rather than inventing a full battery.
+        for (percentage, expected) in [(100, BatteryBand.healthy), (50, .healthy), (49, .low),
+                                       (20, .low), (19, .critical), (0, .critical),
+                                       (150, .healthy), (-5, .critical)] {
+            assertTest(
+                BatteryBand.band(for: percentage) == expected,
+                "\(percentage)% is \(expected) — 50 is the green floor and 20 the red one, both "
+                    + "inclusive, exactly as WHOOP writes the PowerPack's ranges")
+        }
+        assertTest(
+            BatteryBand.healthy.color == Theme.recoveryGreen
+                && BatteryBand.low.color == Theme.recoveryYellow
+                && BatteryBand.critical.color == Theme.recoveryRed,
+            "Each band draws the app's three verdict tokens — one mapping, read by the badge")
+        assertTest(
+            StrapLinkBadge.dotColor(band: .critical, state: .connected) == Theme.recoveryRed,
+            "…and a measured band outranks the link colour, so a linked strap at 9% draws red: the "
+                + "dot is about the charge, and the figure beside it says the percentage")
+        assertTest(
+            StrapLinkBadge.dotColor(band: nil, state: .disconnected)
+                == WhoopConnectionState.disconnected.linkColor,
+            "…while no reading keeps the link colour — a disconnected strap has no charge to report, "
+                + "and a red dot there would read as a dead strap rather than an absent reading")
         assertTest(
             WhoopDevice(id: "strap", isCharging: false).updating(isCharging: true).isCharging
                 && !WhoopDevice(id: "strap", isCharging: true).updating(isCharging: false).isCharging,

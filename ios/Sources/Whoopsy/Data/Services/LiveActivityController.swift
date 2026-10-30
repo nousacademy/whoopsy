@@ -82,9 +82,12 @@ public final class LiveActivityController: LiveActivityControlling {
     public func end(state: LiveSessionActivityState) async {
         guard let activity else { return }
         self.activity = nil
-        // `.default` rather than `.immediate`: the card is the user's record that the session
-        // happened, and dismissing it the instant they tap END would take the summary with it.
-        await activity.end(Self.content(for: state), dismissalPolicy: .default)
+        // **`.immediate`, on the user's instruction: *"remove this for when session is ended on lock
+        // screen"*.** This was `.default`, which kept the ended summary on the lock screen for up to
+        // several hours after END; the user does not want an `ACTIVITY ENDED` card at all. The session's
+        // record is the activity page and the row it wrote — the lock screen is for what is happening
+        // now, and a finished session is not.
+        await activity.end(Self.content(for: state), dismissalPolicy: .immediate)
     }
 
     /// Ends every card of this app's session type, whoever started it.
@@ -92,8 +95,8 @@ public final class LiveActivityController: LiveActivityControlling {
     /// Read off `Activity<…>.activities` rather than off `self.activity`, because the case this exists
     /// for is precisely the one where `self` did not survive: a card outlives the process that
     /// requested it, and this build has no in-flight persistence and no BLE state restoration, so a
-    /// relaunch cannot adopt one — only end it. The state pushed is the last one the card knows about,
-    /// with `isRunning` cleared, so it stops reading as live while the system counts down.
+    /// relaunch cannot adopt one — only end it. The card is ended `.immediate` for `end`'s reason: an
+    /// orphan is a session that is over, and the lock screen should not keep saying so.
     @discardableResult
     public func endOrphans() async -> Int {
         let orphans = Activity<WhoopsySessionAttributes>.activities
@@ -106,11 +109,16 @@ public final class LiveActivityController: LiveActivityControlling {
                         strain: content.state.strain,
                         heartRate: content.state.heartRate,
                         calories: content.state.calories,
-                        isRunning: false
+                        isRunning: false,
+                        bandScalePosition: content.state.bandScalePosition,
+                        distanceMeters: content.state.distanceMeters,
+                        averageSpeedMetersPerSecond: content.state.averageSpeedMetersPerSecond,
+                        glyphSymbol: content.state.glyphSymbol,
+                        glyphSecondarySymbol: content.state.glyphSecondarySymbol
                     ),
                     staleDate: nil
                 ),
-                dismissalPolicy: .default
+                dismissalPolicy: .immediate
             )
         }
         // The in-process handle is one of the cards just ended, so it must not outlive the loop.
@@ -134,7 +142,12 @@ public final class LiveActivityController: LiveActivityControlling {
                 strain: state.strain,
                 heartRate: state.heartRate,
                 calories: state.calories,
-                isRunning: state.isRunning
+                isRunning: state.isRunning,
+                bandScalePosition: state.bandScalePosition,
+                distanceMeters: state.distanceMeters,
+                averageSpeedMetersPerSecond: state.averageSpeedMetersPerSecond,
+                glyphSymbol: state.glyphSymbol,
+                glyphSecondarySymbol: state.glyphSecondarySymbol
             ),
             staleDate: nil
         )

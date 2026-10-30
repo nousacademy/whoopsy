@@ -39,19 +39,48 @@ import SwiftUI
     /// empty, which is the same rule each chart applies inside a loaded week.
     public private(set) var week: MetricWeek?
 
-    private let calculate: CalculateRecoveryUseCase
     private let repository: any RecoveryRepository
     private let sleepRepository: any SleepRepository
 
+    /// **No calculator, and that is the page's contract now.** A ring page reads; the one writer that
+    /// scores a day is `RefreshRecoveryUseCase`, driven from the foreground after the night refresh, so
+    /// a calculation happens once per night and is stored. See that type for what this replaced.
     public init(
-        calculate: CalculateRecoveryUseCase,
         repository: any RecoveryRepository,
-        sleepRepository: any SleepRepository
+        sleepRepository: any SleepRepository,
+        refreshRecovery: RefreshRecoveryUseCase? = nil
     ) {
-        self.calculate = calculate
         self.repository = repository
         self.sleepRepository = sleepRepository
+        self.refreshRecovery = refreshRecovery
     }
+
+    /// The writer that scores the day, when the page has one.
+    ///
+    /// **Optional for the runner's fixtures' sake**, and used so a page opened before the background
+    /// score lands fills itself: the foreground chain runs a drain first, so a ring tapped in the
+    /// minutes after launch can otherwise read a day that is about to be written.
+    private let refreshRecovery: RefreshRecoveryUseCase?
+
+    private var recoveryTask: Task<Void, Never>?
+
+    /// Subscribes to computed rows. Idempotent, on `HomeViewModel.observeNights()`'s rule.
+    public func observeRecovery() {
+        guard recoveryTask == nil, let refreshRecovery else { return }
+        let stream = refreshRecovery.updates
+        recoveryTask = Task { [weak self] in
+            for await written in stream {
+                guard !Task.isCancelled, let self else { return }
+                guard let day = self.loadedDay, written.date.startOfDay == day else { continue }
+                CaptureLog.shared.append(
+                    "RECOVERY page picked up day=\(written.date.ISO8601Format())")
+                await self.load(for: day)
+            }
+        }
+    }
+
+    /// The day the last load was for, so an update for another day is dropped.
+    private var loadedDay: Date?
 
     /// Loads the day the screen is showing — by **reading** it, not by recomputing it.
     ///
@@ -66,27 +95,30 @@ import SwiftUI
     /// its `source` label on the way past. Reading first is still the rule, and `shouldCompute` is
     /// still the only gate that lets a recompute through — see it for what that gate now protects.
     public func load(for date: Date) async {
+        let started = Date()
+        let day = date.startOfDay
+        // **A day being left behind takes its figures with it.** `RecoveryDetailView` is shown twice —
+        // as the Recovery tab's whole page and as Home's pushed copy — and both draw from a view model
+        // that outlives a single day (the tab wraps `Date()`, which moves at midnight). Without this,
+        // the day being replaced stayed on screen until every read returned. A same-day reload clears
+        // nothing, which is the correction the ring needed.
+        if loadedDay != day {
+            recovery = nil
+            history = []
+            week = nil
+            baselines = nil
+            sleepSession = nil
+            errorMessage = nil
+        }
+        loadedDay = day
         isLoading = true
         defer { isLoading = false }
-        // Cleared before the reads, so a throw part-way through cannot leave the previous day's seven
-        // columns under this day's ring. The week is a window *ending on* the day being loaded, so a
-        // stale one is not merely old data — it is a chart labelled with the wrong dates.
-        week = nil
         do {
             var stored = try await repository.getRecovery(for: date)
-            let hasSleepSession = try await sleepRepository.getSleepSession(for: date) != nil
-            if shouldCompute(for: date, stored: stored, hasSleepSession: hasSleepSession) {
-                let provisional = stored
-                stored = try await calculate.execute(for: date)
-                // **A re-score that refuses the day must also remove the row it replaces.** The use
-                // case writes nothing when the window holds too few measured days, so without this
-                // the previous score would stay on disk and seed the very baseline it was denied.
-                // Only a strap-computed row (`source == nil`) is provisional; an imported one is a
-                // measurement the current scorer has no business deleting.
-                if stored == nil, let provisional, provisional.isLocallyComputed {
-                    try? await repository.deleteRecovery(for: date)
-                }
-            }
+            // **The stored day is drawn before anything recomputes.** A recompute reads the whole
+            // night's samples and a thirty-day baseline, and this used to run before the assignment —
+            // so opening today's ring blanked the page for the length of the calculation instead of
+            // showing the row that was already on disk. The recompute replaces it below when it lands.
             recovery = stored
 
             // Fetched last so that a score computed just above, which lands on today, is in the trend
@@ -100,9 +132,48 @@ import SwiftUI
             week = MetricWeek(endingOn: date, recovery: history, sleep: nights)
 
             await loadBaselines(for: date, todayHrvMetric: displayedHrvMetric)
+            CaptureLog.shared.append(
+                "RECOVERY load day=\(date.startOfDay.ISO8601Format()) "
+                    + "ms=\(Int(Date().timeIntervalSince(started) * 1000)) "
+                    + "row=\(recovery == nil ? "no" : "yes")")
+            logScoreArithmetic(for: date)
         } catch {
             errorMessage = error.localizedDescription
+            CaptureLog.shared.append(
+                "RECOVERY load day=\(date.startOfDay.ISO8601Format()) "
+                    + "ms=\(Int(Date().timeIntervalSince(started) * 1000)) error=yes")
         }
+    }
+
+    /// The stored day's score arithmetic, printed from the baselines this page already read.
+    ///
+    /// **The scorer's own line only prints when it scores**, and a day is scored once — so the
+    /// question "why is this row 60%?" usually arrives on a day with no `RECOVERY score` line in the
+    /// capture at all. The page holds the same three pieces the scorer used: the row's readings and
+    /// the trailing window's means and spreads, read through the same `RecoveryScoring` call. This
+    /// line reconstructs the z-scores from them so the answer is a lookup the next time the page is
+    /// opened, without a re-score and without a second derivation.
+    private func logScoreArithmetic(for date: Date) {
+        guard let row = recovery, row.hasMeasurement, let baselines else { return }
+        let zHRV = BaselineStatisticsMath.zScore(
+            value: row.hrvValueMs, mean: baselines.hrvMeanMs, stdDev: baselines.hrvStdDevMs)
+        let zRHR = BaselineStatisticsMath.zScore(
+            value: Double(row.restingHeartRate),
+            mean: baselines.restingHeartRateMean,
+            stdDev: baselines.restingHeartRateStdDev)
+        let sleep = sleepSession.map { Double($0.sleepSufficiencyPercentage) / 100.0 }
+        CaptureLog.shared.append(
+            "RECOVERY read day=\(date.startOfDay.ISO8601Format()) score=\(row.score) "
+                + "hrv=\(String(format: "%.1f", row.hrvValueMs))"
+                + " base=\(String(format: "%.1f", baselines.hrvMeanMs))"
+                + "±\(String(format: "%.1f", baselines.hrvStdDevMs)) "
+                + "z=\(String(format: "%.2f", zHRV)) "
+                + "rhr=\(row.restingHeartRate)"
+                + " base=\(String(format: "%.1f", baselines.restingHeartRateMean))"
+                + "±\(String(format: "%.1f", baselines.restingHeartRateStdDev)) "
+                + "z=\(String(format: "%.2f", zRHR)) "
+                + "sleep=\(sleep.map { String(format: "%.2f", $0) } ?? "-") "
+                + "days=\(baselines.hrvObservationCount)")
     }
 
     /// The trailing window's baselines, and the day's own night.
@@ -170,14 +241,6 @@ import SwiftUI
     /// A day with no measurement is not the same as a day with no row, which is why the first branch
     /// tests the measurement and not `nil`: the strap may record something later today, and a
     /// placeholder row left by an older build (`RecoveryMetric.hasMeasurement`) is fillable.
-    private func shouldCompute(
-        for date: Date, stored: RecoveryMetric?, hasSleepSession: Bool
-    ) -> Bool {
-        guard Calendar.current.isDateInToday(date) else { return false }
-        if stored?.hasMeasurement != true { return true }
-        return hasSleepSession && stored?.hrvMetric == .rmssd
-    }
-
     /// Which metric the screen is presenting. Once HealthKit SDNN days and strap RMSSD days share
     /// this table, a screen that does not name a metric is showing an unlabelled mix.
     public var displayedHrvMetric: HRVMetric {

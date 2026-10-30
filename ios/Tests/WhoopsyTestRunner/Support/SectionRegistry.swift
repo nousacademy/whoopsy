@@ -187,7 +187,7 @@ func testSections() -> [TestSection] {
         TestSection(
             id: 22,
             title: "Testing the storage switch, all seven resources' wire names, the decorator's "
-                + "degrade, the run's own arithmetic, and the absence of a delete...",
+                + "degrade, the run's own arithmetic, and the one delete door...",
             body: SyncSectionTests.run),
         TestSection(
             id: 23,

@@ -4,6 +4,9 @@ import SwiftUI
 @MainActor @Observable public final class SleepViewModel {
     public var session: SleepSession?; public var isLoading = false; public var errorMessage: String?
 
+    /// The day the last load was for, so a deferred result computed for one day cannot land on another.
+    private var loadedDay: Date?
+
     /// The composite sleep score the ring prints, or `nil` when the night cannot produce two terms.
     ///
     /// **Read from the week, not computed a second time.** `MetricWeek` scores its seven days over the
@@ -206,7 +209,8 @@ import SwiftUI
         napRepository: any NapRepository,
         biometricRepository: any BiometricRepository,
         analyzeSleepStress: AnalyzeSleepStressUseCase,
-        userProfileRepository: any UserProfileRepository
+        userProfileRepository: any UserProfileRepository,
+        refreshNights: RefreshNightsUseCase? = nil
     ) {
         self.analyze = analyze
         self.repository = repository
@@ -214,7 +218,32 @@ import SwiftUI
         self.biometricRepository = biometricRepository
         self.analyzeSleepStress = analyzeSleepStress
         self.userProfileRepository = userProfileRepository
+        self.refreshNights = refreshNights
     }
+
+    /// The writer that classifies nights, when the page has one.
+    ///
+    /// **Optional so the runner's fixtures keep their shape**, and used for one thing: a night that
+    /// lands while this page is open is re-read, so a page opened before the morning's drain finished
+    /// fills itself instead of staying blank until it is pushed again.
+    private let refreshNights: RefreshNightsUseCase?
+
+    /// Subscribes to classified nights. Idempotent, on `HomeViewModel.observeNights()`'s rule.
+    public func observeNights() {
+        guard nightsTask == nil, let refreshNights else { return }
+        let stream = refreshNights.nightUpdates
+        nightsTask = Task { [weak self] in
+            for await written in stream {
+                guard !Task.isCancelled, let self else { return }
+                guard let day = self.loadedDay, written.date.startOfDay == day else { continue }
+                CaptureLog.shared.append(
+                    "SLEEP page picked up night=\(written.date.ISO8601Format())")
+                await self.load(for: day)
+            }
+        }
+    }
+
+    private var nightsTask: Task<Void, Never>?
 
     /// Loads the night the screen is showing by reading it — see
     /// `RecoveryViewModel.load(for:)` for why the read is the point.
@@ -246,19 +275,77 @@ import SwiftUI
         // The one read, paid only on the path that can still say "no": a night of the current
         // version whose row already covers everything the analyzer can see is answered from storage.
         let edge = try? await analyze.inputEdge(for: date)
-        return SleepReclassification.isOwed(watermark: watermark, inputEdge: edge)
+        return SleepReclassification.isOwed(
+            watermark: watermark, inputEdge: edge, nightEnd: stored.endTime,
+            endedAtDataEdge: stored.endedAtDataEdge)
+    }
+
+    /// Writes the night's two bounds and re-reads the page from the row that was saved.
+    ///
+    /// **Only the times.** The stage totals, the need and the provenance are carried through by
+    /// `SleepSession.withEditedTimes`, which also advances the row's watermark — see its doc comment
+    /// for why an edit has to move `scoredThrough` or the next re-classification would redraw it.
+    ///
+    /// **The source is handed back with the save.** `saveSleepSession(_:source:)` writes the column
+    /// from its caller, and an imported night that was saved with `nil` would stop being recognisable
+    /// as WHOOP's own — `hasWhoopSleepNeed` is read off exactly that string, and the page's edit would
+    /// silently turn an imported night into one this app claims to have classified.
+    ///
+    /// Returns whether the write landed; a failed one leaves the page on the row it had, which is the
+    /// same rule the activity page's editor follows.
+    @discardableResult
+    public func saveTimes(start: Date, end: Date) async -> Bool {
+        guard let session else { return false }
+        let span = end.timeIntervalSince(start)
+        guard span > 0, span <= SleepTimeEditDraft.maximumSpanSeconds else { return false }
+
+        let edited = session.withEditedTimes(start: start, end: end)
+        do {
+            try await repository.saveSleepSession(
+                edited,
+                source: edited.hasWhoopSleepNeed ? WhoopExportImporter.sourceLabel : nil)
+        } catch {
+            AppLogger.database.error(
+                "Sleep edit \(self.loadedDay?.description ?? "?", privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+
+        CaptureLog.shared.append(
+            "SLEEP edit day=\(edited.date.startOfDay.ISO8601Format()) "
+                + "start=\(edited.startTime.ISO8601Format()) "
+                + "end=\(edited.endTime.ISO8601Format())")
+        await load(for: edited.date)
+        return true
     }
 
     public func load(for date: Date) async {
+        let started = Date()
+        var reclassified = false
+        let day = date.startOfDay
+        // **The clear is conditional on the day actually changing, and both halves are corrections.**
+        // Clearing on every load blanked the chart and the ring for the whole of a same-day reload —
+        // and this page re-loads on the way back from a push, so that was the ring "emptying out".
+        // Clearing on *none* of them was the opposite mistake: the page takes its day as a plain `let`,
+        // but the **view model** is one instance reused for whichever day Home is showing, so opening
+        // it on a second day drew the first day's night, scores and cards until every read returned —
+        // and kept them for good if one threw.
+        if loadedDay != day {
+            session = nil
+            sleepScore = nil
+            sleepConsistency = nil
+            naps = []
+            stageSummary = nil
+            consistencySummary = nil
+            typicalEfficiency = nil
+            timelineLanes = nil
+            hoursOfSleepSeries = nil
+            sleepStress = nil
+            week = nil
+            errorMessage = nil
+        }
+        loadedDay = day
         isLoading = true
         defer { isLoading = false }
-        // Cleared before the reads, on `RecoveryViewModel.load`'s rule: the week is a window *ending on*
-        // the day being loaded, so a stale one is not merely old data — it is a chart labelled with the
-        // wrong dates and a highlighted column on the wrong day. The other properties here are single
-        // figures whose worst stale state is a wrong number under a correct heading; this one draws
-        // seven of them.
-        week = nil
-        sleepScore = nil
         do {
             async let profileRead = userProfileRepository.getUserProfile()
             var stored = try await repository.getSleepSession(for: date)
@@ -276,6 +363,7 @@ import SwiftUI
             // with it until the next night. The deletion survives only for the one case that earns
             // it: a stored row whose algorithm no longer exists here.
             if Calendar.current.isDateInToday(date), await shouldReclassify(stored, on: date) {
+                reclassified = true
                 let provisional = stored
                 let analysisStarted = Date()
                 stored = try await analyze.execute(for: date)
@@ -335,13 +423,27 @@ import SwiftUI
             // is drawn from are the same nights the two "typical" cards above were taken over. The
             // order matters in one direction only: `window` is resolved above, and this is the fourth
             // thing taken from it.
-            sleepStress = try await resolveSleepStress(for: stored, from: window)
+            // **The one thing on this page that was allowed to block it, and no longer is.** The
+            // within-sleep stress model reads up to `StressMath.baselineDays` prior nights' samples —
+            // roughly a fortnight of a night's second-by-second rows — so awaiting it here held the
+            // whole page, cards and all, until it finished. It is a single card: the page draws
+            // without it and the card appears when the model lands. The result is cached per night
+            // (keyed on the night's own watermark) so a second open in the same launch costs nothing.
+            loadSleepStress(for: stored, from: window, day: date.startOfDay)
             // Read for the day the screen is showing, not for today. A nap is keyed on the day it was
             // taken, so paging the day stepper has to move this read with it — anchoring on `Date()`
             // would print one day's nap beside another day's night.
             naps = try await napRepository.getNaps(on: date)
+            CaptureLog.shared.append(
+                "SLEEP page day=\(date.startOfDay.ISO8601Format()) "
+                    + "ms=\(Int(Date().timeIntervalSince(started) * 1000)) "
+                    + "night=\(session == nil ? "no" : "yes") "
+                    + "reclassified=\(reclassified ? "yes" : "no")")
         } catch {
             errorMessage = error.localizedDescription
+            CaptureLog.shared.append(
+                "SLEEP page day=\(date.startOfDay.ISO8601Format()) "
+                    + "ms=\(Int(Date().timeIntervalSince(started) * 1000)) error=yes")
         }
     }
 
@@ -482,28 +584,70 @@ import SwiftUI
             samples: samples, start: session.startTime, end: session.endTime)
     }
 
-    /// The night's within-sleep stress, or `nil`.
+    /// Resolves the sleep-stress card **off the page's critical path**, from a cache when it can.
     ///
-    /// **It takes `window.priorNights` rather than reading a history**, and that is the whole reason
-    /// it is not a fourth sibling of the two resolvers above. The model builds a personal baseline from
-    /// previous nights' in-bed windows, and a baseline drawn from a different set of nights than the
-    /// bands one card up is a screen printing two "typical" figures that disagree with nothing on it to
-    /// say so — the failure `resolveWindow`'s doc comment exists to prevent. Handing the narrowed
-    /// window in also keeps the `before` rule in one place; this type does not re-derive it.
-    ///
-    /// **`nil` with no night**: with nothing to describe, the read would be spent for nothing, which is
-    /// the same guard the three resolvers above take. A `nil` from the use case itself covers three
-    /// further states — see its doc comment — and this screen treats all four alike, by drawing no
-    /// card.
-    ///
-    /// A read failure is **not** caught here, on `resolveHoursOfSleepSeries`' rule: a repository that
-    /// threw is a fault, not the ordinary absence that `nil` means, and it belongs in `load`'s `catch`.
-    private func resolveSleepStress(
-        for session: SleepSession?,
-        from window: Window?
-    ) async throws -> SleepStressNight? {
-        guard let session, let window else { return nil }
-        return try await analyzeSleepStress.execute(
-            for: session, priorNights: window.priorNights)
+    /// See the call site: the model reads a fortnight of prior nights, and that is the heaviest thing
+    /// this screen does. `SleepStressCache` remembers the answer per night and per watermark, so a
+    /// pushed-and-popped page — or the same page after a day change and back — does not pay for it
+    /// twice in one launch. A failure assigns `nil`, which draws no card: the absence rule, not an
+    /// error the page should hold itself for.
+    private func loadSleepStress(
+        for session: SleepSession?, from window: Window?, day: Date
+    ) {
+        guard let session, let window else {
+            sleepStress = nil
+            return
+        }
+        let key = session.scoredThrough
+        let analysis = analyzeSleepStress
+        let nights = window.priorNights
+        let cache = SleepStressCache.shared
+
+        Task { [weak self] in
+            if let cached = await cache.cached(for: day, key: key) {
+                await MainActor.run {
+                    guard let self, self.loadedDay == day else { return }
+                    self.sleepStress = cached
+                }
+                return
+            }
+            let value = try? await analysis.execute(for: session, priorNights: nights)
+            await cache.store(value, for: day, key: key)
+            await MainActor.run {
+                guard let self, self.loadedDay == day else { return }
+                self.sleepStress = value
+            }
+        }
     }
+
+
+}
+
+/// The within-sleep stress model's answer, remembered per night.
+///
+/// **Process-wide and in memory**, because the call it saves is the most expensive one on the sleep
+/// page — up to `StressMath.baselineDays` prior nights' samples — and the pages that need it are pushed
+/// and popped repeatedly. The key is the night's own `scoredThrough` watermark, so a night a drain has
+/// reclassified misses the cache rather than serving the older answer. Nothing here is persisted: the
+/// durable form would be a stored table, which is a migration rather than a cache.
+actor SleepStressCache {
+
+    static let shared = SleepStressCache()
+
+    private var values: [Date: (key: Date?, value: SleepStressNight?)] = [:]
+
+    /// A double optional on purpose: `nil` is a miss, `.some(nil)` is a cached *absence* — a night the
+    /// model declined, which is a real answer and must not be recomputed either.
+    func cached(for day: Date, key: Date?) -> SleepStressNight?? {
+        guard let entry = values[day], entry.key == key else { return nil }
+        return .some(entry.value)
+    }
+
+    func store(_ value: SleepStressNight?, for day: Date, key: Date?) {
+        values[day] = (key, value)
+    }
+
+    /// For the runner: the cache is process-wide, and a block that seeded one would hide a recompute
+    /// from the next.
+    func reset() { values.removeAll() }
 }

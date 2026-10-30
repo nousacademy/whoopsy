@@ -172,8 +172,12 @@ enum LocalDatabaseManagerSyncTests {
             let columns = try await db.columnNames(in: "recoveries")
             assertTest(Set(columns) == [
                 "date", "recovery_score", "resting_heart_rate", "hrv_value_ms", "hrv_metric",
-                "skin_temperature", "spo2_percentage", "respiratory_rate", "source"
-            ], "The table's columns are the record's own nine, spelled in snake case")
+                "skin_temperature", "spo2_percentage", "respiratory_rate", "source",
+                // `v39`'s pair — the formula that produced the row and the newest input it saw.
+                // `scored_through` is snake case for `v37`'s reason: this record declares its
+                // `CodingKeys`, so a camelCase column here would never be written.
+                "algorithm", "scored_through"
+            ], "The table's columns are the record's own eleven, spelled in snake case")
 
             // The two the wire spells a third way are named here, because a `skinTemp` column would
             // mean the record's mapping and the table had drifted and every read would throw at launch.

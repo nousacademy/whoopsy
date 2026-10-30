@@ -59,7 +59,8 @@ export interface Strain {
 /**
  * The storage port for `strains`.
  *
- * Four methods: read one day, read a range of days, write one day, write many days — the same four
+ * Five methods: read one day, read a range of days, write one day, write many days, and remove a
+ * range of days — the same five
  * `RecoveryRepository` declares, and deliberately not a shared interface with it. Two resources that
  * happen to have the same verbs today are two resources; a common port would make every future
  * divergence between them a change to a type both depend on.
@@ -113,4 +114,15 @@ export interface StrainRepository {
    * what was written rather than an echo of what was sent.
    */
   upsertMany(strains: readonly Strain[]): Promise<number>;
+
+  /**
+   * Delete every row in `[from, to]`, **inclusive at both ends**, and answer with how many the
+   * database reported removing.
+   *
+   * The bounds are the ones `listRange` reads, so a caller can read a range and delete exactly what it
+   * read. `0` is a real answer: a range that holds nothing is the state the caller asked for, and it is
+   * what a replayed delete gets. There is no per-row variant — a caller forgetting one day names a
+   * range of one, so the narrow question stays a special case of this one.
+   */
+  deleteRange(userId: string, from: string, to: string): Promise<number>;
 }

@@ -278,6 +278,29 @@ public protocol CloudSync: Sendable {
     /// read it as *leave what is there alone*. That is the same rule the app's own `saveUserProfile`
     /// follows, which is why the two agree without either deferring to the other.
     func writeProfile(_ row: UserProfileSyncRow) async throws
+
+    // MARK: - The one removal
+
+    /// Delete every stored day in `[from, to]`, **inclusive at both ends**, and answer with what went.
+    ///
+    /// **The only delete on this port, and it is deliberately not per-resource.** Every other method
+    /// here is named for its resource because each resource has its own path, its own mapper and its
+    /// own batch shape; a removal is one act over the four measured resources, taken because a span of
+    /// days is wrong rather than because a *row* is. Four `deleteRecoveries`/`deleteSleeps`/… methods
+    /// would be four ways to half-do one thing, and a caller that forgot one of them would leave the
+    /// day looking present to the next read.
+    ///
+    /// **A range and not a day**, for the same reason: a caller forgetting one day names a range of
+    /// one, so the narrower question is a special case rather than a second door — and a per-row verb
+    /// is exactly what a sync would reach for to reconcile a difference, which is the behaviour this
+    /// API has never had and still does not.
+    ///
+    /// **It throws rather than degrading.** Every read here answers `nil` on a miss and every write is
+    /// fire-and-forget, because both can be retried by doing nothing. A delete cannot: reporting
+    /// success for a removal that did not happen is the one failure that produces a *wrong* screen
+    /// rather than a missing one, and this port's whole absence rule is that missing is acceptable and
+    /// wrong is not.
+    func purge(from: Date, to: Date) async throws -> PurgeTally
 }
 
 /// Why a cloud call failed, split by **what the caller should do about it** rather than by status code.

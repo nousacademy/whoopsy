@@ -31,6 +31,74 @@ enum SleepViewModelTests {
             "A row that cannot say what it saw is conservatively stale — the honest answer for a row "
                 + "whose version is missing")
 
+        // ── The night's own end, which is what stopped the morning churn ──────────────────────────
+        //
+        // The edge used to be the newest sample anywhere in the 21:00 → 10:00 window, so every sample
+        // after waking made the stored night owed: re-classified and re-saved on every foreground and
+        // every page open, each run folding tens of thousands of samples to produce the same night.
+        let nightEnd = Date(timeIntervalSinceReferenceDate: 3_000)
+        assertTest(
+            SleepReclassification.isOwed(
+                watermark: watermark,
+                inputEdge: nightEnd.addingTimeInterval(3_600),
+                nightEnd: nightEnd,
+                endedAtDataEdge: false) == false,
+            "An hour of awake morning samples is **not** input that can change the night, so it does "
+                + "not owe a re-classification — measured 2026-10-27 as the cause of the sleep ring "
+                + "redrawing on every foreground")
+        assertTest(
+            SleepReclassification.isOwed(
+                watermark: watermark,
+                inputEdge: nightEnd.addingTimeInterval(300),
+                nightEnd: nightEnd,
+                endedAtDataEdge: false) == true,
+            "…while input inside the grace after the end may still belong to a night that is growing, "
+                + "so it is owed: the grace is the classifier's own ten-minute run")
+        assertTest(
+            SleepReclassification.isOwed(
+                watermark: watermark,
+                inputEdge: nightEnd.addingTimeInterval(-600),
+                nightEnd: nightEnd,
+                endedAtDataEdge: false) == true,
+            "…and input inside the night itself is owed whatever the grace, which is the "
+                + "drain-delivered-late case the watermark exists for")
+
+        // ── A night cut at the data edge, which the grace would otherwise freeze ──────────────────
+        //
+        // Measured 2026-10-28: a drain that had not finished left samples only up to 23:59, so the
+        // night was classified as 23:05–23:59 — a 54-minute night. The rest arrived hours later, and
+        // the grace treated it as wake time: the row was never reclassified, so the wrong night stayed
+        // on screen for good.
+        let cutEnd = Date(timeIntervalSinceReferenceDate: 5_000)
+        assertTest(
+            SleepReclassification.isOwed(
+                watermark: cutEnd.addingTimeInterval(7 * 3_600),
+                inputEdge: cutEnd.addingTimeInterval(8 * 3_600),
+                nightEnd: cutEnd,
+                endedAtDataEdge: true) == true,
+            "A night whose record says it **ended at the data edge** is owed for input hours later, "
+                + "however far — everything after a cut is still the same night. Measured 2026-10-28: "
+                + "a night ending 23:59 whose watermark was already 07:10, where inferring this from "
+                + "the gap failed and the fragment became permanent")
+
+        assertTest(
+            SleepReclassification.isOwed(
+                watermark: cutEnd.addingTimeInterval(2 * 3_600),
+                inputEdge: cutEnd.addingTimeInterval(3 * 3_600),
+                nightEnd: cutEnd,
+                endedAtDataEdge: false) == false,
+            "…while the same input is refused for a night trimmed at a **detected wake**, which keeps "
+                + "the grace, so ordinary morning samples still do not reopen it")
+
+        assertTest(
+            SleepReclassification.isOwed(
+                watermark: cutEnd,
+                inputEdge: cutEnd.addingTimeInterval(3 * 3_600),
+                nightEnd: cutEnd,
+                endedAtDataEdge: nil) == true,
+            "…and a row written before `v40` carries no verdict at all, so it is owed once — the run "
+                + "then stamps the fact, and the row it writes takes one of the two branches above")
+
         // The analyzer's own edge is the newer of its two inputs, taken from arrays it just read.
         let edgeStart = Date(timeIntervalSinceReferenceDate: 2_000)
         let edgeSamples = [BiometricSample(timestamp: edgeStart, heartRate: 55)]
@@ -501,5 +569,97 @@ enum SleepViewModelTests {
             assertTest(false, "The typical-range export block threw: \(error)")
         }
 
+        // ── The page's view model outlives the day it was pushed for ──────────────────────────────
+        //
+        // `SleepDetailView` takes its day as a plain `let`, but `SleepViewModel` is one instance in
+        // `MainContainerView`, reused for whichever day Home is showing. So opening the page on a
+        // second day used to draw the first day's night and cards until every read returned — and for
+        // good if one threw. The clear is now conditional on the day changing, which is also what
+        // keeps a same-day reload from blanking the ring.
+        do {
+            let db = LocalDatabaseManager(inMemory: true)
+            let sleeps = GRDBSleepRepository(db: db)
+            let today = Date().startOfDay
+            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+            try await sleeps.saveSleepSession(
+                SleepSession(
+                    date: today,
+                    startTime: today.addingTimeInterval(-9 * 3600),
+                    endTime: today.addingTimeInterval(-1 * 3600),
+                    targetSleepNeedSeconds: 8 * 3600,
+                    lightSleepSeconds: 4 * 3600,
+                    deepSleepSeconds: 1.5 * 3600,
+                    remSleepSeconds: 1.5 * 3600,
+                    algorithm: .current,
+                    scoredThrough: Date()))
+
+            // Fails the second history read, which is the load for the other day.
+            let flaky = FailingHistorySleepRepository(base: sleeps, failingCall: 2)
+            let samples = EmptyBiometricStore()
+            let page = await MainActor.run {
+                SleepViewModel(
+                    analyze: AnalyzeSleepUseCase(
+                        biometricRepository: samples,
+                        sleepRepository: sleeps,
+                        strainRepository: GRDBStrainRepository(db: db),
+                        userProfileRepository: GRDBUserProfileRepository(db: db),
+                        motionRepository: FixtureMotionEpochRepository()),
+                    repository: flaky,
+                    napRepository: GRDBNapRepository(db: db),
+                    biometricRepository: samples,
+                    analyzeSleepStress: AnalyzeSleepStressUseCase(biometricRepository: samples),
+                    userProfileRepository: GRDBUserProfileRepository(db: db))
+            }
+
+            await page.load(for: today)
+            let todayNight = await MainActor.run { page.session }
+            assertTest(
+                todayNight != nil,
+                "The page draws today's stored night — the precondition, without which the assertion "
+                    + "below would pass for a page that never had a night to leave behind")
+
+            await page.load(for: yesterday)
+            let afterDayChange = await MainActor.run {
+                (night: page.session, score: page.sleepScore)
+            }
+            assertTest(
+                afterDayChange.night == nil && afterDayChange.score == nil,
+                "…and a load for another day clears the night **before** its reads, so a failed load "
+                    + "cannot leave the previous day's night on screen under the new day's header — "
+                    + "the reported bug, on the page as well as on Home "
+                    + "(night \(afterDayChange.night == nil ? "nil" : "present"), score "
+                    + "\(String(describing: afterDayChange.score)))")
+        }
+
+    }
+}
+
+/// A `SleepRepository` that fails one chosen `getSleepHistory` call and delegates everything else.
+private actor FailingHistorySleepRepository: SleepRepository {
+    private let base: any SleepRepository
+    private let failingCall: Int
+    private var historyCalls = 0
+
+    init(base: any SleepRepository, failingCall: Int) {
+        self.base = base
+        self.failingCall = failingCall
+    }
+
+    func getSleepSession(for date: Date) async throws -> SleepSession? {
+        try await base.getSleepSession(for: date)
+    }
+
+    func saveSleepSession(_ session: SleepSession, source: String?) async throws {
+        try await base.saveSleepSession(session, source: source)
+    }
+
+    func getSleepHistory(days: Int, endingOn: Date) async throws -> [SleepSession] {
+        historyCalls += 1
+        if historyCalls == failingCall { throw CocoaError(.fileReadUnknown) }
+        return try await base.getSleepHistory(days: days, endingOn: endingOn)
+    }
+
+    func deleteSleepSession(for date: Date) async throws {
+        try await base.deleteSleepSession(for: date)
     }
 }

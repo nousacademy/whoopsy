@@ -340,5 +340,15 @@ enum PersistenceSchemaTests {
             firstConsumer.cancel()
             secondConsumer.cancel()
         }
+
+        // The arm the app actually launches on. Every block above opens an in-memory database, and
+        // that is a `DatabaseQueue`; a file takes a `DatabasePool`, so without this the pool — the
+        // writer every device build uses — would be compiled and never run.
+        try await LocalDatabasePoolTests.run()
+
+        // The app's one delete, at the level of the tables it touches: what a range removes, what it
+        // leaves, and the fact that the samples go with the scores — the half that stops the next
+        // foreground re-deriving a day that was supposed to be gone.
+        try await DayPurgePersistenceTests.run()
     }
 }

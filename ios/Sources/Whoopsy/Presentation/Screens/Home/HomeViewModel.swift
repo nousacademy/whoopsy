@@ -257,11 +257,23 @@ import SwiftUI
     /// does not have to build an analyzer; production wiring passes it (`MainContainerView`).
     private let refreshNights: RefreshNightsUseCase?
 
+    /// The recovery writer — optional for `refreshNights`' reason.
+    private let refreshRecovery: RefreshRecoveryUseCase?
+
+    /// The restore, so the rings reload after one fills the tables behind this screen.
+    private let restoreFromCloud: RestoreFromCloudUseCase?
+
     private var task: Task<Void, Never>?
     private var deviceTask: Task<Void, Never>?
     private var stepsTask: Task<Void, Never>?
     private var strainTask: Task<Void, Never>?
     private var nightsTask: Task<Void, Never>?
+    private var recoveryTask: Task<Void, Never>?
+    private var restoreTask: Task<Void, Never>?
+
+    /// Bumped by `applyLiveRecovery`, so a load that read before the write does not put the older row
+    /// back — `liveSleepWrites`' rule for the recovery ring.
+    private var liveRecoveryWrites = 0
 
     /// The day `load(for:)` last read, so a live write can be matched against the day on screen.
     private var loadedDay: Date?
@@ -291,7 +303,9 @@ import SwiftUI
         streamUseCase: StreamBiometricsUseCase,
         trackSteps: TrackStepsUseCase,
         refreshStrain: RefreshStrainUseCase,
-        refreshNights: RefreshNightsUseCase? = nil
+        refreshNights: RefreshNightsUseCase? = nil,
+        refreshRecovery: RefreshRecoveryUseCase? = nil,
+        restoreFromCloud: RestoreFromCloudUseCase? = nil
     ) {
         self.recoveryRepository = recoveryRepository
         self.sleepRepository = sleepRepository
@@ -305,6 +319,8 @@ import SwiftUI
         self.trackSteps = trackSteps
         self.refreshStrain = refreshStrain
         self.refreshNights = refreshNights
+        self.refreshRecovery = refreshRecovery
+        self.restoreFromCloud = restoreFromCloud
         self.streamUseCase = streamUseCase
     }
 
@@ -407,6 +423,63 @@ import SwiftUI
         }
     }
 
+    /// Reloads the day on screen after a restore wrote rows behind it.
+    ///
+    /// **The pane is pushed over Home and a pop re-fires no `.task`**, so a restore would otherwise
+    /// fill the tables and leave this screen drawing what it read before it ran — the
+    /// "a saved row is not a drawn one" rule, at the one control that writes hundreds of days at once.
+    public func observeRestore() {
+        guard restoreTask == nil, let restoreFromCloud else { return }
+        let stream = restoreFromCloud.completions
+        restoreTask = Task { [weak self] in
+            for await rows in stream {
+                guard !Task.isCancelled, rows > 0, let self else { continue }
+                CaptureLog.shared.append("HOME reloaded after restore rows=\(rows)")
+                await self.load(for: self.loadedDay ?? Date())
+            }
+        }
+    }
+
+    /// Follows the rows `RefreshRecoveryUseCase` computes on the foreground.
+    ///
+    /// `observeNights()`'s sibling: `load` reads `recoveries` once, and a score computed after that
+    /// read — which is the morning case, because the night is what it is scored from — would otherwise
+    /// stay a dash until the user left and came back. Idempotent on the same rule.
+    public func observeRecovery() {
+        guard recoveryTask == nil, let refreshRecovery else { return }
+        let stream = refreshRecovery.updates
+        recoveryTask = Task { [weak self] in
+            for await written in stream {
+                guard !Task.isCancelled else { return }
+                self?.applyLiveRecovery(written)
+            }
+        }
+    }
+
+    /// Folds one computed row in, if it belongs to the day on screen.
+    private func applyLiveRecovery(_ written: RecoveryMetric) {
+        guard let loadedDay, written.date.startOfDay == loadedDay else {
+            CaptureLog.shared.append(
+                "RECOVERY dropped day=\(written.date.ISO8601Format()) "
+                    + "loaded=\(loadedDay?.ISO8601Format() ?? "-")")
+            return
+        }
+        liveRecoveryWrites += 1
+        recovery = written
+        CaptureLog.shared.append("RECOVERY applied day=\(written.date.ISO8601Format())")
+    }
+
+    /// Folds one **edited** night in, if it belongs to the day on screen.
+    ///
+    /// **The pop re-fires no `.task`**, so without this the `SLEEP` row behind the page would keep
+    /// printing the span the night had before the edit — the "a saved row is not a drawn one" gotcha.
+    /// It is `applyLiveNight`'s day rule and nothing else: a night for another day is dropped, and the
+    /// ring's score is left alone because an edit moves *when* the night ran, not what was measured.
+    public func updateSleep(_ session: SleepSession) {
+        guard let loadedDay, session.date.startOfDay == loadedDay else { return }
+        sleep = session
+    }
+
     /// Folds one classified night in, if it belongs to the day on screen.
     ///
     /// A night for another day is dropped rather than queued, for `applyLiveStrain`'s reason: the screen
@@ -443,7 +516,33 @@ import SwiftUI
 
         // Cleared first so a failure on one day does not outlive the day it describes.
         errorMessage = nil
-        sleepScore = nil
+        let day = date.startOfDay
+        // **A day being left behind takes everything that described it with it.** These values are
+        // only ever replaced as their own read returns, so stepping the day bar used to leave the
+        // previous day's night, activities, steps and stress on screen until the new load finished —
+        // and for good if one of its reads threw. Measured 2026-10-27 from the user's report ("data
+        // from previously looked at day remains"): the screen was showing a night that belonged to
+        // another day, which is the one thing a day-keyed screen must never do.
+        //
+        // **A same-day reload clears nothing**, and that half is a correction too. `HomeDashboardView`'s
+        // `.task` re-runs when the screen is shown again, so returning from the sleep page re-runs this
+        // load — and clearing here blanked the ring at its start, before a single read had returned,
+        // for the whole length of the load. The sleep page made the same correction one screen over
+        // (`SleepViewModel.load`); what is left is the clear that earns its place, applied to the day
+        // that is actually being replaced.
+        if loadedDay != day {
+            recovery = nil
+            strain = nil
+            sleep = nil
+            sleepScore = nil
+            previousDaySleep = nil
+            workouts = []
+            receptiveInactivities = []
+            stressDay = nil
+            steps = nil
+            previousDaySteps = nil
+            metricWeek = nil
+        }
         let previousDay = Calendar.current.date(byAdding: .day, value: -1, to: date) ?? date
 
         // The day is recorded **before** the reads, so a step total written while they are in flight
@@ -451,10 +550,10 @@ import SwiftUI
         // is the other half: a write that lands during the load is newer than the read that follows
         // it, and assigning the read would put the dash back under a figure the user just watched
         // arrive.
-        let day = date.startOfDay
         loadedDay = day
         let stepWritesBefore = liveStepWrites
         let strainWritesBefore = liveStrainWrites
+        let recoveryWritesBefore = liveRecoveryWrites
         let sleepWritesBefore = liveSleepWrites
 
         do {
@@ -500,8 +599,20 @@ import SwiftUI
             async let sleepHistory = sleepRepository.getSleepHistory(
                 days: MetricWeek.sleepScoreLookbackDays, endingOn: date)
 
-            recovery = try await r
+            // **A cumulative mark per read, in `capture.txt`.** The load was measured at 32–39 s on a
+            // real database and the only way to know which read that was is to stamp each await: they
+            // are sequential on one `DatabaseQueue`, so each `ms=` is the time since the load began and
+            // the differences are the phases. Cheap, and it is instrumentation rather than a rule.
+            func mark(_ phase: String) {
+                CaptureLog.shared.append(
+                    "HOME phase=\(phase) ms=\(Int(Date().timeIntervalSince(started) * 1000))")
+            }
+
+            let readRecovery = try await r
+            if liveRecoveryWrites == recoveryWritesBefore, loadedDay == day { recovery = readRecovery }
+            mark("recovery")
             let readStrain = try await s
+            mark("strain")
             // **The same yield the step read makes, one writer over.** `s` was started before the
             // other reads and awaited here, so a score saved in that window is newer than this answer
             // and has already been folded in by `applyLiveStrain`. Assigning would put the older
@@ -511,11 +622,16 @@ import SwiftUI
             // while these reads were in flight is newer than this answer, and assigning would put the
             // dash back under a ring the user just watched fill.
             let readSleep = try await sl
+            mark("sleep")
             if liveSleepWrites == sleepWritesBefore, loadedDay == day { sleep = readSleep }
             previousDaySleep = try await slPrevious
+            mark("sleepPrevious")
             workouts = try await w
+            mark("workouts")
             receptiveInactivities = try await ra
+            mark("receptive")
             stressDay = try await st
+            mark("stress")
             // The absence gate, applied as the row becomes the tile's number. `hasMeasurement` is
             // `measuredSeconds > 0` — the same comparison `TrackStepsUseCase` makes before it writes,
             // which is the rule: a writer persists only when it produced a measurement, and the test
@@ -529,13 +645,22 @@ import SwiftUI
             // the opposite direction. The day is re-checked because a second `load` may have moved on
             // while this one was awaiting.
             if liveStepWrites == stepWritesBefore, loadedDay == day { steps = readSteps }
+            mark("steps")
             previousDaySteps = try await stepsYesterday.flatMap(Self.measuredSteps)
+            mark("stepsPrevious")
             let profile = try? await profileRead
+            mark("profile")
+            let weekStrain = try await strainHistory
+            mark("strainHistory")
+            let weekRecovery = try await recoveryHistory
+            mark("recoveryHistory")
+            let weekSleep = try await sleepHistory
+            mark("sleepHistory")
             metricWeek = MetricWeek(
                 endingOn: date,
-                strain: try await strainHistory,
-                recovery: try await recoveryHistory,
-                sleep: try await sleepHistory,
+                strain: weekStrain,
+                recovery: weekRecovery,
+                sleep: weekSleep,
                 maxHeartRate: profile?.maxHeartRate,
                 age: profile?.age)
             sleepScore = metricWeek?.days.last?.sleepScore
@@ -551,10 +676,17 @@ import SwiftUI
             errorMessage = error.localizedDescription
         }
 
+        let millis = Int(Date().timeIntervalSince(started) * 1000)
         AppLogger.ui.notice("""
             Home for \(date.description, privacy: .public) loaded in \
-            \(Int(Date().timeIntervalSince(started) * 1000), privacy: .public) ms
+            \(millis, privacy: .public) ms
             """)
+        // The audit's line, and the one a capture can read: how long one Home load took, which day,
+        // and whether it ended in the error path — beside the `API` lines each request wrote, so a
+        // slow load can be told from a chatty one.
+        CaptureLog.shared.append(
+            "HOME load day=\(day.ISO8601Format()) ms=\(millis) "
+                + "error=\(errorMessage == nil ? "no" : "yes")")
 
         task?.cancel()
         task = Task { [weak self, streamUseCase] in

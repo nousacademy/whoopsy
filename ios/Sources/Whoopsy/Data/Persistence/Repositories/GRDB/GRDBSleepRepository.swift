@@ -49,7 +49,8 @@ public final class GRDBSleepRepository: SleepRepository, Sendable {
             source: source,
             stillnessSpine: session.stillnessSpine?.rawValue,
             algorithm: session.algorithm?.rawValue,
-            scoredThrough: session.scoredThrough
+            scoredThrough: session.scoredThrough,
+            endedAtDataEdge: session.endedAtDataEdge
         )
         try await db.saveSleep(record)
     }
@@ -89,7 +90,8 @@ public final class GRDBSleepRepository: SleepRepository, Sendable {
             // trusting a rule it cannot name.
             stillnessSpine: SleepStillnessSpine(stored: record.stillnessSpine),
             algorithm: SleepAlgorithm(stored: record.algorithm),
-            scoredThrough: record.scoredThrough
+            scoredThrough: record.scoredThrough,
+            endedAtDataEdge: record.endedAtDataEdge
         )
     }
 }

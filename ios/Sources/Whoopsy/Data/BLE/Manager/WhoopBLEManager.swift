@@ -109,6 +109,15 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     /// `drainSession`, because `routeToDrain` runs on the BLE queue and `concludeDrain` can run from
     /// there or from a caller's task. See `Spo2CandidateProbe`.
     private var spo2Probe = Spo2CandidateAccumulator()
+
+    /// The skin-temperature candidate probe, under the same lock and for the same reason — see
+    /// `SkinTemperatureCandidateProbe` for why it reads two offsets rather than one.
+    private var skinTempProbe = SkinTemperatureAccumulator()
+
+    /// The accelerometer probe — the one link in the sleep chain that has never been checked against a
+    /// real record. See `AccelerometerCandidateProbe`; it is the same lock and the same once-per-drain
+    /// summary as the two above.
+    private var accelerometerProbe = AccelerometerAccumulator()
     private var drainWatchdog: Task<Void, Never>?
 
     /// Whether the one-shot 0x2A37 diagnostic has been logged for this connection.
@@ -729,7 +738,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             AppLogger.ble.warning("Cannot start scan: Bluetooth state is \(String(describing: self.centralManager.state))")
             return
         }
-        AppLogger.ble.info("Starting scan for WHOOP devices...")
+        AppLogger.ble.info("Starting scan for strap devices...")
         updateDeviceState {
             WhoopDevice(id: "", name: "Scanning...", connectionState: .scanning)
         }
@@ -801,7 +810,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         reconnectTask = nil
         reconnectLock.unlock()
         updateDeviceState {
-            WhoopDevice(id: deviceId, name: peripheral.name ?? "WHOOP Strap", connectionState: .connecting)
+            WhoopDevice(id: deviceId, name: peripheral.name ?? "Strap", connectionState: .connecting)
         }
         centralManager.connect(peripheral, options: [
             CBConnectPeripheralOptionNotifyOnConnectionKey: true,
@@ -1185,6 +1194,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
             drainSession = session
             drainCompletion = continuation
             spo2Probe.reset()
+            skinTempProbe.reset()
             drainLock.unlock()
 
             // The clock goes first, and it is a prerequisite rather than a courtesy: a strap whose RTC
@@ -1245,6 +1255,16 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         if let observation = Spo2CandidateProbe.decode(frame: frame) {
             spo2Line = spo2Probe.observe(observation)
         }
+        // The second probe, in the same lock window: it reads two offsets of one record and decides
+        // nothing — see `SkinTemperatureCandidateProbe`.
+        var skinTempLine: String?
+        if let observation = SkinTemperatureCandidateProbe.decode(frame: frame) {
+            skinTempLine = skinTempProbe.observe(observation)
+        }
+        var accelerometerLine: String?
+        if let observation = AccelerometerCandidateProbe.decode(frame: frame) {
+            accelerometerLine = accelerometerProbe.observe(observation)
+        }
         drainLock.unlock()
 
         // The first record of the first drain on this link, one-shot. The summary `concludeDrain`
@@ -1262,6 +1282,8 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         }
 
         if let spo2Line { recordSpo2ProbeLine(spo2Line) }
+        if let skinTempLine { recordSkinTempProbeLine(skinTempLine) }
+        if let accelerometerLine { recordAccelerometerProbeLine(accelerometerLine) }
 
         // **The record's heart rate and R-R intervals are what the drain exists for, and until this
         // call they were counted and discarded.** Decoding happens here rather than in
@@ -1567,9 +1589,15 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         // drain that ends without a successor does not leave its counts to be printed by the next one.
         let spo2Summary = spo2Probe.summary()
         spo2Probe.reset()
+        let skinTempSummary = skinTempProbe.summary()
+        skinTempProbe.reset()
+        let accelerometerSummary = accelerometerProbe.summary()
+        accelerometerProbe.reset()
         drainLock.unlock()
 
         if let spo2Summary { recordSpo2ProbeLine(spo2Summary) }
+        if let skinTempSummary { recordSkinTempProbeLine(skinTempSummary) }
+        if let accelerometerSummary { recordAccelerometerProbeLine(accelerometerSummary) }
 
         // The drain's outcome, in counts and a reason name. This is the line a remote reader uses to
         // tell "the strap sent nothing" from "the strap sent records this build could not decode",
@@ -1588,6 +1616,11 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         // many batches re-sent a stretch, and the cursor it finished on.
         CaptureLog.shared.append(
             "DRAIN_END started=\(finished.startedAt.ISO8601Format()) "
+                // **The duration, computed rather than left to arithmetic on two log lines.** It was
+                // never recorded, so "how long does a drain take?" could only be answered by
+                // subtracting `started` from the line's own timestamp — which works, and was done,
+                // but a figure that has to be re-derived is one nobody re-derives mid-investigation.
+                + "seconds=\(Int(Date().timeIntervalSince(finished.startedAt))) "
                 + "records=\(finished.recordCount) batches=\(finished.batchCount) "
                 + "oldest=\(finished.lowestRecordTimestamp?.ISO8601Format() ?? "-") "
                 + "newest=\(finished.highestRecordTimestamp?.ISO8601Format() ?? "-") "
@@ -1616,6 +1649,19 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         CaptureLog.spo2Probe.append(line)
     }
 
+    /// The skin-temperature probe's twin writer. Nothing here reaches a sample, a row or a screen —
+    /// see `SkinTemperatureCandidateProbe` for why it is evidence rather than a reading.
+    private func recordSkinTempProbeLine(_ line: String) {
+        AppLogger.ble.notice("\(line, privacy: .public)")
+        CaptureLog.skinTempProbe.append(line)
+    }
+
+    /// The accelerometer probe's writer, on the same terms: evidence, never a reading.
+    private func recordAccelerometerProbeLine(_ line: String) {
+        AppLogger.ble.notice("\(line, privacy: .public)")
+        CaptureLog.accelerometerProbe.append(line)
+    }
+
     // MARK: - Reconnection
 
     /// Issues the call that keeps the link recoverable, now or after a refusal floor.
@@ -1640,7 +1686,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
         reconnectLock.unlock()
 
         let generation = resolveGeneration(
-            advertisedName: peripheral.name ?? "WHOOP Strap",
+            advertisedName: peripheral.name ?? "Strap",
             deviceId: peripheral.identifier.uuidString)
         let decision = ReconnectPolicy.decision(
             for: reason,
@@ -1873,7 +1919,7 @@ public final class WhoopBLEManager: NSObject, @unchecked Sendable {
     private func connectedGeneration(for peripheral: CBPeripheral) -> WhoopHardwareGeneration {
         if let generation = currentDeviceState?.hardwareGeneration { return generation }
         return resolveGeneration(
-            advertisedName: peripheral.name ?? "WHOOP Strap",
+            advertisedName: peripheral.name ?? "Strap",
             deviceId: peripheral.identifier.uuidString)
     }
 
@@ -2113,7 +2159,7 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
             strapModelLock.unlock()
         }
 
-        let devName = peripheral.name ?? "WHOOP Strap"
+        let devName = peripheral.name ?? "Strap"
         let gen = resolveGeneration(advertisedName: devName, deviceId: peripheral.identifier.uuidString)
         AppLogger.ble.notice("""
             Discovered \(devName, privacy: .public) [\(peripheral.identifier.uuidString, privacy: .public)] \
@@ -2226,7 +2272,7 @@ extension WhoopBLEManager: CBCentralManagerDelegate {
         fallback: WhoopDevice?
     ) -> WhoopDevice {
         let id = peripheral.identifier.uuidString
-        let name = peripheral.name ?? fallback?.name ?? "WHOOP Strap"
+        let name = peripheral.name ?? fallback?.name ?? "Strap"
         // Re-resolve rather than carry: a `disconnect`/`connect` cycle is exactly when the user may
         // have been to the device screen and changed the model.
         let generation = resolveGeneration(advertisedName: name, deviceId: id)

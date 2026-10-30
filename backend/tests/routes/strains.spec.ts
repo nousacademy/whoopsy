@@ -906,3 +906,39 @@ describe("the chunk's transaction", () => {
     expect(await rowCount(ALICE)).toBe(0);
   });
 });
+
+/**
+ * The range delete on this resource.
+ *
+ * The policy — inclusive bounds, the 31-day cap, a reversed range refused — is `utils/days.ts`'s and is
+ * asserted in full in `recoveries.spec.ts`. What is asserted here is the half that is **this
+ * resource's**: the SQL points at the right table, and the `user_id` bind is the partition. A delete
+ * copied from recoveries without changing its `FROM` would pass every assertion about counts and
+ * silently remove nothing — or, worse, remove the wrong table's rows.
+ */
+describe("a range of days removed", () => {
+  function erase(query: string, userId = ALICE): Promise<Response> {
+    return SELF.fetch(`${BASE}/v1/strains?${query}`, {
+      method: "DELETE",
+      headers: { ...authHeaders(userId) },
+    });
+  }
+
+  it("removes exactly the days named, from this table, in this partition", async () => {
+    await postBatch({ rows: batchRows("2026-10-25", 6) });
+    await postBatch({ rows: batchRows("2026-10-25", 6) }, BOB);
+
+    const response = await erase("from=2026-10-21&to=2026-10-22");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ deleted: 2 });
+    expect(await rowCount(ALICE)).toBe(4);
+    expect(await rowCount(BOB)).toBe(6);
+  });
+
+  it("answers 0 when the range holds nothing", async () => {
+    const response = await erase("from=2026-10-21&to=2026-10-22");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ deleted: 0 });
+  });
+});

@@ -60,6 +60,17 @@ public struct HomeDashboardView: View {
     /// Strain tab's: they are two screens with two days, and sharing one would make paging the pushed
     /// copy move the tab's day underneath it.
     @State private var strainViewModel: StrainViewModel
+    /// The steps trend page's view model — a fourth pushed destination built up front, for the reason
+    /// the three above are, and the only one whose subject is a **window** rather than a day.
+    @State private var stepsViewModel: StepsViewModel
+    /// The two reading trend pages — HRV and resting heart rate — on the same window-not-a-day
+    /// reasoning as `stepsViewModel`. One instance each because the pages' `W`/`M`/`6M` and anchor are
+    /// the reader's, and sharing one would move the other page's window underneath it.
+    @State private var hrvTrendViewModel: ReadingTrendViewModel
+    @State private var rhrTrendViewModel: ReadingTrendViewModel
+    /// The VO₂ page — the third of the reading trends, and the only one whose figure is an estimate
+    /// rather than a reading. It therefore needs the profile's maximal heart rate as well as the day.
+    @State private var vo2TrendViewModel: ReadingTrendViewModel
     @State private var selectedDate: Date = Date()
     @State private var isPresentingCalendar = false
     /// The `+`'s menu. A second overlay flag rather than a mode of the calendar's: the two hang from
@@ -257,29 +268,58 @@ public struct HomeDashboardView: View {
     /// `endedAt` is its own `now`.
     private let makeActivityDetailViewModel: (WorkoutSession, ActiveFast?) -> ActivityDetailViewModel
 
+    /// The live half of the Stress Monitor page, built in `MainContainerView`.
+    ///
+    /// It is handed down rather than constructed at the destination because a view model is built in
+    /// one place and nowhere else — and because the page's `.task` owns its tick loop, so the instance
+    /// is page-scoped without being page-built.
+    private let stressMonitor: StressLiveViewModel
+
+    /// The Health Monitor sheet's subject, built in `MainContainerView`.
+    ///
+    /// It reads three things the ring beside it does not — the night's `recoveries` row, the history the
+    /// bands are taken over, and the night's samples — so it is its own view model rather than a method
+    /// on `HomeViewModel`, which would make the ring's load pay for a sheet nobody opened.
+    private let healthMonitor: HealthMonitorViewModel
+
+    /// Whether the Health Monitor sheet is up. The card above `My Day` is the only control that sets it.
+    @State private var isPresentingHealthMonitor = false
+
     public init(
         viewModel: HomeViewModel,
         recoveryViewModel: RecoveryViewModel,
         sleepViewModel: SleepViewModel,
         strainViewModel: StrainViewModel,
+        stepsViewModel: StepsViewModel,
+        hrvTrendViewModel: ReadingTrendViewModel,
+        rhrTrendViewModel: ReadingTrendViewModel,
+        vo2TrendViewModel: ReadingTrendViewModel,
         deviceViewModel: DeviceViewModel,
         profileViewModel: ProfileViewModel,
         localDataViewModel: LocalDataViewModel,
         syncViewModel: SyncStorageViewModel,
         liveSessionUseCase: LiveSessionUseCase,
         offlineMaps: any OfflineMapRendering,
+        stressMonitor: StressLiveViewModel,
+        healthMonitor: HealthMonitorViewModel,
         makeActivityDetailViewModel: @escaping (WorkoutSession, ActiveFast?) -> ActivityDetailViewModel
     ) {
         _viewModel = State(initialValue: viewModel)
         _recoveryViewModel = State(initialValue: recoveryViewModel)
         _sleepViewModel = State(initialValue: sleepViewModel)
         _strainViewModel = State(initialValue: strainViewModel)
+        _stepsViewModel = State(initialValue: stepsViewModel)
+        _hrvTrendViewModel = State(initialValue: hrvTrendViewModel)
+        _rhrTrendViewModel = State(initialValue: rhrTrendViewModel)
+        _vo2TrendViewModel = State(initialValue: vo2TrendViewModel)
         self.deviceViewModel = deviceViewModel
         self.profileViewModel = profileViewModel
         self.localDataViewModel = localDataViewModel
         self.syncViewModel = syncViewModel
         self.liveSessionUseCase = liveSessionUseCase
         self.offlineMaps = offlineMaps
+        self.stressMonitor = stressMonitor
+        self.healthMonitor = healthMonitor
         self.makeActivityDetailViewModel = makeActivityDetailViewModel
     }
 
@@ -302,6 +342,17 @@ public struct HomeDashboardView: View {
                     VStack(spacing: 16) {
                         topBar
                         rings
+                        // **Above `My Day`, on the user's instruction.** It summarises the day's vitals
+                        // rather than the day's activities, so it belongs with the rings — the other
+                        // per-day readings — and not inside the card that lists what was recorded.
+                        Button {
+                            isPresentingHealthMonitor = true
+                        } label: {
+                            HealthMonitorCard(
+                                summary: HealthMonitorSummary(recovery: viewModel.recovery))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens the night's vitals")
                         myDayHeader
                         activitiesCard
                         receptiveInactivitiesCard
@@ -382,6 +433,11 @@ public struct HomeDashboardView: View {
                         onEndFast: { await endFast() })
                 }
                 .task {
+                    // **The counter the audit needs.** `HomeDashboardView`'s `.task` is what starts
+                    // the observers and the day's load, and whether returning to this tab re-fires it
+                    // is a SwiftUI `TabView` behaviour nothing on the host can see. One line per run
+                    // answers it from a capture.
+                    CaptureLog.shared.append("HOME task")
                     await viewModel.observeDevice()
                     // Started before the load rather than after it, so the subscription is already
                     // attached when the first motion batch is written: the load reads a stored total
@@ -396,6 +452,12 @@ public struct HomeDashboardView: View {
                     // `load` has read the day, and without this the ring stays a dash until the user
                     // leaves and comes back — measured 2026-10-26 on a 32,274-record morning drain.
                     viewModel.observeNights()
+                    // The recovery writer's feed, for the same reason: the score is computed on the
+                    // foreground from the night, and a load that read before it landed would keep the
+                    // dash.
+                    viewModel.observeRecovery()
+                    // A restore fills the tables from behind this screen's stack.
+                    viewModel.observeRestore()
                     await viewModel.load(for: selectedDate)
                 }
                 .onChange(of: selectedDate) { _, newDate in
@@ -477,6 +539,12 @@ public struct HomeDashboardView: View {
                     set: { presentedAddActivity = $0 }),
                 isSaving: isSavingAddActivity,
                 onSave: { Task { await saveAddActivity() } })
+        }
+        // The Health Monitor sheet, off the card above `My Day`. **`isPresented:` and not `item:`**,
+        // because its subject is the day Home is already showing: there is no value to carry that the
+        // page does not have, and the view model's `.task` does the read.
+        .sheet(isPresented: $isPresentingHealthMonitor) {
+            HealthMonitorView(viewModel: healthMonitor, date: selectedDate)
         }
     }
 
@@ -1006,6 +1074,17 @@ public struct HomeDashboardView: View {
     /// needs `.connected` alone. The two part company on a strap the app can address whose battery it
     /// has not been told, and that state draws a green dot beside no figure, which is the honest
     /// picture of it rather than a blank. `.syncing` is unreachable in this build either way.
+    /// The strap's charge band, when a charge was actually reported.
+    ///
+    /// **Gated on `batteryReading`, the same test the figure beside it makes.** `batteryPercentage` is
+    /// non-optional and defaults to `100`, so banding it directly would paint a green dot for a strap
+    /// this app has never heard from — the fabricated-reading trap the badge's own doc comment records.
+    /// The boundaries are `BatteryBand`'s: WHOOP's published 50 / 20 charger scale.
+    private var batteryBand: BatteryBand? {
+        guard let device = viewModel.device, device.batteryReading != nil else { return nil }
+        return BatteryBand.band(for: device.batteryPercentage)
+    }
+
     private var statusBadge: some View {
         HStack(spacing: 6) {
             // The mark and the dot's placement are `StrapGlyph`'s, which is also what the device page's
@@ -1020,7 +1099,8 @@ public struct HomeDashboardView: View {
                 StrapLinkBadge(
                     state: linkState,
                     isCharging: viewModel.device?.isCharging == true,
-                    surface: Theme.homeCard)
+                    surface: Theme.homeCard,
+                    band: batteryBand)
             }
             // **A dash rather than an empty slot, and the history matters.** The slot used to hold
             // `ActivityFigure.dash`; the user read that dash as a battery *bar* (measured: 9.7 × 1.3 pt
@@ -1103,7 +1183,23 @@ public struct HomeDashboardView: View {
     /// 87% ring — or that night's row — opens the night whose figure was on screen and not today's.
     /// `RecoveryDetailView`'s own comment is where that reasoning lives; this is the same shape.
     private var sleepDetail: some View {
-        SleepDetailView(viewModel: sleepViewModel, date: selectedDate)
+        SleepDetailView(
+            viewModel: sleepViewModel,
+            date: selectedDate,
+            // The edit's way back to the row behind it. See `HomeViewModel.updateSleep(_:)` for why the
+            // pop alone cannot do it.
+            onTimesEdited: { session in viewModel.updateSleep(session) })
+    }
+
+    /// The page the **sleep ring** opens: the full performance screen, unchanged.
+    ///
+    /// **The two routes read two expressions now, and that is the user's correction rather than a
+    /// drift.** They were one page until the row's was reduced to the reference's mock; the instruction
+    /// then was that the ring's link had not been meant to change — *"i didnt want that link touched,
+    /// only the sleep activity / tile"* — so the ring keeps the page it had and the `SLEEP` row opens
+    /// the shorter one. They share the night's one `SleepViewModel`; only what is drawn differs.
+    private var sleepPerformance: some View {
+        SleepPerformanceView(viewModel: sleepViewModel, date: selectedDate)
     }
 
     /// The three rings. The collapsed header draws the same row small, which is why every dimension
@@ -1121,7 +1217,7 @@ public struct HomeDashboardView: View {
             // for the same reason: the default styles tint the label and add a hit shape, which would
             // recolour the arc itself.
             NavigationLink {
-                sleepDetail
+                sleepPerformance
             } label: {
                 ring(
                     value: sleepValue, label: "Sleep", progress: sleepProgress,
@@ -1630,12 +1726,25 @@ public struct HomeDashboardView: View {
     private var dashboardTiles: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
-                dashboardTile(
-                    label: "STEPS",
-                    value: viewModel.steps.map { $0.formatted(.number.grouping(.automatic)) },
-                    previousValue: viewModel.previousDaySteps.map { $0.formatted(.number.grouping(.automatic)) },
-                    change: stepsChange,
-                    accent: Theme.strainRing)
+                // **The card is the link, and the destination is a window rather than the day.** The
+                // steps page is the one pushed screen that does not take `selectedDate`: it opens on
+                // today's week and moves by its own chevrons, so tapping the tile on a past day still
+                // opens the trend rather than a week ending on that day — which is what "your steps
+                // trend" means, and what the mock draws.
+                NavigationLink {
+                    StepsDetailView(viewModel: stepsViewModel)
+                } label: {
+                    dashboardTile(
+                        label: "STEPS",
+                        value: viewModel.steps.map { $0.formatted(.number.grouping(.automatic)) },
+                        previousValue: viewModel.previousDaySteps.map {
+                            $0.formatted(.number.grouping(.automatic))
+                        },
+                        change: stepsChange,
+                        accent: Theme.strainRing)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens your steps trend")
 
                 dashboardTile(
                     label: "RESTORATIVE SLEEP (HRS)",
@@ -1838,12 +1947,18 @@ public struct HomeDashboardView: View {
             previous: baseline.map { Double($0) },
             higherIsBetter: false,
             formatted: { String(Int($0.rounded())) })
-        return metricPanel(
-            label: "RHR",
-            symbol: "heart.fill",
-            value: selectedMetricDay?.restingHeartRate.map { "\($0)" },
-            baselineText: baseline.map { "\($0)" },
-            change: change)
+        return NavigationLink {
+            ReadingTrendDetailView(viewModel: rhrTrendViewModel)
+        } label: {
+            metricPanel(
+                label: "RHR",
+                symbol: "heart.fill",
+                value: selectedMetricDay?.restingHeartRate.map { "\($0)" },
+                baselineText: baseline.map { "\($0)" },
+                change: change)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens your resting heart rate trend")
     }
 
     /// The night's need over the week's mean.
@@ -1886,12 +2001,18 @@ public struct HomeDashboardView: View {
             previous: baseline,
             higherIsBetter: true,
             formatted: { String(format: "%.0f", $0) })
-        return metricPanel(
-            label: "HRV",
-            symbol: "waveform.path.ecg",
-            value: selectedMetricDay?.hrvValueMs.map { String(format: "%.0f", $0) },
-            baselineText: baseline.map { String(format: "%.0f", $0) },
-            change: change)
+        return NavigationLink {
+            ReadingTrendDetailView(viewModel: hrvTrendViewModel)
+        } label: {
+            metricPanel(
+                label: "HRV",
+                symbol: "waveform.path.ecg",
+                value: selectedMetricDay?.hrvValueMs.map { String(format: "%.0f", $0) },
+                baselineText: baseline.map { String(format: "%.0f", $0) },
+                change: change)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens your HRV trend")
     }
 
     /// The day's estimated VO₂ max, with the week's mean beneath it and **no change marker**.
@@ -1919,12 +2040,18 @@ public struct HomeDashboardView: View {
     /// import, and every strap-less day since — is `—` by construction.
     private var vo2MaxPanel: some View {
         let baseline = viewModel.metricWeek?.vo2MaxBaselineMlKgMin
-        return metricPanel(
-            label: "VO₂ MAX (EST.)",
-            symbol: "lungs.fill",
-            value: selectedMetricDay?.vo2MaxMlKgMin.map { String(format: "%.0f", $0) },
-            baselineText: baseline.map { String(format: "%.0f", $0) },
-            change: nil)
+        return NavigationLink {
+            ReadingTrendDetailView(viewModel: vo2TrendViewModel)
+        } label: {
+            metricPanel(
+                label: "VO₂ MAX (EST.)",
+                symbol: "lungs.fill",
+                value: selectedMetricDay?.vo2MaxMlKgMin.map { String(format: "%.0f", $0) },
+                baselineText: baseline.map { String(format: "%.0f", $0) },
+                change: nil)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens your VO₂ max trend")
     }
 
     /// The full-width STRESS MONITOR tile.
@@ -1934,7 +2061,20 @@ public struct HomeDashboardView: View {
     /// would have led to. The band's colour reuses the recovery tier tokens — calm to activated is the
     /// same direction as recovered to strained, and inventing a parallel palette for one tile would
     /// give the app two greens that mean different things.
+    /// **The tile is the link**, exactly as the steps tile is, and it carries the value Home already
+    /// computed rather than a repository — see `StressDetailView` for why a second fold would be both
+    /// wasteful and a chance to disagree with the tile's own figures.
     private var stressTile: some View {
+        NavigationLink {
+            StressDetailView(day: viewModel.stressDay, date: selectedDate, monitor: stressMonitor)
+        } label: {
+            stressTileContent
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens the day's stress monitor")
+    }
+
+    private var stressTileContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {

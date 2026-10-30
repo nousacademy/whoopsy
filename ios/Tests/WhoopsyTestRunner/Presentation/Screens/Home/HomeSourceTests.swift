@@ -30,5 +30,21 @@ enum HomeSourceTests {
         // Appended rather than slotted in: the calls above are this section's original body, cut into
         // files in the order it ran, and this one is new.
         try await HomeStepTileTests.run()
+        // The one Home value that used to be blanked by a reload rather than replaced by one.
+        try await HomeSleepRingTests.run()
+        // The steps trend page Home's STEPS tile pushes.
+        try await StepsTrendTests.run()
+        // The two reading trend pages Home's panels push: HRV and resting heart rate.
+        try await ReadingTrendTests.run()
+        // The gates and the score the live Stress Monitor shares with the stored day.
+        try await StressWindowEvaluatorTests.run()
+        try await HealthMonitorSummaryTests.run()
+        try await HealthMonitorReadingsTests.run()
+        try await MortalityRiskProfileTests.run()
+        try await LifeTableTests.run()
+        // The day the healthspan inputs are read from — the rule that made the dial work on a phone
+        // whose last measured night was months ago.
+        try await HealthMonitorViewModelTests.run()
+        try await LeanBodyMassMathTests.run()
     }
 }

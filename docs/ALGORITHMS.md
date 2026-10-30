@@ -251,6 +251,29 @@ day before it is WHOOP's territory even where the export carried no strain for t
 a gap with this app's estimate would be the same crossing between a computed and an imported need that
 `AnalyzeSleepUseCase` refuses.
 
+**Recovery follows the same rule since `v39`.** `recoveries.scored_through` holds the newest input the
+row included — the night's own `scoredThrough`, or the night's end when it carries none, because the
+night is the whole of a recovery day's input — and `recoveries.algorithm` names the formula. A day is
+re-scored when `RefreshRecoveryUseCase.isOwed` says either the formula is not `RecoveryAlgorithm.current`
+or that edge has moved. The one input this watermark cannot see is a **corrected past day**: recovery is
+a z-score against the last thirty days that have measurements, so a rewritten baseline row changes
+today's score without moving today's edge. Like strain's, that case is answered by the version — a
+parameter change is a bump, and so is any change to the window or the guards — rather than by the
+watermark.
+
+### 2.b.iv Zone time on the strain page, and the strength figure
+
+Two quantities on the strain page's activity card are not a stored row, and both have a definition rather
+than a constant. **Zone time** comes from the one fold — `ZoneTimeMath.totals` over a session's own
+heart-rate samples — whenever the app recorded the session, falling back to WHOOP's `HR Zone n %` block
+only when there are no samples. The day's figure is the sum over its sessions, measured first, and the
+comparison against the trailing thirty-day mean is **withheld when the day's figure was measured**, because
+that mean is built from blocks: a comparison across two producers is the same defect as averaging RMSSD
+with SDNN. **Strength activity time** is `WhoopActivityCatalog.strengthActivities` — four resistance names
+this app defines, because WHOOP publishes the `^` footnote but not its membership in any reproducible form
+— summed over the day's session spans. It is the app's figure, and the row says so by being derived here
+rather than in the card.
+
 ### 2.c Session-RPE — the user's own figure
 
 The heart-rate model cannot see heat, a heavy carry that never raised the rate, or an emotional day the
@@ -1825,12 +1848,33 @@ from. `peakScore` is the day's highest-scoring window and is kept separately, be
 behaviour WHOOP describes keys off the high-stress *moment*, not the day's average — the two answer
 different questions and neither is derived from the other.
 
+### The live monitor scores the same grid against the same baseline
+
+`StressLiveViewModel` extends a day already scored by `AnalyzeStressUseCase`, and it is the *same*
+measurement only because of two constraints. **The grid**: the analyzer anchors its buckets on the first
+sample inside the day's waking window and steps by `windowSeconds`, so the view model takes a stored
+window's start as its anchor and steps from there rather than cutting a window out of the current clock —
+a live window cut from `Date()` would fold five different minutes and plot points that are not the day's.
+**The baseline**: a window's score is relative to a reference, so the live window is scored against the
+four numbers the day was scored against, carried on `StressDay.baseline`; re-deriving them would mean
+re-reading a fortnight of samples on every tick. Only *completed* buckets are scored, a
+refused bucket is skipped (a gap on the line, not a guess), and no stored window is rescaled or replaced.
+A day with no stored window has no baseline to carry, so the live half cannot open a day — that stays the
+analyzer's job.
+
+**With no personal baseline the carried value is `nil`, and the live tick rebuilds each window's
+reference itself** from the features the scored windows carry — the same `recentBaseline` helper, over
+the same 6-hour span, so a window scored while the page is open and the same window scored by a later
+full evaluation come out the same.
+
 ### Constants
 
 | Constant | Value | Site |
 | :--- | :--- | :--- |
 | Baseline window | 14 days | `StressMath.baselineDays` |
 | Minimum baseline days | 3 | `StressMath.minimumBaselineDays` |
+| Recent-baseline span | 6 h | `StressMath.recentBaselineSpan` |
+| Recent-baseline floor | 12 windows | `StressMath.minimumRecentWindows` |
 | Scored window length | 300 s | `StressMath.windowSeconds` |
 | Minimum R-R intervals per window | 20 | `StressMath.minimumRRIntervals` |
 | Motion ceiling | 1.25 G | `StressMath.motionCeiling` |
@@ -1856,26 +1900,53 @@ baseline. Weighting by windows instead would let one heavily-worn day outvote a 
 The day being scored is never part of the baseline it is scored against: the baseline range ends
 where that day's waking window begins.
 
+### With no personal baseline, each window is scored against the day's own preceding hours
+
+The personal baseline is the model's definition, and it needs three days that carry still windows. That
+gate used to gate the whole model — below three days there was no `StressDay` at all — and for a
+**live** monitor that is the wrong answer: it reports the absence of *history* as an absence of stress,
+and leaves the tile and the page empty for the first three days the strap is worn.
+
+So a day with no personal baseline is scored relative to its own preceding hours. For each scored
+window:
+
+- the reference is the mean and spread of the window features inside `recentBaselineSpan` (6 h) before
+  it, one point per **window** rather than per day (there is only one day in it, so a per-day collapse
+  would leave a single point and no spread);
+- the priors are strictly **before** the window, so a window never contributes to the reference it is
+  scored against;
+- the floor is `minimumRecentWindows` (12 — one hour at the five-minute cadence), because fewer priors
+  describe the minutes being scored as much as the hours before them;
+- the span is wall-clock, not a count, so the same day's data always reproduces the same scores and a
+  later full evaluation agrees with what the live page drew.
+
+The score then answers *"how does this five minutes compare with your last few hours?"*. **Its
+limitation is stated rather than hidden**: a day that is uniformly elevated has no contrast within it
+and reads as average, so a recent-relative day cannot say that the whole day was stressful. The page
+names which reference it is showing, and the personal baseline takes over as soon as
+`minimumBaselineDays` prior days carry still windows — at which point the whole day is re-scored
+against it.
+
 ### Days with no measurement have no score
 
 `AnalyzeStressUseCase.executeDay(for:)` returns `StressDay?`, and returns `nil` — computing nothing —
-in three situations it cannot tell apart from the data it holds:
+in two situations it cannot tell apart from the data it holds:
 
 - the day has no samples at all (the common case on an imported day, and always on a strap-less
   install — see the coverage note below);
 - its samples contain no still window with enough beats — and a window no sample of which carries an
-  accelerometer is not still, it is unmeasured;
-- fewer than 3 days of history exist to build a baseline from.
+  accelerometer is not still, it is unmeasured — or no window has enough of them behind it to build the
+  recent reference.
 
-Each is "no measurement", not a low score, so all three report the same way. `StressScore` has no
-zero that could be mistaken for one: a `0.0` would read as *perfectly calm*, which is a claim, and
-the absence of a measurement is not one. The Home tile renders `—`.
+Each is "no measurement", not a low score, so both report the same way. `StressScore` has no zero that
+could be mistaken for one: a `0.0` would read as *perfectly calm*, which is a claim, and the absence
+of a measurement is not one. The Home tile renders `—`.
 
-Three is the floor because it is the smallest number a sample standard deviation exists for, and
-because this model is defined **relative to a personal baseline** — a score against a default would
-be a different quantity wearing this one's name. It sits below the 14-day window on purpose: the
-window is what the baseline is drawn *from*, and demanding fourteen consecutive days of strap data
-before showing anything would leave the tile blank for a fortnight.
+Three baseline days is the floor for a **personal** baseline because it is the smallest number a sample
+standard deviation exists for. It sits below the 14-day window on purpose: the window is what the
+baseline is drawn *from*, and demanding fourteen consecutive days of strap data before showing anything
+would leave the tile blank for a fortnight. Below it the day is recent-relative, above it personal —
+never scored against a population default, which would be a different quantity wearing this one's name.
 
 `execute(for:) -> StressScore?` is a **forwarder** to `executeDay(for:)`, not a second implementation:
 it returns `executeDay(for:)?.score`. That is what keeps the aggregate's `nil` semantics identical to
@@ -1907,14 +1978,15 @@ rounding to the hour would move a measurement to a time nobody took it.
 - **A fixed 0–3 y-axis, never auto-scaled.** Scaling to the data would draw a calm day and a wired day
   as the same picture, which is the one thing the chart exists to distinguish. The fill's gradient
   stops are the band edges divided by the scale, so it changes colour at exactly the score where
-  `band(forScore:)` changes band. The fill is a `Shape`, not a `Path` built in the view: `path(in:)`
-  receives the frame, so the stops land on the scale — a `Path` in a `ZStack` would be graded over its
-  own bounding box and the bands would move with the data.
-- **Gaps are breaks, not interpolations.** A run ends when the next window starts more than
-  `windowSeconds × 1.5` later. An ineligible window is *unmeasured*; joining across it would draw a
-  reading nobody took. A run of one window is drawn as a dot, because a polyline through one point
-  draws nothing and the value was still measured.
-- **No windows ⇒ no chart at all.** Not an empty frame, not a zero line. A flat line at zero is the
+  `band(forScore:)` changes band. The bars are a mask over one full-height `Rectangle` filled with
+  that gradient — a `LinearGradient` applied per bar is graded over that bar's own height, so two bars
+  of different heights would put "high" at two different heights — which is also why the fill is a
+  `Shape` receiving the frame rather than a `Path` laid out in a `ZStack`.
+- **One bar per window, and a gap is no bar.** The mark is a bar rather than a line because a window
+  is a five-minute measurement over a span: a polyline implies a value at every instant between two
+  windows, including the ones nothing measured, and needs a dot at each peak to be legible. An
+  ineligible window draws nothing — never a zero-height bar.
+- **No windows ⇒ no chart at all.** Not an empty frame, not a row of zero bars. A zero row is the
   strongest possible claim of calm, and it is the one thing this model must never say about a day it
   did not measure. Since `executeDay` returns `nil` rather than an empty `StressDay`, "no series" and
   "no score" are the same condition, and the tile's caption carries the absence in words.

@@ -233,4 +233,31 @@ public struct HTTPCloudSync: CloudSync {
         // it has.
         try await client.writeProfile(UserProfileWireMapper.dto(for: row, in: calendar))
     }
+
+    // MARK: - The one removal
+
+    /// Four requests, one per purgeable resource, and **sequential rather than concurrent**.
+    ///
+    /// The loop is the honest shape: a partial failure is reported as a failure with the work that did
+    /// land left done, and the caller's own rule — refuse and delete nothing locally — then keeps the
+    /// two halves from disagreeing in the direction that matters. Racing them would make "which of the
+    /// four went" a question the answer to which depends on scheduling.
+    ///
+    /// **The paths come from `SyncedResource`, not from four literals here.** That enum is the app's one
+    /// statement of the Worker's mounts, asserted against the committed contract in §22, so a resource
+    /// renamed on the server is a compile-time list to update rather than a string that 404s at runtime.
+    ///
+    /// The bounds are passed through as `from`/`to` day keys, which the Worker takes **inclusive at
+    /// both ends** — the same convention `RecoveryWindow` translates the app's half-open ranges into.
+    public func purge(from: Date, to: Date) async throws -> PurgeTally {
+        let fromKey = RecoveryWireMapper.dayKey(for: from, in: calendar)
+        let toKey = RecoveryWireMapper.dayKey(for: to, in: calendar)
+
+        var rows: [SyncedResource: Int] = [:]
+        for resource in SyncedResource.purgeable {
+            rows[resource] = try await client.deleteDays(
+                path: resource.path, from: fromKey, to: toKey)
+        }
+        return PurgeTally(rows: rows)
+    }
 }

@@ -41,7 +41,7 @@ import SwiftUI
 /// every session on this page came from a file or from a session the user started by hand, and this app
 /// has no activity classifier at all — so a badge claiming the session was detected would be the app
 /// describing a capability it does not have. That is the absence rule applied to a capability, on the
-/// same terms as the `RECORD ROUTE` toggle's refused-permission sentence.
+/// same terms as the `USE LIVE MAP` toggle's refused-permission sentence.
 ///
 /// **No splits.** `workout_splits` still has no producer — there is no lap model — so that half of this
 /// page's original scope is still unbuilt.
@@ -389,112 +389,18 @@ public struct ActivityDetailView: View {
     /// reaches behind the status bar and the home indicator. It also stops the page scrolling underneath
     /// — a hit test lands on the scrim rather than on the `ScrollView` below it, so a drag while the menu
     /// is up moves nothing. Home's calendar and its `+` menu are the same arrangement.
+    /// The menu, drawn by `OverflowMenuOverlay` and fed by `ActivityOverflowMenu`.
+    ///
+    /// **The drawing moved out when the sleep page needed the same menu** — see that component for the
+    /// scrim, the card geometry and the gap before `Cancel`. What stays here is the page's own half:
+    /// which rows exist (`ActivityOverflowMenu.groups(isLive:)`, so a running fast draws its one acting
+    /// row) and what each one does (`perform(_:)`).
     private var overflowMenuOverlay: some View {
-        ZStack(alignment: .bottom) {
-            Color.black.opacity(ActivityOverflowMenu.scrimOpacity)
-                .ignoresSafeArea()
-                .onTapGesture { dismissOverflowMenu() }
-                .accessibilityAddTraits(.isButton)
-                .accessibilityLabel(Text("Dismisses the activity options"))
-                .transition(.opacity)
-
-            overflowMenu
-                .transition(.move(edge: .bottom))
-        }
-    }
-
-    /// The menu itself: one card per group of `ActivityOverflowMenu`, a small gap between them.
-    ///
-    /// **Two cards and not one, because the last row is not an action on the session.** `Edit` and
-    /// `Delete` do something to the activity and sit together under a hairline; `Cancel` is the way out
-    /// of the menu and sits in a card of its own, held `groupSpacing` clear of them — so the dimmed page
-    /// shows through that gap and the last row reads as apart rather than as a third action. Both cards
-    /// are full width, both rows are `rowHeight`, and neither card is taller than its rows — so the
-    /// separation and the address of one card rather than the other are the whole of the difference.
-    ///
-    /// **The grouping is `ActivityOverflowMenu.groups` and not a condition here.** Splitting on
-    /// `entry.action == .cancel` inside this `body` would be a rule the runner has no way to see, which
-    /// is why the split lives on the value and §19 asserts its shape.
-    ///
-    /// **A running fast draws a different first card from `groups(isLive:)`, and the shape of the menu
-    /// is unchanged.** One acting row above, `Cancel` alone below, the same gap and the same radius —
-    /// so the live menu reads as this menu rather than as a second one. The `isLive` argument is the
-    /// whole of the fork; nothing in this drawing branches on it, which is what keeps `groupSpacing`'s
-    /// one job — setting `Cancel` apart — true of both shapes.
-    ///
-    /// **Each card is rounded on all four of its own corners, and this `VStack` draws nothing itself.**
-    /// The alternative the menu first had — round the stack's two outer ends and leave the inner edges
-    /// square — put a square corner on the `Delete` row, which is the last row of the *first* card and
-    /// therefore a free end rather than an edge meeting anything. Matching a card's ends to each other
-    /// is a property of the card, so it is `overflowCard`'s background that carries the radius and there
-    /// is no clip here at all.
-    private var overflowMenu: some View {
-        VStack(spacing: ActivityOverflowMenu.groupSpacing) {
-            ForEach(
-                Array(ActivityOverflowMenu.groups(isLive: viewModel.isLiveFast).enumerated()),
-                id: \.offset
-            ) { _, group in
-                overflowCard(group)
-            }
-        }
-    }
-
-    /// One card: a group's rows, hairline-separated, rounded on all four corners.
-    ///
-    /// **The fill is the card's own bounds and nothing more, so the safe area bounds the drawing exactly
-    /// as it bounds the rows.** The overlay this card hangs in is bounded by the safe area, so a
-    /// bottom-aligned card's last row already clears the home indicator by construction; a background
-    /// **shape** with no `.ignoresSafeArea` fills to that same line and stops, and the `Cancel` card is
-    /// therefore its row and only its row. Nothing here reaches for `.safeAreaPadding` either.
-    ///
-    /// **It used to extend, and the measurement is why it no longer does.** With
-    /// `.ignoresSafeArea(edges: .bottom)` on this background, the fill ran to the screen's edge: measured
-    /// on the iPhone 17 Pro simulator at the card's centre, `Edit` and `Delete` came out 54 pt each, the
-    /// gap 8.0 pt, and the `Cancel` card **88 pt** — its 54 pt row plus 34 pt of fill. The first version
-    /// of that modifier was itself the fix for a *different* fault, where the fill stopped at the safe
-    /// area and this page's own footnote was legible in the strip below; what it bought was a `Cancel`
-    /// card half again the size of the rows above it. The instruction was to remove that bottom part, so
-    /// the card ends where its row ends and the dimmed page shows below it — which is what the top card
-    /// already had under it, and what the gap between the two cards already showed.
-    ///
-    /// **Rounded on all four corners, because a card's two ends have to be the same shape as each
-    /// other.** Only the top corners were rounded while the menu's two outer ends were clipped from the
-    /// stack, which left a square corner directly under `Delete` — the last row of the first card, and
-    /// an end of that card rather than an edge meeting the gap. A card whose top is round and whose
-    /// bottom is square reads as half a card; the instruction was to round it, so the radius is this
-    /// background's and nothing else in the menu draws a corner. `cardCornerRadius` is one constant for
-    /// both cards so the two cannot come out at two radii.
-    private func overflowCard(_ group: [ActivityOverflowMenu.Entry]) -> some View {
-        VStack(spacing: 0) {
-            ForEach(Array(group.enumerated()), id: \.element.id) { index, entry in
-                if index > 0 { Divider().overlay(Theme.cardBorder) }
-                overflowRow(entry)
-            }
-        }
-        .background {
-            RoundedRectangle(cornerRadius: ActivityOverflowMenu.cardCornerRadius)
-                .fill(Theme.homeCard)
-        }
-    }
-
-    /// One row. The tap closes the menu, then does whatever the entry's `Action` names.
-    ///
-    /// **`frame(maxWidth: .infinity)` is the whole of the row's width**, and `rowHeight` is a constant on
-    /// the value rather than a padding here so the three rows cannot come out at three heights.
-    /// `buttonStyle(.plain)` is load-bearing, on `HomeDashboardView.activityMenuRow`'s note: the default
-    /// style tints its label and adds a hit shape, which would recolour the word the entry specifies.
-    private func overflowRow(_ entry: ActivityOverflowMenu.Entry) -> some View {
-        Button {
-            perform(entry.action)
-        } label: {
-            Text(entry.title)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(entry.tint)
-                .frame(maxWidth: .infinity)
-                .frame(height: ActivityOverflowMenu.rowHeight)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        OverflowMenuOverlay(
+            groups: ActivityOverflowMenu.groups(isLive: viewModel.isLiveFast),
+            dismissLabel: "Dismisses the activity options",
+            onSelect: { perform($0) },
+            onDismiss: { dismissOverflowMenu() })
     }
 
     /// Runs the row's action.
@@ -1191,12 +1097,12 @@ public struct ActivityDetailView: View {
                 + "to its duration: time below zone 1 belongs to no band. " + edges
                 + " The grey mark is the average of your previous sessions of this activity."
         case .imported:
-            return "Zone times are WHOOP's own percentages scaled by the session's length, and need "
+            return "Zone times are the import's own percentages scaled by the session's length, and need "
                 + "not sum to the duration: time below zone 1 belongs to no band. " + edges
                 + " The grey mark, where shown, is the average of your previous sessions of this "
                 + "activity, measured from their own samples."
         case nil:
-            return "No heart-rate samples were recorded for this session and it carries no WHOOP "
+            return "No heart-rate samples were recorded for this session and it carries no imported "
                 + "zone block. " + edges
         }
     }
@@ -1263,7 +1169,7 @@ public struct ActivityDetailView: View {
     /// `No heart rate recorded` is a fact about one session — while this one has nothing to say on the
     /// sessions that lack it, which is currently all of them. A note here would be a permanent fixture
     /// saying *this app can record a route* rather than a response to a state, and it would have to
-    /// name a toggle (`RECORD ROUTE`, on the live session screen) that a reader looking at a stored
+    /// name a toggle (`USE LIVE MAP`, on the live session screen) that a reader looking at a stored
     /// session has no way to have seen. `ActivityRoute`'s own comment carries the argument in full.
     ///
     /// **The unit is resolved here**, at the one layer that knows what device it is on, and handed to
@@ -1281,9 +1187,9 @@ public struct ActivityDetailView: View {
     /// before the feature existed.
     ///
     /// **A session with no route but a downloaded region draws the area card instead** — the `else`
-    /// branch. `USE OFFLINE MAP` and `RECORD ROUTE` are mutually exclusive, so tiles with no path are an
-    /// ordinary session rather than an edge case, and without that branch the download the user waited
-    /// for would appear on no screen at all. The branch is over `viewModel.offlineArea`, which is
+    /// branch. Both map choices record the route, so tiles with no path are the short-route case — an
+    /// indoor session, or one stopped before the GPS settled — and without that branch the download the
+    /// user waited for would appear on no screen at all. The branch is over `viewModel.offlineArea`, which is
     /// `nil` unless the row carries both a region id and a centre, so a session that downloaded
     /// nothing keeps this section absent with no note.
     @ViewBuilder

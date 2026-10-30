@@ -549,7 +549,7 @@ import SwiftUI
     /// the drawing can never describe a session that is no longer on screen.
     ///
     /// **`nil` is the page's whole absence for this block**, and it is the ordinary case rather than
-    /// the exception — the `RECORD ROUTE` toggle is the only producer of these rows, it is off by
+    /// the exception — the session screen's two map toggles are the only producer of these rows, both are off by
     /// default, and no session this app can currently show has ever had it on. See `ActivityRoute` for
     /// why the section is then absent with no note rather than drawn as an empty frame.
     public var route: ActivityRoute? {
@@ -559,7 +559,7 @@ import SwiftUI
     /// The ground this session downloaded, framed for a card — or `nil` when it downloaded none.
     ///
     /// **The page's map for a session with no route, and the reason `v23` exists.** `USE OFFLINE MAP`
-    /// and `RECORD ROUTE` are mutually exclusive, so a session can end with tiles in Mapbox's store
+    /// and `USE LIVE MAP` are the two map choices and both record the route, so a session can end with tiles in Mapbox's store
     /// and an empty `workout_route_points`. `route` is then `nil`, the route card is not drawn, and
     /// without this property the download would be invisible on the one screen it was for.
     ///

@@ -59,4 +59,20 @@ public enum SyncedResource: String, Equatable, Sendable, CaseIterable {
         case .workouts: return "/v1/workouts"
         }
     }
+
+    /// The four resources a range delete is mounted on, in the order the purge walks them.
+    ///
+    /// **Day-keyed and measured, and that is the whole membership test.** The Worker's delete takes an
+    /// inclusive `from…to` range of calendar days, so a resource it can be pointed at must be one row
+    /// per day and owned by a measurement: `recoveries`, `sleeps`, `strains` and `stepCounts`. The
+    /// three left out are left out for two different reasons — `workouts` and
+    /// `receptiveInactivities` are keyed by session id and hold things the owner recorded, and
+    /// `profile` is a singleton with no day at all.
+    ///
+    /// **This list is the client's half of the contract's four `delete:` operations**, and §22 asserts
+    /// it against the committed document rather than against a second literal — a resource added here
+    /// that the Worker does not mount would be a purge that throws on every run.
+    public static let purgeable: [SyncedResource] = [
+        .recoveries, .sleeps, .stepCounts, .strains,
+    ]
 }

@@ -91,7 +91,10 @@ public struct RecoveryDetailView: View {
             .padding()
         }
         .background(Theme.backgroundDark)
-        .task { await viewModel.load(for: date) }
+        .task {
+            viewModel.observeRecovery()
+            await viewModel.load(for: date)
+        }
         .preferredColorScheme(.dark)
     }
 

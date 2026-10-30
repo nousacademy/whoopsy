@@ -245,8 +245,87 @@ enum HomeStressMonitorTests {
                 .execute(for: Date())
             assertTest(
                 belowFloor == nil,
-                "Two days of history produce no score: the model is defined relative to a personal "
-                    + "baseline, and \(StressMath.minimumBaselineDays) days is the fewest that has one")
+                "Two days of history and one window today still produce no score — not because the "
+                    + "personal baseline needs \(StressMath.minimumBaselineDays) days, but because "
+                    + "the recent reference needs \(StressMath.minimumRecentWindows) windows before "
+                    + "it and today has one")
+
+            // ---- Stress: a day with no history at all ----
+            //
+            // **The personal baseline is no longer a gate on the day.** A live monitor showing
+            // nothing until three days of daytime stillness existed was reporting the absence of
+            // *history* as an absence of stress; the afternoon in front of the reader is a perfectly
+            // good measurement. So a day with no personal baseline is scored against its own
+            // preceding hours — one reference per window, from the windows inside
+            // `StressMath.recentBaselineSpan` before it — and the day is absent only when that
+            // reference cannot be built either.
+            do {
+                func afternoon(_ count: Int) -> [BiometricSample] {
+                    let day = Date().startOfDay
+                    guard let start = calendar.date(byAdding: .hour, value: 9, to: day) else {
+                        return []
+                    }
+                    // One window every five minutes, alternating around 800 ms so each window's
+                    // successive differences are its own `rmssd`.
+                    return (0..<count).flatMap { slot -> [BiometricSample] in
+                        let slotStart = start.addingTimeInterval(
+                            Double(slot) * StressMath.windowSeconds)
+                        // A wobble in the RMSSD across slots, so the reference has a real spread
+                        // rather than the coefficient-of-variation floor doing all the work.
+                        let rmssd = 40.0 + Double(slot % 5) * 2.0
+                        let low = 800 - rmssd / 2
+                        let high = 800 + rmssd / 2
+                        return (0..<40).map { index in
+                            BiometricSample(
+                                timestamp: slotStart.addingTimeInterval(Double(index)),
+                                heartRate: 60 + slot % 4,
+                                rrIntervalMs: index.isMultiple(of: 2) ? low : high,
+                                accelerometerX: 0,
+                                accelerometerY: 0,
+                                accelerometerZ: 1.0)
+                        }
+                    }
+                }
+
+                let freshInstall = try await AnalyzeStressUseCase(
+                    biometricRepository: DaytimeBiometricStore(samples: afternoon(14))
+                ).executeDay(for: Date())
+
+                assertTest(
+                    freshInstall != nil,
+                    "Fourteen still windows with **no prior day at all** produce a day — the live "
+                        + "monitor works on the first afternoon the strap is worn")
+                assertTest(
+                    freshInstall?.baseline == nil,
+                    "…and it carries no personal baseline, because there is none: the day was scored "
+                        + "relative to its own preceding hours, so a live tick rebuilds each window's "
+                        + "reference from the windows' features rather than from a value here")
+                assertTest(
+                    freshInstall?.windows.count == 14 - StressMath.minimumRecentWindows,
+                    "…only the windows with enough priors behind them are scored — the first "
+                        + "\(StressMath.minimumRecentWindows) cannot be, which is what makes the "
+                        + "reference a description of the hours before the window rather than of the "
+                        + "window itself (\(freshInstall?.windows.count ?? -1) scored)")
+                assertTest(
+                    freshInstall?.windows.allSatisfy {
+                        $0.score >= 0 && $0.score <= StressMath.maximumScore
+                    } ?? false,
+                    "…on the same 0–\(StressMath.maximumScore) scale the personal path produces")
+                assertTest(
+                    freshInstall?.windows.allSatisfy { $0.features != nil } ?? false,
+                    "…and every scored window carries the features it was made from, because they "
+                        + "are the next window's priors")
+
+                let exactlyTwelve = try await AnalyzeStressUseCase(
+                    biometricRepository: DaytimeBiometricStore(
+                        samples: afternoon(StressMath.minimumRecentWindows))
+                ).executeDay(for: Date())
+                assertTest(
+                    exactlyTwelve == nil,
+                    "\(StressMath.minimumRecentWindows) windows with nothing before them score "
+                        + "nothing: the last one has "
+                        + "\(StressMath.minimumRecentWindows - 1) priors, one short of the floor")
+            }
 
             // ---- Stress: the series behind the number, which is what the Home chart draws ----
             //
@@ -358,6 +437,112 @@ enum HomeStressMonitorTests {
                 "…and a day with no samples at all is the same answer, which is every imported day")
         } catch {
             assertTest(false, "The stress use case threw: \(error)")
+        }
+
+        // ── The detail page's band time ───────────────────────────────────────────────────────────
+        //
+        // `StressDetailView`'s sentence is a count of five-minute windows, not a difference between
+        // two instants: the windows need not be contiguous, and a gap belongs to no band. The
+        // formatter is pinned too, because "2 hr 44 min" is the kind of string a `%02d` quietly
+        // turns into "2 hr 44" on one platform and "02 hr 44 min" on another.
+        do {
+            let dayStart = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 1_790_000_000))
+            func window(_ offset: Int, _ score: Double) -> StressWindow {
+                StressWindow(
+                    start: dayStart.addingTimeInterval(Double(offset) * StressMath.windowSeconds),
+                    score: score)
+            }
+            // Two high (2.4, 2.7), one low (0.4), one medium (1.5) — and a gap between windows,
+            // which changes nothing because the duration is the windows' own spans.
+            let stressDay = StressDay(
+                date: dayStart,
+                windows: [window(0, 0.4), window(3, 1.5), window(7, 2.4), window(8, 2.7)])
+
+            assertTest(
+                stressDay.seconds(in: .high) == 2 * StressMath.windowSeconds,
+                "Time in a band is its windows' own five minutes each — two high windows are ten "
+                    + "minutes, whatever the gaps between them (\(stressDay.seconds(in: .high)) s)")
+            assertTest(
+                stressDay.seconds(in: .low) == StressMath.windowSeconds
+                    && stressDay.seconds(in: .medium) == StressMath.windowSeconds,
+                "…and each band is counted from the one mapping a score becomes a band through, so "
+                    + "the three totals cannot overlap or omit a window")
+            assertTest(
+                StressDetailView.duration(2 * 3_600 + 44 * 60) == "2 hr 44 min"
+                    && StressDetailView.duration(0) == "0 min"
+                    && StressDetailView.duration(60 * 60) == "1 hr 0 min",
+                "The sentence's duration prints hours and minutes, and a day with no high window is "
+                    + "`0 min` rather than an absence")
+
+            // ---- Stress: the page's closing paragraph follows the day's own band ----
+            //
+            // The page's copy is asserted rather than left to the screenshot, because a screenshot
+            // only ever shows the band the day happened to be in. The failure this pins is specific:
+            // the paragraph once said "you spent X in the high stress zone" on **every** day, which
+            // on a calm day is a sentence about a band the day never reached — and a low day is the
+            // common one.
+            do {
+                let dayStart = Date().startOfDay
+                /// A day of `count` windows, all with the same score.
+                func day(_ score: Double, count: Int) -> StressDay {
+                    StressDay(
+                        date: dayStart,
+                        windows: (0..<count).map {
+                            StressWindow(
+                                start: dayStart.addingTimeInterval(9 * 3600 + Double($0) * 300),
+                                score: score)
+                        })
+                }
+
+                let calm = StressDetailView.message(
+                    for: day(0.3, count: 12), scope: .personal)
+                assertTest(
+                    calm.contains("a low day"),
+                    "A day averaging 0.3 is called a low day in words, not just given its number")
+                assertTest(
+                    calm.contains("No window reached the high band."),
+                    "…and its paragraph says no window reached the high band rather than printing "
+                        + "`0 min in the high band`, which reads as a measurement of zero")
+                assertTest(
+                    !calm.contains("You spent"),
+                    "…so the high-band sentence is absent entirely on a calm day")
+
+                let elevated = StressDetailView.message(
+                    for: day(2.4, count: 4), scope: .personal)
+                assertTest(
+                    elevated.contains("a high day"),
+                    "A day averaging 2.4 is called a high day")
+                assertTest(
+                    elevated.contains("You spent 20 min in the high band."),
+                    "…and names the time four windows spent there "
+                        + "\(elevated.prefix(80))")
+
+                let middling = StressDetailView.message(
+                    for: day(1.4, count: 3), scope: .personal)
+                assertTest(
+                    middling.contains("a medium day"),
+                    "A day averaging 1.4 is called a medium day — the third variant, which a "
+                        + "screenshot of either of the other two cannot check")
+
+                // The reference sentence is the one thing the paragraph cannot omit: the same number
+                // means two different things against a fortnight and against six hours.
+                assertTest(
+                    StressDetailView.message(for: day(1.4, count: 3), scope: .recent(span: 6 * 3600))
+                        .contains("previous 6 hours of this day"),
+                    "A recent-relative day says which hours it was scored against")
+                assertTest(
+                    StressDetailView.message(for: day(1.4, count: 3), scope: .personal)
+                        .contains("previous fortnight"),
+                    "…and a personal day says its own, so the two references never share a sentence")
+
+                // Every variant carries the same coverage sentence, because it is about the data
+                // rather than about the score.
+                for message in [calm, middling, elevated] {
+                    assertTest(
+                        message.contains("a missing bar is a window the model could not read"),
+                        "Every variant explains the gaps in the same words")
+                }
+            }
         }
     }
 }

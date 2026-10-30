@@ -53,18 +53,45 @@ public struct WhoopsySessionAttributes: ActivityAttributes {
         public var calories: Double?
         public var isRunning: Bool
 
+        /// The lock-screen bar's marker: where the heart rate sits across the five bands, `0…1`.
+        ///
+        /// **Every one of the three new fields is optional so an old card still decodes.** The
+        /// synthesised `Codable` reads an optional with `decodeIfPresent`, so a state stored by the
+        /// build before these existed decodes with three `nil`s rather than failing — which matters
+        /// because a Live Activity outlives the process that started it, and a card started yesterday
+        /// is decoded by today's widget.
+        public var bandScalePosition: Double?
+        public var distanceMeters: Double?
+        public var averageSpeedMetersPerSecond: Double?
+
+        /// The activity's mark, pushed as symbols rather than as a name: the widget cannot import the
+        /// app module that owns the name → symbol table, so resolving it here would mean a second copy
+        /// of that table. `glyphSecondarySymbol` is a composite's second symbol (`Fast`).
+        public var glyphSymbol: String?
+        public var glyphSecondarySymbol: String?
+
         public init(
             startedAt: Date,
             strain: Double? = nil,
             heartRate: Int? = nil,
             calories: Double? = nil,
-            isRunning: Bool = true
+            isRunning: Bool = true,
+            bandScalePosition: Double? = nil,
+            distanceMeters: Double? = nil,
+            averageSpeedMetersPerSecond: Double? = nil,
+            glyphSymbol: String? = nil,
+            glyphSecondarySymbol: String? = nil
         ) {
             self.startedAt = startedAt
             self.strain = strain
             self.heartRate = heartRate
             self.calories = calories
             self.isRunning = isRunning
+            self.bandScalePosition = bandScalePosition
+            self.distanceMeters = distanceMeters
+            self.averageSpeedMetersPerSecond = averageSpeedMetersPerSecond
+            self.glyphSymbol = glyphSymbol
+            self.glyphSecondarySymbol = glyphSecondarySymbol
         }
     }
 

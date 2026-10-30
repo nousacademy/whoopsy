@@ -36,8 +36,8 @@ public protocol OfflineMapRendering: OfflineMapServing {
 
     /// The area card for a region that is `.ready` on a session with **no route**.
     ///
-    /// The second drawing this seam owes, and the case that forced it: `USE OFFLINE MAP` and
-    /// `RECORD ROUTE` are mutually exclusive, so a session can hold tiles and no path. `ActivityOfflineArea`
+    /// The second drawing this seam owes, and the case that forced it: both map choices record the
+    /// route, so tiles with no path are the short-route case. `ActivityOfflineArea`
     /// frames the ground from the centre stored on the row; this method draws it either with the offline
     /// SDK or with MapKit, on the same only-called-when-ready contract as the route card.
     func map(area: ActivityOfflineArea, regionID: String) -> AnyView

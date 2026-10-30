@@ -116,16 +116,35 @@ import SwiftUI
     /// verb to be read off. What a reader gets instead is `SYNC`, and one honest sentence afterwards.
     public nonisolated static let runTitle = "SYNC"
 
+    /// True while a restore is in flight. The two controls are exclusive: both move the same tables.
+    public private(set) var isRestoring = false
+
+    /// Whether `RESTORE` may run. Unlike `SYNC` it needs **no span**: a restore is for a phone that is
+    /// missing days, and "fill it from the last thirty" is the question such a phone is asking.
+    public var canRestore: Bool { isCloudConfigured && !isRestoring && !isSyncing }
+
+    /// The restore button's title.
+    public nonisolated static let restoreTitle = "RESTORE"
+
+    /// What a restore does, said plainly — **including that it replaces rather than merges**, which is
+    /// the one thing a reader must know before pressing it.
+    public nonisolated static let restoreCaption =
+        "Fills this phone from the database: the last 30 days of all seven resources. A day this "
+        + "phone already holds is replaced by the database's copy."
+
     private let engine: SyncEngine
     private let keyStore: any SyncKeyStore
+    private let restore: RestoreFromCloudUseCase?
 
     public init(
         engine: SyncEngine,
         keyStore: any SyncKeyStore,
+        restore: RestoreFromCloudUseCase? = nil,
         missingCloudKey: String?
     ) {
         self.engine = engine
         self.keyStore = keyStore
+        self.restore = restore
         self.missingCloudKey = missingCloudKey
     }
 
@@ -203,6 +222,63 @@ import SwiftUI
     ///
     /// The failure sentences are `message(for:)`'s, and the successful one is the engine's own: nothing
     /// here composes a sentence about a transfer, so a run cannot come to describe itself two ways.
+    /// The one control that moves days **down**, and the only one a cloud install needs when its phone
+    /// is missing rows.
+    ///
+    /// **Reads and writes are local; this is how a phone that never held a day gets one.** Since the
+    /// decorators stopped answering a local miss from the API, a row the phone does not hold is blank on
+    /// every screen by design — restore is the deliberate way to close that gap, and it is why it carries
+    /// its own sentence rather than being folded into `SYNC`.
+    ///
+    /// **It is the one control on this pane that does not wait for 6 PM Eastern.** `SYNC` and the
+    /// launch-time restore obey the app's call window because they are the app deciding to call out;
+    /// this is a person pressing a button to fix a phone that is missing days, and a control that
+    /// refused until the evening would fail exactly when a fresh install needs it. The client behind it
+    /// is built open (`DIContainer`), so nothing here checks the hour and there is no refusal sentence.
+    public func restoreFromCloud() async {
+        guard canRestore, let restore else { return }
+        isRestoring = true
+        defer { isRestoring = false }
+        do {
+            let report = try await restore.restore()
+            switch report.skipped {
+            case .deviceDestination:
+                status = "Restore needs WHOOPSY SYNC API as the destination — this phone is set to "
+                    + "store its days itself."
+            case nil:
+                status = Self.restoredSentence(report)
+            }
+        } catch {
+            status = "The restore could not run. " + error.localizedDescription
+        }
+    }
+
+    /// What one restore wrote, as one line.
+    ///
+    /// **A total alone answers the wrong question.** `Restored 36 rows over 30 days` says something
+    /// landed but not what, and the reader looking at a blank ring is asking exactly that — a night
+    /// that did not come back and a night that was never uploaded read identically from a sum. So the
+    /// sentence names the resources that moved, in the pane's own order (`SyncedResource.allCases`),
+    /// and leaves out the ones that moved nothing rather than printing seven zeros: a zero is not news,
+    /// and a line of them buries the one number that is.
+    ///
+    /// The profile is counted apart because it is a singleton and travels as a flag — it is one row in
+    /// the total and has no count of its own.
+    public nonisolated static func restoredSentence(
+        _ report: RestoreFromCloudUseCase.Report
+    ) -> String {
+        guard report.totalRows > 0 else {
+            return "The database holds nothing for the last \(report.days) days."
+        }
+        var moved = SyncedResource.allCases.compactMap { resource -> String? in
+            guard let count = report.rows[resource], count > 0 else { return nil }
+            return "\(resource.rawValue.lowercased()) \(count)"
+        }
+        if report.restoredProfile { moved.append("profile 1") }
+        let detail = moved.isEmpty ? "" : " — " + moved.joined(separator: " · ")
+        return "Restored \(report.totalRows) rows over \(report.days) days\(detail)."
+    }
+
     public func run() async {
         guard !isSyncing else { return }
         isSyncing = true

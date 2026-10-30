@@ -190,13 +190,14 @@ describe("GET /openapi.json", () => {
     ).toBe(false);
 
     expect(Object.keys(document.paths["/v1/recoveries/{date}"]!).sort()).toEqual(["get", "put"]);
-    expect(Object.keys(document.paths["/v1/recoveries"]!).sort()).toEqual(["get"]);
+    expect(Object.keys(document.paths["/v1/recoveries"]!).sort()).toEqual(["delete", "get"]);
     expect(Object.keys(document.paths["/health"]!).sort()).toEqual(["get"]);
 
     // The batch path is a `POST` and nothing else — and that is the assertion worth making, because
     // the tempting shape is a `PUT` on `/v1/recoveries` meaning "these are the days". A `PUT` there
-    // would oblige the server to delete the days the caller left out, and this API has no delete path
-    // at all; the verb is the promise, and a client reading its own name for it would find the wrong
+    // would oblige the server to delete the days the caller left out. The API now has exactly one
+    // removal operation, and it is the `DELETE` on the collection above — never a side effect of a
+    // write; the verb is the promise, and a client reading its own name for it would find the wrong
     // one. `dto/recoveries.ts` carries the argument in full.
     expect(Object.keys(document.paths["/v1/recoveries/batch"]!).sort()).toEqual(["post"]);
 
@@ -209,7 +210,7 @@ describe("GET /openapi.json", () => {
     // throws rather than answering `[]`, and the *path list* above is the one that catches a mount
     // that never happened.
     expect(Object.keys(document.paths["/v1/sleeps/{date}"]!).sort()).toEqual(["get", "put"]);
-    expect(Object.keys(document.paths["/v1/sleeps"]!).sort()).toEqual(["get"]);
+    expect(Object.keys(document.paths["/v1/sleeps"]!).sort()).toEqual(["delete", "get"]);
     expect(Object.keys(document.paths["/v1/sleeps/batch"]!).sort()).toEqual(["post"]);
     // The day-keyed addressing is the half a copy of the aggregate gets wrong: a sleeps route lifted
     // from `workouts` would address a night by an id no column of this table holds, and the document
@@ -224,7 +225,7 @@ describe("GET /openapi.json", () => {
     // disagrees about which — and they fail loudly rather than answering `[]`, since a missing key
     // throws through the non-null assertion.
     expect(Object.keys(document.paths["/v1/step-counts/{date}"]!).sort()).toEqual(["get", "put"]);
-    expect(Object.keys(document.paths["/v1/step-counts"]!).sort()).toEqual(["get"]);
+    expect(Object.keys(document.paths["/v1/step-counts"]!).sort()).toEqual(["delete", "get"]);
     expect(Object.keys(document.paths["/v1/step-counts/batch"]!).sort()).toEqual(["post"]);
     // The day-keyed half again, and worth restating on a resource whose absence is a bare `404`: it is
     // the shape that *looks* like it could be addressed either way — a step count is one number per
@@ -238,7 +239,7 @@ describe("GET /openapi.json", () => {
     // interchangeable: a strains route lifted from `workouts` would address a day by an id this table
     // has no column for, and the document would describe it perfectly.
     expect(Object.keys(document.paths["/v1/strains/{date}"]!).sort()).toEqual(["get", "put"]);
-    expect(Object.keys(document.paths["/v1/strains"]!).sort()).toEqual(["get"]);
+    expect(Object.keys(document.paths["/v1/strains"]!).sort()).toEqual(["delete", "get"]);
     expect(Object.keys(document.paths["/v1/strains/batch"]!).sort()).toEqual(["post"]);
     expect(Object.keys(document.paths).some((path) => path.includes("/v1/strains/{id}"))).toBe(false);
 

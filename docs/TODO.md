@@ -10,12 +10,12 @@ is the inventory of what each column is worth and what it would take to use the 
 > holding that project's identity, URLs and verbatim excerpts; the table is
 > [`docs/BLE_PROTOCOL.md` § Sources](BLE_PROTOCOL.md#sources).
 
-**Three sections at the end are not a column inventory** — §5, the strap's own historical sync, which
+**Four sections at the end are not a column inventory** — §5, the strap's own historical sync, which
 is a wire-protocol task rather than an export one, §6, the walk to run on a sideloaded build, which
-is a device task rather than an export one, and **§7, the flash recorder and the step counter**, added
-2026-10-23. All three are here because this is the file the project's outstanding work is recorded in,
-and all three are marked as sitting outside the per-column rule so that the invariant below still
-holds for everything above them.
+is a device task rather than an export one, **§7, the flash recorder and the step counter**, added
+2026-10-23, and **§8, the WHOOP 5.0 MG feature inventory**, added 2026-10-28. All four are here
+because this is the file the project's outstanding work is recorded in, and all four are marked as
+sitting outside the per-column rule so that the invariant below still holds for everything above them.
 
 **Re-measure, never trust.** Every count here is a measurement over
 `ios/Sources/Whoopsy/Data/Resources/Whoop/`, not a recollection. The `csv-field-coverage` skill owns this file
@@ -270,7 +270,7 @@ Four facts that decide more than one line above.
    either. The workout HUD was the app's only *recording* path and it was deleted with the Workout
    tab; the `+` menu's `START ACTIVITY` replaced it, opening a live session that writes a `workouts`
    row on END. **That session is now the route table's one producer, and it is opt-in** — a
-   `RECORD ROUTE` toggle on `LiveSessionView`, off by default, which writes `workout_route_points`
+   `USE LIVE MAP` / `USE OFFLINE MAP` toggles on `LiveSessionView`, both off by default, which write `workout_route_points`
    through `SaveWorkoutUseCase` when it was on and `route: []` when it was not. So an imported
    session's route is empty (the export carries no position for any of its 673 rows) and so is a
    recorded session the user did not opt in to, which is the ordinary case rather than an absent
@@ -1185,3 +1185,211 @@ baseline window, so they lift it until they go. **Their dates are deliberately n
       one-off migration would work too (this migrator does not set `eraseDatabaseOnSchemaChange`, so
       removing a registered-and-applied migration later is harmless), but it leaves a row in
       `grdb_migrations` for a change the code no longer contains, which the startup block does not.
+
+## 8. WHOOP 5.0 MG feature inventory — **not a column, and not covered by the rule above**
+
+**What WHOOP's own product offers, and where this app stands on each.** The user's request was to
+gather what the 5.0 MG offers and add it to the todo, so this section is a coverage inventory rather
+than a wish list: every line carries one of three verdicts and the reason it has it.
+
+- `[x]` **covered** — a named symbol draws or computes it; the line names it.
+- `[ ]` **work** — the app has the input, or can, and the line says what it would take.
+- `[—]` **out** — not this app's to build, or not coverable from local data at all. A line marked
+  `[—]` is closed the way a **Decision** line in §1–§4 is.
+
+Measured against the code on **2026-10-28**, not recalled. The strap this is about is the third one the
+owner has: a 4.0, a 5.0 and a **5.0 MG**, so nothing here may be generalised to the other two — the
+community reference's family names are 4.0 *Harvard*, 5.0 *Goose* and MG *Maverick*, and the MG shares
+the 5.0's BLE stack and firmware byte for byte.
+
+### What the MG is, and what its tier buys
+
+The MG launched alongside the 5.0 in May 2025 and differs in **one piece of hardware**: a clasp with
+two conductive electrodes you touch with a thumb and a finger for a 30-second single-lead ECG. Its
+sensors are otherwise the 5.0's — PPG heart rate, an accelerometer (with a compass on the 5.0 family),
+skin temperature, an SpO2 channel, haptics, ~14 days of battery, IP68 — and it has **no GPS, no
+display and no buttons**. Bands are not interchangeable with the 4.0's.
+
+WHOOP sells it only with its top tier. The three tiers, because "what it offers" is a question about
+the subscription rather than the device: **One** (5.0) — sleep, strain, recovery, VO2 max, HR zones,
+Strength Trainer, cycle insights, Coach; **Peak** (5.0 + Wireless PowerPack) — adds Health Monitor,
+Stress Monitor, Healthspan/Pace of Aging; **Life** (**MG**) — adds ECG/Heart Screener, irregular-rhythm
+notifications, Blood Pressure Insights, Advanced Labs and early access. Recovery is colour-graded from
+three recoveries, Live HR from seven, the Journal from ten, VO2 max from fourteen and the Health tab
+from twenty-one.
+
+### Hardware, and which channels actually reach this app
+
+| MG capability | Where it is on the wire | Verdict |
+| :--- | :--- | :--- |
+| PPG heart rate + R-R intervals | `R1`/`R18` 1 Hz records, the live `0x2A37` stream | `[x]` `WhoopPacketDecoder` → `biometric_samples` |
+| Accelerometer / motion | `R18` gravity triplet, `R21` motion epochs | `[x]` `SampleStillnessMath`, sleep onset, the Strain wrist term, steps |
+| Skin temperature | exported and stored on `recoveries.skin_temperature`; the **strap's own** field is the community reference's `u16` raw ÷ 100 at "byte 73", read by `SkinTemperatureCandidateProbe` at both plausible origins (payload 83 and 62) and logged to `Documents/skin-temperature-candidate.txt` | `[ ]` **a probe, not a reading** — the offset is ambiguous between the two conventions this codebase already uses, and one drained night against a known temperature settles it; then `HeartRatePayloadDecoder` takes the field and the Health Monitor card appears on drain nights with no further work |
+| SpO2 — the strap's own channel | `R18` carries an oxygen candidate; `Spo2CandidateProbe` logs it | `[—]` **no screen or row may read it as a measurement** — see the gotcha. It stays a probe until a capture justifies a decoder |
+| SpO2 — the export's `Blood oxygen %` | stored in `recoveries.spo2_percentage`, exported and printed by no screen | `[ ]` a card on the Recovery page; the figure is WHOOP's own measurement, not this app's |
+| ECG electrodes | an ECG command family exists in the community reference's `PROTOCOL_ECG.md`; **not hardware-confirmed**, first seen at firmware 50.39.1.0 | `[ ]` blocked on a capture, and on a decision about claiming rhythm analysis |
+| Haptics (alarms) | no command implemented here, none documented with confidence | `[ ]` blocked on a capture |
+| Battery | a battery notification the decoder already understands | `[x]` Home's badge |
+| GPS | none on the strap | `[x]` routes use the phone's GPS |
+
+### Core metrics — One and up
+
+| Feature | This app | Verdict |
+| :--- | :--- | :--- |
+| Recovery 1–99 with green/yellow/red | `RecoveryScoring`: HRV, RHR and sleep sufficiency, z-scored against 30 days | `[x]` |
+| Recovery *contributors* WHOOP lists: HRV, RHR, respiratory rate, SpO2, skin temperature, sleep quality, cycle phase | this app scores three of the seven; respiratory rate is stored and drawn on the Recovery page but **not scored**, SpO2 and skin temperature are stored and drawn nowhere | `[ ]` two of the inputs are already in `recoveries` — the work is a term and its weight, which is a model change `docs/ALGORITHMS.md` has to carry |
+| Strain 0–21 | `StrainDayMath` + `StrainScoreScoring`, refreshed on a watermark | `[x]` |
+| Strain's **muscular** component | WHOOP splits cardiovascular and muscular load; this app's Strain is cardiovascular plus a wrist-motion term | `[ ]` a muscular-load model is new maths, not a new read |
+| Strain Target | no target model | `[ ]` |
+| HR zones (%HRR) | `ZoneTimeMath`, activity and strain pages | `[x]` |
+| Kilojoules / calories | computed and written on `strains.kilojoules`, carried on the wire | `[ ]` **stored, drawn by no screen** — a row on the strain page is the whole of the work |
+| VO2 max | `Vo2MaxMath` estimate from max HR ÷ resting HR, with its error bar stated | `[x]` — an estimate, and the pages say so |
+| Steps | wrist detector + `R18` counter | `[x]` |
+| Activities | live sessions, hand-added, and the export's 673 | `[x]` |
+| **Auto-detected** activities | none — a session is started by hand or imported | `[ ]` needs motion/HR heuristics and a confirmation UI |
+
+### Sleep
+
+| Feature | This app | Verdict |
+| :--- | :--- | :--- |
+| Sleep score 0–100 | `SleepScoreScoring` — sufficiency, efficiency, restorative share and timing, weighted 45/20/20/15. **Not WHOOP's four**: its terms are hours-vs-needed, consistency, efficiency and sleep stress, and this app's restorative term stands in for the fourth — a substitution `docs/PATENTS.md` records | `[x]` |
+| Four stages | `AnalyzeSleepUseCase`, stillness spine from `R18`/`R21` | `[x]` |
+| Sleep need | `SleepNeedMath` | `[x]` |
+| Sleep debt | `SleepDebtMath` and the need card's breakdown | `[x]` |
+| Efficiency, consistency | `SleepConsistencyMath`, the efficiency card | `[x]` |
+| Sleep stress % | `AnalyzeSleepStressUseCase` | `[x]` |
+| Respiratory rate | `RespiratoryRateMath` (RSA off R-R) or the export's own | `[x]` |
+| Sleep Planner / Sleep Coach (a recommended bedtime) | the need exists; no planner draws it | `[ ]` a schedule model over stored nights, entirely local |
+| Haptic smart alarm | none | `[ ]` blocked with the haptics channel |
+| Weekly Plan | none | `[ ]` a strain-target/scheduling model |
+
+### Health — Peak and up
+
+| Feature | This app | Verdict |
+| :--- | :--- | :--- |
+| Health Monitor (five vitals) | Home's **HEALTH MONITOR** card counts the day's five `recoveries` fields (`HealthMonitorSummary`); tapping it opens `HealthMonitorView`, which draws each figure against a band from `HealthMonitorReadings` — mean ± 1 SD over the last 30 measured nights, blood oxygen on the clinical 95–100% range — plus the night's mean heart rate from its own samples | `[x]` — the card's caption stays `ALL MEASURED` and the page carries the verdicts; giving the row the page's read is the only work left, and it is not needed |
+| Real-time Stress Monitor 0–3 | `StressMath` + the live page, scored against a personal or recent-hours baseline | `[x]` |
+| Healthspan — WHOOP Age and Pace of Aging | the Health tab draws the card with dashes. **What WHOOP publishes**, per its own Healthspan pages and white paper: a **physiological age** from the last six months of nine inputs — sleep duration, sleep consistency, steps, HR zones 1–3, HR zones 4–5, strength-activity time, VO₂ max, resting heart rate and lean body mass — each converted to years through a **published all-cause-mortality hazard ratio**, with overlap between correlated inputs corrected so no benefit counts twice; plus a weekly **Pace of Aging** that projects the last 30 days forward six months (−1.0× to 3.0×). It is not a metabolic age and not a blood panel — it is a mortality-risk composite, and WHOOP's own paper calls it exploratory. This app computes seven of the nine (steps, both zone-time bands, VO₂ max estimate, resting rate, sleep duration and consistency) and **estimates the eighth**: `LeanBodyMassMath` runs the Boer (1984), Hume (1966) and James (1976) regressions over the profile's height, weight and sex, publishes their **median with the range they span** (80 kg at 180 cm is ≈61 kg, 58–63) and refuses the estimate for a profile that answers neither `man` nor `woman`, because those are the two categories the regressions were fitted on. The ninth thing missing is the coefficient table itself — `[ ]` the model | `[ ]` a model over long-run trends; `docs/PATENTS.md` records what WHOOP discloses (little), so it would be this app's own construction and must say so |
+| Cycle / hormonal insights | none; `UserProfile` has no cycle field | `[ ]` user-entered cycle days plus the existing HRV/RHR/sleep rows |
+| Journal (160+ behaviours, behaviour insights) | none | `[ ]` — **and the bundled `journal_entries.csv` stays unused**, per the user's instruction recorded in §3. A local log is a new feature, not a revival of that file |
+| Health Report | JSON + CSV export on the profile page's `LOGS` pane | `[ ]` a report is a document over rows already exported |
+
+### MG-exclusive — Life
+
+| Feature | This app | Verdict |
+| :--- | :--- | :--- |
+| ECG / Heart Screener | none | `[ ]` the command family is unverified and the claim is medical; a capture is the gate, and a single-lead rhythm analysis is a regulated statement this app should not make without one |
+| Irregular-rhythm notifications | none | `[ ]` same gate, plus continuous monitoring this app's record set does not carry |
+| Blood Pressure Insights | none | `[—]` **not coverable.** WHOOP estimates it server-side from overnight PPG and calibrates against a cuff; this app has no PPG waveform, no model, and no calibration input. A local estimate would be a fabricated number of exactly the kind `docs/TODO.md` §1's "decisions" exist to prevent |
+| Advanced Labs (60–70 biomarkers) | none | `[—]` an external lab service |
+
+### Platform
+
+| Feature | This app | Verdict |
+| :--- | :--- | :--- |
+| Apple Health / Health Connect | `HealthKitStoreClient` + `HealthKitImporter` read HRV and resting rate in | `[x]` import only; writing this app's rows back out is `[ ]` |
+| Live HR | `StreamBiometricsUseCase` → Home's heart rate and `LiveSessionView` | `[x]` |
+| Broadcast Heart Rate (a standard BLE service for gym equipment) | none | `[ ]` an advertise-and-forward service over the same stream |
+| WHOOP Coach / AI assistant | none | `[—]` **deliberately out.** The user removed it, along with its comments, and it is not to be reintroduced |
+| Teams / community / challenges | none | `[—]` server-side social features, and this app is offline by design |
+| Subscription itself | not applicable | `[—]` the app's whole premise is that there is nothing to subscribe to |
+
+### If Healthspan is ever built, this is the standard it has to meet
+
+The field's **method** is the standard, not any one number. A biological-age clock is defined by an
+outcome it is trained on, and the accepted bar is: train on **time to death** (Cox or parametric
+survival) in a cohort that carries the inputs, report the fitted **age equivalent** and its
+**age-acceleration** residual, then validate in an independent cohort with survival metrics that do not
+assume proportional hazards — Uno's C-index, time-dependent AUC, restricted mean survival time — and say
+whether it beats the incumbent (PhenoAge, or the Klemera–Doubal method).
+
+The generations, because the name on a feature usually tells you which one it is:
+
+- **First** — Horvath (2013) and Hannum (2013), trained on **chronological age**. Their age gap is a
+  curiosity, not a risk model.
+- **Second** — **PhenoAge** (Levine 2018) and **GrimAge** (2019; GrimAge2 2022), trained on
+  **mortality and morbidity**. This is the class a "mortality-risk model turned into years" belongs to,
+  and GrimAge is the strongest single predictor in the 2025 head-to-heads: in the Generation Scotland
+  comparison of fourteen clocks it led healthspan (HR 2.00), cardiovascular and respiratory outcomes,
+  with PhenoAge leading metabolic conditions.
+- **Third** — **DunedinPACE** (Belsky 2022), trained on the **pace** of aging over twenty years of the
+  Dunedin cohort. A weekly "×1.1 faster than last week" figure is a Pace-of-Aging-shaped claim, and
+  DunedinPACE is the reference for it.
+- **Now** — **organ-specific proteomic clocks**: 2,916 plasma proteins across eleven organs in 44,498
+  UK Biobank participants, seventeen years of follow-up, where eight or more "aged" organs carried
+  HR 8.3 for mortality (Stanford, *Nature Medicine* 2025). That is the current ground-breaking result.
+  **Wearable-only clocks exist too** — CosinorAge (accelerometry → circadian parameters), MotionAge
+  (trained directly on mortality), MoveIt! Age (steps alone) — and they are the only class this app
+  could ever feed, since it holds motion, heart rate and sleep rather than plasma or methylation.
+  **CosinorAge is the closest prior art to `motionEpochs`**: seven days of minute-level wrist ENMO →
+  one 24-hour cosine per person → three parameters (MESOR, amplitude, acrophase), then two Gompertz
+  proportional-hazards models — one with the rhythm terms and one age-only — equated at five-year
+  mortality and solved for age. Its mortality discrimination is modest (C-index ≈ 0.60 all-cause,
+  0.67 neurodegenerative, 0.735 diabetes), and **its coefficients are not published**, so what is
+  reproducible is the method rather than the number. Three of the four inputs it needs are already here
+  (`motionEpochs` at 30 s rather than ENMO at 1 min); the fourth is a mortality outcome this app has no
+  way to observe — which is why a circadian-rhythm *description* (amplitude and peak time) is buildable
+  here and a CosinorAge *number* is not.
+
+**What that means here.** WHOOP's model is second-generation in shape (mortality hazard ratios summed
+into years, with overlap corrected) but its inputs are **wearable behaviours and estimates**, not
+biomarkers — which makes it a lifestyle-risk score expressed in years rather than a validated molecular
+clock, and is why WHOOP's own paper calls it exploratory. If this app built one, the defensible route is
+the wearable one: fit on a cohort that carries the same inputs (NHANES accelerometry, UK Biobank) and
+validate out of sample. It cannot be done from this app's own data — there are no mortality outcomes in
+it — so anything built here would have to cite someone else's fit, exactly as `docs/ALGORITHMS.md`
+does for Strain.
+
+### What to build next, in the order the data supports
+
+1. **Finish the strap sync** — §5's walk is the gate under everything else on the wire, and the owner's
+   ruling is that it is a must-implement.
+2. **Draw the three stored figures no screen shows** — `recoveries.spo2_percentage`,
+   `recoveries.skin_temperature`, `strains.kilojoules`. The data is already there and every frame of it
+   is this app's own; these are cards, not captures. SpO2 and skin temperature are already *counted* by
+   Home's Health Monitor row, which shows how many of the five vitals exist rather than their values.
+3. **The life table that would turn the risk profile into years** — the multiplier is built
+   (`MortalityRiskProfile`: three published relative risks, clamped); what it lacks is an
+   age-specific life table to apply it to, and **the app has no country setting yet**, which the
+   table is keyed on. `UserProfile` carries no country; the natural home is a picker on the
+   profile page's `BIOMETRICS` pane, stored as a preference rather than a profile column (no
+   migration, no wire change).
+   **Sources, checked on 2026-10-29** — the UN portal's formula route 404s and WHO's GHO *data*
+   endpoints answer 500 while its indicator list still serves (`LIFE_0000000030`, abridged nqx,
+   is the one to fetch when it returns). **Eurostat works and is the best shape of the three**:
+   `demo_mlexpec` returns remaining life expectancy by **single year of age**, sex and country —
+   an `e_x` ladder for the EU/EEA, from which `q_x` follows by
+   `q_x = (1 + e_{x+1} − e_x) / (1 + e_{x+1} − 0.5)`. The SSA's period life table page answers
+   403 to a script, and Canada's, Australia's, Japan's and the UK's are national files in mixed
+   formats. So a bundled table would be **per-country with its own source recorded**, starting
+   with Eurostat's coverage and adding others as they are reachable — not one global file.
+4. **More countries for the life table** — the **US is bundled** (`LifeTables/lifeTables.json`, generated by
+   `scripts/build-life-tables.py` from NCHS's own NVSR 75-05 spreadsheets, Tables 1–3) and the Health tab
+   now turns the risk multiplier into years against it: *life expectancy at 36, 42.6 years; with your
+   profile, 53.9 (+11.2)*. The country is the device's locale region, so everywhere else says *no table for
+   this region yet*. The next table is Eurostat's `demo_mlexpec` (single-year `e_x`, EU/EEA) — the fetch is
+   one call per country and the bundle's shape already takes them. A country picker on the profile's
+   `BIOMETRICS` pane is the companion change: a life expectancy depends on where its owner lives, and a
+   locale default is a guess this app should let someone correct.
+5. **Score SpO2 and skin temperature into Recovery** — the other half of WHOOP's contributor list, and a
+   model change `docs/ALGORITHMS.md` has to state and `docs/PATENTS.md` has to check.
+4. **A local Journal** — behaviour logging plus a correlation against stored recoveries. §3's file stays
+   unused; this would be the app's own table.
+5. **Sleep Planner** and **Strain Target** — models over rows that already exist.
+6. **Healthspan**, **cycle insights**, **muscular load** — new maths, each with its own provenance.
+7. **ECG, haptics and live SpO2** — all three sit behind the same gate: a capture from the owner's own
+   MG. None of them may be implemented from a spec alone. **Skin temperature has its probe already**
+   (`SkinTemperatureCandidateProbe`, two candidate offsets, one night to settle which) — its card is
+   one line of decoder after that.
+
+### Sources
+
+- WHOOP, *Introducing WHOOP 5.0 and WHOOP MG* — <https://www.whoop.com/us/en/thelocker/introducing-whoop-5-0-and-whoop-mg/>
+- WHOOP, *What WHOOP 5.0 and WHOOP MG add to health, fitness and longevity* — <https://www.whoop.com/us/en/thelocker/podcast-322-whoop-5-0-and-mg-everything-you-need-to-know/>
+- WHOOP Support, *Membership Features & Benefits* and *Calibration Timeline* — <https://support.whoop.com/s/article/Membership-Features-Benefits> · <https://support.whoop.com/s/article/Calibration-Timeline>
+- WHOOP, *Inside Look: What's Next for WHOOP — Spring 2026* — <https://www.whoop.com/us/en/thelocker/2026-whats-next/>
+- The community reference's `PROTOCOL.md`, `PROTOCOL_WHOOP5.md` and `PROTOCOL_ECG.md`, and the research
+  reference's product pages — per `docs/BLE_PROTOCOL.md` § Sources. The MG's ECG framing is
+  **unverified** in both, and both say so.
+- Tier prices and the MG/PowerPack split are from WHOOP's own tiers page and from press coverage at
+  launch (Wareable, CNET, Trusted Reviews, PCMag, Engadget); quoted as context, not as a spec.

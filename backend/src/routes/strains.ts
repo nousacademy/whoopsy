@@ -8,7 +8,7 @@ import {
   StrainWriteSchema,
   WindowQuerySchema,
 } from "../dto/strains";
-import { DayKeySchema, RequestHeaderSchema } from "../dto/shared";
+import { DayKeySchema, DayRangeQuerySchema, DeleteResultSchema, RequestHeaderSchema } from "../dto/shared";
 import type { Env } from "../env";
 import { D1StrainRepository } from "../repositories";
 import { StrainService } from "../services";
@@ -197,6 +197,26 @@ const writeStrainBatch = createRoute({
   },
 });
 
+const deleteStrains = createRoute({
+  method: "delete",
+  path: "/",
+  summary: "Delete a range of days",
+  description:
+    "Remove every stored day in an inclusive `from…to` range, and answer with how many rows the database removed. **The only operation in this API that removes anything**, and it is range-shaped rather than row-shaped: a caller forgetting one day names a range of one. `0` is a real answer — the range held nothing, which is the state the caller asked for — and a replayed delete answers `0` rather than failing. At most `MAX_DELETE_DAYS` (31) days may be removed at once; a wider range is a `400`.",
+  request: {
+    query: DayRangeQuerySchema,
+    headers: RequestHeaderSchema,
+  },
+  responses: {
+    401: unauthorizedResponse,
+    200: {
+      description: "How many rows the database removed.",
+      content: { "application/json": { schema: DeleteResultSchema } },
+    },
+    400: errorResponse("The range is not two calendar days, is reversed, or spans more than 31 days."),
+  },
+});
+
 export const strainRoutes = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationHook,
 })
@@ -263,4 +283,15 @@ export const strainRoutes = new OpenAPIHono<{ Bindings: Env }>({
     const written = await serviceFor(c.env).writeMany(userId, rows);
 
     return c.json({ written }, 200);
+  })
+  .openapi(deleteStrains, async (c) => {
+    const { from, to } = c.req.valid("query");
+    const userId = await partitionFor(c.req.valid("header"));
+
+    // The policy — reversed range, span cap — is the service's, and it answers a refusal as its own
+    // error class. This layer only decides that a refusal is a `400` and a count is a `200`.
+    const deleted = await serviceFor(c.env).deleteRange(userId, from, to);
+
+    return c.json({ deleted }, 200);
   });
+

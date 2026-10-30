@@ -130,27 +130,23 @@ public struct StrainDetailView: View {
     /// **Three rows have a producer and one does not, and the three have two different ones.** That
     /// distinction is the whole design of this card, so it is worth stating per row:
     ///
-    /// * `HEART RATE ZONES 1-3` and `4-5`. These are WHOOP's own `HR Zone n %` figures for the day's
-    ///   workouts, out of the bundled `workouts.csv`, scaled by each workout's own span. They are
-    ///   **WHOOP's measurements, not this app's**: the export carries no heart-rate series for
-    ///   `StrainAccumulatorMath` to integrate, `biometric_samples` holds no rows here, and the drain's
-    ///   type-24 heart-rate record has no reader — so there is no path by which this app could compute
-    ///   a zone from a heart rate it measured. `StrainScore.zones` is still computed and still
-    ///   dropped at the write (see `GRDBStrainRepository`), and it is deliberately **not** read here:
-    ///   that array exists for today alone, so drawing it would show a real figure on today and a dash
-    ///   on every past day, the same quantity answered two ways with nothing on screen to say why.
-    /// * `STEPS`. The one row this app measured itself: the strap's own accelerometer, decoded from
-    ///   live or drained motion and stored one row per day in `stepCounts`. It is read through
-    ///   `StepCount.measuredStepCount`, so a measured day of no walking is a real `0` and a day the
-    ///   strap was not worn is `nil`. **It is `nil` on every day this machine can currently show** —
-    ///   no database here holds a `stepCounts` row, and the export carries no steps at all — so the
-    ///   figure the reference draws on this row is unreachable without a strap. It is a day-level
-    ///   quantity sitting inside a workout-level card, which is why a rest day with steps measured
-    ///   shows no step figure: `viewModel.workouts` gates the whole card.
-    /// * `STRENGTH ACTIVITY TIME`. There is no such quantity anywhere in this app and **no column for
-    ///   it in any of the four CSVs** — no strength detection, no per-activity-type duration. It is a
-    ///   dash for a stated reason rather than by omission. The reference's `ACTIVITY TIME` row was the
-    ///   same search and has been replaced by `STEPS`, which has a producer.
+    /// * `HEART RATE ZONES 1-3` and `4-5`. The day's workouts summed into the two bands. A session is
+    ///   read from **its own samples** through `ZoneTimeMath` when this app recorded it, and from
+    ///   WHOOP's `HR Zone n %` block when it did not — one producer per figure, measured first, the
+    ///   rule `ActivityZoneRow` states for the activity page and `StrainDayActivity` reuses here. The
+    ///   comparison is withheld on a day that was measured, because the baseline is a mean over
+    ///   WHOOP's blocks and the two must not be read against each other.
+    /// * `STEPS`. The strap's own accelerometer, decoded from live or drained motion and stored one
+    ///   row per day in `stepCounts`. It is read through `StepCount.measuredStepCount`, so a measured
+    ///   day of no walking is a real `0` and a day the strap was not worn is `nil`. It is a day-level
+    ///   quantity inside a workout-level card, which is why a rest day with steps measured shows no
+    ///   step figure: `viewModel.workouts` gates the whole card.
+    /// * `STRENGTH ACTIVITY TIME`. **This row has a producer now, and the producer is this app's own
+    ///   definition**: the summed span of the day's sessions whose activity is one of
+    ///   `WhoopActivityCatalog.strengthActivities`. WHOOP's own `^` footnote is not published in a form
+    ///   this repo can reproduce, so the four resistance names in that catalogue are the app's stated
+    ///   substitute rather than WHOOP's undisclosed membership. A day with workouts and no strength
+    ///   session prints a real `0:00`.
     ///
     /// **All four rows are drawn rather than the unproducible one being hidden**, which is the
     /// reference's shape and the honest one: a dash is a statement that the day has no reading here,
@@ -190,8 +186,8 @@ public struct StrainDetailView: View {
             activityRow(
                 symbol: "dumbbell.fill",
                 label: "STRENGTH ACTIVITY TIME",
-                value: nil,
-                baseline: nil,
+                value: viewModel.strengthSeconds,
+                baseline: viewModel.strengthBaselineSeconds,
                 higherIsBetter: true,
                 format: Self.formatDuration)
 

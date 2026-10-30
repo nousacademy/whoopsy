@@ -100,6 +100,86 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Delete a range of days",
+        "description": "Remove every stored day in an inclusive `from…to` range, and answer with how many rows the database removed. **The only operation in this API that removes anything**, and it is range-shaped rather than row-shaped: a caller forgetting one day names a range of one. `0` is a real answer — the range held nothing, which is the state the caller asked for — and a replayed delete answers `0` rather than failing. At most `MAX_DELETE_DAYS` (31) days may be removed at once; a wider range is a `400`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "The oldest day in the range, inclusive.",
+              "example": "2026-10-20"
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The newest day in the range, inclusive.",
+              "example": "2026-10-22"
+            },
+            "required": true,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The deployment's shared secret, as `Bearer <token>`. The scheme is case-insensitive; the space is exactly one. **This is not a per-install identity** — every client of one deployment sends the same value, so it decides whether a request is served at all and not whose rows it reaches. A missing or wrong credential is a `401`; a deployment with no secret configured answers `500`, because that is the operator's problem rather than the caller's.",
+              "example": "Bearer 3Yk8QvN2mR7xLpZ4tWbJ6hFcS9dG1aE5uK0oI8yT2nM"
+            },
+            "required": true,
+            "name": "authorization",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 200,
+              "description": "The install's key: 32 random bytes, base64url or hex encoded, generated on the device and kept in its Keychain. **It selects a partition and verifies nothing** — anyone holding it reads and writes its rows, and it is not an identity this API checks. The request that carried it was already admitted by the `Authorization` header above. **It is hashed on arrival and never stored**: the `user_id` column holds `sha256` of it. At least 32 characters, at most 200.",
+              "example": "K7fQ2mZx9pLr4Tn6WvB1yHs8JcE3uGa5DkRm0Xq4Y"
+            },
+            "required": true,
+            "name": "x-whoopsy-user-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "How many rows the database removed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The range is not two calendar days, is reversed, or spans more than 31 days.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization: Bearer` credential is missing, or it does not match the one this deployment accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/step-counts/{date}": {
@@ -424,6 +504,21 @@
         ],
         "additionalProperties": false,
         "description": "The fields of a step count, less its day — the day comes from the path."
+      },
+      "DeleteResult": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many rows the database removed. `0` means the range held nothing — a real answer, and the one a replayed delete gets.",
+            "example": 3
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "description": "The outcome of a range delete."
       },
       "Error": {
         "type": "object",

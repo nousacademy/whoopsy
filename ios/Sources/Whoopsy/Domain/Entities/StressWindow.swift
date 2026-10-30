@@ -25,8 +25,18 @@ public struct StressWindow: Equatable, Sendable {
     /// The band `score` falls in. Derived, so it cannot sit beside a score from another evaluation.
     public var band: StressMath.Band { StressMath.band(forScore: score) }
 
-    public init(start: Date, score: Double) {
+    /// What the score was made from, when the caller kept it.
+    ///
+    /// The analyzer fills this in for every window it scores, because the **recent** baseline is
+    /// built *from* these numbers: with no personal baseline, a window is scored against the mean
+    /// and spread of the previous few hours' features, so a live tick needs the day's own features to
+    /// extend the line at all. `nil` on a window a caller assembled by hand — a preview, a fixture, a
+    /// chart test — which is why it is optional rather than a second required value.
+    public let features: StressWindowFeatures?
+
+    public init(start: Date, score: Double, features: StressWindowFeatures? = nil) {
         self.start = start
         self.score = score
+        self.features = features
     }
 }

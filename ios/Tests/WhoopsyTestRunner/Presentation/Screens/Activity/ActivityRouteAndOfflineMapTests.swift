@@ -4,6 +4,29 @@ import Whoopsy
 
 enum ActivityRouteAndOfflineMapTests {
     static func run() async throws {
+        // MARK: - The map cards' expand control
+
+        // **A control with no destination is the thing this repo forbids, so the destination is the
+        // assertion.** The expanded map is the same surface in a larger frame — nothing about it is a
+        // second view the runner could drive — so what is pinned here is the pair of names the two
+        // cards draw and the words a screen reader hears, which is the part a screenshot of one card
+        // cannot check and the part that would let the two cards drift apart.
+        assertTest(
+            MapFullScreenView.expandSymbol == "arrow.up.left.and.arrow.down.right"
+                && MapFullScreenView.closeSymbol == "xmark",
+            "The expansion uses the two-corner arrows the user asked for — one name, shared by both map "
+                + "cards through `MapFullScreenView` — and the full-screen map closes with a cross "
+                + "(\(MapFullScreenView.expandSymbol), \(MapFullScreenView.closeSymbol))")
+
+        assertTest(
+            MapFullScreenView.expandLabel == "Expand map"
+                && MapFullScreenView.closeLabel == "Close map"
+                && !MapFullScreenView.expandLabel.isEmpty
+                && MapFullScreenView.expandLabel != MapFullScreenView.closeLabel,
+            "…and the two controls are named for what they do rather than left as unlabelled images: "
+                + "the card's button is one accessibility stop beside the map's spoken sentence, not a "
+                + "child of it (\(MapFullScreenView.expandLabel) / \(MapFullScreenView.closeLabel))")
+
         // MARK: - The route map
 
         // A pure value with no database behind it, like the delta and the zone rows above: `ActivityRoute`
@@ -597,9 +620,8 @@ enum ActivityRouteAndOfflineMapTests {
                 await waitUntil { await MainActor.run {
                     liveLocation.yield(latitude: 51.5074, longitude: -0.1278)
                 } },
-                "The switch waits for one position fix, read off a GPS stream the session starts for itself: "
-                    + "the two switches are mutually exclusive, so the route is off while this is on and there "
-                    + "is no route stream to borrow a fix from")
+                "The switch records the route as well as downloading, and the centre is the first fix that "
+                    + "route files — one stream, not a second one opened for the download")
 
             assertTest(
                 await waitUntil { await MainActor.run { liveMaps.downloadCount } == 1 },
@@ -616,6 +638,7 @@ enum ActivityRouteAndOfflineMapTests {
             }
             let centre = await MainActor.run { (liveMaps.lastLatitude, liveMaps.lastLongitude) }
             let released = await liveLocation.stopCount
+            let recordingUnderOffline = await liveSession.isRecordingRoute
 
             assertTest(
                 centre.0 == 51.5074 && centre.1 == -0.1278,
@@ -627,10 +650,10 @@ enum ActivityRouteAndOfflineMapTests {
                     + "answer the detail page gets later is about the region this session actually downloaded "
                     + "(\(ActivityDetailTests.shown(storedForRegion)))")
             assertTest(
-                released == 1,
-                "…and the GPS is released the moment the fix is in hand: a tile download is a one-shot, and "
-                    + "leaving the radio running for it would put the blue indicator up for a session that is "
-                    + "recording no route (\(released) stop(s))")
+                released == 0 && recordingUnderOffline,
+                "…and the GPS **keeps running**, because this map records the route too: the stream is the "
+                    + "route's and is released when the last map choice goes off, not when the download's "
+                    + "centre is in hand (\(released) stop(s), recording \(recordingUnderOffline))")
 
             // ---- The switch off *after* the tiles landed ----
             //
@@ -643,6 +666,7 @@ enum ActivityRouteAndOfflineMapTests {
             let clearedState = await liveSession.offlineMapState
             let keptCancels = await MainActor.run { liveMaps.cancelledCount }
 
+            let stoppedWithLastMap = await liveLocation.stopCount
             assertTest(
                 !offRequested && clearedRegion == nil && clearedState == .absent,
                 "Turning the switch off clears the card and the region, so the flag and the identifier the "
@@ -653,17 +677,21 @@ enum ActivityRouteAndOfflineMapTests {
                 "…and cancels nothing, because the download had already finished — a cancel here is the one "
                     + "the protocol forbids, and it is unreachable only because the state is read before it is "
                     + "cleared (\(keptCancels) cancellation(s))")
+            assertTest(
+                stoppedWithLastMap == 1,
+                "…and with no other map chosen the route stops with this one, releasing the GPS exactly once "
+                    + "(got \(stoppedWithLastMap) stop(s))")
 
-            // ---- The two switches turn each other off ----
+            // ---- The two switches are a map choice, and both record the route ----
             //
-            // Mutual exclusivity is the user's ruling: a session records a path or downloads an area,
-            // never both. The two blocks below drive the two halves — route on clears the offline map, and
-            // offline on stops the route — from a state where the displaced half is genuinely engaged rather
-            // than merely flipped, so each assertion is a stop of something that was actually running.
-
-            // Route on → offline off. The map is fully downloaded (`.ready`) before the route is turned on,
-            // so the teardown below is a teardown of a finished download — which must still clear the flags
-            // and the region, because a session cannot be both at once.
+            // **The user's ruling, restated after a first implementation got it wrong.** `USE LIVE MAP`
+            // and `USE OFFLINE MAP` choose which map draws the session; the route is recorded by either.
+            // So choosing one releases the other — two maps are never drawn at once — while the route
+            // keeps running across the switch. The first version conflated that with recording: choosing
+            // the live map cleared the downloaded region **and** stopped the route, and the route itself
+            // was only ever recorded by the live choice, so a downloaded map could never draw one.
+            //
+            // Live on → offline off, and the route keeps going.
             let routeOnLocation = SpyLocationTracking()
             let routeOnMaps = SpyOfflineMaps()
             await MainActor.run { routeOnMaps.isSupported = true }
@@ -674,44 +702,63 @@ enum ActivityRouteAndOfflineMapTests {
                     routeOnLocation.yield(latitude: 51.5074, longitude: -0.1278)
                 } },
                 "A session that downloaded a map and then turns RECORD ROUTE on first reaches `.ready`, so "
-                    + "the exclusivity below is asserted from a download that genuinely finished rather than "
-                    + "one that was merely asked for")
+                    + "the independence below is asserted from a download that genuinely finished rather "
+                    + "than one that was merely asked for")
             assertTest(
                 await waitUntil { await routeOnSession.offlineMapState == .ready },
                 "…and the download lands before the route is turned on")
-            await routeOnSession.setRouteRecording(true)
-            let routeOnOfflineRequested = await routeOnSession.isOfflineMapRequested
+            let readyRegion = await routeOnSession.offlineRegionID
+            await routeOnSession.setLiveMap(true)
+            let routeOnStillRequested = await routeOnSession.isOfflineMapRequested
             let routeOnRegion = await routeOnSession.offlineRegionID
             let routeOnState = await routeOnSession.offlineMapState
             let routeOnRecording = await routeOnSession.isRecordingRoute
             assertTest(
-                !routeOnOfflineRequested && routeOnRegion == nil && routeOnState == .absent
+                !routeOnStillRequested && routeOnRegion == nil && routeOnState == .absent
                     && routeOnRecording,
-                "Turning RECORD ROUTE on turns USE OFFLINE MAP off: the flag, the region and the state are "
-                    + "all cleared and the route is the one left on, so a session records a path or "
-                    + "downloads an area, never both (requested \(routeOnOfflineRequested), region "
-                    + "\(ActivityDetailTests.shown(routeOnRegion)), state \(routeOnState))")
+                "Choosing the live map releases the offline choice — one map at a time — while the route "
+                    + "keeps recording, because the route belongs to whichever map is in use rather than to "
+                    + "either switch (requested \(routeOnStillRequested), region "
+                    + "\(ActivityDetailTests.shown(routeOnRegion)), state \(routeOnState), recording "
+                    + "\(routeOnRecording))")
 
-            // Offline on → route off. The route's GPS is genuinely started before the offline switch is
-            // flipped, so the stop below is a release of a stream that was really running — not a no-op on
-            // a route that never got permission.
+            // Offline on keeps the route, and borrows its fix rather than opening a second stream.
+            // `LocationTracking.start()` replaces the current stream, so a second `start()` here would
+            // orphan the route's consumer — the assertion is therefore on the *count*, not only on the
+            // flag.
             let offlineOnLocation = SpyLocationTracking()
             let offlineOnMaps = SpyOfflineMaps()
             await MainActor.run { offlineOnMaps.isSupported = true }
             let offlineOnSession = makeSession(offlineOnLocation, offlineOnMaps)
-            await offlineOnSession.setRouteRecording(true)
+            await offlineOnSession.setLiveMap(true)
             assertTest(
                 await waitUntil { await MainActor.run { offlineOnLocation.startCount } == 1 },
-                "A session that recorded a route and then turns USE OFFLINE MAP on first has its GPS started "
-                    + "once, so the stop below is a stop of a stream that was genuinely running")
+                "A session that recorded a route and then turns USE OFFLINE MAP on first has its GPS "
+                    + "started once, so the fix below is borrowed from a stream that is genuinely running")
+            await MainActor.run { offlineOnLocation.yield(latitude: 51.5074, longitude: -0.1278) }
+            assertTest(
+                await waitUntil { await MainActor.run { offlineOnLocation.yield(latitude: 51.5075, longitude: -0.1279) } },
+                "…and the route is filing fixes, which is where the download's centre comes from")
             await offlineOnSession.setOfflineMap(true)
             let offlineOnRecording = await offlineOnSession.isRecordingRoute
             let offlineOnStops = await MainActor.run { offlineOnLocation.stopCount }
+            let offlineOnStarts = await MainActor.run { offlineOnLocation.startCount }
+            let offlineOnLatitude = await MainActor.run { offlineOnMaps.lastLatitude }
             assertTest(
-                !offlineOnRecording && offlineOnStops >= 1,
-                "…and turning USE OFFLINE MAP on stops RECORD ROUTE: the flag clears and the route's GPS "
-                    + "stream is released, so the offline map's own fix request is the only producer left "
-                    + "(recording \(offlineOnRecording), stops \(offlineOnStops))")
+                await waitUntil { await offlineOnSession.offlineMapState == .ready },
+                "…and the download finishes with the route still recording, because the centre came from "
+                    + "the route's own point rather than from a stream the route does not own")
+            let offlineOnLiveChoice = await offlineOnSession.isLiveMapRequested
+            assertTest(
+                offlineOnRecording && !offlineOnLiveChoice && offlineOnStops == 0 && offlineOnStarts == 1,
+                "Choosing the offline map releases the live choice and leaves the route recording: its GPS "
+                    + "stream was neither stopped nor replaced, and one `start()` is still the whole count "
+                    + "(recording \(offlineOnRecording), live \(offlineOnLiveChoice), stops "
+                    + "\(offlineOnStops), starts \(offlineOnStarts))")
+            assertTest(
+                offlineOnLatitude == 51.5075,
+                "…and the region was downloaded around the route's newest fix, not around a second "
+                    + "position stream (got \(ActivityDetailTests.shown(offlineOnLatitude)))")
 
             // ---- The centre `end()` writes ----
             //

@@ -13,8 +13,14 @@ import Foundation
 /// **Hand-written and not reflective.** A `Mirror`-based or `KeyedDecodingContainer`-based copy would
 /// be fewer lines and would silently stop covering a field the day someone adds one to
 /// `RecoveryRecord` — it would still compile, still round-trip everything it knew about, and drop the
-/// new column on every synced row. Written out, a tenth property is a compile error here. That is the
-/// same bargain `RecoveryRecord.CodingKeys` makes by being declared rather than derived.
+/// new column on every synced row. Written out, a required property is a compile error here. That is
+/// the same bargain `RecoveryRecord.CodingKeys` makes by being declared rather than derived.
+///
+/// **Two columns are deliberately absent and always will be**: `algorithm` and `scored_through` are
+/// `RecoveryRecord`'s audit fields, describing what *this phone* computed and read rather than fields
+/// of the record — the same pair `StrainRecord.syncRow` passes `nil` for. They are defaulted on the
+/// initialiser precisely so that omitting them is a decision here rather than a compile error, and the
+/// cost of that convenience is this paragraph.
 ///
 /// `source` is the field this file exists for: it is a column, it is on the wire, and `RecoveryMetric`
 /// has no property for it — so a sync built on the entity would lose the provenance of all 910 imported

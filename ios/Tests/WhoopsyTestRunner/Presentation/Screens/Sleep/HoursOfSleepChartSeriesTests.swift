@@ -150,5 +150,70 @@ enum HoursOfSleepChartSeriesTests {
             "…and a rect narrower than twice its inset is empty — the guard that keeps a degenerate band "
                 + "from being drawn as two rules crossed over each other")
 
+        // ---- The draggable cursor's axis ----
+        //
+        // The cursor's rule is a `Shape` and its label is a `Text`; neither can be asserted. What *can*
+        // be is the mapping between where the finger is and the instant the label prints, which lives on
+        // the series for exactly that reason.
+        if let series = HoursOfSleepChartSeries(
+            samples: [hrSample(at: 0, bpm: 60), hrSample(at: 7 * 3600, bpm: 50)],
+            start: hrOnset,
+            end: hrWake)
+        {
+            assertTest(
+                series.time(atFraction: 0) == hrOnset && series.time(atFraction: 1) == hrWake,
+                "The cursor reads the night's own bounds at the plot's two ends — the same two instants "
+                    + "the axis labels beneath print")
+            assertTest(
+                series.time(atFraction: 0.5) == hrOnset.addingTimeInterval(3.5 * 3600),
+                "…and half way along the plot is half way through the night")
+            assertTest(
+                series.time(atFraction: -0.4) == hrOnset && series.time(atFraction: 1.7) == hrWake,
+                "…a finger that leaves the plot is clamped rather than naming an instant the chart never "
+                    + "drew — the label at the edge says the night's end, which is what the edge is")
+            assertTest(
+                abs(series.fraction(at: series.time(atFraction: 0.31)) - 0.31) < 0.0000001,
+                "…and the inverse round-trips, so a cursor placed at a measured instant reads that "
+                    + "instant back")
+            assertTest(
+                series.fraction(at: hrOnset.addingTimeInterval(-3600)) == 0
+                    && series.fraction(at: hrWake.addingTimeInterval(3600)) == 1,
+                "…clamping on the way in as well as on the way out")
+
+            // The reading at the cursor, which is drawn at the opposite end of the rule from the
+            // clock. Two properties matter and both are arithmetic: it is the *nearest* measured
+            // reading, and a cursor in a hole gets none rather than one from the far side of it.
+            let sparse = [
+                hrSample(at: 1 * 3600, bpm: 51),
+                hrSample(at: 2 * 3600, bpm: 63),
+                hrSample(at: 5 * 3600, bpm: 72),
+            ]
+            if let sparseSeries = HoursOfSleepChartSeries(
+                samples: sparse, start: hrOnset, end: hrWake)
+            {
+                assertTest(
+                    sparseSeries.value(atFraction: 1.0 / 7.0) == 51,
+                    "A cursor on a measured instant prints that reading")
+                assertTest(
+                    sparseSeries.value(
+                        atFraction: (1.0 * 3600 + 240) / (7.0 * 3600)) == 51,
+                    "…and one four minutes past it still prints it: the cursor answers with the "
+                        + "nearest reading inside `maximumGapSeconds`, not with an interpolation the "
+                        + "app never measured")
+                assertTest(
+                    sparseSeries.value(
+                        atFraction: (1.0 * 3600 + 1800) / (7.0 * 3600)) == nil,
+                    "…while a cursor half an hour into a hole prints **nothing**, rather than the "
+                        + "nearest reading from the far side of a stretch the strap did not measure")
+                assertTest(
+                    sparseSeries.value(atFraction: 0) == nil
+                        && sparseSeries.value(atFraction: 1) == nil,
+                    "…and the night's first and last half-hour, which no sample covers, are holes too")
+            } else {
+                assertTest(false, "The sparse cursor fixture did not build a series")
+            }
+        } else {
+            assertTest(false, "The cursor's fixture did not build a series")
+        }
     }
 }

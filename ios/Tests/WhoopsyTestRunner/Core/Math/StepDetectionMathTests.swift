@@ -25,6 +25,10 @@ enum StepTests {
         try await HeartRatePayloadDecoderTests.run()
         try await StepCounterPayloadDecoderTests.run()
         try await Spo2CandidateProbeTests.run()
+        try await SkinTemperatureCandidateProbeTests.run()
+        // The accelerometer the stillness spine actually reads — the third probe, and the one the
+        // sleep classifier's own input rests on.
+        try await AccelerometerCandidateProbeTests.run()
         try await StrapEventDecoderTests.run()
         try await StrapConditionReportTests.run()
         try await DiagnosticsTests.run()

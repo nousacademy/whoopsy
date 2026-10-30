@@ -88,3 +88,53 @@ export function addDays(dayKey: string, delta: number): string {
 export function utcToday(now: Date = new Date()): string {
   return formatDayKey(now);
 }
+
+/**
+ * The widest range one `DELETE` may remove, in calendar days, inclusive at both ends.
+ *
+ * **A fat-finger rail, not a storage limit.** The only caller is a control whose two ends are picked
+ * by hand, so a range long enough to be a mistake is one mistap away — and a delete has no undo. `31`
+ * is wide enough for the legitimate case this endpoint exists for (a handful of days to be forgotten)
+ * and narrow enough that the worst accident is a month, which a caller can re-import or re-measure.
+ *
+ * It is shared by all four day-keyed resources rather than declared per service, because it is one
+ * policy about one control rather than four answers that happen to agree. It lives here, beside the
+ * day arithmetic, so the rule and the numbers it is computed from cannot drift apart — and the
+ * published bound in the OpenAPI document is this number, not a copy of it.
+ */
+export const MAX_DELETE_DAYS = 31;
+
+/**
+ * How many calendar days `from…to` covers, inclusive at both ends, or `null` if either is not a day.
+ *
+ * Inclusive by construction (`+ 1`), matching the `date >= ? AND date <= ?` predicate the day-keyed
+ * adapters use: a range from one day to itself is one day, not zero.
+ */
+export function dayCount(from: string, to: string): number | null {
+  const start = parseDayKey(from);
+  const end = parseDayKey(to);
+  if (start === null || end === null) return null;
+  return (end - start) / MS_PER_DAY + 1;
+}
+
+/**
+ * Why `from…to` is not a range this API will delete, in the sentence a caller reads — or `null` when
+ * it is one.
+ *
+ * The check is a message rather than a thrown error so each resource can raise *its own* named refusal
+ * (`RecoveryError`, `SleepError`, …), which is what the log reports: the rule is shared, the name it
+ * fails under is not.
+ *
+ * Both ends are validated as day keys by the schema that publishes them, so a `null` count here means
+ * a caller reached the service through no schema at all — which is the case the services' restated
+ * rules exist for.
+ */
+export function dayRangeRefusal(from: string, to: string): string | null {
+  const days = dayCount(from, to);
+  if (days === null) return "from and to must be calendar days in YYYY-MM-DD form";
+  if (from > to) return `from must not be later than to, got ${from} and ${to}`;
+  if (days > MAX_DELETE_DAYS) {
+    return `the range spans ${days} days; at most ${MAX_DELETE_DAYS} may be deleted at once`;
+  }
+  return null;
+}

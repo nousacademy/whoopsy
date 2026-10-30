@@ -47,6 +47,15 @@ public enum RecoveryScoring {
         public let hrvBaselineDeltaMs: Double
         public let rhrBaselineMean: Double
         public let rhrBaselineDeltaBpm: Int
+        /// The two spreads the deltas are divided by.
+        ///
+        /// **A delta without its spread is not a score.** The composite is `50 + 24·z(HRV) −
+        /// 18·z(RHR) + 20·(sleep − 0.70)`, so a 117 ms reading is good news or bad news depending
+        /// entirely on how far it sits from the window's own mean **in that window's own units** —
+        /// and a caller asked "why is this 60%?" cannot answer it from the deltas alone. Carried here
+        /// so the writer can log the arithmetic it actually ran rather than a second derivation of it.
+        public let hrvBaselineStdDevMs: Double
+        public let rhrBaselineStdDev: Double
     }
 
     /// Cold-start spread for resting heart rate. Metric-independent, unlike the HRV pair.
@@ -138,7 +147,17 @@ public enum RecoveryScoring {
         window(before: day, in: zoneTimes, dated: \.date)
     }
 
-    private static func window<T>(before day: Date, in series: [T], dated: KeyPath<T, Date>) -> [T] {
+    /// The one window rule, for a series this file has no overload for.
+    ///
+    /// **Public so a caller with a new day-shaped type does not re-derive it.** The five overloads
+    /// above are the types that needed it when they were written; the rule they share — filter to
+    /// strictly before the day, *then* take the trailing thirty — is the part that is easy to get
+    /// wrong, and a private copy here would have been a sixth definition the day a caller could not
+    /// reach it. `StrainDayActivity.strengthBaseline` is the first such caller: a day's strength
+    /// minutes are not one of the stored row types.
+    public static func window<T>(
+        before day: Date, in series: [T], dated: KeyPath<T, Date>
+    ) -> [T] {
         let cutoff = day.startOfDay
         return Array(
             series.filter { $0[keyPath: dated].startOfDay < cutoff }.suffix(baselineWindowDays))
@@ -299,6 +318,8 @@ public enum RecoveryScoring {
             hrvBaselineMeanMs: baselines.hrvMeanMs,
             hrvBaselineDeltaMs: (input.todayHrvValueMs - baselines.hrvMeanMs).rounded(toPlaces: 1),
             rhrBaselineMean: baselines.restingHeartRateMean,
-            rhrBaselineDeltaBpm: input.todayRestingHeartRate - Int(baselines.restingHeartRateMean.rounded()))
+            rhrBaselineDeltaBpm: input.todayRestingHeartRate - Int(baselines.restingHeartRateMean.rounded()),
+            hrvBaselineStdDevMs: baselines.hrvStdDevMs,
+            rhrBaselineStdDev: baselines.restingHeartRateStdDev)
     }
 }

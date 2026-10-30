@@ -28,10 +28,15 @@ struct MapboxAreaMapView: View {
     /// downloaded circle. This view adds no rule to it.
     let area: ActivityOfflineArea
 
+    /// The card's gesture set, or the expanded map's — `MapboxRouteMapView.isInteractive`'s parameter
+    /// for the same two drawings. See `MapboxSetup`.
+    var isInteractive: Bool = false
+
     var body: some View {
         Map(initialViewport: .overview(geometry: frameGeometry, maxZoom: MapboxSetup.maximumZoom))
             .mapStyle(.outdoors)
-            .gestureOptions(MapboxSetup.cardGestures)
+            .gestureOptions(
+                isInteractive ? MapboxSetup.expandedGestures : MapboxSetup.cardGestures)
     }
 
     // MARK: - Construction

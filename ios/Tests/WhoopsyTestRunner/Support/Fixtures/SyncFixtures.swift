@@ -103,6 +103,8 @@ actor SpyCloudSync: CloudSync {
         case writeReceptiveInactivities([ReceptiveInactivitySyncRow])
         case profile
         case writeProfile(UserProfileSyncRow)
+        /// The one removal: a range of days, inclusive at both ends.
+        case purge(from: Date, to: Date)
     }
 
     /// Every call, in order. **Empty is the assertion for `getLocalRecovery`**, and it is asserted
@@ -261,7 +263,7 @@ actor SpyCloudSync: CloudSync {
                  .workout, .workouts, .writeWorkout, .writeWorkouts,
                  .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeSleep, .writeSleeps, .writeStepCount, .writeStepCounts,
-                 .writeReceptiveInactivity, .writeReceptiveInactivities, .writeProfile: return []
+                 .writeReceptiveInactivity, .writeReceptiveInactivities, .writeProfile, .purge: return []
             }
         }
     }
@@ -277,7 +279,7 @@ actor SpyCloudSync: CloudSync {
                  .workout, .workouts, .writeWorkout, .writeWorkouts,
                  .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeSleep, .writeSleeps, .writeStepCount, .writeStepCounts,
-                 .writeReceptiveInactivity, .writeReceptiveInactivities, .writeProfile: return []
+                 .writeReceptiveInactivity, .writeReceptiveInactivities, .writeProfile, .purge: return []
             }
         }
     }
@@ -292,7 +294,7 @@ actor SpyCloudSync: CloudSync {
                  .workout, .workouts, .writeRecovery, .writeRecoveries,
                  .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeSleep, .writeSleeps, .writeStepCount, .writeStepCounts,
-                 .writeReceptiveInactivity, .writeReceptiveInactivities, .writeProfile: return []
+                 .writeReceptiveInactivity, .writeReceptiveInactivities, .writeProfile, .purge: return []
             }
         }
     }
@@ -385,7 +387,7 @@ actor SpyCloudSync: CloudSync {
                  .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeStepCount, .writeStepCounts,
                  .writeReceptiveInactivity, .writeReceptiveInactivities,
-                 .writeProfile: return []
+                 .writeProfile, .purge: return []
             }
         }
     }
@@ -408,7 +410,7 @@ actor SpyCloudSync: CloudSync {
                  .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeSleep, .writeSleeps,
                  .writeReceptiveInactivity, .writeReceptiveInactivities,
-                 .writeProfile: return []
+                 .writeProfile, .purge: return []
             }
         }
     }
@@ -432,7 +434,7 @@ actor SpyCloudSync: CloudSync {
                  .sleep, .sleeps, .stepCount, .stepCounts, .receptiveInactivities, .profile,
                  .writeSleep, .writeSleeps,
                  .writeStepCount, .writeStepCounts,
-                 .writeProfile: return []
+                 .writeProfile, .purge: return []
             }
         }
     }
@@ -725,6 +727,37 @@ actor SpyCloudSync: CloudSync {
         calls.append(.profile)
         try refuseIfArmed()
         return storedProfile
+    }
+
+    /// The one removal, recorded and answered the way the Worker answers it: what was there goes, and
+    /// a second call over the same range reports `0`.
+    ///
+    /// The four measured resources only — `workouts` and `receptive_inactivities` are not purgeable,
+    /// and this fixture must not be more permissive than the contract, or a block would pass against
+    /// behaviour the server does not have.
+    func purge(from: Date, to: Date) async throws -> PurgeTally {
+        calls.append(.purge(from: from, to: to))
+        try refuseIfArmed()
+
+        let lower = from.startOfDay
+        let upper = to.startOfDay
+        func inRange(_ day: Date) -> Bool {
+            let snapped = day.startOfDay
+            return snapped >= lower && snapped <= upper
+        }
+
+        var tally: [SyncedResource: Int] = [:]
+        tally[.recoveries] = stored.keys.filter(inRange).count
+        tally[.strains] = storedStrains.keys.filter(inRange).count
+        tally[.sleeps] = storedSleeps.keys.filter(inRange).count
+        tally[.stepCounts] = storedStepCounts.keys.filter(inRange).count
+
+        for key in stored.keys where inRange(key) { stored.removeValue(forKey: key) }
+        for key in storedStrains.keys where inRange(key) { storedStrains.removeValue(forKey: key) }
+        for key in storedSleeps.keys where inRange(key) { storedSleeps.removeValue(forKey: key) }
+        for key in storedStepCounts.keys where inRange(key) { storedStepCounts.removeValue(forKey: key) }
+
+        return PurgeTally(rows: tally)
     }
 
     /// `date`, then the session's own start, then its id — ascending, on the protocol's own rule.

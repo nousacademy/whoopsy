@@ -23,9 +23,50 @@ public enum SleepReclassification {
     /// watermark the caller should not be here at all — a current-version row always records one — but
     /// the answer is conservative: `true`, because a row that cannot say what it saw is a row this
     /// app cannot vouch for.
-    public static func isOwed(watermark: Date?, inputEdge: Date?) -> Bool {
+    /// How far past a night's end new input can still belong to that night.
+    ///
+    /// **Ten minutes, and it is the classifier's own onset threshold** — a night is a sustained
+    /// ten-minute quiet run, so data within that much of the end is data the night may still be
+    /// growing into. Anything later is wake time.
+    public static let extensionGraceSeconds: TimeInterval = 600
+
+    /// `nightEnd` is the stored night's own end, and it is what stops the morning churn.
+    ///
+    /// **Measured 2026-10-27.** The edge was the newest sample anywhere in the 21:00 → 10:00 read
+    /// window, so every sample after waking made the stored night "owed": it was re-classified and
+    /// re-saved on every foreground and every open of the sleep page, each time folding tens of
+    /// thousands of samples to produce the same night, and each save redrew Home's ring. None of that
+    /// input can change the night — a night ends when the wrist starts moving — so the test is now
+    /// *could this input still belong to the night*, and input more than `extensionGraceSeconds` past
+    /// the stored end is wake time.
+    ///
+    /// **A phone that has not classified the night yet is unaffected**: with no `nightEnd` the rule is
+    /// the original one, which is what every caller sees before a row exists.
+    public static func isOwed(
+        watermark: Date?,
+        inputEdge: Date?,
+        nightEnd: Date? = nil,
+        endedAtDataEdge: Bool? = nil
+    ) -> Bool {
         guard let watermark else { return true }
         guard let inputEdge else { return false }
-        return inputEdge > watermark
+        guard inputEdge > watermark else { return false }
+        guard let nightEnd else { return true }
+        // **The night's own record of how it ended decides, and nothing has to be inferred.**
+        switch endedAtDataEdge {
+        case .some(true):
+            // Cut at the data edge: everything after it is still the same night, however much later
+            // it arrives. Measured 2026-10-28, a 54-minute night that seven hours of later records
+            // could not reopen.
+            return true
+        case .some(false):
+            // Trimmed at a wake, so only input inside the grace after it can still belong to the night.
+            return inputEdge <= nightEnd.addingTimeInterval(extensionGraceSeconds)
+        case .none:
+            // No verdict recorded — every row written before `v40`. One re-classification stamps it,
+            // and the row it writes takes one of the two branches above, so this fires at most once
+            // per such row rather than on every foreground.
+            return true
+        }
     }
 }

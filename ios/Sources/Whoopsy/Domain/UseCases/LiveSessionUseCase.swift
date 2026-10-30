@@ -89,13 +89,24 @@ public final class LiveSessionUseCase {
     /// catch sets this and the session runs on. That is the absence rule applied to a capability.
     public private(set) var liveActivityError: String?
 
-    /// Whether this session is recording a GPS route. The screen's toggle reads this, and it is the
-    /// guard that makes `setRouteRecording(true)` idempotent.
+    /// Whether this session is recording a GPS route — which it does while **either map is chosen**.
+    ///
+    /// **The route is not a third feature.** `USE LIVE MAP` and `USE OFFLINE MAP` pick which map draws
+    /// the session, and both record the path: the two toggles are a map choice, not a choice between
+    /// mapping and not mapping. With neither chosen there is nothing to draw, so the route stops with
+    /// the last map.
     ///
     /// **Off by default, and it is off for a reason.** Not every session is outdoors: a session in a
     /// living room would record a cloud of jitter around a sofa, and the app deliberately does not
-    /// classify an activity, so it cannot decide this for the user. The toggle is the user's answer.
+    /// classify an activity, so it cannot decide this for the user. The toggles are the user's answer.
     public private(set) var isRecordingRoute = false
+
+    /// Whether the **live** map is the one this session chose.
+    ///
+    /// The screen's first toggle reads this. It is one of two map choices and never both at once —
+    /// `setOfflineMap(true)` clears it, and `setLiveMap(true)` clears the offline choice — while the
+    /// route keeps recording across a switch, because the route belongs to neither map alone.
+    public private(set) var isLiveMapRequested = false
 
     /// Why no route is being recorded, for a screen that wants to say so. `nil` when there is nothing
     /// to report.
@@ -119,10 +130,11 @@ public final class LiveSessionUseCase {
     /// is the user's own prediction about where they are going, which is the only source that
     /// information has. Off by default.
     ///
-    /// **Mutually exclusive with `isRecordingRoute`, and that is the user's own ruling rather than an
-    /// implementation convenience.** Turning one switch on turns the other off, so a session either
-    /// records a path or downloads an area — never both. The pair still decides the *card* — see
-    /// ``RouteMapRenderer``.
+    /// **Independent of `isRecordingRoute`, and that is the user's own ruling.** The two questions are
+    /// different — this switch decides *which map draws*, the route switch decides *whether there is a
+    /// path* — so a session can record a route and hold a downloaded region at once, and the card draws
+    /// the path on the downloaded tiles. What the user did rule out is two maps on screen at once, which
+    /// is ``RouteMapRenderer``'s job: the card is `MapKit` or Mapbox, never both.
     public private(set) var isOfflineMapRequested = false
 
     /// Whether this build has a map SDK behind the switch at all.
@@ -168,9 +180,8 @@ public final class LiveSessionUseCase {
     /// The point `offlineRegionID` was downloaded around, or `nil` when there is no region.
     ///
     /// **Persisted on the session's row because the id alone cannot frame the detail page's map.**
-    /// Mapbox's `TileRegion` exposes no geometry, so a session recorded with `USE OFFLINE MAP` on and
-    /// `RECORD ROUTE` off would reach its detail page holding tiles on disk and nothing for the card to
-    /// point at. `end()` therefore writes this beside the id, and `v23`'s two columns are where it lands.
+    /// Mapbox's `TileRegion` exposes no geometry, so a session whose route never reached two fixes would
+    /// reach its detail page holding tiles on disk and nothing for the card to point at. `end()` therefore writes this beside the id, and `v23`'s two columns are where it lands.
     /// See `OfflineMapCenter`.
     ///
     /// Set once the fix is in hand and cleared with the id: the row `end()` writes carries a centre
@@ -185,6 +196,15 @@ public final class LiveSessionUseCase {
     /// store what it found and draws the offline card if the answer is `.ready`. Cancelling here would
     /// make the switch pointless for anyone who stops recording before the tiles land.
     private var offlineMapTask: Task<Void, Never>?
+
+    /// Whether the GPS stream the route was reading has finished on its own.
+    ///
+    /// A route that is recording but never receives a fix (indoors, Location Services off mid-session)
+    /// ends its stream without `stopRoute()` being called. The offline download's centre waits on those
+    /// points, so it needs to know the difference between *nothing yet* and *nothing ever*, or a blind
+    /// session would sit in `.downloading` for the full timeout with the answer already in hand.
+    private var routeStreamEnded = false
+
 
     /// Whether a fast is running, and which one.
     ///
@@ -358,7 +378,12 @@ public final class LiveSessionUseCase {
         )
         lastPushedAt = nil
 
-        requestLiveActivity(state: LiveSessionActivityState(startedAt: now))
+        let mark = ActivityMarkCatalog.mark(for: name)
+        requestLiveActivity(
+            state: LiveSessionActivityState(
+                startedAt: now,
+                glyphSymbol: mark.primary,
+                glyphSecondarySymbol: mark.secondary))
 
         // `[weak self]` because the task runs for the length of the session: a strong capture would
         // make this type retain itself through the task until the stream ends, and a stream that never
@@ -473,9 +498,11 @@ public final class LiveSessionUseCase {
     /// returns once the user has answered it. That is also why the screen hands this to a `Task` from
     /// its `Toggle`'s setter — see `LiveSessionView`.
     ///
-    /// **Turning it on turns `USE OFFLINE MAP` off**, because the two switches are mutually exclusive —
-    /// a session records a path or downloads an area, never both. That is the user's ruling, and it is
-    /// what the session screen's two toggles state by never both being on.
+    /// **It chooses the live map, and it records the route.** The two toggles on the session screen are
+    /// a map choice — live or downloaded — and the route is recorded by either of them, so turning this
+    /// on starts the route and turning the offline map on keeps it running. Choosing this map while an
+    /// offline region is on releases that choice (`tearDownOfflineMap`), because two maps are never on
+    /// screen at once; the tiles themselves stay on disk.
     ///
     /// **The session's start is not gated on this.** `LiveSessionView` calls `start()` from its
     /// `.task`, so the session is already recording by the time the user reaches the toggle, and
@@ -484,17 +511,21 @@ public final class LiveSessionUseCase {
     /// nothing against a run. A sticky "always record" preference was considered and left out: it
     /// would need a field on `AppPreferences` and a fifth injected dependency here, and it is cheap to
     /// add later if the toggle proves annoying to flick every time.
-    public func setRouteRecording(_ on: Bool) async {
+    public func setLiveMap(_ on: Bool) async {
         guard on else {
-            guard isRecordingRoute else { return }
-            stopRoute()
+            guard isLiveMapRequested else { return }
+            isLiveMapRequested = false
+            // The route belongs to whichever map is in use, so it stops with the last one — and only
+            // then. Turning the live map off while the offline one is chosen leaves the path running.
+            if !isOfflineMapRequested { stopRoute() }
             return
         }
 
-        guard !isRecordingRoute else { return }
+        guard !isLiveMapRequested else { return }
 
-        // The two switches are mutually exclusive: turning the route on turns the offline map off, so a
-        // session records a path or downloads an area, never both.
+        // **One map at a time.** Choosing live releases the offline choice; the downloaded tiles stay
+        // on disk but this session's row no longer names a region, which is what makes the card draw
+        // the map the user actually chose.
         if isOfflineMapRequested { tearDownOfflineMap() }
 
         // Only ask when nobody has been asked. `permission` alone cannot distinguish "refused" from
@@ -512,13 +543,25 @@ public final class LiveSessionUseCase {
                     + "a route. You can allow it in Settings › Privacy & Security › Location Services."
                 : "Location Services appear to be switched off, so this session is recording without "
                     + "a route."
-            isRecordingRoute = false
-            AppLogger.ui.info("Route recording not started: location permission is \(String(describing: permission)).")
+            isLiveMapRequested = false
+            AppLogger.ui.info("Live map not started: location permission is \(String(describing: permission)).")
             return
         }
 
+        isLiveMapRequested = true
+        startRoute()
+    }
+
+    /// Starts the route's GPS consumer, if it is not already running.
+    ///
+    /// Shared by both map choices, which is why it is not `setLiveMap`'s body: `setOfflineMap` records
+    /// the path too, and a second copy of this task would be a second reader of a stream that hands out
+    /// one. Permission is the caller's to check — each switch authors its own refusal sentence.
+    private func startRoute() {
+        guard !isRecordingRoute else { return }
         routeError = nil
         isRecordingRoute = true
+        routeStreamEnded = false
 
         routeConsumer = Task { [weak self] in
             guard let stream = self?.locationTracking.start() else { return }
@@ -526,6 +569,9 @@ public final class LiveSessionUseCase {
                 guard let self else { return }
                 self.appendRoutePoint(point)
             }
+            // The producer finished rather than the route being stopped. The download's centre wait
+            // reads this so a GPS that never delivers ends the wait at once instead of at its timeout.
+            self?.routeStreamEnded = true
         }
     }
 
@@ -537,6 +583,8 @@ public final class LiveSessionUseCase {
         isRecordingRoute = false
         routeConsumer?.cancel()
         routeConsumer = nil
+        // The one owner of the stream, because both map choices record the route — so this is always
+        // the right place to release it.
         locationTracking.stop()
     }
 
@@ -552,27 +600,35 @@ public final class LiveSessionUseCase {
 
     /// Turns the offline map on or off for this session.
     ///
-    /// **Turning it on first stops `RECORD ROUTE`**, because the two switches are mutually exclusive and
-    /// a session downloads an area or records a path, never both. This then asks for location itself,
-    /// takes the one fix it needs, and **releases the GPS again** — a map tile download is a one-shot,
-    /// and leaving the radio running for it would put the blue indicator up for a session that is
-    /// recording no route.
+    /// **It chooses the downloaded map, and it records the route too.** The two toggles on the session
+    /// screen are a map choice — live or downloaded — and either of them records the path, so choosing
+    /// this one starts the route when it is not already running and **leaves it running** when it is.
+    /// Choosing it also releases the live choice (`isLiveMapRequested`), because two maps are never
+    /// drawn at once; the route crosses that switch untouched.
+    ///
+    /// **The fix that centres the region is the route's own.** `LocationTracking` hands out one stream
+    /// at a time, and `start()` replaces the current reader rather than adding one, so asking for a
+    /// second stream here would silently end the route at that instant. Since choosing this map starts
+    /// the route anyway, the newest filed point is always available to wait for.
     ///
     /// **Nothing here can stop the session.** Every failure — an unsupported build, a refused
     /// permission, no fix, no network — is recorded in ``offlineMapError`` and the session records on,
-    /// which is the absence rule applied to a capability exactly as `setRouteRecording(_:)` applies it.
+    /// which is the absence rule applied to a capability exactly as `setLiveMap(_:)` applies it.
     public func setOfflineMap(_ on: Bool) async {
         guard on else {
             guard isOfflineMapRequested else { return }
             tearDownOfflineMap()
+            // The route belongs to whichever map is in use, so it stops with the last one — and only
+            // then. Turning this map off while the live one is chosen leaves the path running.
+            if !isLiveMapRequested { stopRoute() }
             return
         }
 
         guard !isOfflineMapRequested else { return }
 
-        // The two switches are mutually exclusive: turning the offline map on stops the route, so a
-        // session downloads an area or records a path, never both.
-        if isRecordingRoute { stopRoute() }
+        // **One map at a time**, and the route is not part of that choice: both maps record it, so
+        // releasing the live choice here deliberately leaves the GPS running.
+        isLiveMapRequested = false
 
         // Checked before the switch is honoured rather than left to fail later: a build with no map SDK
         // behind it has no version of this that works, and the honest answer is a sentence rather than a
@@ -584,7 +640,7 @@ public final class LiveSessionUseCase {
             return
         }
 
-        // Only ask when nobody has been asked — `setRouteRecording(_:)`'s rule, and for its reason.
+        // Only ask when nobody has been asked — `setLiveMap(_:)`'s rule, and for its reason.
         let permission = locationTracking.permission == .undetermined
             ? await locationTracking.requestPermission()
             : locationTracking.permission
@@ -598,6 +654,10 @@ public final class LiveSessionUseCase {
             AppLogger.ui.info("Offline map not started: location permission is \(String(describing: permission)).")
             return
         }
+
+        // The route is recorded under this map too, and starting it here is what makes the centre
+        // below the route's own fix rather than a second stream's.
+        startRoute()
 
         let regionID = Self.makeOfflineRegionID()
         offlineMapError = nil
@@ -647,8 +707,8 @@ public final class LiveSessionUseCase {
     }
 
     /// Turns the offline map fully off: cancels any download still in flight, clears the region and the
-    /// flags. Called by `setOfflineMap(false)` and by `setRouteRecording(true)` — the latter being the
-    /// mutual-exclusivity half that makes the two switches turn each other off.
+    /// flags. Called by `setOfflineMap(false)`, and by `setLiveMap(true)` when the other map is chosen —
+    /// it clears the **choice**, and never the route, which outlives either switch.
     ///
     /// **Only a download still in flight is cancelled**, which is the contract
     /// `OfflineMapServing.cancelDownload` states and the reason it states it. Turning the switch off
@@ -675,10 +735,8 @@ public final class LiveSessionUseCase {
         offlineMapError = nil
         offlineMapState = .absent
         if wasDownloading { offlineMaps.cancelDownload() }
-        // The fix was taken on a stream this call started. The two switches are mutually exclusive, so
-        // the route is never running when the offline map was on — the stream is ours to stop, not the
-        // route's.
-        locationTracking.stop()
+        // **The GPS is not this call's to stop.** Both maps record the route, so the stream belongs to
+        // `startRoute()` and is released by `stopRoute()` when the last map choice goes off.
     }
 
     /// Records a failure and returns the switch to off.
@@ -693,6 +751,9 @@ public final class LiveSessionUseCase {
         offlineRegionCenter = nil
         offlineMapState = .absent
         offlineMapTask = nil
+        // The choice goes off with the failure, so the route goes with it unless the live map is the
+        // other choice — the same rule `setOfflineMap(false)` applies.
+        if !isLiveMapRequested { stopRoute() }
     }
 
     /// A name no other session can collide with, prefixed so a region found in Mapbox's own tile store is
@@ -701,15 +762,19 @@ public final class LiveSessionUseCase {
 
     /// One plausible fix to centre the region on, or `nil` if none arrived in time.
     ///
-    /// **Always starts its own stream.** The two switches are mutually exclusive, so the route is off
-    /// whenever the offline map is on — there is no route stream to borrow a fix from, and
-    /// `LocationTracking.start()` is a call on the one `CLLocationManager` the container holds, so the
-    /// fix is this stream's and `stop()` releases it the moment it is in hand.
+    /// **Always the route's own points**, because choosing this map starts the route. The two used to
+    /// be mutually exclusive, which is why this function had a branch that started its own stream and
+    /// released it afterwards; with both maps recording, that branch would have to replace the route's
+    /// reader to get a fix — `LocationTracking.start()` hands out one stream — and the path would end
+    /// the instant the download began.
     private func offlineMapCenter() async -> WorkoutRoutePoint? {
-        let stream = locationTracking.start()
-        defer { locationTracking.stop() }
-        return await Self.firstPlausibleFix(
-            in: stream, timeoutSeconds: Self.offlineMapFixTimeoutSeconds)
+        let deadline = Date().addingTimeInterval(Self.offlineMapFixTimeoutSeconds)
+        while Date() < deadline {
+            if let fix = routePoints.last(where: { $0.isPlausible }) { return fix }
+            if routeStreamEnded { return nil }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        return nil
     }
 
     /// The first plausible fix on `stream`, or `nil` when `timeoutSeconds` pass first.
@@ -1099,12 +1164,34 @@ public final class LiveSessionUseCase {
         startedAt: Date,
         isRunning: Bool
     ) -> LiveSessionActivityState {
-        LiveSessionActivityState(
+        // **The two route figures come from the same rule the card prints.** `RouteDistance` is the
+        // shared great-circle sum, and the span is the **route's own** — first fix to last — rather
+        // than the session's elapsed time, or a session left running after the user stopped moving
+        // would report a speed falling towards zero with no movement behind it.
+        let ordered = routePoints.filter(\.isPlausible).sorted { $0.timestamp < $1.timestamp }
+        let distance = ordered.count >= RouteDistance.minimumPointCount
+            ? RouteDistance.meters(
+                along: ordered.map { (latitude: $0.latitude, longitude: $0.longitude) })
+            : nil
+        let span = ordered.count >= 2
+            ? ordered[ordered.count - 1].timestamp.timeIntervalSince(ordered[0].timestamp)
+            : 0
+        let speed = distance.flatMap { span > 0 ? $0 / span : nil }
+        // The card's mark, resolved here rather than in the widget — the extension cannot import the
+        // table, and a second copy there would be the drift `ActivityMarkCatalog` exists to prevent.
+        let mark = ActivityMarkCatalog.mark(for: activityName)
+
+        return LiveSessionActivityState(
             startedAt: startedAt,
             strain: snapshot.strain,
             heartRate: snapshot.latestHeartRate,
             calories: snapshot.calories,
-            isRunning: isRunning
+            isRunning: isRunning,
+            bandScalePosition: snapshot.bandScalePosition,
+            distanceMeters: distance,
+            averageSpeedMetersPerSecond: speed,
+            glyphSymbol: mark.primary,
+            glyphSecondarySymbol: mark.secondary
         )
     }
 }

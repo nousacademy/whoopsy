@@ -46,6 +46,12 @@ struct MapboxRouteMapView: View {
     /// Built by `ActivityRoute` — already filtered, ordered and framed. This view adds no rule to it.
     let route: ActivityRoute
 
+    /// Whether the map may be panned and zoomed. **`false` in the card and `true` in the full-screen
+    /// cover**, which is the one difference between the two drawings of this view: the card sits in a
+    /// scrolling page, where a drag means two things at once, while the cover has no page behind it.
+    /// See `MapboxSetup.cardGestures` / `.expandedGestures`.
+    var isInteractive: Bool = false
+
     var body: some View {
         Map(initialViewport: .overview(geometry: frameGeometry, maxZoom: MapboxSetup.maximumZoom)) {
             // **The group is here for `lineCap` and for nothing else.** `PolylineAnnotation` carries
@@ -96,7 +102,8 @@ struct MapboxRouteMapView: View {
         // Shared with the area surface rather than stated here: both cards are the same map, and a
         // gesture left enabled for one is a map that pans inside a page that scrolls. See
         // `MapboxSetup.cardGestures`.
-        .gestureOptions(MapboxSetup.cardGestures)
+        .gestureOptions(
+            isInteractive ? MapboxSetup.expandedGestures : MapboxSetup.cardGestures)
     }
 
     // MARK: - Construction

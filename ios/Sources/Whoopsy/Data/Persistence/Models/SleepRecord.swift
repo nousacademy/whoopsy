@@ -77,6 +77,10 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
     /// Local-only for the same reason as `algorithm`, and the same shape `strains.scoredThrough` has.
     public let scoredThrough: Date?
 
+    /// Whether the night's newest input was inside the night itself — see
+    /// `SleepSession.endedAtDataEdge`. Local-only, and `nil` on rows written before `v40`.
+    public let endedAtDataEdge: Bool?
+
     public init(
         date: Date,
         startTime: Date,
@@ -95,7 +99,8 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         source: String? = nil,
         stillnessSpine: String? = nil,
         algorithm: String? = nil,
-        scoredThrough: Date? = nil
+        scoredThrough: Date? = nil,
+        endedAtDataEdge: Bool? = nil
     ) {
         self.date = date
         self.startTime = startTime
@@ -115,6 +120,7 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         self.stillnessSpine = stillnessSpine
         self.algorithm = algorithm
         self.scoredThrough = scoredThrough
+        self.endedAtDataEdge = endedAtDataEdge
     }
 
     enum CodingKeys: String, CodingKey {
@@ -136,5 +142,6 @@ public struct SleepRecord: Codable, FetchableRecord, PersistableRecord, Sendable
         case algorithm
         case stillnessSpine = "stillness_spine"
         case scoredThrough = "scored_through"
+        case endedAtDataEdge = "ended_at_data_edge"
     }
 }

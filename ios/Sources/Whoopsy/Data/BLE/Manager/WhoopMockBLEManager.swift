@@ -20,8 +20,8 @@ public final class WhoopMockBLEManager: @unchecked Sendable {
 
     public init() {
         self.currentDevice = WhoopDevice(
-            id: "MOCK-WHOOP-4-0-DEVICE",
-            name: "WHOOP 4.0 (Simulated)",
+            id: "MOCK-STRAP-4-0-DEVICE",
+            name: "Strap 4.0 (Simulated)",
             hardwareGeneration: .whoop4,
             batteryPercentage: 88,
             connectionState: .connected,

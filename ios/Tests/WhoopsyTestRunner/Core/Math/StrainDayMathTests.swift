@@ -20,6 +20,7 @@ enum StrainTests {
         try await StrainDayMathTests.run()
         try await CalculateStrainUseCaseTests.run()
         try await RefreshStrainUseCaseTests.run()
+        try await RefreshRecoveryUseCaseTests.run()
         try await StrainProvenancePersistenceTests.run()
         try await StrainWireMapperTests.run()
         try await WorkoutRPETests.run()

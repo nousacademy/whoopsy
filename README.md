@@ -135,8 +135,9 @@ file and `CLAUDE.md` are the only two left at the repo root.
 
 | File | What it holds |
 | :--- | :--- |
-| [`TODO.md`](docs/TODO.md) | **The roadmap.** Outstanding work, per CSV column and per component, with the reason each item is still open. |
+| [`TODO.md`](docs/TODO.md) | **The roadmap.** Outstanding work, per CSV column, per component and — in §8 — per WHOOP 5.0 MG feature, with the reason each item is still open. |
 | [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **App design.** Layer rules, folder layout, component inventory, data-flow diagram. |
+| [`DATAFLOW.md`](docs/DATAFLOW.md) | **Where numbers come from.** Every input path, who writes each table and what provenance it stamps, the foreground order, and the concurrency rule reads obey. |
 | [`ALGORITHMS.md`](docs/ALGORITHMS.md) | **The maths.** RMSSD/SDNN, the Strain model, the Recovery z-score, sleep staging, sleep need — with constants and citations. |
 | [`BLE_PROTOCOL.md`](docs/BLE_PROTOCOL.md) | **Bluetooth.** GATT UUIDs for all three straps, both `0xAA` envelopes, CRC layout, handshake sequence. |
 | [`CLAUDE.md`](CLAUDE.md) | **Working in this repo.** Build and test commands, and the hard-won gotchas that are not obvious from the code. Also the entry point for AI-assisted development. |

@@ -36,7 +36,6 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 refreshStrain: container.refreshStrainUseCase
             ),
             recoveryViewModel: RecoveryViewModel(
-                calculate: container.calculateRecoveryUseCase,
                 repository: container.recoveryRepository,
                 sleepRepository: container.sleepRepository
             ),
@@ -54,6 +53,15 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 stepRepository: container.stepRepository,
                 refresh: container.refreshStrainUseCase
             ),
+            stepsViewModel: StepsViewModel(repository: container.stepRepository),
+            hrvTrendViewModel: ReadingTrendViewModel(
+                kind: .hrv, repository: container.recoveryRepository),
+            rhrTrendViewModel: ReadingTrendViewModel(
+                kind: .restingHeartRate, repository: container.recoveryRepository),
+            vo2TrendViewModel: ReadingTrendViewModel(
+                kind: .vo2Max,
+                repository: container.recoveryRepository,
+                userProfileRepository: container.userProfileRepository),
             deviceViewModel: DeviceViewModel(
                 manage: container.manageBLEConnectionUseCase,
                 sync: container.syncHistoricalDataUseCase,
@@ -71,7 +79,8 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 whoopExport: container.whoopExportImport,
                 fasting: container.fastingImport,
                 inactivities: container.inactivityImport,
-                exportUseCase: container.exportLocalDataUseCase),
+                exportUseCase: container.exportLocalDataUseCase,
+                purge: container.purgeDaysUseCase),
             // `container` here is `.preview`, which reads the same `Info.plist` as any other build and
             // so carries neither sync key — its `missingCloudKey` names one, and the pane draws its
             // sentence rather than a credential. Nothing in this file reaches a socket. The argument is
@@ -83,6 +92,15 @@ struct HomeDashboardView_Previews: PreviewProvider {
                 missingCloudKey: container.missingCloudKey),
             liveSessionUseCase: container.liveSessionUseCase,
             offlineMaps: container.offlineMaps,
+            stressMonitor: StressLiveViewModel(
+                biometricRepository: container.biometricRepository,
+                motionEpochRepository: container.motionEpochRepository),
+            healthMonitor: HealthMonitorViewModel(
+                recoveryRepository: container.recoveryRepository,
+                sleepRepository: container.sleepRepository,
+                biometricRepository: container.biometricRepository,
+                stepRepository: container.stepRepository,
+                userProfileRepository: container.userProfileRepository),
             makeActivityDetailViewModel: { session, liveFast in
                 ActivityDetailViewModel(
                     session: session,

@@ -766,12 +766,14 @@ describe("a chunk of entries", () => {
     // the rest of it lost to a timeout — would erase its own history while being told the request
     // succeeded.
     //
-    // **It is also the whole of what this API can say about removal, and the answer to the app's own
-    // port.** `ReceptiveInactivityRepository.delete(_:)` exists on the iOS side and has no counterpart
-    // here: there is no `DELETE` route, no `delete` on the domain port and no delete path anywhere in
-    // this Worker, so a row a client removes on-device stays here and comes back on the next sync of
-    // the day it is filed on. That is a documented convention rather than an omission, and this
-    // assertion is where it is pinned.
+    // **It is also the whole of what this resource can say about removal, and the answer to the app's
+    // own port.** `ReceptiveInactivityRepository.delete(_:)` exists on the iOS side and has no
+    // counterpart here: there is no `DELETE` route on this resource and no `delete` on its domain port,
+    // so a row a client removes on-device stays here and comes back on the next sync of the day it is
+    // filed on. That is a documented convention rather than an omission, and this assertion is where it
+    // is pinned. **The Worker has grown exactly one delete since** — the day-range purge on the four
+    // day-keyed measured resources — and this resource is deliberately not one of them: an entry here
+    // is text the user typed, not a measurement a calibration made wrong.
     const rowsBack = await window("days=3&endingOn=2026-08-22");
     expect(rowsBack.map((row) => row.id)).toEqual([ENTRY, OTHER]);
     expect(await rowCount(ALICE)).toBe(2);

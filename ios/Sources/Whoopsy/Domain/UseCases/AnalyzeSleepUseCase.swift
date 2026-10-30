@@ -134,6 +134,30 @@ public final class AnalyzeSleepUseCase: Sendable {
         return distinct.first ?? .samples
     }
 
+    /// One line per spine: how many windows it contributed and where its magnitudes sit.
+    ///
+    /// The quantiles are of `meanMagnitudeG`, the number the onset test compares against the ceiling,
+    /// so `p90` above it means the spine's own stillness sits outside the rule it is judged by — which
+    /// is a calibration fault rather than a night with movement in it.
+    static func logStillness(windows: [StillnessWindow], ceiling: Double) {
+        for source in [SleepStillnessSpine.motion, .samples] {
+            let magnitudes = windows.filter { $0.source == source }
+                .map(\.meanMagnitudeG).sorted()
+            guard !magnitudes.isEmpty else { continue }
+            func at(_ fraction: Double) -> Double {
+                magnitudes[min(magnitudes.count - 1, Int(Double(magnitudes.count) * fraction))]
+            }
+            let quiet = magnitudes.filter { $0 < ceiling }.count
+            CaptureLog.sleepDecision(
+                "SLEEP stillness source=\(source.rawValue) n=\(magnitudes.count) "
+                    + "p10=\(String(format: "%.3f", at(0.10))) "
+                    + "median=\(String(format: "%.3f", at(0.50))) "
+                    + "p90=\(String(format: "%.3f", at(0.90))) "
+                    + "max=\(String(format: "%.3f", magnitudes[magnitudes.count - 1])) "
+                    + "quiet=\(quiet) ceiling=\(String(format: "%.3f", ceiling))")
+        }
+    }
+
     /// The night's own resting heart rate, or `nil` when the window is too thin to estimate one.
     ///
     /// **The lowest third's mean**, which is the same estimator `CalculateRecoveryUseCase` applies to
@@ -226,7 +250,7 @@ public final class AnalyzeSleepUseCase: Sendable {
         // **The same facts into the file a phone capture can read.** `os.log` is minutes deep and
         // unreachable without a cable; "no night" on a morning ring and the number that explains it
         // have to survive together, or the next question costs another round trip.
-        CaptureLog.shared.append(
+        CaptureLog.sleepDecision(
             "SLEEP window=\(prevEvening.ISO8601Format())..\(morningEnd.ISO8601Format()) "
                 + "samples=\(samples.count) first=\(firstSample) last=\(lastSample)")
 
@@ -236,7 +260,7 @@ public final class AnalyzeSleepUseCase: Sendable {
                 Sleep analysis: absent — \(samples.count, privacy: .public) samples in the window, below \
                 the \(minimum, privacy: .public) an epoch needs.
                 """)
-            CaptureLog.shared.append(
+            CaptureLog.sleepDecision(
                 "SLEEP absent reason=samples samples=\(samples.count) minimum=\(minimum)")
             return nil
         }
@@ -276,15 +300,23 @@ public final class AnalyzeSleepUseCase: Sendable {
                 accelerometer carried by the samples says anything about how still the wrist was, and \
                 a heart rate alone cannot separate sleep from lying still awake.
                 """)
-            CaptureLog.shared.append(
+            CaptureLog.sleepDecision(
                 "SLEEP absent reason=motion samples=\(samples.count) motionEpochs=0 sampleEpochs=0")
             return nil
         }
-        CaptureLog.shared.append(
+        CaptureLog.sleepDecision(
             "SLEEP inputs samples=\(samples.count) motionEpochs=\(motionEpochs.count) "
                 + "sampleEpochs=\(sampleEpochs.count) windows=\(windows.count) "
                 + "motionWindows=\(motionWindowCount) "
                 + "sampleWindows=\(windows.count - motionWindowCount)")
+        // **Where each spine's distribution actually sits, because one ceiling serves two statistics.**
+        // The onset test compares every window against `motionQuietCeiling`, and the two sources are
+        // not the same quantity: `R21` is a 100 Hz window mean while `R18`'s is `1 + mean|Δa|` between
+        // per-second means, so its floor is sensor noise rather than zero. Measured 2026-10-30 on a
+        // night whose span collapsed to its first thirty-one minutes: without this line there is no
+        // way to tell a night that was judged awake from a night that had no windows at all, and the
+        // two need opposite repairs. Print the quantiles per source and the answer is on one line.
+        Self.logStillness(windows: windows, ceiling: Self.motionQuietCeiling)
 
         // Classify 30-second epochs. Stages are assigned here and **nothing is summed**: the sums are
         // taken below, over the epochs the night actually holds, so a trim cannot leave a duration
@@ -410,7 +442,7 @@ public final class AnalyzeSleepUseCase: Sendable {
                 \(Int(SleepOnsetMath.minimumSleepRunSeconds), privacy: .public) s. A night whose \
                 motion never settles is not a night.
                 """)
-            CaptureLog.shared.append(
+            CaptureLog.sleepDecision(
                 "SLEEP absent reason=onset epochs=\(epochs.count) asleep=\(asleep) "
                     + "required=\(Int(SleepOnsetMath.minimumSleepRunSeconds))s "
                     + "ceiling=\(Int(onsetCeiling))")
@@ -421,6 +453,13 @@ public final class AnalyzeSleepUseCase: Sendable {
         // is wake inside the sleep period, not edge time — and only what falls outside the span goes.
         let night = epochs.filter { $0.start < period.wake && $0.end > period.onset }
         guard let firstEpoch = night.first, let lastEpoch = night.last else { return nil }
+
+        // **Did the night end where the input ended, rather than at a detected wake?** True when the
+        // retaining run reaches the last epoch the classifier was handed — the shape a drain that had
+        // not finished leaves behind, and the one fact that tells the reclassification gate this night
+        // may still be growing. A night trimmed at a real wake has epochs after its end, so the two
+        // differ. See `SleepSession.endedAtDataEdge`.
+        let endedAtDataEdge = lastEpoch.end >= (epochs.last?.end ?? lastEpoch.end)
 
         var lightSec: TimeInterval = 0
         var deepSec: TimeInterval = 0
@@ -559,7 +598,8 @@ public final class AnalyzeSleepUseCase: Sendable {
             // phone was recording for part of it and away for the rest.
             stillnessSpine: Self.spine(of: night.map(\.source)),
             algorithm: .current,
-            scoredThrough: Self.inputEdge(samples: samples, epochs: motionEpochs)
+            scoredThrough: Self.inputEdge(samples: samples, epochs: motionEpochs),
+            endedAtDataEdge: endedAtDataEdge
         )
 
         try await sleepRepository.saveSleepSession(session)

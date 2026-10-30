@@ -17,7 +17,7 @@ import Foundation
 /// ## The three absences collapse into one, and the section draws no note for it
 ///
 /// A route is `nil` when the session recorded fewer than two plausible positions, and **that is every
-/// session this app can currently show**: the `RECORD ROUTE` toggle is the only producer of
+/// session this app can currently show**: the session screen's two map toggles are the only producer of
 /// `workout_route_points`, it is off by default, and no session has ever been recorded on this machine.
 /// The page's section is therefore **absent with no note**, which is `zoneSection`'s precedent — the
 /// page's own block that is simply not drawn — and not `noHeartRateNote`'s, where the slot is always
@@ -135,7 +135,7 @@ public struct ActivityRoute: Equatable, Sendable {
     /// The span the path itself covers: `finish.timestamp − start.timestamp`.
     ///
     /// **Not the session's duration, and the difference is the whole of the speed's honesty.** The
-    /// route begins when the reader turned `RECORD ROUTE` on, which is not when the session started —
+    /// route begins when the reader chose a map, which is not when the session started —
     /// so a run whose toggle was flipped two minutes in has a path covering eighteen of its twenty
     /// minutes. Dividing the path's own length by the session's own span would mix two producers and
     /// report an average over distance the app never measured, which is the same fault as counting a
@@ -158,7 +158,7 @@ public struct ActivityRoute: Equatable, Sendable {
     /// Two, because a polyline is drawn between positions and a single fix is a *place* rather than a
     /// path. Drawing one as a route would put a marker on the map and claim the session moved; the
     /// honest answer for one plausible fix is the same absence a session with none draws.
-    public static let minimumPointCount = 2
+    public static let minimumPointCount = RouteDistance.minimumPointCount
 
     /// The IUGG mean earth radius, in metres — the `R₁` of the IUGG's mean-radius set, and the figure
     /// the haversine below is stated against.
@@ -166,7 +166,10 @@ public struct ActivityRoute: Equatable, Sendable {
     /// A single sphere rather than an ellipsoid: over a session's few kilometres the two differ by well
     /// under a tenth of a percent, which is far inside GPS's own error, and a great-circle sum is
     /// reproducible against a literal in a way an ellipsoidal one is not.
-    public static let earthRadiusMeters: Double = 6_371_008.8
+    /// **Forwarded from `RouteDistance`**, which is the layer both this card and the Live Activity can
+    /// reach: the lock screen's distance has to be the card's distance, and two haversines is two
+    /// chances to disagree. See `Core/Math/RouteDistance.swift`.
+    public static let earthRadiusMeters: Double = RouteDistance.earthRadiusMeters
 
     /// The narrowest the frame is allowed to be, in degrees, on either axis.
     ///
@@ -223,10 +226,8 @@ public struct ActivityRoute: Equatable, Sendable {
 
     /// The sum of consecutive great-circle distances, in metres.
     static func distance(along points: [WorkoutRoutePoint]) -> Double {
-        guard points.count >= 2 else { return 0 }
-        return zip(points, points.dropFirst()).reduce(0) { total, pair in
-            total + distance(from: pair.0, to: pair.1)
-        }
+        RouteDistance.meters(
+            along: points.map { (latitude: $0.latitude, longitude: $0.longitude) })
     }
 
     /// The haversine distance between two fixes, in metres.
@@ -238,23 +239,11 @@ public struct ActivityRoute: Equatable, Sendable {
     /// the standard one over the mean radius above; at 1° of latitude it returns 111 195 m, which is what
     /// §19 pins it at.
     ///
-    /// **The `min(1, …)` is not decoration.** Two exactly antipodal points give `h` a hair above 1 in
-    /// floating point, and `asin` of that is `NaN` — a route whose length is not a number, printed as
-    /// such. No session this app can record is 20 000 km long, but a `NaN` reaching a formatted string is
-    /// the kind of fault that has no local symptom.
+    /// One leg, through `RouteDistance` — the single definition shared with the Live Activity.
     static func distance(from a: WorkoutRoutePoint, to b: WorkoutRoutePoint) -> Double {
-        let radians = Double.pi / 180
-        let latitude1 = a.latitude * radians
-        let latitude2 = b.latitude * radians
-        let deltaLatitude = (b.latitude - a.latitude) * radians
-        let deltaLongitude = (b.longitude - a.longitude) * radians
-
-        let halfLatitude = sin(deltaLatitude / 2)
-        let halfLongitude = sin(deltaLongitude / 2)
-        let h = halfLatitude * halfLatitude
-            + cos(latitude1) * cos(latitude2) * halfLongitude * halfLongitude
-
-        return 2 * earthRadiusMeters * asin(min(1, h.squareRoot()))
+        RouteDistance.meters(
+            fromLatitude: a.latitude, fromLongitude: a.longitude,
+            toLatitude: b.latitude, toLongitude: b.longitude)
     }
 
     // MARK: - The frame

@@ -526,36 +526,43 @@ public struct LiveSessionView: View {
 
     // MARK: - Route
 
-    /// The opt-in switch for GPS route recording, off until the user turns it on.
+    /// The session's **live map** choice, off until the user turns it on.
     ///
-    /// **Why this is a toggle and not automatic.** The session cannot decide whether it is outdoors:
-    /// this app deliberately does not classify an activity, and the strap has no way to know if the
-    /// phone is on a sofa or on a bike. Recording a route anyway would draw a cloud of GPS jitter
-    /// around a living room and call it exercise. So the user answers, once per session.
+    /// **This is one of two maps, not a separate "record a route" feature.** Both this and
+    /// `USE OFFLINE MAP` record the path and draw it; they differ in where the tiles come from — Apple's
+    /// live map, or a Mapbox area downloaded while the phone still had signal. Two maps are never drawn
+    /// at once, so choosing one releases the other.
+    ///
+    /// **Why the choice is not automatic.** The session cannot decide whether it is outdoors: this app
+    /// deliberately does not classify an activity, and the strap has no way to know if the phone is on a
+    /// sofa or on a bike. Recording a route anyway would draw a cloud of GPS jitter around a living room
+    /// and call it exercise. So the user answers, once per session — and choosing *no* map is also a
+    /// valid answer, which is why both switches start off.
     ///
     /// **The setter hands the work to a `Task` rather than awaiting it**, which is not a shortcut: a
     /// `Toggle` needs a synchronous setter, and the first flip *is* asynchronous — it puts the system
     /// permission prompt on screen and returns only once the user has answered it. So the binding reads
-    /// its value back from `useCase.isRecordingRoute` rather than holding one of its own, and the switch
-    /// moves when the use case says it moved. A refusal therefore leaves the switch off, which is the
-    /// honest position and not a stuck control.
+    /// its value back from `useCase.isLiveMapRequested` rather than holding one of its own, and the
+    /// switch moves when the use case says it moved. A refusal therefore leaves the switch off, which is
+    /// the honest position and not a stuck control.
     ///
     /// **The session does not wait for this.** `start()` runs from the `.task` above, so the recording
     /// begins when the screen appears and a route turned on later begins at the flip. See
-    /// `setRouteRecording(_:)`.
+    /// `setLiveMap(_:)`.
     private var routeCard: some View {
         HStack(spacing: 12) {
             Image(systemName: "location.fill")
                 .font(.system(size: 15))
-                .foregroundColor(useCase.isRecordingRoute ? Theme.livePulseCyan : Theme.textMuted)
+                .foregroundColor(useCase.isLiveMapRequested ? Theme.livePulseCyan : Theme.textMuted)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("RECORD ROUTE")
+                Text("USE LIVE MAP")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundColor(Theme.textPrimary)
                     .tracking(0.8)
 
-                Text("Uses GPS while this session runs. Keeps recording when the screen locks.")
+                Text("Records this session's route on Apple's map. Needs a connection; keeps recording "
+                    + "when the screen locks.")
                     .font(.system(size: 11))
                     .foregroundColor(Theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -579,19 +586,18 @@ public struct LiveSessionView: View {
     /// Reads through to the use case and writes through a `Task` — see `routeCard` for why.
     private var routeBinding: Binding<Bool> {
         Binding(
-            get: { useCase.isRecordingRoute },
-            set: { isOn in Task { await useCase.setRouteRecording(isOn) } }
+            get: { useCase.isLiveMapRequested },
+            set: { isOn in Task { await useCase.setLiveMap(isOn) } }
         )
     }
 
     /// The second switch, and the one that exists because of a hike rather than a run.
     ///
-    /// **Mutually exclusive with `RECORD ROUTE`, and drawn as its own card** — the user's own ruling
-    /// rather than a layout choice. Either can be on, but never both: turning one on turns the other off,
-    /// so a route with no offline map is the ordinary case on a short run in a city, and an offline map
-    /// with no route is a hiker who wants the area cached but is not tracking the walk. The exclusivity is
-    /// the use case's rule (`setOfflineMap` and `setRouteRecording` stop the other before proceeding), so
-    /// this one is not nested under `routeCard` and does not read its state.
+    /// **The other half of `USE LIVE MAP`, and drawn as its own card.** The two toggles are a map
+    /// choice — Apple's live tiles, or a Mapbox area saved while the phone still had signal — and **both
+    /// record the route**, so choosing this one starts the path exactly as the live map does and draws
+    /// it on the downloaded tiles. One map at a time: choosing this releases the live choice and vice
+    /// versa, while the route keeps running across the switch.
     ///
     /// **It is thrown before the signal goes, never in response to it.** There is no connectivity
     /// detection anywhere in this feature — the app has no networking code at all — so the decision is
@@ -659,8 +665,8 @@ public struct LiveSessionView: View {
         case .downloading(let fraction):
             return "Downloading this area… \(Int((fraction * 100).rounded()))%"
         case .absent, .unsupported, .failed:
-            return "Saves a map of this area while you still have signal. Turn it on before you lose "
-                + "coverage."
+            return "Saves a map of this area while you still have signal, and draws this session's route "
+                + "on it. Turn it on before you lose coverage."
         }
     }
 
@@ -693,25 +699,31 @@ public struct LiveSessionView: View {
     /// The active map, drawn above END and only while one of the two switches has produced something to
     /// show.
     ///
-    /// **Route on draws the live path** — MapKit always, because exclusivity means the offline region is
-    /// never on at the same time. `ActivityRoute(points:)` is failable, so fewer than two plausible fixes
-    /// draw nothing rather than a map with a dot, which is the same "absence, not a dash" rule the other
-    /// cards follow.
+    /// **One map, and which one is the offline switch's decision.** The two switches are independent:
+    /// `USE LIVE MAP` and `USE OFFLINE MAP` choose which map draws it, and both record the path —
+    /// two maps are never drawn at once, which is what "the mapbox one is in use" means here.
     ///
-    /// **Offline map on draws the downloaded area**, and only once the region is `.ready` — the seam's
-    /// contract is that `map(area:regionID:)` draws a region that is already on disk, so a `.downloading`
-    /// state must not reach it; the switch's own subtitle already reports the progress. Both halves carry
-    /// their own `SectionLabel`, so this view adds no chrome of its own.
+    /// So a `.ready` region draws the Mapbox card whether or not a route is recording, with the live
+    /// path on it when there is one; a session with a route and no region draws `MapKit`; and a region
+    /// with no route yet draws the area card, which is the same card the detail page will draw.
+    ///
+    /// `.ready` is required before the seam is asked to draw — its contract is that `map(…)` is reached
+    /// only for a region already on disk, so a `.downloading` state must not reach it; the switch's own
+    /// subtitle reports the progress. `ActivityRoute(points:)` is failable, so fewer than two plausible
+    /// fixes draw the area rather than a map with a single dot, which is the same "absence, not a dash"
+    /// rule the other cards follow.
     @ViewBuilder
     private var liveMap: some View {
-        if useCase.isRecordingRoute, let route = ActivityRoute(points: useCase.routePoints) {
+        let route = ActivityRoute(points: useCase.routePoints)
+        if useCase.offlineMapState == .ready, let regionID = useCase.offlineRegionID {
+            if useCase.isRecordingRoute, let route {
+                offlineMaps.map(route: route, unit: .forLocale(.current), regionID: regionID)
+            } else if let center = useCase.offlineRegionCenter,
+                      let area = ActivityOfflineArea(center: center) {
+                offlineMaps.map(area: area, regionID: regionID)
+            }
+        } else if useCase.isLiveMapRequested, let route {
             ActivityRouteMapView(route: route)
-        } else if useCase.isOfflineMapRequested,
-                  useCase.offlineMapState == .ready,
-                  let regionID = useCase.offlineRegionID,
-                  let center = useCase.offlineRegionCenter,
-                  let area = ActivityOfflineArea(center: center) {
-            offlineMaps.map(area: area, regionID: regionID)
         }
     }
 

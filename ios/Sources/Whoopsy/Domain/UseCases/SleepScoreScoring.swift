@@ -73,6 +73,14 @@ public enum SleepScoreScoring {
     /// total sleep"; the top of that range is used so the term is not already full at its bottom.
     public static let restorativeTargetPercent: Double = 50
 
+    /// The bottom of that published range, exposed so the sleep page's sentence grades a night against
+    /// the same guidance the term is scored from.
+    ///
+    /// **It is a bound of a published range, not a threshold this app invented.** `SleepStageShareMessage`
+    /// says "below/inside/above the 40–50 %" from these two values, which is what stops the page's copy
+    /// and the ring's restorative term from disagreeing about what "optimal" means on the same screen.
+    public static let restorativeGuidanceLowerPercent: Double = 40
+
     /// How many of the four terms a score was built from.
     public struct Coverage: Equatable, Sendable {
         /// The terms that had a denominator, in `Component.allCases` order.

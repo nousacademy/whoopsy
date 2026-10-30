@@ -9,9 +9,9 @@ import Foundation
 /// geometry, so a page holding only an id can say *tiles exist* and cannot say *where they are*.
 ///
 /// A session that recorded a route does not need this — `ActivityRoute` frames the path. The case this
-/// type exists for is the one the two switches make ordinary: `USE OFFLINE MAP` is mutually exclusive
-/// with `RECORD ROUTE`, so a session can download a map and store no route at all. Its detail page then
-/// has tiles on disk and nothing to point the camera at.
+/// type exists for is the one the map choice makes ordinary: a session can choose `USE OFFLINE MAP`,
+/// download its tiles, and still hold fewer than two fixes — an indoor session, or one stopped before
+/// the GPS settled. Its detail page then has tiles on disk and nothing to point the camera at.
 ///
 /// ## Why it is persisted rather than re-derived
 ///

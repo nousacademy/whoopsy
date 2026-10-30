@@ -23,6 +23,10 @@ public final class DIContainer: @unchecked Sendable {
     // Use Cases
     public let streamBiometricsUseCase: StreamBiometricsUseCase
     public let calculateRecoveryUseCase: CalculateRecoveryUseCase
+
+    /// The one writer that scores a day, run from the foreground after the night refresh. Ring pages
+    /// read; this is what makes a day current exactly once per night.
+    public let refreshRecoveryUseCase: RefreshRecoveryUseCase
     public let calculateStrainUseCase: CalculateStrainUseCase
     /// Keeps the day's Strain current and repairs the days a late drain delivers. Built here rather
     /// than per screen, on `trackStepsUseCase`'s rule — one process-lifetime owner of the loop.
@@ -114,6 +118,18 @@ public final class DIContainer: @unchecked Sendable {
     /// The once-a-day upload. Long-running (`runLoop` sleeps until 18:00 Eastern), so it is started
     /// from `MainContainerView`'s app-level task like the step counter and the motion recorder.
     public let dailySyncUseCase: DailySyncUseCase
+
+    /// The one path that fills this phone's tables from the API. See `RestoreFromCloudUseCase` for why
+    /// it exists and why nothing else reads from the network.
+    public let restoreFromCloudUseCase: RestoreFromCloudUseCase
+
+    /// The one path that removes days — from the database first, then from this phone.
+    ///
+    /// Built here rather than in a screen because it has to hold the container's own `cloud` and
+    /// `syncSettings`: the refusal it makes when the API is unreachable is a decision about *this
+    /// build's* configuration, and a view model that assembled it could assemble one with no server
+    /// behind it and quietly turn the refusal into a local-only delete.
+    public let purgeDaysUseCase: PurgeDaysUseCase
 
     /// The `Info.plist` key this build is missing, or `nil` when it has both.
     ///
@@ -272,25 +288,50 @@ public final class DIContainer: @unchecked Sendable {
         // written into the decorator's argument when the decorator was the only thing that needed one;
         // `syncEngine` below is the second, and `HTTPCloudSync` is a value type over a value-type
         // client, so handing the same value to both costs nothing and — the point — leaves one instance
-        // of the key store and one base URL behind every request the app makes. Two constructions would
-        // be two `WhoopsyAPIClient`s reading the same Keychain.
+        // of the key store and one base URL behind every request the app makes. The restore gets its
+        // own value **on purpose**, and the difference is the one parameter below: the key store is
+        // still the same object, so the 32 bytes are minted once and read by both.
         // **The once-a-day gate, injected at the one seam every decorator shares.** Outside
         // 18:00–midnight Eastern a decorated read answers from this phone and never opens a socket;
         // the client repeats the guard as a safety net for the engine's own run.
         let cloudWindow: @Sendable () -> Bool = { SyncSchedule.isOpen() }
+        // **Reads never reach the API, and this is the whole of the guarantee.** The seven decorators
+        // below still carry their local-first fallback — it is the shape `CloudSync`'s reads were built
+        // for — but they are constructed closed, so a screen can no longer be delayed or blanked by a
+        // request. Rows the phone does not hold are the restore's job
+        // (`RestoreFromCloudUseCase`), which is the one path that fills these tables from the database.
+        // Measured 2026-10-27: a Home load was still 32–39 s with the window shut, so the network was
+        // never doing this app's reading for it.
+        //
+        // **The client and the engine keep the real window, because the daily upload is a network write
+        // and the 18:00 gate is its.** The restore's client below is the one deliberate exemption.
+        let readWindow: @Sendable () -> Bool = { false }
         let cloud: any CloudSync
+        let restoreCloud: any CloudSync
         if let apiBaseURL, let apiToken {
             let http = HTTPCloudSync(
                 client: WhoopsyAPIClient(
                     baseURL: apiBaseURL, token: apiToken, keyStore: syncKeyStore,
                     isCallWindowOpen: cloudWindow))
             cloud = http
+            // **RESTORE's client is a second construction and the window is the whole difference.**
+            // Every other call is a schedule, so it is refused between midnight and 6 PM Eastern; a
+            // restore is a person pressing a button on a phone that is missing days, and the moment
+            // that is most true is the first launch after an uninstall — which can be any hour. So the
+            // explicit pull is handed a client whose window is held open, while the launch-time repair
+            // (`restoreIfNeeded`) checks `cloudWindow` itself and stays inside the schedule. The two
+            // clients share the key store, the base URL and the token, so what is duplicated is one
+            // value type over a stateless session, not a connection or a credential.
+            restoreCloud = HTTPCloudSync(
+                client: WhoopsyAPIClient(
+                    baseURL: apiBaseURL, token: apiToken, keyStore: syncKeyStore,
+                    isCallWindowOpen: { true }))
             self.recoveryRepository = CloudRecoveryRepository(
                 local: GRDBRecoveryRepository(db: db),
                 cloud: http,
                 settingsStore: syncSettings,
                 status: syncStatus,
-                isCallWindowOpen: cloudWindow)
+                isCallWindowOpen: readWindow)
             self.missingCloudKey = nil
         } else {
             // **The key named is the half that is actually absent**, and it is named once: the object
@@ -301,6 +342,7 @@ public final class DIContainer: @unchecked Sendable {
             let absent = apiBaseURL == nil
                 ? WhoopsyAPIClient.baseURLInfoKey : WhoopsyAPIClient.tokenInfoKey
             cloud = UnconfiguredCloudSync(missingKey: absent)
+            restoreCloud = cloud
             self.recoveryRepository = GRDBRecoveryRepository(db: db)
             self.missingCloudKey = absent
         }
@@ -324,6 +366,30 @@ public final class DIContainer: @unchecked Sendable {
         self.dailySyncUseCase = DailySyncUseCase(
             engine: syncEngine,
             settingsStore: syncSettings)
+        // The same seven stores the engine uploads through, in the other direction. `db` is handed over
+        // rather than the repositories because a restore moves *records*: the port returns `*SyncRow`s
+        // and the stores take them, so a restored row and an uploaded row are one shape.
+        self.restoreFromCloudUseCase = RestoreFromCloudUseCase(
+            cloud: restoreCloud,
+            settingsStore: syncSettings,
+            profileStore: db,
+            inactivityStore: db,
+            recoveryStore: db,
+            sleepStore: db,
+            stepCountStore: db,
+            strainStore: db,
+            workoutStore: db,
+            isCallWindowOpen: cloudWindow)
+        // **The purge takes `restoreCloud`, not `cloud`, and that is the same exemption RESTORE gets.**
+        // Every scheduled call is refused between midnight and 6 PM Eastern; a purge is a person
+        // pressing delete on days they have decided are wrong, and the hour is theirs. Handing it the
+        // scheduled client would make the button refuse for eighteen hours of the day — and because
+        // the purge deletes *nothing* locally when the database call fails, the button would simply do
+        // nothing at the wrong time of day, which is the worst shape this feature could have.
+        self.purgeDaysUseCase = PurgeDaysUseCase(
+            cloud: restoreCloud,
+            store: db,
+            settingsStore: syncSettings)
         // The other six resources get the same local-first treatment as recovery: a decorator on the
         // configured branch, the bare GRDB repository otherwise. Strains and workouts add the read-back
         // half — the only three resources (recoveries included) whose `CloudSync` port has a read — and
@@ -333,33 +399,33 @@ public final class DIContainer: @unchecked Sendable {
         self.strainRepository = configured
             ? CloudStrainRepository(
                 local: GRDBStrainRepository(db: db), cloud: cloud, settingsStore: syncSettings,
-                status: syncStatus, isCallWindowOpen: cloudWindow)
+                status: syncStatus, isCallWindowOpen: readWindow)
             : GRDBStrainRepository(db: db)
         self.sleepRepository = configured
             ? CloudSleepRepository(
                 local: GRDBSleepRepository(db: db), cloud: cloud, settingsStore: syncSettings,
-                status: syncStatus, isCallWindowOpen: cloudWindow)
+                status: syncStatus, isCallWindowOpen: readWindow)
             : GRDBSleepRepository(db: db)
         self.napRepository = GRDBNapRepository(db: db)
         self.userProfileRepository = configured
             ? CloudUserProfileRepository(
                 local: GRDBUserProfileRepository(db: db), cloud: cloud, settingsStore: syncSettings,
-                isCallWindowOpen: cloudWindow)
+                isCallWindowOpen: readWindow)
             : GRDBUserProfileRepository(db: db)
         self.workoutRepository = configured
             ? CloudWorkoutRepository(
                 local: GRDBWorkoutRepository(db: db), cloud: cloud, settingsStore: syncSettings,
-                isCallWindowOpen: cloudWindow)
+                isCallWindowOpen: readWindow)
             : GRDBWorkoutRepository(db: db)
         self.receptiveInactivityRepository = configured
             ? CloudReceptiveInactivityRepository(
                 local: GRDBReceptiveInactivityRepository(db: db), cloud: cloud,
-                settingsStore: syncSettings, isCallWindowOpen: cloudWindow)
+                settingsStore: syncSettings, isCallWindowOpen: readWindow)
             : GRDBReceptiveInactivityRepository(db: db)
         self.stepRepository = configured
             ? CloudStepRepository(
                 local: GRDBStepRepository(db: db), cloud: cloud, settingsStore: syncSettings,
-                status: syncStatus, isCallWindowOpen: cloudWindow)
+                status: syncStatus, isCallWindowOpen: readWindow)
             : GRDBStepRepository(db: db)
         self.motionEpochRepository = GRDBMotionEpochRepository(db: db)
         self.streamBiometricsUseCase = StreamBiometricsUseCase(
@@ -387,6 +453,13 @@ public final class DIContainer: @unchecked Sendable {
             biometricRepository: biometricRepository,
             motionEpochRepository: motionEpochRepository
         )
+
+        // The recovery writer, built from the same use case the pages used to hold themselves. It runs
+        // after `refreshNightsUseCase` on every foreground, because its input is the night.
+        self.refreshRecoveryUseCase = RefreshRecoveryUseCase(
+            calculate: self.calculateRecoveryUseCase,
+            repository: self.recoveryRepository,
+            sleepRepository: self.sleepRepository)
 
         self.analyzeSleepUseCase = AnalyzeSleepUseCase(
             biometricRepository: biometricRepository,

@@ -113,11 +113,103 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
     /// `scoredThrough` is not older than the night's newest input is answered from storage.
     public let algorithm: SleepAlgorithm?
 
+    /// Whether the classification's newest input was **inside the night it describes** — that is,
+    /// whether the night ended at the data edge rather than at a detected wake.
+    ///
+    /// **This is the fact the reclassification gate could not otherwise know, and its absence left a
+    /// 54-minute night on screen permanently.** A night trimmed at a wake has awake epochs after its
+    /// end, so the newest input the row saw is later than the end; a night cut off by a drain that had
+    /// not finished ends *on* its newest input, and everything that arrives afterwards is still the
+    /// same night. Both look identical from `endTime` and `scoredThrough` alone once the trimming is a
+    /// few minutes long — measured 2026-10-28, a night ending 23:59 whose watermark was 07:10.
+    ///
+    /// `nil` on every row written before `v40`, which the gate treats as *no verdict recorded* and
+    /// answers with one re-classification — the row then carries the fact.
+    public let endedAtDataEdge: Bool?
+
     /// The newest epoch or sample instant this classification included, or `nil` before `v37`.
     ///
     /// The watermark `RefreshStrainUseCase` keeps for the same reason: a drain can deliver the rest of
     /// a night after the row was written, and this is what says whether that happened.
     public let scoredThrough: Date?
+
+    /// Whether two classifications of one night would **draw the same thing** — the test a publisher
+    /// needs before telling a screen to redraw.
+    ///
+    /// **`Equatable` cannot answer this and that is the entity's own recorded gotcha.** `id` is a fresh
+    /// `UUID` per classification and so is every `SleepStageSegment.id`, so two reads of an unchanged
+    /// night compare unequal; `scoredThrough` is *supposed* to differ, because it is the watermark the
+    /// reclassification exists to advance. What a screen draws is everything below but those two, and
+    /// comparing exactly that is what lets a morning re-classification that produced the same night
+    /// stay off the ring.
+    /// The same night with its two bounds moved — the only thing the sleep page's editor changes.
+    ///
+    /// **Every other field is carried through**, which is what makes this "only time" rather than a
+    /// re-measurement: the stage totals, the need, the provenance and the stillness spine are what the
+    /// strap (or the export) measured, and an edit is a correction to *when* the night ran, not a claim
+    /// about how it went.
+    ///
+    /// **`scoredThrough` is advanced to the edit instant, and that is what makes an edit stick.**
+    /// `SleepReclassification.isOwed` re-classifies a night when its newest input is later than the
+    /// watermark, so a row whose watermark stayed at the old end could be re-analysed by the next
+    /// foreground or drain and silently redraw the times the user just set. The edit happened after
+    /// every record the night can hold, so the watermark is honest at the moment it was made; only
+    /// input that arrives *later* — which for a finished night is nothing — can move past it.
+    public func withEditedTimes(
+        start: Date,
+        end: Date,
+        now: Date = Date()
+    ) -> SleepSession {
+        SleepSession(
+            id: id,
+            date: date,
+            startTime: start,
+            endTime: end,
+            targetSleepNeedSeconds: targetSleepNeedSeconds,
+            lightSleepSeconds: lightSleepSeconds,
+            deepSleepSeconds: deepSleepSeconds,
+            remSleepSeconds: remSleepSeconds,
+            awakeSeconds: awakeSeconds,
+            disturbanceCount: disturbanceCount,
+            respiratoryRate: respiratoryRate,
+            sleepConsistency: sleepConsistency,
+            sleepDebtSeconds: sleepDebtSeconds,
+            hasWhoopSleepNeed: hasWhoopSleepNeed,
+            sleepStages: sleepStages,
+            stillnessSpine: stillnessSpine,
+            algorithm: algorithm,
+            scoredThrough: max(scoredThrough ?? end, end, now),
+            endedAtDataEdge: endedAtDataEdge)
+    }
+
+    public func drawsSame(as other: SleepSession) -> Bool {
+        startTime == other.startTime
+            && endTime == other.endTime
+            && targetSleepNeedSeconds == other.targetSleepNeedSeconds
+            && lightSleepSeconds == other.lightSleepSeconds
+            && deepSleepSeconds == other.deepSleepSeconds
+            && remSleepSeconds == other.remSleepSeconds
+            && awakeSeconds == other.awakeSeconds
+            && disturbanceCount == other.disturbanceCount
+            && respiratoryRate == other.respiratoryRate
+            && sleepConsistency == other.sleepConsistency
+            && sleepDebtSeconds == other.sleepDebtSeconds
+            && hasWhoopSleepNeed == other.hasWhoopSleepNeed
+            && stillnessSpine == other.stillnessSpine
+            && algorithm == other.algorithm
+            && Self.stageKeys(sleepStages) == Self.stageKeys(other.sleepStages)
+    }
+
+    /// The stage timeline without its per-segment ids — see `drawsSame(as:)`.
+    private static func stageKeys(_ segments: [SleepStageSegment]) -> [StageKey] {
+        segments.map { StageKey(start: $0.startTime, end: $0.endTime, stage: $0.stage) }
+    }
+
+    private struct StageKey: Equatable {
+        let start: Date
+        let end: Date
+        let stage: SleepStageType
+    }
 
     public init(
         id: UUID = UUID(),
@@ -137,7 +229,8 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
         sleepStages: [SleepStageSegment] = [],
         stillnessSpine: SleepStillnessSpine? = nil,
         algorithm: SleepAlgorithm? = nil,
-        scoredThrough: Date? = nil
+        scoredThrough: Date? = nil,
+        endedAtDataEdge: Bool? = nil
     ) {
         self.id = id
         self.date = date
@@ -157,6 +250,7 @@ public struct SleepSession: Identifiable, Equatable, Sendable {
         self.stillnessSpine = stillnessSpine
         self.algorithm = algorithm
         self.scoredThrough = scoredThrough
+        self.endedAtDataEdge = endedAtDataEdge
     }
 
     public var totalTimeAsleepSeconds: TimeInterval {

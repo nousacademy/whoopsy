@@ -125,7 +125,11 @@ public struct HealthKitImporter: Sendable {
                 hrvMetric: .sdnn,
                 restingHeartRate: restingHeartRate,
                 hrvBaselineDeltaMs: scoring.hrvBaselineDeltaMs,
-                rhrBaselineDeltaBpm: scoring.rhrBaselineDeltaBpm)
+                rhrBaselineDeltaBpm: scoring.rhrBaselineDeltaBpm,
+                // Recorded like every computed row. The metric is SDNN, which is the reason
+                // `RefreshRecoveryUseCase` refuses a non-local row: its recompute would write RMSSD
+                // over this one and mix two quantities in a single baseline.
+                algorithm: .current)
 
             // Labelled, so a repair that clears this app's own pre-fix rows cannot take a HealthKit
             // measurement with it — and so `isLocallyComputed` answers false for it.

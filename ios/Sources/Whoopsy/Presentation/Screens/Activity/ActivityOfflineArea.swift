@@ -6,7 +6,7 @@ import Foundation
 /// ## Why this value exists at all
 ///
 /// `ActivityRoute` is the page's map for a session that recorded positions — and every session this app
-/// has recorded with `RECORD ROUTE` off has none, while `USE OFFLINE MAP` is a mutually exclusive switch.
+/// whose route has fewer than two plausible fixes has none.
 /// Such a session holds uploaded tiles in Mapbox's store and a centre on its row (`v23`), and nothing
 /// that turns those into a frame. This type is that turn: a centre plus the box a card draws around it.
 ///

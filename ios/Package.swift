@@ -110,6 +110,7 @@ let package = Package(
                 .process("Data/Resources/Whoop/workouts.csv"),
                 .process("Data/Resources/ZeroFasting/fasts.json"),
                 .process("Data/Resources/Custom/dreams.json"),
+                .process("Data/Resources/LifeTables/lifeTables.json"),
             ]
         ),
         .executableTarget(

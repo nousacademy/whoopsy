@@ -167,8 +167,11 @@ enum StrainPanelTests {
             let noBlockBaseline = await MainActor.run { panelViewModel.zone1to3Baseline }
             assertTest(
                 noBlockWorkouts.count == 1 && noBlockZoneTime == nil,
-                "A day the app recorded itself holds a workout and no zone time — the live path writes no "
-                    + "percentages, so there is nothing for the two rows to read")
+                "A recorded session with no block and no biometric store behind this view model has no "
+                    + "zone time at all — the live path writes no percentages, and this fixture supplies "
+                    + "no samples, so there is nothing for the two rows to fold. The measured path itself "
+                    + "is asserted in `StrainDayActivityTests`, at the producer rule rather than through "
+                    + "a page whose dependencies are deliberately absent")
             assertTest(
                 noBlockBaseline == 1_500,
                 "…while the view model still computes a mean for it, 1,500 s over the three days inside "
@@ -361,5 +364,8 @@ enum StrainPanelTests {
         } catch {
             assertTest(false, "The panel's reads threw: \(error)")
         }
+
+        // The card's two computed rows, at the layer that decides their producer.
+        try await StrainDayActivityTests.run()
     }
 }

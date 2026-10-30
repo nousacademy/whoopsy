@@ -50,9 +50,33 @@ import SwiftUI
     /// are the same as far as the screen is concerned, which is the type's documented rule.
     public var stepsBaseline: Int?
 
+    /// The day's **strength activity time**, in seconds — the sum of the sessions whose activity is one
+    /// of `WhoopActivityCatalog.strengthActivities`.
+    ///
+    /// **`nil` only on a day with no workouts**, which is the same day the whole card is absent on, so
+    /// the value and the gate agree. A day with a workout and no strength session is a real `0:00`:
+    /// no time was spent doing strength work, which is a reading rather than an absence. This is the
+    /// row that had no producer at all until the app defined its own list — see `StrainDayActivity`.
+    public var strengthSeconds: Double?
+
+    /// The trailing window's mean strength seconds, or `nil` below the shared floor.
+    public var strengthBaselineSeconds: Double?
+
+    /// Whether the day's zone time came entirely from this app's own sample fold.
+    ///
+    /// It decides whether the zone rows may print a comparison: the baseline is a mean over WHOOP's
+    /// `HR Zone n %` blocks (that history is read as rows, not folded), so a measured day printed
+    /// against it would compare two quantities under one marker.
+    private var zoneTimeIsMeasuredOnly = false
+
     private let repository: any StrainRepository
     private let workoutRepository: any WorkoutRepository
     private let stepRepository: any StepRepository
+    /// The two reads the **measured** zone path needs, and both are optional so the host runner's
+    /// fixtures can leave them out — with either missing the card falls back to the WHOOP blocks, which
+    /// is what it drew before the measured path existed.
+    private let biometricRepository: (any BiometricRepository)?
+    private let userProfileRepository: (any UserProfileRepository)?
     /// The writer. This view model no longer recomputes — see `load(for:)` — but it does ask the writer
     /// to look at the day when the page opens, and it draws what the writer publishes.
     private let refresh: RefreshStrainUseCase
@@ -70,12 +94,16 @@ import SwiftUI
         repository: any StrainRepository,
         workoutRepository: any WorkoutRepository,
         stepRepository: any StepRepository,
-        refresh: RefreshStrainUseCase
+        refresh: RefreshStrainUseCase,
+        biometricRepository: (any BiometricRepository)? = nil,
+        userProfileRepository: (any UserProfileRepository)? = nil
     ) {
         self.repository = repository
         self.workoutRepository = workoutRepository
         self.stepRepository = stepRepository
         self.refresh = refresh
+        self.biometricRepository = biometricRepository
+        self.userProfileRepository = userProfileRepository
     }
 
     /// Subscribes to the writer's saved rows, once per view model.
@@ -111,9 +139,27 @@ import SwiftUI
     /// change, and the import is the only thing that writes them. There is nothing for a screen to
     /// recalculate.
     public func load(for date: Date) async {
+        let started = Date()
         isLoading = true
         defer { isLoading = false }
         let day = date.startOfDay
+        // **A day being left behind takes its figures with it.** The page is one instance pushed for
+        // whichever day Home is showing, so opening it on a second day used to draw the first day's
+        // strain, activities, zone rows and step baseline until every read returned — and for good if
+        // one threw. A same-day reload clears nothing, which is the correction the ring needed.
+        if loadedDay != day {
+            strain = nil
+            workouts = []
+            zoneTime = nil
+            zone1to3Baseline = nil
+            zone4to5Baseline = nil
+            steps = nil
+            stepsBaseline = nil
+            strengthSeconds = nil
+            strengthBaselineSeconds = nil
+            zoneTimeIsMeasuredOnly = false
+            errorMessage = nil
+        }
         loadedDay = day
         let writesBefore = liveStrainWrites
         do {
@@ -134,20 +180,61 @@ import SwiftUI
 
             let sessions = try await today
             workouts = sessions
-            zoneTime = WorkoutZoneTime.aggregate(sessions)
 
-            let baseline = Self.zoneBaselines(from: try await history, for: date)
+            // **The measured zone path, on the activity page's rule.** Each session is folded from its
+            // own samples when the two reads are available; WHOOP's block stands in when they are not,
+            // and measured wins when both exist (`StrainDayActivity`). The sample reads are bounded by
+            // the day's sessions — one or two, not the history's — and a session the app did not
+            // record simply has none, which costs one empty read.
+            var measured: [UUID: ZoneTimeMath.Totals] = [:]
+            if let biometricRepository, let profile = try? await userProfileRepository?.getUserProfile()
+            {
+                let zones = StrainAccumulatorMath.computeZones(
+                    maxHR: profile.maxHeartRate, restHR: profile.restingHeartRate)
+                for session in sessions {
+                    let samples = (try? await biometricRepository.getSamples(
+                        from: session.startedAt, to: session.endedAt)) ?? []
+                    if let totals = ZoneTimeMath.totals(
+                        samples: samples, zones: zones,
+                        restingHeartRate: profile.restingHeartRate)
+                    {
+                        measured[session.id] = totals
+                    }
+                }
+            }
+            let dayZones = StrainDayActivity.zoneTime(for: sessions, measured: measured)
+            zoneTime = dayZones.value
+            zoneTimeIsMeasuredOnly = dayZones.isMeasuredOnly
+            strengthSeconds = StrainDayActivity.strengthSeconds(for: sessions)
+
+            let historySessions = try await history
+            // **The zone comparison is withheld on a measured day**, because the baseline is a mean
+            // over WHOOP's blocks — see `StrainDayActivity.ZoneTime`.
+            let baseline = dayZones.isMeasuredOnly ? nil : Self.zoneBaselines(from: historySessions, for: date)
             zone1to3Baseline = baseline?.zone1to3
             zone4to5Baseline = baseline?.zone4to5
+            strengthBaselineSeconds = StrainDayActivity.strengthBaseline(
+                from: historySessions, before: date)
 
             steps = try await stepsDay?.measuredStepCount
             stepsBaseline = Self.stepBaseline(from: try await stepsHistory, for: date)
 
             if Calendar.current.isDateInToday(date) {
-                await refresh.refreshToday()
+                // **Off the page's critical path.** `refreshToday` folds the day's samples and motion
+                // when there is new input, which is seconds on a large day; awaiting it kept `load`
+                // from returning until the score was written, and the page is already drawing the
+                // stored row above. The recomputed row arrives through `observeStrain()`.
+                Task { [refresh] in await refresh.refreshToday() }
             }
+            CaptureLog.shared.append(
+                "STRAIN load day=\(day.ISO8601Format()) "
+                    + "ms=\(Int(Date().timeIntervalSince(started) * 1000)) "
+                    + "row=\(strain == nil ? "no" : "yes")")
         } catch {
             errorMessage = error.localizedDescription
+            CaptureLog.shared.append(
+                "STRAIN load day=\(day.ISO8601Format()) "
+                    + "ms=\(Int(Date().timeIntervalSince(started) * 1000)) error=yes")
         }
     }
 

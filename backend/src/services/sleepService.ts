@@ -1,5 +1,5 @@
 import type { Sleep, SleepRepository } from "../domain";
-import { addDays } from "../utils/days";
+import { addDays, dayRangeRefusal } from "../utils/days";
 import { ApiRefusal, type ApiErrorCode } from "../utils/errors";
 
 /**
@@ -262,5 +262,24 @@ export class SleepService {
     // the payload — which is the one place this differs from `writeDay`, where the path supplies it
     // and the body is forbidden from carrying it.
     return this.repository.upsertMany(entries.map((entry) => ({ userId, ...entry })));
+  }
+
+  /**
+   * Remove every stored day in `[from, to]`, inclusive at both ends, and answer with how many rows
+   * went.
+   *
+   * The two refusals are restated here rather than left to the route's schema, on the same reasoning
+   * the window read restates its bound: a caller reaching this method from a script or a test has
+   * passed through no schema at all, and a reversed range would look like a successful no-op. The rule
+   * and its cap live in `utils/days.ts` because they are one policy shared by four resources; the
+   * error class is this resource's, because the name is what the log reports.
+   */
+  async deleteRange(userId: string, from: string, to: string): Promise<number> {
+    const refusal = dayRangeRefusal(from, to);
+    if (refusal !== null) {
+      throw new SleepError("invalid_request", refusal);
+    }
+
+    return this.repository.deleteRange(userId, from, to);
   }
 }

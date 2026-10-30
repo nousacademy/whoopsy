@@ -1,5 +1,5 @@
 import type { Recovery, RecoveryRepository } from "../domain";
-import { addDays } from "../utils/days";
+import { addDays, dayRangeRefusal } from "../utils/days";
 import { ApiRefusal, type ApiErrorCode } from "../utils/errors";
 
 /**
@@ -202,5 +202,28 @@ export class RecoveryService {
     // the payload — which is the one place this differs from `writeDay`, where the path supplies it
     // and the body is forbidden from carrying it.
     return this.repository.upsertMany(entries.map((entry) => ({ userId, ...entry })));
+  }
+
+  /**
+   * Remove every stored day in `[from, to]`, inclusive at both ends, and answer with how many rows
+   * went.
+   *
+   * **The two refusals are policy and they are restated here rather than left to the schema**, on the
+   * same reasoning `readWindow` restates its bound: a caller reaching this method from a script or a
+   * test has passed through no schema at all, and the consequences of an unvalidated range are
+   * concrete — a reversed range deletes nothing and would look like a successful no-op, and an
+   * unbounded one is a year of history gone with no undo.
+   *
+   * `MAX_DELETE_DAYS` and the rule itself live in `utils/days.ts`, because this is one policy shared
+   * by four resources rather than an opinion about recoveries. The error class is still this
+   * resource's, because the name is what the log reports.
+   */
+  async deleteRange(userId: string, from: string, to: string): Promise<number> {
+    const refusal = dayRangeRefusal(from, to);
+    if (refusal !== null) {
+      throw new RecoveryError("invalid_request", refusal);
+    }
+
+    return this.repository.deleteRange(userId, from, to);
   }
 }
