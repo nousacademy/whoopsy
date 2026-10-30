@@ -87,7 +87,11 @@ public actor RefreshRecoveryUseCase {
     public func refreshToday(now: Date = Date()) async -> RecoveryMetric? {
         let day = calendar.startOfDay(for: now)
 
-        guard let night = try? await sleepRepository.getSleepSession(for: day) else { return nil }
+        guard let night = try? await sleepRepository.getSleepSession(for: day) else {
+            CaptureLog.decision(
+                "RECOVERY check day=\(day.ISO8601Format()) outcome=no-night")
+            return nil
+        }
         // The night is the whole of a recovery day's input, so its watermark — or its end, for a night
         // that carries none — is the edge the row has to have seen.
         let edge = night.scoredThrough ?? night.endTime
@@ -101,10 +105,26 @@ public actor RefreshRecoveryUseCase {
         // scorer writes RMSSD — recomputing it would mix two quantities in one baseline, the rule
         // `docs/ALGORITHMS.md` treats as a correctness bug — and an imported day is measured history.
         // `isLocallyComputed` is the single test both answers already agree on.
-        if let stored, !stored.isLocallyComputed { return nil }
+        // **The decision, not only the result.** `NIGHTS` has logged why a night was skipped since the
+        // gate existed; this one logged only when it scored, so a question about a stored score had no
+        // line to read — the arithmetic below says how a score was made, and this says whether it was
+        // made at all and against which edge.
+        func logCheck(_ outcome: String) {
+            CaptureLog.decision(
+                "RECOVERY check day=\(day.ISO8601Format()) "
+                    + "edge=\(edge.ISO8601Format()) "
+                    + "scoredThrough=\(stored?.scoredThrough?.ISO8601Format() ?? "-") "
+                    + "algorithm=\(stored?.algorithm?.rawValue ?? "-") outcome=\(outcome)")
+        }
+
+        if let stored, !stored.isLocallyComputed {
+            logCheck("foreign-source")
+            return nil
+        }
         if let stored, !Self.isOwed(
             edge: edge, storedEdge: stored.scoredThrough, algorithm: stored.algorithm)
         {
+            logCheck("current")
             return nil
         }
 
