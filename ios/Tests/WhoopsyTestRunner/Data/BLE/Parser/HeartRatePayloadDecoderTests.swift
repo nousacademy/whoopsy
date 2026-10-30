@@ -179,6 +179,31 @@ enum HeartRatePayloadDecoderTests {
             "A zero interval is dropped rather than stored: a zero R-R is a missing field, not two beats "
                 + "at the same instant")
 
+        // ── The skin temperature the probe settled on ────────────────────────────────────────────
+        //
+        // Two offsets were candidates for the reference's "byte 73". The owner's 5.0 answered it:
+        // the body offset read `0.00` on every drained record, the frame offset read a continuous
+        // 28.76–31.09 °C across 1,119 of them. This is the frame one, gated on the probe's own band.
+        func skinPayload(_ raw: UInt16) -> Data {
+            var bytes = [UInt8](repeating: 0, count: HeartRatePayloadDecoder.r18PayloadBytes)
+            bytes[62] = UInt8(raw & 0xFF)
+            bytes[63] = UInt8((raw >> 8) & 0xFF)
+            return Data(bytes)
+        }
+        assertTest(
+            HeartRatePayloadDecoder.skinTemperature(inPayload: skinPayload(2_964)) == 29.64,
+            "Payload 62 read as a `u16` hundredths of a degree is the night's skin temperature — "
+                + "29.64 °C for the value the strap writes at that offset")
+        assertTest(
+            HeartRatePayloadDecoder.skinTemperature(inPayload: skinPayload(0)) == nil,
+            "…and zero is the field's idle value: a record that did not report a temperature says so "
+                + "rather than reading 0 °C")
+        assertTest(
+            HeartRatePayloadDecoder.skinTemperature(inPayload: skinPayload(60)) == nil
+                && HeartRatePayloadDecoder.skinTemperature(inPayload: skinPayload(4_600)) == nil,
+            "…as does an out-of-band value on either side. A wrist thermistor cannot read 0.6 °C or "
+                + "46 °C, so those are misreads and are refused rather than clamped into the band")
+
         // The other two type-47 layouts are not heart-rate records.
         var imuLayout = StepTests.fiveFrame(type: 47, payloadBytes: 1229)
         imuLayout[9] = 21

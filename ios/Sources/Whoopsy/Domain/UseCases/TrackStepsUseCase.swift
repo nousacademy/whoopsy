@@ -169,8 +169,16 @@ public actor TrackStepsUseCase {
         let day = Calendar.current.startOfDay(for: batch.start)
 
         if var ledger = ledgers[day] {
-            // A counter-covered day: only the live tail counts, and only until the next counter
-            // record overtakes it.
+            // **A counter-covered day: the live tail counts only what the counter has not vouched
+            // for.** The tail used to accept every live batch and rely on a later counter record
+            // overtaking it, and a drain delivers history *behind* the live edge — so the overtake
+            // never happened and both producers counted the same hours. What it looks like is a day
+            // reporting more than a day's worth of coverage, and a total shared between a counter and a
+            // tail that were both counting it. Refusing the batch is what the coverage instant is for.
+            guard !Self.counterOwns(
+                batchStart: batch.start, coveredThrough: ledger.counterCoveredThrough)
+            else { return }
+
             let tail = ledger.tail ?? StepAccumulator(
                 sampleRateHz: 1.0 / batch.sampleIntervalSeconds,
                 baselineStepCount: ledger.tailBaselineSteps,
@@ -223,6 +231,22 @@ public actor TrackStepsUseCase {
         evictStaleState(keeping: day)
     }
 
+    /// Whether the strap's counter already vouches for the instant a live batch starts at.
+    ///
+    /// **The rule that keeps two pedometers from counting one walk.** The counter covers banked
+    /// history and the peak detector covers live motion; both describe the same steps when the counter
+    /// is behind the live edge — which it always is during a drain, because a drain delivers *old*
+    /// records. Measured 2026-09-30 on a 5.0: a ledger whose coverage exceeded the length of the day
+    /// it described. That figure is the proof that the two were covering the same hours — a day cannot
+    /// be measured for longer than it has existed.
+    ///
+    /// A pure function rather than an inline comparison so the boundary is a test's subject — equal
+    /// instants are the counter's, because the counter's record is stamped *at* that second.
+    public static func counterOwns(batchStart: Date, coveredThrough: Date?) -> Bool {
+        guard let coveredThrough else { return false }
+        return batchStart <= coveredThrough
+    }
+
     // MARK: - The counter stream
 
     /// Folds one R18 counter record into its day's ledger.
@@ -249,6 +273,7 @@ public actor TrackStepsUseCase {
                 ledger = Ledger(
                     counterSteps: restored.counterSteps,
                     counterMeasuredSeconds: restored.counterMeasuredSeconds,
+                    counterCoveredThrough: restored.coveredThrough,
                     tailBaselineSteps: restored.tailSteps,
                     tailBaselineMeasured: restored.tailMeasuredSeconds)
                 // Applied once. A later record for the same day continues from the ledger, and a
@@ -262,9 +287,10 @@ public actor TrackStepsUseCase {
         ledger.counterSteps += outcome.countedTicks
         ledger.counterMeasuredSeconds += outcome.measuredSeconds
 
-        // The counter now vouches for everything up to this record's instant. If the tail's last live
-        // batch is behind it, those steps are about to be counted again — drop them. A batch ahead of
-        // the history (the drain lags the live edge by seconds) is kept and will be overtaken later.
+        // The counter now vouches for everything up to this record's instant, and that instant is what
+        // the live path refuses batches against. Any tail already accumulated behind it is dropped
+        // here — it is the same window, counted twice.
+        ledger.counterCoveredThrough = max(ledger.counterCoveredThrough ?? .distantPast, sample.timestamp)
         if let lastBatch = ledger.tailLastBatchStart, lastBatch <= sample.timestamp {
             ledger.tail = nil
             ledger.tailBaselineSteps = 0
@@ -287,6 +313,9 @@ public actor TrackStepsUseCase {
     private struct Ledger {
         var counterSteps: Int = 0
         var counterMeasuredSeconds: TimeInterval = 0
+        /// The newest instant the counter has vouched for. A live batch at or before it is a window the
+        /// counter already covers, so the tail must not count it again — see `StepCounterState`.
+        var counterCoveredThrough: Date?
         var tail: StepAccumulator?
         var tailBaselineSteps: Int = 0
         var tailBaselineMeasured: TimeInterval = 0
@@ -333,6 +362,7 @@ public actor TrackStepsUseCase {
             counterMeasuredSeconds: ledger.counterMeasuredSeconds,
             tailSteps: ledger.tail?.stepCount ?? ledger.tailBaselineSteps,
             tailMeasuredSeconds: ledger.tail?.measuredSeconds ?? ledger.tailBaselineMeasured,
+            coveredThrough: ledger.counterCoveredThrough,
             lastCounter: counter.previousCounter,
             lastSeconds: counter.previousSeconds,
             lastSoftware: counter.previousWasSoftware,

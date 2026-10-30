@@ -101,3 +101,6 @@ backend/.dev.vars
 # re-included — the rule is "you cannot un-ignore a file whose parent directory is ignored".
 tmp/*
 !tmp/README.md
+# `LocalDatabasePoolTests` writes its scratch database beside the package. Test scratch is
+# not source, and three binaries of it were tracked before this rule existed.
+ios/tmp/

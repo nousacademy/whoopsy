@@ -52,12 +52,25 @@ public struct StepCounterState: Codable, Equatable, Sendable {
     /// Whether any record so far carried an activity class.
     public let hasSeenClass: Bool
 
+    /// The newest instant the strap's counter has vouched for on `day`, or `nil` for a state written
+    /// before this field existed.
+    ///
+    /// **This is what stops the live tail counting a window the counter also counts.** The tail is the
+    /// peak detector running on live motion, and the counter is the strap's own pedometer over banked
+    /// records — the same steps, seen twice, if the tail is allowed to run over instants the counter
+    /// has already covered. Measured 2026-10-30 on the owner's 5.0: a ledger holding `counterSteps`
+    /// a counter and a tail whose totals together claimed — a day
+    /// cannot have been measured for longer than it has existed, which is the arithmetic proof that
+    /// the two producers were covering the same hours.
+    public let coveredThrough: Date?
+
     public init(
         day: Date,
         counterSteps: Int,
         counterMeasuredSeconds: TimeInterval,
         tailSteps: Int,
         tailMeasuredSeconds: TimeInterval,
+        coveredThrough: Date? = nil,
         lastCounter: UInt16?,
         lastSeconds: Double?,
         lastSoftware: Bool?,
@@ -72,6 +85,7 @@ public struct StepCounterState: Codable, Equatable, Sendable {
         self.lastSeconds = lastSeconds
         self.lastSoftware = lastSoftware
         self.hasSeenClass = hasSeenClass
+        self.coveredThrough = coveredThrough
     }
 }
 

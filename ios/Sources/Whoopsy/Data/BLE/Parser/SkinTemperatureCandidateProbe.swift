@@ -14,8 +14,18 @@ import Foundation
 /// Under the first, byte 73 is payload **83**; under the second it is payload **62**. Choosing wrong
 /// yields a number that still reads as a temperature — the plausible-value failure this repo's
 /// absence rules exist to prevent — so the probe reads **both** and logs them beside the record's own
-/// stamp. One drained night on a strap whose temperature is known from the official app settles which
-/// offset is real, and then the field is one line in `HeartRatePayloadDecoder`.
+/// stamp.
+///
+/// **It is settled, and the app now reads the frame offset as a measurement.** Measured 2026-10-30 on
+/// the owner's 5.0: the body candidate read `0.00` on every record of a drained night
+/// while the frame candidate read a band inside the plausible range, rising smoothly across twenty minutes rather than
+/// stepping around. A zero on one offset and a continuous physiological series on the other is not a
+/// close call. `HeartRatePayloadDecoder.skinTemperature(inPayload:)` reads payload 62 behind the same
+/// 5–45 °C band, and the value flows to `recoveries.skin_temperature` through the night's mean.
+///
+/// **What is still missing is the cross-check against the official app**, which is what the oxygen
+/// candidate's bar requires and this field has not been held to: the evidence here is plausibility and
+/// continuity on one device. The probe stays for that reason, and a second strap would make the case.
 ///
 /// The gate is the reference's own plausible range: a candidate outside 5–45 °C is reported as `out`
 /// rather than clamped, because an impossible value is evidence about the offset, not a bad reading.

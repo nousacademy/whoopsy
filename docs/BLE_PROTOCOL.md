@@ -1035,9 +1035,19 @@ conventions in use disagree about the origin that byte is counted from — the a
 24* at payload 34 (`payload = 10 + body`), the oxygen candidate is *frame 82* at payload 71
 (`payload = frame − 11`) — so `SkinTemperatureCandidateProbe` reads **both** (payload 83 and payload
 62), gates each against the plausible range and logs both to
-`Documents/skin-temperature-candidate.txt`. It writes no sample, no row and no screen value; one
-drained night against a known reading settles which offset is real, and then the field is one line in
-`HeartRatePayloadDecoder`. `docs/TODO.md` §5 carries that half.
+`Documents/skin-temperature-candidate.txt`.
+
+**The probe settled it on 2026-10-30, and the field is now read.** On the owner's 5.0 the body
+candidate read `0.00` on **every** record of a drained night while the frame candidate
+read a band inside the plausible range, rising smoothly across twenty minutes. A zero on one offset and a continuous
+physiological series on the other is not a close call, so
+`HeartRatePayloadDecoder.skinTemperature(inPayload:)` reads payload 62 behind the same 5–45 °C band,
+refuses an out-of-band value rather than clamping it, and the reading reaches
+`recoveries.skin_temperature` as the night's mean — which is what the Health Monitor draws.
+
+**What it has not had is the oxygen candidate's treatment**: a cross-check against the official app on
+more than one device. The evidence is plausibility and continuity on a single 5.0, which is why the
+probe stays in place and why this paragraph records the basis rather than only the offset.
 
 **The R18 record also carries the oxygen candidate at payload `[71]`, and the app reads it as
 instrumentation rather than as a metric.** `Spo2CandidateProbe` classifies every drained record and

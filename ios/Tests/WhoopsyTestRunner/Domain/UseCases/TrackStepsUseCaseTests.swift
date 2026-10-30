@@ -148,6 +148,32 @@ enum TrackStepsUseCaseTests {
             walkedAgain,
             "…and the next walk-classed record adds its two ticks, so the day resumes counting from "
                 + "the counter rather than staying frozen at the drop")
+
+        // ── Two pedometers, one walk ────────────────────────────────────────────────────────────────
+        //
+        // The counter covers banked history and the peak detector covers live motion. During a drain
+        // the counter is *behind* the live edge — a drain delivers old records — so a tail that accepts
+        // every live batch counts the same steps twice. Measured 2026-10-30 on the owner's 5.0: 2,362
+        // counter ticks beside an 8,060-step tail, and 86,413 s of coverage in a day 60,480 s old.
+        let covered = day.addingTimeInterval(10 * 3600)
+        assertTest(
+            TrackStepsUseCase.counterOwns(batchStart: covered, coveredThrough: covered),
+            "A live batch starting exactly at the counter's newest instant is the counter's — its "
+                + "record is stamped at that second, so the boundary belongs to history")
+        assertTest(
+            TrackStepsUseCase.counterOwns(
+                batchStart: covered.addingTimeInterval(-60), coveredThrough: covered),
+            "…and one starting inside the covered window is refused as well, which is the case the "
+                + "drain produces: live motion behind the counter's cursor")
+        assertTest(
+            !TrackStepsUseCase.counterOwns(
+                batchStart: covered.addingTimeInterval(1), coveredThrough: covered),
+            "…while one after the counter's coverage is the tail's, which is the only window the "
+                + "detector is allowed to count")
+        assertTest(
+            !TrackStepsUseCase.counterOwns(batchStart: covered, coveredThrough: nil),
+            "A day the counter has never covered is entirely the detector's")
+
     }
 }
 
@@ -157,6 +183,7 @@ private actor StepStreamRecorder {
     private var rows: [StepCount] = []
 
     func add(_ row: StepCount) { rows.append(row) }
+
 
     func snapshot() -> [StepCount] { rows }
 }

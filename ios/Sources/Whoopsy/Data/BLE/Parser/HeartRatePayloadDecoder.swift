@@ -144,7 +144,36 @@ public enum HeartRatePayloadDecoder {
             rrIntervalsMs: intervals.isEmpty ? nil : intervals,
             accelerometerX: acceleration?.x,
             accelerometerY: acceleration?.y,
-            accelerometerZ: acceleration?.z)
+            accelerometerZ: acceleration?.z,
+            skinTemperatureCelsius: Self.skinTemperature(inPayload: payload))
+    }
+
+    /// The night's skin temperature, from the offset the probe settled on.
+    ///
+    /// **This is the one candidate the app now reads as a measurement**, and it was promoted on
+    /// evidence rather than on the reference's say-so. `SkinTemperatureCandidateProbe` reads two
+    /// offsets for the field the community reference calls "byte 73": body 24's neighbour at payload
+    /// 83, and the envelope-frame reading at payload 62. Drained records from the owner's 5.0 settled it
+    /// — the body offset read `0.00` on **every** record, while the frame offset read a band ranging
+    /// **a band inside the plausible range across every record**, rising smoothly over twenty minutes rather
+    /// than stepping around. A field that is zero on one offset and a plausible, continuous temperature
+    /// on the other is not ambiguous; what it is *not* is cross-checked against the official app, which
+    /// is why the probe stays.
+    ///
+    /// The plausible band is the probe's own, 5–45 °C, and an out-of-band reading is **refused rather
+    /// than clamped**: a wrist thermistor cannot read 0 °C, so a value outside the band is a misread and
+    /// the honest answer is no reading at all.
+    ///
+    /// **The 4.0 has no equivalent.** Its type-24 record carries no temperature field this build has
+    /// found, and a channel with no sensor behind it is `nil` rather than a plausible constant.
+    public static func skinTemperature(inPayload payload: Data) -> Double? {
+        let offset = SkinTemperatureCandidateProbe.framePayloadOffset
+        guard offset + 1 < payload.count else { return nil }
+        let celsius = Double(readUInt16(payload, at: offset)) / 100.0
+        // Zero is the field's idle value and 5 °C is colder than any wrist: both are a record that did
+        // not report one, and `nil` says so instead of a plausible-looking constant.
+        guard SkinTemperatureCandidateProbe.plausibleCelsius.contains(celsius) else { return nil }
+        return celsius
     }
 
     // MARK: - Type 24 (4.0)
