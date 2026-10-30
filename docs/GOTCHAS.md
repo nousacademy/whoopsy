@@ -799,8 +799,10 @@ thousands. Two nights of logs therefore could not separate *judged awake* from *
 two need opposite repairs.
 
 **The fixes are instrumentation, deliberately, because neither the data nor the log could decide.** A
-fourth capture file (`Documents/sleep.txt`) takes every `SLEEP`/`NIGHTS` line beside the shared one, so a
-night's decision survives the next drain. `AnalyzeSleepUseCase.logStillness` prints, **per spine**, the
+fourth capture file (`Documents/decisions.txt`) takes every `SLEEP`/`NIGHTS`/`RECOVERY` line beside the
+shared one, so a decision survives the next drain — `RECOVERY` is in it because the answer to "why is my
+recovery 40%?" is a pair of z-scores and their spreads, and it has the same rarity and the same enemy as a
+night's verdict. `AnalyzeSleepUseCase.logStillness` prints, **per spine**, the
 window count and the `p10`/median/`p90`/max of `meanMagnitudeG` against the ceiling that judges it — a
 `p90` above the ceiling is a calibration fault rather than a restless night, and `n=0` next to a night
 that exists is the sample spine having produced nothing at all.

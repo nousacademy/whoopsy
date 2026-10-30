@@ -116,7 +116,7 @@ public actor RefreshRecoveryUseCase {
         }
         refusedEdges[day] = nil
         hub.yield(metric)
-        CaptureLog.shared.append(
+        CaptureLog.decision(
             "RECOVERY scored day=\(day.ISO8601Format()) score=\(metric.score)")
         return metric
     }

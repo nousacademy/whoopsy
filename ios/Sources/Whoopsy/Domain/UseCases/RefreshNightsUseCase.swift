@@ -53,7 +53,7 @@ public actor RefreshNightsUseCase {
         // **The line a capture needs when a ring does not fill.** Whether the refresher ran at all, on
         // which days, whether each was owed, and what the analyzer answered — one line per day, so
         // "unclassified" and "unclassifiable" can be told apart without opening a screen.
-        CaptureLog.sleepDecision(
+        CaptureLog.decision(
             "NIGHTS refresh range=\(oldest?.ISO8601Format() ?? "-")..\(newest?.ISO8601Format() ?? "-") "
                 + "days=\(days.count)")
         var written = 0
@@ -85,7 +85,7 @@ public actor RefreshNightsUseCase {
             }
             let line = "NIGHTS day=\(day.ISO8601Format()) owed=\(owed) \(outcome)"
             AppLogger.database.notice("\(line, privacy: .public)")
-            CaptureLog.sleepDecision(line)
+            CaptureLog.decision(line)
         }
         return written
     }
@@ -153,7 +153,7 @@ public actor RefreshNightsUseCase {
         // fragment is diagnosed from exactly this line: a stored end far behind a watermark that is
         // itself far behind the edge says the row saw data the night did not include, and the
         // figures make that arithmetically checkable rather than a theory.
-        CaptureLog.sleepDecision(
+        CaptureLog.decision(
             "NIGHTS check day=\(day.ISO8601Format()) "
                 + "watermark=\(watermark.ISO8601Format()) "
                 + "end=\(stored.endTime.ISO8601Format()) "

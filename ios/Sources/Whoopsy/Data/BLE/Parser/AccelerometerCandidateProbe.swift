@@ -14,7 +14,7 @@ import Foundation
 /// stillness windows existed only at the hours the phone was connected and not for the core of the
 /// night: the classifier then reports a night that is exactly the connected window — 22:37–23:08 on the
 /// 30th — and the reclassification gate freezes it, because a morning connection supplies epochs after
-/// its end. The `sleep.txt` line added beside this probe prints the same night's magnitude quantiles;
+/// its end. The `decisions.txt` line added beside this probe prints the same night's magnitude quantiles;
 /// this file prints the **per-record** values underneath them, so "no windows" can be told apart from
 /// "windows that read as movement".
 ///

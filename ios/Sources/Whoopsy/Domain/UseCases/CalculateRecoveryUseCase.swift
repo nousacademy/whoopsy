@@ -211,7 +211,7 @@ public final class CalculateRecoveryUseCase: Sendable {
             let zRHR = BaselineStatisticsMath.zScore(
                 value: Double(restingHR), mean: scoring.rhrBaselineMean,
                 stdDev: scoring.rhrBaselineStdDev)
-            CaptureLog.shared.append(
+            CaptureLog.decision(
                 "RECOVERY score day=\(date.startOfDay.ISO8601Format()) score=\(scoring.score) "
                     + "hrv=\(hrvValueMs) base=\(String(format: "%.1f", scoring.hrvBaselineMeanMs))"
                     + "±\(String(format: "%.1f", scoring.hrvBaselineStdDevMs)) "

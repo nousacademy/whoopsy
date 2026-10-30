@@ -31,18 +31,24 @@ public final class CaptureLog: @unchecked Sendable {
     /// exists to be shared without also sharing the nearest thing to a temperature, and vice versa.
     public static let skinTempProbe = CaptureLog(fileName: "skin-temperature-candidate.txt")
 
-    /// The sleep classifier's own decisions, `Documents/sleep.txt`.
+    /// The classifiers' own decisions, `Documents/decisions.txt`.
     ///
-    /// **A fourth file because a night's evidence was being rotated out by a drain.** Measured
-    /// 2026-10-30: `capture.txt` is capped at 64 KB and one morning drain writes hundreds of
-    /// `DRAIN_BATCH` lines, so by the time a night was questioned both the `SLEEP inputs` line and the
-    /// `NIGHTS check` line that would have explained it had gone — the two lines this app writes
-    /// *because* a night's shape is otherwise invisible. A classifier decision is a handful of lines a
-    /// day; the drain's noise is thousands. They rotate at the same rate only if they share a file.
+    /// **A fourth file because a decision was being rotated out by a drain.** Measured 2026-10-30:
+    /// `capture.txt` is capped at 64 KB and one morning drain writes hundreds of `DRAIN_BATCH` lines,
+    /// so by the time a night was questioned both the `SLEEP inputs` line and the `NIGHTS check` line
+    /// that would have explained it had gone — the two lines this app writes *because* a night's shape
+    /// is otherwise invisible. A classifier decision is a handful of lines a day; the drain's noise is
+    /// thousands. They rotate at the same rate only if they share a file.
+    ///
+    /// **It holds the recovery score's arithmetic too, which is why it is not called `sleep.txt`.** A
+    /// "why is my recovery 40%?" question needs the pair of z-scores and the two spreads that produced
+    /// them, exactly as "why is my night an hour short?" needs the run that failed — and the recovery
+    /// line has the same rarity and the same enemy. One file for *what a classifier decided*, whatever
+    /// the classifier.
     ///
     /// The same lines still go to `capture.txt` as well, so a capture taken for another reason is no
     /// less complete than it was; this file is the copy that survives.
-    public static let sleep = CaptureLog(fileName: "sleep.txt")
+    public static let decisions = CaptureLog(fileName: "decisions.txt")
 
     /// The accelerometer candidate probe's file, `Documents/accelerometer-candidate.txt`.
     ///
@@ -50,13 +56,13 @@ public final class CaptureLog: @unchecked Sendable {
     /// `SampleStillnessMath` reads the triplet this probe dumps. See `AccelerometerCandidateProbe`.
     public static let accelerometerProbe = CaptureLog(fileName: "accelerometer-candidate.txt")
 
-    /// Write one classifier line to both places it belongs: `capture.txt` and `sleep.txt`.
+    /// Write one classifier line to both places it belongs: `capture.txt` and `decisions.txt`.
     ///
     /// One call rather than two `append`s at each site, so a line can never reach one file and not the
     /// other — the failure that would make this whole arrangement silently half-work.
-    public static func sleepDecision(_ line: String) {
+    public static func decision(_ line: String) {
         shared.append(line)
-        sleep.append(line)
+        decisions.append(line)
     }
 
     /// ~64 KB, from `docs/TODO.md` §5.

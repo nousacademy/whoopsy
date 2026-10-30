@@ -148,7 +148,7 @@ public final class AnalyzeSleepUseCase: Sendable {
                 magnitudes[min(magnitudes.count - 1, Int(Double(magnitudes.count) * fraction))]
             }
             let quiet = magnitudes.filter { $0 < ceiling }.count
-            CaptureLog.sleepDecision(
+            CaptureLog.decision(
                 "SLEEP stillness source=\(source.rawValue) n=\(magnitudes.count) "
                     + "p10=\(String(format: "%.3f", at(0.10))) "
                     + "median=\(String(format: "%.3f", at(0.50))) "
@@ -250,7 +250,7 @@ public final class AnalyzeSleepUseCase: Sendable {
         // **The same facts into the file a phone capture can read.** `os.log` is minutes deep and
         // unreachable without a cable; "no night" on a morning ring and the number that explains it
         // have to survive together, or the next question costs another round trip.
-        CaptureLog.sleepDecision(
+        CaptureLog.decision(
             "SLEEP window=\(prevEvening.ISO8601Format())..\(morningEnd.ISO8601Format()) "
                 + "samples=\(samples.count) first=\(firstSample) last=\(lastSample)")
 
@@ -260,7 +260,7 @@ public final class AnalyzeSleepUseCase: Sendable {
                 Sleep analysis: absent — \(samples.count, privacy: .public) samples in the window, below \
                 the \(minimum, privacy: .public) an epoch needs.
                 """)
-            CaptureLog.sleepDecision(
+            CaptureLog.decision(
                 "SLEEP absent reason=samples samples=\(samples.count) minimum=\(minimum)")
             return nil
         }
@@ -300,11 +300,11 @@ public final class AnalyzeSleepUseCase: Sendable {
                 accelerometer carried by the samples says anything about how still the wrist was, and \
                 a heart rate alone cannot separate sleep from lying still awake.
                 """)
-            CaptureLog.sleepDecision(
+            CaptureLog.decision(
                 "SLEEP absent reason=motion samples=\(samples.count) motionEpochs=0 sampleEpochs=0")
             return nil
         }
-        CaptureLog.sleepDecision(
+        CaptureLog.decision(
             "SLEEP inputs samples=\(samples.count) motionEpochs=\(motionEpochs.count) "
                 + "sampleEpochs=\(sampleEpochs.count) windows=\(windows.count) "
                 + "motionWindows=\(motionWindowCount) "
@@ -433,7 +433,7 @@ public final class AnalyzeSleepUseCase: Sendable {
             // a run and which spine was judging: `motionAccel` / `sampleAccel` against `ceiling` is the
             // stillness test, `mean` against `ratio` is the heart-rate one, and the counts say which
             // spine owned the hour.
-            CaptureLog.sleepDecision(line)
+            CaptureLog.decision(line)
         }
 
         // ── Where the night begins and ends ──────────────────────────────────────────────────────
@@ -467,7 +467,7 @@ public final class AnalyzeSleepUseCase: Sendable {
                 \(Int(SleepOnsetMath.minimumSleepRunSeconds), privacy: .public) s. A night whose \
                 motion never settles is not a night.
                 """)
-            CaptureLog.sleepDecision(
+            CaptureLog.decision(
                 "SLEEP absent reason=onset epochs=\(epochs.count) asleep=\(asleep) "
                     + "required=\(Int(SleepOnsetMath.minimumSleepRunSeconds))s "
                     + "ceiling=\(Int(onsetCeiling))")
