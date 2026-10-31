@@ -3,6 +3,7 @@ import SwiftUI
 public struct MainContainerView: View {
     private let container: DIContainer
 
+
     /// Whether the app is in front of the user, which is the one moment the link can be re-armed
     /// cheaply.
     @Environment(\.scenePhase) private var scenePhase

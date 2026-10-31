@@ -61,6 +61,7 @@ public enum ReceptiveInactivityCatalog {
         "Body scan",
         "Breathwork",
         "Cannabis",
+        "Crown opening",
         "Dream",
         "Float",
         "Lucid dream",

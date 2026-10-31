@@ -233,6 +233,10 @@ public enum ActivityMarkCatalog {
         // existed since iOS 13 — unlike the `figure.*` names above, nothing about it is a body in
         // motion, which is what makes it safe on this deployment target.
         "third eye": .single("eye.fill"),
+        // **The nearest thing SF Symbols has to a vortex**, and the owner asked for one: `hurricane`
+        // is a spiral seen from above — a turning column — and it has existed since SF Symbols 1, so
+        // unlike the `figure.*` names above it carries no availability risk on the 17.0 floor.
+        "crown opening": .single("hurricane"),
         "sound bath": .single("waveform"),
         "float": .single("water.waves"),
         // `heat.waves` is iOS 17.0 — the deployment target exactly. A `sauna` symbol does not exist, and
