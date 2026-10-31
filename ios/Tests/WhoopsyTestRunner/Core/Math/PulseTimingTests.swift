@@ -42,9 +42,31 @@ enum PulseTimingTests {
             PulseTiming.period(ratePerMinute: 120) == 0.5,
             "…120 a minute is one every half second (got \(PulseTiming.period(ratePerMinute: 120)))")
         assertTest(
-            PulseTiming.period(ratePerMinute: PulseTiming.maximumRate) == 1.0 / 3.0,
-            "…and the gauge's ceiling is three flashes a second, which is the number the safety note "
-                + "rests on (got \(PulseTiming.period(ratePerMinute: PulseTiming.maximumRate)))")
+            PulseTiming.period(ratePerMinute: PulseTiming.maximumRate) == 0.12,
+            "…and the gauge's ceiling of 500 a minute is eight and a third flashes a second — inside the "
+                + "band a flashing surface is usually kept out of, which is why the drawing fades above "
+                + "180 rather than switching (got \(PulseTiming.period(ratePerMinute: PulseTiming.maximumRate)))")
+
+        // ---- The photosensitivity ramp ----
+        //
+        // The ceiling is the owner's, and the mitigation is that the flash weakens as it quickens: full
+        // strength up to three flashes a second, then a linear fall to `minimumFlashOpacity` at 500.
+        // Asserted at both ends and in the middle, because a ramp that never left 1 would look exactly
+        // like a working one on a screenshot of a slow rate.
+        assertTest(
+            PulseTiming.flashOpacity(ratePerMinute: 0) == 1
+                && PulseTiming.flashOpacity(ratePerMinute: PulseTiming.fullContrastRate) == 1,
+            "The flash is at full strength up to 180/min, which is the last rate drawn as a hard switch")
+        assertTest(
+            PulseTiming.flashOpacity(ratePerMinute: PulseTiming.maximumRate)
+                == PulseTiming.minimumFlashOpacity,
+            "…and at the ceiling it is faded to the minimum rather than switching at full contrast "
+                + "(\(PulseTiming.flashOpacity(ratePerMinute: PulseTiming.maximumRate)))")
+        let ramp = [200.0, 300.0, 400.0, 500.0].map { PulseTiming.flashOpacity(ratePerMinute: $0) }
+        assertTest(
+            zip(ramp, ramp.dropFirst()).allSatisfy { $0 > $1 },
+            "…falling monotonically between them, so no rate is drawn stronger than a slower one "
+                + "(\(ramp))")
 
         // ---- The duty cycle, asserted as a window rather than as a colour ----
         //

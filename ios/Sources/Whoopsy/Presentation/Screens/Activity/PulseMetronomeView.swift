@@ -40,12 +40,16 @@ public struct PulseMetronomeView: View {
 
     public nonisolated static let sectionTitle = "Pulse"
     public nonisolated static let offText = "OFF"
-    public nonisolated static let accessibilityLabel = "Pulse rate"
+    public nonisolated static let accessibilityLabel = "Pulse frequency"
 
     private static let squareSize: CGFloat = 120
     private static let trackHeight: CGFloat = 8
     private static let handleDiameter: CGFloat = 22
     private static let maximum = Int(PulseTiming.maximumRate)
+
+    /// `0`, `100`, `200`, … up to the ceiling, evenly spaced because the control is.
+    private static let tickLabels: [String] = stride(from: 0, through: maximum, by: maximum / 5)
+        .map(String.init)
 
     public init(rate: Binding<Int>) {
         self._rate = rate
@@ -83,7 +87,15 @@ public struct PulseMetronomeView: View {
                 .truncatingRemainder(dividingBy: 60)
             let lit = PulseTiming.isLit(at: seconds, ratePerMinute: Double(rate))
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(lit ? Theme.recoveryYellow : Theme.textPrimary)
+                .fill(Theme.textPrimary)
+                .overlay {
+                    // The yellow is drawn over the white at an opacity the rate sets, so the top of
+                    // the gauge shimmers rather than strobing — `PulseTiming.flashOpacity` carries the
+                    // reasoning. At and below 180/min it is the full-strength flash.
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.recoveryYellow)
+                        .opacity(lit ? PulseTiming.flashOpacity(ratePerMinute: Double(rate)) : 0)
+                }
                 .frame(width: Self.squareSize, height: Self.squareSize)
                 // A hard switch at 3 Hz is a strobe; the short ease is what makes it a flash. Under
                 // Reduce Motion the same change is spread over a long fade.
@@ -155,14 +167,13 @@ public struct PulseMetronomeView: View {
             }
             .frame(height: Self.handleDiameter)
 
+            // Labels every fifth of the track, so the numbers are evenly spaced above an evenly
+            // spaced control — the ceiling is the last one and nothing restates it.
             HStack(spacing: 0) {
-                Text("0")
-                Spacer()
-                Text("60")
-                Spacer()
-                Text("120")
-                Spacer()
-                Text("\(Self.maximum)")
+                ForEach(Array(Self.tickLabels.enumerated()), id: \.offset) { index, label in
+                    Text(label)
+                    if index < Self.tickLabels.count - 1 { Spacer() }
+                }
             }
             .font(.system(size: 10))
             .foregroundStyle(Theme.textMuted)

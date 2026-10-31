@@ -175,7 +175,7 @@ enum HomeReceptiveInactivitiesTests {
             // produce, and the entity refuses one arriving from anywhere else.
             var ceilingDraft = ReceptiveInactivityDraft()
             ceilingDraft.setName("Third eye")
-            ceilingDraft.setPulseRate(500)
+            ceilingDraft.setPulseRate(900)
             assertTest(
                 ceilingDraft.pulseRate == Int(PulseTiming.maximumRate),
                 "A rate above the gauge's ceiling is clamped to it in the draft "

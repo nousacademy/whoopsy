@@ -368,7 +368,9 @@ missed. So the flashing is `PulseTiming` — pure, no `Date`, no view — and th
 What it pins: **a rate of zero never lights**, sampled at ten-millisecond steps across a whole minute
 rather than at one instant, and `period(ratePerMinute: 0)` is zero rather than an infinity from a
 division that must not happen; the three periods the gauge's own labels name — 1 s at 60/min, 0.5 s at
-120/min, a third of a second at the ceiling — pinned as literals so a moved `maximumRate` fails here;
+120/min, 0.12 s at the 500 ceiling — pinned as literals so a moved `maximumRate` fails here; the
+photosensitivity ramp at both ends and across four rates, full strength to 180/min and faded to 35% at
+500, because a ramp that never left 1 looks exactly like a working one in a screenshot of a slow rate;
 the duty cycle as a **window** (`[0, 0.4)` lit at 60/min, both edges sampled, because a duty cycle of
 0 or 1 would pass a mid-window sample); the phase returning to zero at a period boundary rather than
 running past it, with the step either side compared to the step inside a period so the assertion is
