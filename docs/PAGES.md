@@ -110,8 +110,16 @@ constrictions — throat, heart, hips — the rising channel passes through. The
 of where emotions are felt in the body; the last contributes the regions rather than a flow, which is
 why the torso is drawn as one. **Nothing on it is measured and nothing on it moves with the day.** The card says so in one line
 rather than a paragraph — the paragraph was removed on the user's instruction the same evening — and
-the reading is behind the numbers: **tapping a badge opens that vortex's paragraph under the figure**,
-and tapping it again or pressing Close puts the hint back. A list of rows under the drawing was tried
+the reading is behind the numbers: **tapping a badge opens that vortex's paragraph under the figure
+and sets the current that vortex sits on moving, in that current's own direction** — the descending
+current runs down towards the heart for the upper points, the rising one runs up for the lower, the
+heart takes both at once, and the sacral draws in from the palms and the root from the soles. The
+static currents dim while one is moving, the constriction or dantian ring the point sits on lights up,
+and a ripple leaves the point itself; `TimelineView` drives the phase so nothing is left animating when
+the card closes. Tapping it again or pressing Close puts the hint back. **The sign of the dash phase is
+the direction**: measured on the simulator, the first attempt ran the pattern backwards, so the
+descending current moved upwards while every build and screenshot stayed plausible — the fix was found
+by cross-correlating two frames of the installed build, not by looking at them. A list of rows under the drawing was tried
 first and made the card louder than the map it is about. **The seven badges are the seven vortices,
 one per point of the column and numbered crown downwards** — the diagram the figure came from labels
 each of its points, and on 2026-10-30 the owner confirmed that every point it draws is one of these

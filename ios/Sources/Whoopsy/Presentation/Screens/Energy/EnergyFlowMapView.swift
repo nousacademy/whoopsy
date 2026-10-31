@@ -111,6 +111,7 @@ public struct EnergyFlowMapView: View {
             heartMerge(width: width)
             dantian(width: width)
             constrictions(width: width)
+            selectionFlow(width: width)
             vortexPoints(width: width)
             badges(width: width)
         }
@@ -136,6 +137,10 @@ public struct EnergyFlowMapView: View {
         #endif
     }
 
+    /// The static currents fade while one vortex is open, so the one that is moving is the only one
+    /// the eye has to separate from the drawing. It is the drawing's existing opacity times this.
+    private var staticFlow: Double { selected == nil ? 1 : 0.32 }
+
     /// The two regions the emotion figure colours — chest and belly — as faint washes, because their
     /// point is that the body *has* regions, not that either is doing something today.
     private func torsoWashes(width: CGFloat) -> some View {
@@ -157,7 +162,7 @@ public struct EnergyFlowMapView: View {
             path.move(to: CGPoint(x: width / 2, y: Mark.height * Mark.crown))
             path.addLine(to: CGPoint(x: width / 2, y: Mark.height * Mark.root))
         }
-        .stroke(Theme.textMuted.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+        .stroke(Theme.textMuted.opacity(0.45 * staticFlow), style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
     }
 
     /// Divine energy: down through the crown, along the column, gathering at the heart.
@@ -169,7 +174,7 @@ public struct EnergyFlowMapView: View {
                     path.move(to: CGPoint(x: x, y: 0))
                     path.addLine(to: CGPoint(x: x, y: Mark.height * Mark.brow))
                 }
-                .stroke(Theme.livePulseCyan.opacity(0.9), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                .stroke(Theme.livePulseCyan.opacity(0.9 * staticFlow), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
             }
             Path { path in
                 path.move(to: CGPoint(x: width / 2, y: Mark.height * 0.03))
@@ -177,7 +182,7 @@ public struct EnergyFlowMapView: View {
             }
             .stroke(
                 LinearGradient(
-                    colors: [Theme.livePulseCyan.opacity(0.95), Theme.livePulseCyan.opacity(0.3)],
+                    colors: [Theme.livePulseCyan.opacity(0.95 * staticFlow), Theme.livePulseCyan.opacity(0.3 * staticFlow)],
                     startPoint: .top, endPoint: .bottom),
                 style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
         }
@@ -193,7 +198,7 @@ public struct EnergyFlowMapView: View {
                     path.addLine(to: CGPoint(x: x, y: Mark.height * (Mark.feet - 0.03)))
                     path.addLine(to: CGPoint(x: width / 2, y: Mark.height * Mark.root))
                 }
-                .stroke(Theme.recoveryGreen.opacity(0.8), style: StrokeStyle(lineWidth: 1.7, lineCap: .round))
+                .stroke(Theme.recoveryGreen.opacity(0.8 * staticFlow), style: StrokeStyle(lineWidth: 1.7, lineCap: .round))
             }
             Path { path in
                 path.move(to: CGPoint(x: width / 2, y: Mark.height * Mark.root))
@@ -201,7 +206,7 @@ public struct EnergyFlowMapView: View {
             }
             .stroke(
                 LinearGradient(
-                    colors: [Theme.recoveryGreen.opacity(0.9), Theme.strainGradientEnd.opacity(0.9)],
+                    colors: [Theme.recoveryGreen.opacity(0.9 * staticFlow), Theme.strainGradientEnd.opacity(0.9 * staticFlow)],
                     startPoint: .bottom, endPoint: .top),
                 style: StrokeStyle(lineWidth: 3, lineCap: .round))
         }
@@ -230,21 +235,23 @@ public struct EnergyFlowMapView: View {
                             y: Mark.height * 0.33),
                         control2: CGPoint(x: hand.x, y: Mark.height * 0.42))
                 }
-                .stroke(Theme.recoveryYellow.opacity(0.5), style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
+                .stroke(Theme.recoveryYellow.opacity(0.5 * staticFlow), style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
             }
         }
     }
 
     /// The dantian the qigong source names, and the storage the lower one is for.
     private func dantian(width: CGFloat) -> some View {
-        Group {
-            Circle().strokeBorder(Theme.recoveryGreen.opacity(0.55), lineWidth: 1.1)
+        let store = selected == 6
+        let chest = selected == 4
+        return Group {
+            Circle().strokeBorder(Theme.recoveryGreen.opacity(store ? 1 : 0.55), lineWidth: store ? 1.8 : 1.1)
                 .frame(width: width * 0.30, height: width * 0.30)
                 .position(x: width / 2, y: Mark.height * Mark.navel)
-            Circle().strokeBorder(Theme.recoveryGreen.opacity(0.3), lineWidth: 1)
+            Circle().strokeBorder(Theme.recoveryGreen.opacity(store ? 0.8 : 0.3), lineWidth: store ? 1.6 : 1)
                 .frame(width: width * 0.44, height: width * 0.44)
                 .position(x: width / 2, y: Mark.height * Mark.navel)
-            Circle().strokeBorder(Theme.textMuted.opacity(0.45), lineWidth: 1)
+            Circle().strokeBorder(Theme.textMuted.opacity(chest ? 1 : 0.45), lineWidth: chest ? 1.8 : 1)
                 .frame(width: width * 0.26, height: width * 0.26)
                 .position(x: width / 2, y: Mark.height * Mark.heart)
         }
@@ -256,10 +263,120 @@ public struct EnergyFlowMapView: View {
     /// picture is the same fault as a number with no producer, one layer over.
     private func constrictions(width: CGFloat) -> some View {
         ForEach([Mark.throat, Mark.heart, Mark.root], id: \.self) { y in
+            let lit = selectionSits(on: y)
             Ellipse()
-                .strokeBorder(Theme.textSecondary.opacity(0.35), lineWidth: 1)
+                .strokeBorder(lit ? Theme.textPrimary.opacity(0.9) : Theme.textSecondary.opacity(0.35),
+                              lineWidth: lit ? 1.6 : 1)
                 .frame(width: width * (y == Mark.heart ? 0.62 : 0.50), height: 12)
                 .position(x: width / 2, y: Mark.height * y)
+        }
+    }
+
+    /// Whether the selected vortex is the one a constriction carries — 3 throat, 4 heart, 7 hips.
+    private func selectionSits(on y: CGFloat) -> Bool {
+        switch selected {
+        case 3: return y == Mark.throat
+        case 4: return y == Mark.heart
+        case 7: return y == Mark.root
+        default: return false
+        }
+    }
+
+    // MARK: - The selected vortex's motion
+
+    /// **Tapping a number sets the current it sits on moving, in that current's own direction.**
+    ///
+    /// The diagram the figure came from draws every point as a junction of rings and flows, and a
+    /// selection that only opened a paragraph let the drawing stay still — so the paragraph now
+    /// arrives with the motion it describes: the descending current runs down towards the heart for
+    /// the upper three, the rising current runs up for the lower ones, the heart takes both, and the
+    /// hands and feet draw inward. A ripple leaves the selected point at the same time, which is the
+    /// "ring" half of what each point is connected to; the constriction it sits on lights up in
+    /// `constrictions(width:)` and the dantian rings in `dantian(width:)`.
+    ///
+    /// **Direction is the path's own**, because a path is drawn start to end and a negative dash phase
+    /// walks the pattern along it — so the geometry below starts where the current starts: at the top
+    /// for the descending half, at the feet for the rising one, at the hand for an intake. Reversing a
+    /// path would reverse its meaning, not merely its look.
+    ///
+    /// `TimelineView` rather than a repeating animation, so the phase is a function of the clock and
+    /// there is no `@State` to leave running when the card closes — the view exists only while a
+    /// vortex is selected, and the motion stops with it.
+    @ViewBuilder
+    private func selectionFlow(width: CGFloat) -> some View {
+        if let selected, Self.vortexColors.indices.contains(selected - 1) {
+            let colour = Self.vortexColors[selected - 1]
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+                let seconds = context.date.timeIntervalSinceReferenceDate
+                // 20 is one dash period (`7 + 13`), so the wrap at 2 s lands on the same pattern.
+                // **Positive, and that is not cosmetic**: measured on the simulator, a negative phase
+                // walked the pattern back towards the path's start, so the descending current ran
+                // upwards — the sign is the direction, and it was wrong way round the first time.
+                let phase = CGFloat(seconds.truncatingRemainder(dividingBy: 2)) * 20
+                let ripple = CGFloat(seconds.truncatingRemainder(dividingBy: 1.6)) / 1.6
+                ZStack {
+                    ForEach(Array(currents(for: selected, width: width).enumerated()), id: \.offset) { _, flow in
+                        flow.path
+                            .stroke(
+                                flow.color,
+                                style: StrokeStyle(
+                                    lineWidth: 3.2, lineCap: .round, dash: [7, 13], dashPhase: phase))
+                            .shadow(color: flow.color.opacity(0.7), radius: 3)
+                    }
+                    ForEach([0.0, 0.5], id: \.self) { offset in
+                        let r = (ripple + offset).truncatingRemainder(dividingBy: 1)
+                        Circle()
+                            .strokeBorder(colour.opacity(0.85 * (1 - r)), lineWidth: 1.3)
+                            .frame(width: 12 + r * 34, height: 12 + r * 34)
+                            .position(x: width / 2, y: Mark.height * Self.vortexY[selected - 1])
+                    }
+                }
+            }
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// The currents a vortex sits on, each drawn from where that current starts.
+    private func currents(for number: Int, width: CGFloat) -> [(path: Path, color: Color)] {
+        let x = width / 2
+        func column(_ from: CGFloat, _ to: CGFloat) -> Path {
+            Path { path in
+                path.move(to: CGPoint(x: x, y: Mark.height * from))
+                path.addLine(to: CGPoint(x: x, y: Mark.height * to))
+            }
+        }
+        func intake(side: CGFloat) -> Path {
+            let hand = CGPoint(
+                x: x + side * width * (0.5 - Mark.handInset), y: Mark.height * Mark.hand)
+            return Path { path in
+                path.move(to: hand)
+                path.addCurve(
+                    to: CGPoint(x: x, y: Mark.height * Mark.navel),
+                    control1: CGPoint(x: hand.x, y: Mark.height * 0.46),
+                    control2: CGPoint(x: x + side * width * 0.16, y: Mark.height * 0.40))
+            }
+        }
+        func sole(_ fraction: CGFloat) -> Path {
+            Path { path in
+                path.move(to: CGPoint(x: width * fraction, y: Mark.height * 1.005))
+                path.addLine(to: CGPoint(x: width * fraction, y: Mark.height * (Mark.feet - 0.03)))
+                path.addLine(to: CGPoint(x: x, y: Mark.height * Mark.root))
+            }
+        }
+
+        switch number {
+        case 1: return [(column(0, Mark.heart), Theme.livePulseCyan)]
+        case 2: return [(column(Mark.crown, Mark.brow + 0.02), Theme.livePulseCyan)]
+        case 3: return [(column(Mark.heart, Mark.throat), Theme.recoveryYellow)]
+        case 4:
+            return [
+                (column(0, Mark.heart), Theme.livePulseCyan),
+                (column(Mark.root, Mark.heart), Theme.recoveryGreen),
+            ]
+        case 5: return [(column(Mark.navel, Mark.solar), Theme.recoveryGreen)]
+        case 6: return [(intake(side: -1), Theme.recoveryGreen), (intake(side: 1), Theme.recoveryGreen)]
+        case 7: return [(sole(0.36), Theme.recoveryGreen), (sole(0.64), Theme.recoveryGreen)]
+        default: return []
         }
     }
 
