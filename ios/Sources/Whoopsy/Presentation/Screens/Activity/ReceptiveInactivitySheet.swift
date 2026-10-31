@@ -161,6 +161,7 @@ public struct ReceptiveInactivitySheet: View {
                 VStack(alignment: .leading, spacing: 22) {
                     nameRow
                     noteSection
+                    pulseSection
                     timeSection
 
                     // Edit mode alone. An add draft has no row behind it, so a `DELETE` there would be a
@@ -329,6 +330,34 @@ public struct ReceptiveInactivitySheet: View {
                 noteText = newValue
                 draft.setNote(newValue)
             })
+    }
+
+    // MARK: - The pulse section
+
+    /// `PULSE`, its rule, and the metronome.
+    ///
+    /// **It sits between the note and the time**, where the prose about what was felt runs into the
+    /// measurement of how fast it came. It is drawn for every entry rather than only for the ones that
+    /// name a vortex: the square is how a rate is found, and hiding it behind a particular word would
+    /// make the same sheet two forms.
+    private var pulseSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel(PulseMetronomeView.sectionTitle)
+
+            Divider()
+                .overlay(Theme.cardBorder)
+
+            PulseMetronomeView(rate: pulseRateBinding)
+        }
+    }
+
+    /// The metronome's read and write. The binding's `get` answers `0` for a draft with no reading,
+    /// which is the control's own word for off; its `set` is the draft's, so zero is cleared to `nil`
+    /// in the one place that owns the rule.
+    private var pulseRateBinding: Binding<Int> {
+        Binding(
+            get: { draft.pulseRate ?? 0 },
+            set: { newValue in draft.setPulseRate(newValue) })
     }
 
     // MARK: - The time section

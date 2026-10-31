@@ -357,3 +357,26 @@ the one property this block cannot see, because it never builds the use case.
 write carries the rating **and the offline-map region** — the field `applying(to:)` used to drop, so
 this is the assertion that fails if it is dropped again — along with the measurements and the name;
 re-writing the value already held is a no-op; and a value above the scale is clamped on the write.
+
+### §26 — the pulse metronome's timing
+
+**A new section, appended; nothing renumbered.** It exists because the rule it asserts cannot be
+seen: two screenshots of a flashing square either side of a rate change are identical whether the rate
+was applied or not, and a square that never lit would look exactly like one whose flash the camera
+missed. So the flashing is `PulseTiming` — pure, no `Date`, no view — and the view reads it.
+
+What it pins: **a rate of zero never lights**, sampled at ten-millisecond steps across a whole minute
+rather than at one instant, and `period(ratePerMinute: 0)` is zero rather than an infinity from a
+division that must not happen; the three periods the gauge's own labels name — 1 s at 60/min, 0.5 s at
+120/min, a third of a second at the ceiling — pinned as literals so a moved `maximumRate` fails here;
+the duty cycle as a **window** (`[0, 0.4)` lit at 60/min, both edges sampled, because a duty cycle of
+0 or 1 would pass a mid-window sample); the phase returning to zero at a period boundary rather than
+running past it, with the step either side compared to the step inside a period so the assertion is
+about the wrap and not the sample spacing; and that the arithmetic answers a rate above the ceiling,
+because the clamp belongs to the control and the entity rather than to the rule.
+
+The field itself is asserted in **§14**, which already opens this table: a rate saved on an entry
+round-trips through the repository (a one-way carry is silent — it reads back `nil`, which is also the
+honest value for no reading), zero clears to `nil` rather than storing a rate of zero pulses, the
+clamp holds in both the draft and the entity, an edit that only clears the rate lights `SAVE`, and
+`ReceptiveInactivity`'s `Mirror` now names six stored fields.

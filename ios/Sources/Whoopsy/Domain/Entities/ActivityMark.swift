@@ -229,6 +229,10 @@ public enum ActivityMarkCatalog {
         // rather than the practice.
         "body scan": .single("figure.stand"),
         "stillness": .single("circle.dotted"),
+        // The owner's own name for the second point on the Energy map's column, and a symbol that has
+        // existed since iOS 13 — unlike the `figure.*` names above, nothing about it is a body in
+        // motion, which is what makes it safe on this deployment target.
+        "third eye": .single("eye.fill"),
         "sound bath": .single("waveform"),
         "float": .single("water.waves"),
         // `heat.waves` is iOS 17.0 — the deployment target exactly. A `sauna` symbol does not exist, and

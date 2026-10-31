@@ -1604,6 +1604,16 @@ public struct HomeDashboardView: View {
 
             Spacer(minLength: 8)
 
+            // The entry's own result, where a logged entry can read it without being opened. It is
+            // the owner's report rather than a measurement, which is why it is set in the same muted
+            // type as the time rather than as a figure the row is about.
+            if let pulseRate = activity.pulseRate {
+                Text("\(pulseRate)/min")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .monospacedDigit()
+            }
+
             if let startedAt = activity.startedAt {
                 Text(startedAt.formattedHourMinute())
                     .font(.system(size: 12, weight: .medium))

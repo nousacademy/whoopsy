@@ -1080,6 +1080,22 @@ public actor LocalDatabaseManager {
                 in: db)
         }
 
+        // The rate matched on the receptive-inactivity sheet's metronome, in pulses per minute.
+        //
+        // **NULL is the ordinary value**, not a gap: an entry that is not about a felt rhythm has no
+        // reading to store, and the gauge's zero means *no reading given* rather than *no pulses* —
+        // so the control writes NULL, never `0`. **Nothing is backfilled**, for the reason every
+        // nullable add here carries: the rows predate the column and none of them was measured.
+        //
+        // **It is local-only.** `ReceptiveInactivitySyncRow` does not carry it, on `v23`'s precedent,
+        // so the column never reaches the Worker and no `shared/` contract moves.
+        migrator.registerMigration("v41_receptive_inactivity_pulse_rate") { db in
+            try Self.addMissingColumns(
+                to: ReceptiveInactivityRecord.databaseTableName,
+                columns: [("pulse_rate", .integer)],
+                in: db)
+        }
+
         try migrator.migrate(queue)
     }
 

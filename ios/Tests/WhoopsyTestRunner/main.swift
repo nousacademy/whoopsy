@@ -39,7 +39,7 @@ runSynchronousSections([1, 2, 3, 4, 5])
 // is what puts a throw on the exit code.
 Task {
     do {
-        try await runSections(6...25)
+        try await runSections(6...26)
     } catch {
         print("❌ FAILED: the suite threw before completing: \(error)")
         tally.record(false)

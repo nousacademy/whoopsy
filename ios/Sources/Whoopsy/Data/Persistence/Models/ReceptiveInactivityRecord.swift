@@ -54,12 +54,20 @@ public struct ReceptiveInactivityRecord: Codable, FetchableRecord, PersistableRe
     /// `ReceptiveInactivity.startedAt`.
     public let startedAt: Date?
 
-    public init(id: String, date: Date, name: String, note: String?, startedAt: Date?) {
+    /// The rate matched on the sheet's metronome, in pulses per minute, or NULL for an entry with no
+    /// reading — which is every entry that is not about a felt rhythm, and every row written before
+    /// `v41`. **NULL rather than `0`**: the gauge's zero means *no reading given*, so an entry with no
+    /// reading and one recorded at zero would otherwise be indistinguishable. See
+    /// `ReceptiveInactivity.pulseRate` for why this column is local-only.
+    public let pulseRate: Int?
+
+    public init(id: String, date: Date, name: String, note: String?, startedAt: Date?, pulseRate: Int? = nil) {
         self.id = id
         self.date = date
         self.name = name
         self.note = note
         self.startedAt = startedAt
+        self.pulseRate = pulseRate
     }
 
     /// Declared because these columns are snake_case while `StrainRecord`'s are camelCase — the
@@ -75,5 +83,6 @@ public struct ReceptiveInactivityRecord: Codable, FetchableRecord, PersistableRe
         case name
         case note
         case startedAt = "started_at"
+        case pulseRate = "pulse_rate"
     }
 }

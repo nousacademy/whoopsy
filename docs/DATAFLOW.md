@@ -56,7 +56,7 @@ makes "calculated once, stored, read" checkable rather than a slogan.
 | `recoveries` | `CalculateRecoveryUseCase` (via `RefreshRecoveryUseCase`) | foreground, after the night refresh | `algorithm`, `scored_through` (`v39`) |
 | `strains` | `CalculateStrainUseCase` (via `RefreshStrainUseCase`) | 5-minute tick, foreground, after a drain | `algorithm`, `scoredThrough`, `motionLoad` |
 | `workouts` | `SaveWorkoutUseCase`, `ActivityEditSheet`, importers | end of session / edit / import | `source`, `rpe` (local-only) |
-| `receptive_inactivities` | sheet, importer | write / import | id derived from date+type+note |
+| `receptive_inactivities` | sheet, importer | write / import | id derived from date+type+note; `pulse_rate` is the owner's own metronome reading and is **local-only** (the sync row drops it) |
 
 **An imported row is never re-scored by a local writer.** Sleep checks `hasWhoopSleepNeed`, strain
 checks `isDeviceScored`, recovery checks `isLocallyComputed` — and each of those is a different fact

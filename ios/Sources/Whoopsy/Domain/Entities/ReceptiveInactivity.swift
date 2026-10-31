@@ -99,12 +99,37 @@ public struct ReceptiveInactivity: Identifiable, Equatable, Hashable, Sendable {
     /// their own rule makes an ordinary answer rather than a gap waiting to be filled in.
     public let startedAt: Date?
 
-    public init(id: UUID = UUID(), date: Date, name: String, note: String? = nil, startedAt: Date? = nil) {
+    /// The pulse rate matched on the sheet's metronome, in pulses per minute — or `nil` when none was
+    /// given, which is the ordinary case for every entry that is not about a felt rhythm.
+    ///
+    /// **It is the owner's own report and nothing derives from it.** The metronome is a square that
+    /// flashes at a chosen rate so a felt pulse can be matched by eye; the number is what the eye
+    /// settled on, not something this app measured, and no figure on any screen is computed from it.
+    ///
+    /// **It is local-only, and the wire drops it.** `ReceptiveInactivitySyncRow` reads this type field
+    /// by field and does not carry it, which is the `v23` precedent (`workouts`' offline-region
+    /// coordinates): the seven synced resources are the app's own data, and a study reading stays on
+    /// the phone. If it is ever wanted in the database it becomes a sync-row field and a Worker DTO
+    /// change, and that is a decision rather than an oversight.
+    ///
+    /// **Zero is never stored**, and the stored range is `1…PulseTiming.maximumRate`. The metronome's
+    /// gauge reads zero as *no reading given*, which arrives here as `nil`; the clamp is what keeps a
+    /// value that could not have come from the control from being written by anything else either.
+    public let pulseRate: Int?
+
+    public init(
+        id: UUID = UUID(), date: Date, name: String, note: String? = nil,
+        startedAt: Date? = nil, pulseRate: Int? = nil
+    ) {
         self.id = id
         self.date = date.startOfDay
         self.name = name
         self.note = note
         self.startedAt = startedAt
+        self.pulseRate = pulseRate.flatMap { rate in
+            guard rate > 0 else { return nil }
+            return min(rate, Int(PulseTiming.maximumRate))
+        }
     }
 
     /// The order a day's entries are drawn in: `started_at` ascending with the untimed ones last, ties

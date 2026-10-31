@@ -71,6 +71,7 @@ public enum ReceptiveInactivityCatalog {
         "Sauna",
         "Sound bath",
         "Stillness",
+        "Third eye",
         "Yoga nidra",
     ]
 

@@ -153,7 +153,7 @@ The real suite lives under `ios/Tests/WhoopsyTestRunner/` (a hand-rolled assert 
 **Read the summary line, not the scrollback:**
 
 ```
-SUITE sections=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25 assertions=3637 failed=0 exit=0
+SUITE sections=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26 assertions=3663 failed=0 exit=0
 ```
 
 `sections=` is the field that catches a dropped section, `assertions=` the field that catches a section that ran but stopped asserting, and the exit code is trustworthy. Sections live in `Support/SectionRegistry.swift`'s `testSections()`, which `runSections(_:)` iterates and the `Task` awaits inside a `do`/`catch`, and `finishSuite` is the single exit path for every outcome — an unobserved throw, or a hang at the 30 s timeout, would otherwise idle out the `RunLoop` and exit **0**. A `WHOOPSY_SECTIONS` value naming a section that does not exist exits 1 rather than running nothing and reporting success.
@@ -214,7 +214,7 @@ This section is the **map** — what exists and how you reach it. The **architec
 | Home's `+` — on **every** day | the activity menu — an overlay, not a page | read off `ActivityMenu.entries(on:now:recording:)`, which withholds `START ACTIVITY` alone — on every day but today, and while anything is already recording |
 | the menu's `ADD ACTIVITY` — on **every** day, including days when a session records | `AddActivitySheet` — the app's third `.sheet`, constructed around an `AddActivityDraft` on the day being viewed | — the draft writes a `WorkoutSession` carrying `manual` and no measurement, so it needs no view model of its own; `HomeViewModel.saveActivity(_:on:)` saves it and merges it into Home's day |
 | the menu's `START ACTIVITY` | `ActivityPickerView` | — it writes a `Binding<String?>`; the choice is what starts the session |
-| the menu's `ADD RECEPTIVE INACTIVITY` | `ReceptiveInactivitySheet` — one of the app's three `.sheet`s, opened in **add** mode on an empty draft | — it writes a `ReceptiveInactivityDraft` onto the day being viewed, whose `NAME` row opens the picker and whose `NOTE` field is typed in place, so it needs no view model of its own |
+| the menu's `ADD RECEPTIVE INACTIVITY` | `ReceptiveInactivitySheet` — one of the app's three `.sheet`s, opened in **add** mode on an empty draft. Its rows are `NAME`, `NOTE`, **`PULSE`** and `TIME`: `PULSE` is `PulseMetronomeView`, a white square that flashes yellow at the rate a 0–180/min gauge sets, so a felt rhythm can be matched by eye and its speed stored on the entry (`0` means *no reading* and stores nothing) | — it writes a `ReceptiveInactivityDraft` onto the day being viewed, whose `NAME` row opens the picker and whose `NOTE` field is typed in place, so it needs no view model of its own |
 | the sheet's `NAME` row | `ReceptiveInactivityPickerView` | — it writes a `Binding<String?>`, exactly as `ActivityPickerView` does |
 | the picker's choice — `Fast` starts a fast and pushes nothing | `LiveSessionView` | `LiveSessionUseCase`, built in `DIContainer` and held for the process |
 | the recording bar — drawn only while a session is running | `LiveSessionView`, or `ActivityDetailView`'s fasting layout for a fast | the same `LiveSessionUseCase` |
@@ -379,6 +379,7 @@ Core          (HRV/Strain/Stress math, logging, extensions)
 - **A stored metric row must record the formula that produced it, and a parameter change is a version bump.**
 - **A survey edit that rebuilds a value drops every field it does not name.**
 - **A sync upsert can erase a local-only user field.**
+- **A felt pulse has no producer: the metronome measures the owner's own report, and `pulse_rate` is a local-only column the wire drops.**
 
 ### Reference docs
 

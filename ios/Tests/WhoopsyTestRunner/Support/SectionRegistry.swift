@@ -204,6 +204,11 @@ func testSections() -> [TestSection] {
             title: "Testing the Strain day model with its motion term, the refresh watermark and "
                 + "backfill, the formula catalogue every row now records, and the session-RPE rating...",
             body: StrainTests.run),
+        TestSection(
+            id: 26,
+            title: "Testing the pulse metronome's timing: a zero rate that never lights, the duty "
+                + "cycle and period each rate produces, and the phase wrapping without a jump...",
+            body: { try await PulseTimingTests.run() }),
     ]
 }
 

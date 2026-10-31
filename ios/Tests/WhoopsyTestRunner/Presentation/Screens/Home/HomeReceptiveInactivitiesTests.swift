@@ -136,6 +136,64 @@ enum HomeReceptiveInactivitiesTests {
                     + "by name — followed by the untimed ones, themselves ordered by name. `nil` sorts "
                     + "last because SQLite sorts NULL *first* ascending, which would put an entry that "
                     + "gave no time above one that did (\(storeOrder))")
+
+
+            // ---- The pulse rate the metronome writes ----
+
+            // **The round trip is the assertion, because a one-way carry is silent.** `v41` added the
+            // column and the record's initialiser takes the field with a default, so a mapper that
+            // forgot it would read back `nil` — which is also the honest value for an entry with no
+            // reading. Nothing but a save-and-read with a value can tell those two apart.
+            var pulsedDraft = ReceptiveInactivityDraft()
+            pulsedDraft.setName("Third eye")
+            pulsedDraft.setPulseRate(42)
+            if let pulsed = pulsedDraft.applying(to: day) {
+                try await repository.save(pulsed)
+            }
+            let thirdEye = try await repository.getReceptiveInactivities(for: day)
+                .first { $0.name == "Third eye" }
+            assertTest(
+                thirdEye?.pulseRate == 42,
+                "A pulse rate saved on an entry reads back unchanged "
+                    + "(\(thirdEye?.pulseRate.map(String.init) ?? "nil"))")
+
+            // **Zero is the gauge's rest position and its meaning is *no reading***, not a rate of no
+            // pulses. The draft maps it to `nil`, so clearing the control on an existing entry is an
+            // edit back to `NULL` rather than a stored zero.
+            var clearedDraft = ReceptiveInactivityDraft(
+                thirdEye ?? ReceptiveInactivity(date: day, name: "Third eye"))
+            clearedDraft.setPulseRate(0)
+            assertTest(
+                clearedDraft.pulseRate == nil,
+                "A gauge at zero stores **no reading** rather than a rate of zero pulses")
+            assertTest(
+                clearedDraft.hasChanges(on: day) && clearedDraft.applying(to: day)?.pulseRate == nil,
+                "…and clearing a stored rate is an edit that writes `nil`, so the field's own clause in "
+                    + "`hasChanges(on:)` is what lights `SAVE` over it")
+
+            // The clamp, asserted on both writers: the draft refuses a rate the control could not
+            // produce, and the entity refuses one arriving from anywhere else.
+            var ceilingDraft = ReceptiveInactivityDraft()
+            ceilingDraft.setName("Third eye")
+            ceilingDraft.setPulseRate(500)
+            assertTest(
+                ceilingDraft.pulseRate == Int(PulseTiming.maximumRate),
+                "A rate above the gauge's ceiling is clamped to it in the draft "
+                    + "(\(ceilingDraft.pulseRate.map(String.init) ?? "nil"))")
+            assertTest(
+                ReceptiveInactivity(date: day, name: "Third eye", pulseRate: 10_000).pulseRate
+                    == Int(PulseTiming.maximumRate),
+                "…and again in the entity, so a caller that is not the sheet cannot write one either")
+
+            // Every row saved without a reading holds `nil` — the ordinary case, and the value a
+            // defaulted `0` would replace with a claim that nothing was felt.
+            let unreadEntries = try await repository.getReceptiveInactivities(for: day)
+                .filter { $0.name != "Third eye" }
+            assertTest(
+                unreadEntries.allSatisfy { $0.pulseRate == nil },
+                "…and every entry recorded without a reading stores NULL rather than zero "
+                    + "(\(unreadEntries.compactMap(\.pulseRate)))")
+
         } catch {
             assertTest(false, "The receptive inactivity round trip threw: \(error)")
         }
@@ -323,6 +381,7 @@ enum HomeReceptiveInactivitiesTests {
                 "…and an entry saved with a blank field carries `nil` rather than `\"\"`, which is every "
                     + "meditation this app writes and every row that predates `v22` "
                     + "(\(meditation?.note.map { "\"\($0)\"" } ?? "nil"))")
+
         }
 
         // ---- The view model: the card's own read, and the two writers ----
@@ -484,8 +543,8 @@ enum HomeReceptiveInactivitiesTests {
             reflecting: ReceptiveInactivity(date: Date(), name: "Dream")
         ).children.compactMap(\.label)
         assertTest(
-            surface == ["id", "date", "name", "note", "startedAt"],
-            "A receptive inactivity stores five things and derives nothing, so there is no end instant "
+            surface == ["id", "date", "name", "note", "startedAt", "pulseRate"],
+            "A receptive inactivity stores six things and derives nothing, so there is no end instant "
                 + "to print a range from and no state for the row to be `ACTIVE` in (\(surface))")
 
         // ---- The row that opens it ----

@@ -104,6 +104,14 @@ public struct ReceptiveInactivityDraft: Equatable, Identifiable, Sendable {
     /// `instant(of:on:)` for the same reason.
     public private(set) var startedAt: Date?
 
+    /// The rate matched on the sheet's metronome, or `nil` for no reading.
+    ///
+    /// **Zero is the control's own word for *no reading*, and it never reaches the entity.** The gauge
+    /// starts at zero and returns there when the entry is not about a rhythm, so `setPulseRate(_:)`
+    /// maps that one value to `nil` — the entry then stores NULL rather than a `0` that would claim a
+    /// measured absence. Declared after `startedAt`, mirroring the entity's field order.
+    public private(set) var pulseRate: Int?
+
     /// The identity of a draft that has no row behind it yet.
     ///
     /// A fresh `UUID` per draft is right here, unlike a static list's `Entry.id`: the sheet is
@@ -124,6 +132,7 @@ public struct ReceptiveInactivityDraft: Equatable, Identifiable, Sendable {
         self.name = nil
         self.note = nil
         self.startedAt = nil
+        self.pulseRate = nil
         self.draftID = UUID()
     }
 
@@ -138,6 +147,7 @@ public struct ReceptiveInactivityDraft: Equatable, Identifiable, Sendable {
         self.name = activity.name
         self.note = activity.note
         self.startedAt = activity.startedAt
+        self.pulseRate = activity.pulseRate
         self.draftID = activity.id
     }
 
@@ -179,6 +189,21 @@ public struct ReceptiveInactivityDraft: Equatable, Identifiable, Sendable {
         self.startedAt = instant
     }
 
+    /// Sets the metronome's rate, **mapping zero to `nil` and clamping the rest to the control's own
+    /// range**.
+    ///
+    /// Zero is the gauge's rest position and its meaning is *no reading*, so it is cleared rather than
+    /// stored; the clamp is the control's range restated, so a value arriving from anywhere else
+    /// cannot describe a rate the square could never have flashed at. No guard drops a repeat write —
+    /// a drag produces many and the value is an `Int`, so the comparison would be noise.
+    public mutating func setPulseRate(_ rate: Int?) {
+        guard let rate, rate > 0 else {
+            self.pulseRate = nil
+            return
+        }
+        self.pulseRate = min(rate, Int(PulseTiming.maximumRate))
+    }
+
     // MARK: - The day-rebuild
 
     /// The entry this draft describes, filed on `day` — or `nil` when there is no name to file.
@@ -196,7 +221,8 @@ public struct ReceptiveInactivityDraft: Equatable, Identifiable, Sendable {
             date: day,
             name: name,
             note: note,
-            startedAt: startedAt.map { Self.instant(of: $0, on: day) }
+            startedAt: startedAt.map { Self.instant(of: $0, on: day) },
+            pulseRate: pulseRate
         )
     }
 
@@ -215,6 +241,7 @@ public struct ReceptiveInactivityDraft: Equatable, Identifiable, Sendable {
         return candidate.name != original.name
             || candidate.note != original.note
             || candidate.startedAt != stored
+            || candidate.pulseRate != original.pulseRate
     }
 
     /// `time`'s hour and minute, rebuilt onto `day`'s own midnight.
