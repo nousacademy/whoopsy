@@ -95,25 +95,29 @@ which of the two happened is the thing to check before adding a row back:**
   owns the write and the `Diagnostics.setEnabled` forward, and `SettingsDashboardView`,
   `SettingsViewModel` and `Screens/Settings/` are deleted. **`More` had nothing left to list, so
   `MoreView` and its tab are deleted** — and a third tab returned the same day as **`Energy`**: a
-  `figure.stand` icon and today's `StrainDetailView` behind it, which is the page Home's strain ring
-  pushes, wrapped in the tab's own `NavigationStack` and seeded with its own `StrainViewModel` so the
-  two never share a day. `Energy` is the tab's name and the figure is still `Strain` everywhere else in
-  the tree; the ring and this page are one integral, and a label is not a rename.
+  `figure.stand` icon and `EnergyStudyView` behind it. It held today's `StrainDetailView`, on its own
+  `StrainViewModel`, for exactly one iteration; the owner then said the tab's subject was not the app's
+  figures at all (*"its not going to move my stats energy tab is different study im conducting and
+  should be ignored from app"*), and the page was replaced. **No `Strain` identifier moved** — the
+  ring and the strain page Home pushes are still one integral, and `Energy` is a tab name.
 
 **The tab carries a body map, and it is a map rather than a figure.** `EnergyFlowMapView` draws one
-front-facing body with the geometry three sources agree on: seven centres from crown to root, divine
+front-facing body with the geometry three sources agree on: seven vortices from crown to root, divine
 energy entering through the crown, earth energy rising from the soles, the two meeting at the heart and
 leaving through the palms, the lower dantian below the navel drawn as the store, and the three
-constrictions — throat, heart, hips — the rising channel passes through. The sources are a chakra flow
-chart, a qigong instruction for drawing earth qi in through the hands and feet, and a research figure
+constrictions — throat, heart, hips — the rising channel passes through. The sources are an energy-flow diagram
+(whose seven points the app calls **vortices**, never chakras), a qigong instruction for drawing earth qi in through the hands and feet, and a research figure
 of where emotions are felt in the body; the last contributes the regions rather than a flow, which is
 why the torso is drawn as one. **Nothing on it is measured and nothing on it moves with the day.** The card says so in one line
 rather than a paragraph — the paragraph was removed on the user's instruction the same evening — and
-the reading is behind the numbers: **tapping a badge opens that region's paragraph under the figure**,
-and tapping it again or pressing Close puts the hint back. A list of six rows under the drawing was
-tried first and made the card louder than the map it is about. The badges are numbered in the order
-the flow runs rather than down the page, because a badge that disagrees with its own text is the same
-fault as a number with no producer, one layer over. The caption now names
+the reading is behind the numbers: **tapping a badge opens that vortex's paragraph under the figure**,
+and tapping it again or pressing Close puts the hint back. A list of rows under the drawing was tried
+first and made the card louder than the map it is about. **The seven badges are the seven vortices,
+one per point of the column and numbered crown downwards** — the diagram the figure came from labels
+each of its points, and on 2026-10-30 the owner confirmed that every point it draws is one of these
+(*"in the diagram i shared just now each point is a chakra"*) while asking that the app call them
+**vortices** (*"dont call it a chakra call it a vortex instead"*). They had briefly been six badges on
+the flow features instead, which disagreed with the column they sat beside. The caption now names
   **Sentry**, because a disclosure that says "a diagnostics key" is the layer rule's letter at the
   cost of its point: a person deciding whether to send their strap's metadata to a third party is
   entitled to know who receives it.

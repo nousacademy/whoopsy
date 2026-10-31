@@ -8,7 +8,7 @@ import AppKit
 /// The human body as the app's three reference diagrams draw it, and the flow they describe.
 ///
 /// **This is a traditional map, not a measurement, and the card says so.** Two of the three sources
-/// are contemplative traditions — a chakra/energy-flow map and a qigong instruction for drawing earth
+/// are contemplative traditions — an energy-flow diagram and a qigong instruction for drawing earth
 /// qi up through the hands and feet — and the third is a research figure that colours body regions by
 /// self-reported emotion. None of them is a physiological model, and none of them is something this
 /// strap measures. What the drawing does is put their **geometry** in one place: where each tradition
@@ -21,12 +21,15 @@ import AppKit
 ///
 /// **No figure on this view comes from a reading.** There is no value, no band and no colour that
 /// changes with the day — deliberately, because the app's rule is that a visualisation of a number
-/// needs a producer, and there is no producer for a chakra. This tab is a study of its own and reads
+/// needs a producer, and there is no producer for a vortex. This tab is a study of its own and reads
 /// none of the app's records; the caption says both things.
 ///
 /// ## What the three sources contribute
 ///
-/// - **Energy-flow map**: a central column of seven centres from crown to root; *divine* energy
+/// - **Energy-flow map**: a central column of seven **vortices** from crown to root. The figure the
+///   owner supplied draws each of its points as one of these, so the points *are* the column, and the
+///   app calls them **vortices** on the owner's instruction (*"dont call it a chakra call it a vortex
+///   instead"*) — the source's own word for them is not used anywhere in the app. *Divine* energy
 ///   entering through the crown and travelling to the heart; *earth* energy entering through the feet
 ///   and rising; *kundalini* rising from the base; the two merging **at the heart** and leaving
 ///   through the palms. Three constrictions — throat, heart and hips.
@@ -38,8 +41,9 @@ import AppKit
 ///   state — that these regions are where people **feel** things — which is why the torso carries two
 ///   faint washes rather than being left as a tube.
 ///
-/// The numbers on the drawing are this view's own index, matched to the legend under it. They are not
-/// a sequence to follow and not a score.
+/// **The seven numbers on the drawing are the seven vortices** — one badge per point of the column,
+/// numbered crown downwards and matched to the legend under it — because the diagram the figure came
+/// from labels its points that way. They are not a sequence to follow and not a score.
 public struct EnergyFlowMapView: View {
 
     /// The figure's own proportions, measured off the bundled image after it was cropped to the body:
@@ -84,7 +88,8 @@ public struct EnergyFlowMapView: View {
         .glassCard()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(
-            "Energy flow map. A traditional diagram of seven centres from crown to root, divine energy "
+            "Energy flow map. A traditional diagram of seven vortices from crown to root, numbered one "
+            + "to seven, divine energy "
             + "entering through the crown, earth energy through the feet, both merging at the heart and "
             + "leaving through the palms, with the lower dantian below the navel. Not a measurement."))
     }
@@ -106,7 +111,7 @@ public struct EnergyFlowMapView: View {
             heartMerge(width: width)
             dantian(width: width)
             constrictions(width: width)
-            centres(width: width)
+            vortexPoints(width: width)
             badges(width: width)
         }
         .frame(width: width, height: Mark.height)
@@ -258,39 +263,47 @@ public struct EnergyFlowMapView: View {
         }
     }
 
-    /// Seven centres, coloured by the traditional spectrum from root to crown.
-    private func centres(width: CGFloat) -> some View {
-        ForEach(Array(Self.chakraY.enumerated()), id: \.offset) { index, fraction in
+    /// Seven **vortices**, coloured by the traditional spectrum from root to crown, each with its own
+    /// number beside it.
+    ///
+    /// **Their heights are read off the flow diagram** — above the head, between the brows, the throat,
+    /// the chest, above the navel, below the navel, and the base between the legs — rather than spaced
+    /// evenly down the body, which is the one thing that diagram is precise about. **Every point on it
+    /// is one of these**, which is why the numbers sit on the points rather than on the flow features:
+    /// the column and the index are the same seven things.
+    ///
+    /// The heart is drawn larger because it is the one the other two sources also single out — the
+    /// merge point of the two currents — not because it is weighted differently.
+    private func vortexPoints(width: CGFloat) -> some View {
+        ForEach(Array(Self.vortexY.enumerated()), id: \.offset) { index, fraction in
             Circle()
-                .fill(Self.chakraColors[index])
+                .fill(Self.vortexColors[index])
                 .frame(width: index == 3 ? 9 : 6.5, height: index == 3 ? 9 : 6.5)
+                .overlay(
+                    Circle().strokeBorder(Theme.textPrimary.opacity(selected == index + 1 ? 0.95 : 0), lineWidth: 1))
                 .position(x: width / 2, y: Mark.height * fraction)
         }
     }
 
-    private static let chakraY: [CGFloat] = [
+    private static let vortexY: [CGFloat] = [
         0.030, Mark.brow, Mark.throat, Mark.heart, Mark.solar, Mark.navel, Mark.root,
     ]
 
-    private static let chakraColors: [Color] = [
+    private static let vortexColors: [Color] = [
         .purple, .indigo, .blue, Theme.recoveryGreen, Theme.recoveryYellow, .orange, Theme.recoveryRed,
     ]
 
     /// **Numbers, and no words.** The first draft wrote each label beside its badge, and on a 390-point
-    /// phone every one of the six collided with the figure or ran off the card — a 9-point sentence
-    /// needs about ninety points the margins do not have. The sentences live in the legend below,
-    /// where they are legible, and the drawing keeps only what it is good at: a place.
+    /// phone every one of them collided with the figure or ran off the card — a 9-point sentence needs
+    /// about ninety points the margins do not have. The sentences live in the legend below, where they
+    /// are legible, and the drawing keeps only what it is good at: a place.
+    ///
+    /// One badge per vortex, on the point's own height, alternating sides so two numbers never stack.
+    /// The side is the frame's edge rather than the body's, so a badge can never sit on the figure.
     private func badges(width: CGFloat) -> some View {
-        Group {
-            // Numbered in the order the legend reads, which is the order the flow runs: in through the
-            // crown, in through the soles, meeting at the heart, up through the constrictions, out
-            // through the palms, stored in the lower dantian.
-            badge(1, x: width * 1.08, y: Mark.height * 0.030)
-            badge(2, x: width * 0.22, y: Mark.height * 0.925)
-            badge(3, x: width * 1.08, y: Mark.height * Mark.heart)
-            badge(4, x: width * 0.22, y: Mark.height * 0.600)
-            badge(5, x: width * 0.02, y: Mark.height * Mark.hand)
-            badge(6, x: width * 1.08, y: Mark.height * Mark.navel)
+        ForEach(Array(Self.vortexY.enumerated()), id: \.offset) { index, fraction in
+            badge(index + 1, x: index.isMultiple(of: 2) ? width * 1.08 : width * 0.02,
+                  y: Mark.height * fraction)
         }
     }
 
@@ -325,8 +338,8 @@ public struct EnergyFlowMapView: View {
     /// figure plus a line, and the reading appears when it is asked for. Tapping the same number again,
     /// or the close row, puts the list back.
     ///
-    /// A list of six rows was tried first and it was louder than the drawing: the card's subject is
-    /// the map, and six sentences under it competed with it for the eye.
+    /// A list of rows was tried first and it was louder than the drawing: the card's subject is the
+    /// map, and seven sentences under it competed with it for the eye.
     private var legend: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let selected, let region = Region.all.first(where: { $0.number == selected }) {
@@ -350,7 +363,7 @@ public struct EnergyFlowMapView: View {
                     .foregroundStyle(Theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("Tap a number on the body to read what it marks.")
+                Text("Tap a number beside a vortex to read what it marks.")
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.textMuted)
             }
@@ -369,31 +382,39 @@ public struct EnergyFlowMapView: View {
         static let all: [Region] = [
             Region(
                 number: 1, title: "Crown",
-                detail: "The uppermost opening. Energy from above is drawn in at the top of the head "
-                    + "and carried down the central channel — the highest of the three centres in the "
-                    + "qigong framing, above the brows."),
+                detail: "The uppermost opening, above the head. Energy from above is drawn in here "
+                    + "and carried down the central channel; the same point is the highest of the "
+                    + "three centres in the qigong framing, between the brows and above."),
             Region(
-                number: 2, title: "Soles",
-                detail: "The grounding half. The soles draw from below while the hands draw from the "
-                    + "sides, and in the qigong instruction both are absorbed and carried up to be "
-                    + "stored below the navel."),
+                number: 2, title: "Brow",
+                detail: "Between the eyes. The tradition places the narrowest of the upper points "
+                    + "here, associated with seeing rather than with looking — and it is where the "
+                    + "descending current is drawn entering the head."),
             Region(
-                number: 3, title: "Heart",
+                number: 3, title: "Throat",
+                detail: "The first constriction. The column is drawn pinching at the throat, and the "
+                    + "rising current is said to have to pass it — the tradition reads it as the "
+                    + "point of expression."),
+            Region(
+                number: 4, title: "Heart",
                 detail: "Where the two are said to meet. The rising and descending currents combine "
-                    + "here, and everything above and below is held to pass through the junction."),
+                    + "here, and everything above and below is held to pass through the junction — "
+                    + "which is why the figure is drawn with a second ring at the chest."),
             Region(
-                number: 4, title: "Rising channel",
-                detail: "The channel is drawn through three constrictions — throat, heart and hips — "
-                    + "the narrowings a rising current is said to have to move past."),
+                number: 5, title: "Solar plexus",
+                detail: "Above the navel, between the heart and the store. The column narrows again "
+                    + "on its way down, and the tradition associates this point with will — the "
+                    + "third of the three the qigong source names, at the chest's lower edge."),
             Region(
-                number: 5, title: "Palms",
-                detail: "The outlet. What gathered at the heart is said to leave through the hands, "
-                    + "which is why the figure is drawn with the palms open rather than at its sides."),
+                number: 6, title: "Sacral",
+                detail: "Below the navel. The store: everything drawn in through the hands and feet "
+                    + "is gathered here, which is why the lower dantian is ringed twice and the "
+                    + "figure is drawn with its hands turned in."),
             Region(
-                number: 6, title: "Lower centre",
-                detail: "The store. Everything drawn in through the hands and feet is gathered below "
-                    + "the navel — the lower of the three centres, and the one the practice is said to "
-                    + "build."),
+                number: 7, title: "Root",
+                detail: "The base, between the legs. Where the rising current starts and the earth "
+                    + "current arrives — the floor of the column, and the last constriction the "
+                    + "drawing pinches."),
         ]
     }
 
