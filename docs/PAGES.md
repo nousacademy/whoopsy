@@ -115,11 +115,15 @@ and sets the current that vortex sits on moving, in that current's own direction
 current runs down towards the heart for the upper points, the rising one runs up for the lower, the
 heart takes both at once, and the sacral draws in from the palms and the root from the soles. The
 static currents dim while one is moving, the constriction or dantian ring the point sits on lights up,
-and a ripple leaves the point itself. **The ladder is ringed as the reference rings it**: one circle
-with the crown and the root on its circumference, one with the brow and the sacral, one with the throat
-and the solar plexus — selecting either end of a pair lights that pair's circle — and the column opens
-out of the body at both poles as a shallow whirl of widening rings, cyan over the head and green at the
-soles; `TimelineView` drives the phase so nothing is left animating when
+**The ladder is ringed as the reference rings it, and the rings turn**: one circle with the crown and
+the root on its circumference, one with the brow and the sacral, one with the throat and the solar
+plexus — each drawn as an arc with a gap and rotated, because a closed circle shows nothing when it
+turns, in alternating directions and at different rates so the set reads as currents rather than one
+spinner. Selecting either end of a pair lights that pair's circle and speeds it up. The column also
+opens out of the body at both poles as a shallow whirl of widening rings, cyan over the head and green
+at the soles. **The pulsing circles that used to leave a selected point were removed on the owner's
+instruction** (*"you can remove those tiny pulsing circles"*), which left the turning rings as the
+drawing's only motion besides the selected current; `TimelineView` drives the phase so nothing is left animating when
 the card closes. Tapping it again or pressing Close puts the hint back. **The sign of the dash phase is
 the direction**: measured on the simulator, the first attempt ran the pattern backwards, so the
 descending current moved upwards while every build and screenshot stayed plausible — the fix was found

@@ -178,21 +178,44 @@ public struct EnergyFlowMapView: View {
     ///
     /// A pair is drawn as a true circle, not an ellipse fitted to the body, because the two points it
     /// joins are the only thing it is measured against.
+    ///
+    /// **They turn.** A closed circle shows nothing when it rotates, so each is drawn as an arc with a
+    /// gap in it and turned about its own centre — the gap is the only thing that makes the motion
+    /// visible, and it is what makes the ring read as a vortex rather than a hoop. The rings turn in
+    /// alternating directions and at different rates, because three rings turning as one rigid body
+    /// would read as a single spinner rather than a set of currents.
+    ///
+    /// The phase is the clock, so the motion is continuous and there is no state to start or stop.
     private func linkingRings(width: CGFloat) -> some View {
         let pairs: [(top: CGFloat, bottom: CGFloat, numbers: (Int, Int))] = [
             (Self.vortexY[0], Self.vortexY[6], (1, 7)),
             (Self.vortexY[1], Self.vortexY[5], (2, 6)),
             (Self.vortexY[2], Self.vortexY[4], (3, 5)),
         ]
-        return ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
-            let diameter = (pair.bottom - pair.top) * Mark.height
-            let lit = selected == pair.numbers.0 || selected == pair.numbers.1
-            Circle()
-                .strokeBorder(
-                    lit ? Theme.textPrimary.opacity(0.55) : Theme.textSecondary.opacity(0.15 * staticFlow),
-                    lineWidth: lit ? 1.3 : 0.8)
-                .frame(width: diameter, height: diameter)
-                .position(x: width / 2, y: Mark.height * (pair.top + pair.bottom) / 2)
+        return TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            // **Wrapped to a minute, and that is not tidiness.** The raw interval since the reference
+            // date is ~7.8e8, and multiplying it by an angular speed puts a ~1e10-degree value into
+            // `rotationEffect`, where the mantissa cannot resolve a fraction of a degree — the rings
+            // sat still while every build stayed green. Sixty seconds is a whole number of turns for
+            // every speed below, so the wrap is invisible.
+            let seconds = context.date.timeIntervalSinceReferenceDate
+                .truncatingRemainder(dividingBy: 60)
+            ZStack {
+                ForEach(Array(pairs.enumerated()), id: \.offset) { index, pair in
+                    let diameter = (pair.bottom - pair.top) * Mark.height
+                    let lit = selected == pair.numbers.0 || selected == pair.numbers.1
+                    let direction: Double = index.isMultiple(of: 2) ? 1 : -1
+                    let speed = (18.0 + Double(index) * 7.0) * (lit ? 2.4 : 1)
+                    Circle()
+                        .trim(from: 0, to: lit ? 0.84 : 0.70)
+                        .stroke(
+                            lit ? Theme.textPrimary.opacity(0.6) : Theme.textSecondary.opacity(0.24),
+                            style: StrokeStyle(lineWidth: lit ? 1.6 : 1.0, lineCap: .round))
+                        .frame(width: diameter, height: diameter)
+                        .rotationEffect(.degrees(direction * seconds * speed))
+                        .position(x: width / 2, y: Mark.height * (pair.top + pair.bottom) / 2)
+                }
+            }
         }
     }
 
@@ -356,9 +379,10 @@ public struct EnergyFlowMapView: View {
     /// selection that only opened a paragraph let the drawing stay still — so the paragraph now
     /// arrives with the motion it describes: the descending current runs down towards the heart for
     /// the upper three, the rising current runs up for the lower ones, the heart takes both, and the
-    /// hands and feet draw inward. A ripple leaves the selected point at the same time, which is the
-    /// "ring" half of what each point is connected to; the constriction it sits on lights up in
-    /// `constrictions(width:)` and the dantian rings in `dantian(width:)`.
+    /// hands and feet draw inward. The ring half of what each point is connected to is the pair of
+    /// linking circles it sits on, which speed up and brighten in `linkingRings(width:)`; the
+    /// constriction it sits on lights up in `constrictions(width:)` and the dantian rings in
+    /// `dantian(width:)`.
     ///
     /// **Direction is the path's own**, because a path is drawn start to end and a negative dash phase
     /// walks the pattern along it — so the geometry below starts where the current starts: at the top
@@ -371,7 +395,6 @@ public struct EnergyFlowMapView: View {
     @ViewBuilder
     private func selectionFlow(width: CGFloat) -> some View {
         if let selected, Self.vortexColors.indices.contains(selected - 1) {
-            let colour = Self.vortexColors[selected - 1]
             TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
                 let seconds = context.date.timeIntervalSinceReferenceDate
                 // 20 is one dash period (`7 + 13`), so the wrap at 2 s lands on the same pattern.
@@ -379,7 +402,6 @@ public struct EnergyFlowMapView: View {
                 // walked the pattern back towards the path's start, so the descending current ran
                 // upwards — the sign is the direction, and it was wrong way round the first time.
                 let phase = CGFloat(seconds.truncatingRemainder(dividingBy: 2)) * 20
-                let ripple = CGFloat(seconds.truncatingRemainder(dividingBy: 1.6)) / 1.6
                 ZStack {
                     ForEach(Array(currents(for: selected, width: width).enumerated()), id: \.offset) { _, flow in
                         flow.path
@@ -388,13 +410,6 @@ public struct EnergyFlowMapView: View {
                                 style: StrokeStyle(
                                     lineWidth: 3.2, lineCap: .round, dash: [7, 13], dashPhase: phase))
                             .shadow(color: flow.color.opacity(0.7), radius: 3)
-                    }
-                    ForEach([0.0, 0.5], id: \.self) { offset in
-                        let r = (ripple + offset).truncatingRemainder(dividingBy: 1)
-                        Circle()
-                            .strokeBorder(colour.opacity(0.85 * (1 - r)), lineWidth: 1.6)
-                            .frame(width: 24 + r * 46, height: 24 + r * 46)
-                            .position(x: width / 2, y: Mark.height * Self.vortexY[selected - 1])
                     }
                 }
             }
