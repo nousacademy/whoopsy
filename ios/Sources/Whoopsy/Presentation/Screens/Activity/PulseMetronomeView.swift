@@ -119,6 +119,14 @@ public struct PulseMetronomeView: View {
                 Text("/ min")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.textSecondary)
+
+                // The same rate in hertz, beside the unit a felt rhythm is matched in — one number in
+                // the unit the control counts and the unit the rest of the world writes it in.
+                Text(hertzText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textMuted)
+                    .monospacedDigit()
+                    .padding(.leading, 2)
             }
 
             Spacer(minLength: 0)
@@ -127,7 +135,20 @@ public struct PulseMetronomeView: View {
 
     /// What VoiceOver reads for the control as a whole.
     private var valueDescription: String {
-        rate == 0 ? "Off" : "\(rate) per minute"
+        rate == 0 ? "Off" : "\(rate) per minute, \(hertzValue) hertz"
+    }
+
+    /// The hertz equivalent, to one decimal place — `8.3` at the ceiling, `0.7` at 42 a minute.
+    ///
+    /// One place rather than two because a tenth of a hertz is as fine as a felt rhythm is ever
+    /// matched; the rate above it carries the precision, and this is the same number in another unit.
+    private var hertzText: String {
+        "\(hertzValue) Hz"
+    }
+
+    private var hertzValue: String {
+        let hertz = PulseTiming.hertz(ratePerMinute: Double(rate))
+        return String(format: "%.1f", hertz)
     }
 
     // MARK: - The gauge

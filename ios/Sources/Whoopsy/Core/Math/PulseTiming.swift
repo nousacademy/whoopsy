@@ -67,6 +67,15 @@ public enum PulseTiming {
         return 60 / ratePerMinute
     }
 
+    /// The same rate in hertz — oscillations a second, `rate / 60`. Zero for a rate of zero.
+    ///
+    /// The sheet prints both, because the two units answer different questions: pulses a minute is what
+    /// a person matches a felt rhythm against, and hertz is what the same number is called everywhere
+    /// else — in audio, in body rhythms, and in every other place a rate of repetition is written down.
+    public static func hertz(ratePerMinute: Double) -> Double {
+        max(ratePerMinute, 0) / 60
+    }
+
     /// How strongly the yellow is drawn at `ratePerMinute`.
     ///
     /// `1` up to `fullContrastRate`, then falling linearly to `minimumFlashOpacity` at

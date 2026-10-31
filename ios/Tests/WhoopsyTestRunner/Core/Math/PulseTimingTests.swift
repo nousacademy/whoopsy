@@ -107,6 +107,22 @@ enum PulseTimingTests {
             "…and inside a period it advances by the elapsed fraction of that period, so the two "
                 + "sides of the wrap are the same clock read twice (\(insidePeriod))")
 
+        // ---- The same rate in hertz ----
+        //
+        // The sheet prints both, and the conversion is the one thing about it that could be wrong
+        // silently: `rate / 60`, with zero kept as zero rather than a negative from a stray input.
+        assertTest(
+            PulseTiming.hertz(ratePerMinute: 60) == 1
+                && PulseTiming.hertz(ratePerMinute: 120) == 2,
+            "60 pulses a minute is one hertz and 120 is two")
+        assertTest(
+            abs(PulseTiming.hertz(ratePerMinute: PulseTiming.maximumRate) - 500.0 / 60.0) < 1e-12,
+            "…and the ceiling is eight and a third hertz, which is what the readout prints "
+                + "(\(PulseTiming.hertz(ratePerMinute: PulseTiming.maximumRate)))")
+        assertTest(
+            PulseTiming.hertz(ratePerMinute: 0) == 0,
+            "…and a rate of zero is zero hertz rather than a negative or a division by it")
+
         // A rate above the ceiling cannot come from the gauge, but the rule is not the place that
         // refuses it — the draft and the entity clamp — so this only pins that the math still answers
         // rather than dividing into nonsense.

@@ -371,6 +371,8 @@ division that must not happen; the three periods the gauge's own labels name —
 120/min, 0.12 s at the 500 ceiling — pinned as literals so a moved `maximumRate` fails here; the
 photosensitivity ramp at both ends and across four rates, full strength to 180/min and faded to 35% at
 500, because a ramp that never left 1 looks exactly like a working one in a screenshot of a slow rate;
+the hertz conversion the readout prints beside the rate — 60/min is 1 Hz, the ceiling is 8⅓, zero is
+zero;
 the duty cycle as a **window** (`[0, 0.4)` lit at 60/min, both edges sampled, because a duty cycle of
 0 or 1 would pass a mid-window sample); the phase returning to zero at a period boundary rather than
 running past it, with the step either side compared to the step inside a period so the assertion is
