@@ -85,22 +85,34 @@ public struct PulseMetronomeView: View {
         TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: rate == 0)) { context in
             let seconds = context.date.timeIntervalSinceReferenceDate
                 .truncatingRemainder(dividingBy: 60)
-            let lit = PulseTiming.isLit(at: seconds, ratePerMinute: Double(rate))
+            let ratePerMinute = Double(rate)
+            let lit = PulseTiming.isLit(at: seconds, ratePerMinute: ratePerMinute)
+            let travelling = PulseTiming.isTravelling(ratePerMinute: ratePerMinute)
+            let phase = PulseTiming.phase(at: seconds, ratePerMinute: ratePerMinute)
+
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Theme.textPrimary)
                 .overlay {
-                    // The yellow is drawn over the white at an opacity the rate sets, so the top of
-                    // the gauge shimmers rather than strobing — `PulseTiming.flashOpacity` carries the
-                    // reasoning. At and below 180/min it is the full-strength flash.
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Theme.recoveryYellow)
-                        .opacity(lit ? PulseTiming.flashOpacity(ratePerMinute: Double(rate)) : 0)
+                    // Two drawings, one number. At or below 180/min the square flashes, because a
+                    // flash is what a slow rhythm is matched against. Above it the flashes would fuse
+                    // into a shimmer — and a full-contrast strobe is the photosensitive case — so a
+                    // band travels round the square's edge once per pulse instead: same rate, read as
+                    // motion rather than as light.
+                    if travelling {
+                        Self.travellingBand(phase: phase)
+                    } else {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Theme.recoveryYellow)
+                            .opacity(lit ? 1 : 0)
+                    }
                 }
                 .frame(width: Self.squareSize, height: Self.squareSize)
                 // A hard switch at 3 Hz is a strobe; the short ease is what makes it a flash. Under
                 // Reduce Motion the same change is spread over a long fade.
                 .animation(
-                    reduceMotion ? .easeInOut(duration: 0.30) : .easeOut(duration: 0.05),
+                    // Only the flash eases; the travelling band is a position on the clock and
+                    // animating it would lag the rate it is meant to show.
+                    reduceMotion && !travelling ? .easeInOut(duration: 0.30) : nil,
                     value: lit)
         }
         .frame(width: Self.squareSize, height: Self.squareSize)
@@ -200,6 +212,31 @@ public struct PulseMetronomeView: View {
             .foregroundStyle(Theme.textMuted)
             .monospacedDigit()
         }
+    }
+
+    /// The band that runs round the square's edge, positioned by the phase.
+    ///
+    /// **A sliding trim window rather than a rotation**, and the difference is visible: a rectangle
+    /// turned about its centre sweeps its corners *outside* its own box, so the band left the square
+    /// at the diagonals. Sliding the window along the outline keeps it on the edge at every angle, and
+    /// a window that runs past the end is drawn as two pieces — the wrap is the one case a single
+    /// `trim` cannot express.
+    private static func travellingBand(phase: Double) -> some View {
+        let span = 0.18
+        let end = phase + span
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let stroke = StrokeStyle(lineWidth: 5, lineCap: .round)
+        return ZStack {
+            shape
+                .trim(from: phase, to: min(end, 1))
+                .stroke(Theme.recoveryYellow, style: stroke)
+            if end > 1 {
+                shape
+                    .trim(from: 0, to: end - 1)
+                    .stroke(Theme.recoveryYellow, style: stroke)
+            }
+        }
+        .padding(3)
     }
 
     private func setRate(_ newValue: Int) {

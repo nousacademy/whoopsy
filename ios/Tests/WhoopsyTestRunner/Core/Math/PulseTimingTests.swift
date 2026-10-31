@@ -47,27 +47,6 @@ enum PulseTimingTests {
                 + "band a flashing surface is usually kept out of, which is why the drawing fades above "
                 + "180 rather than switching (got \(PulseTiming.period(ratePerMinute: PulseTiming.maximumRate)))")
 
-        // ---- The photosensitivity ramp ----
-        //
-        // The ceiling is the owner's, and the mitigation is that the flash weakens as it quickens: full
-        // strength up to three flashes a second, then a linear fall to `minimumFlashOpacity` at 500.
-        // Asserted at both ends and in the middle, because a ramp that never left 1 would look exactly
-        // like a working one on a screenshot of a slow rate.
-        assertTest(
-            PulseTiming.flashOpacity(ratePerMinute: 0) == 1
-                && PulseTiming.flashOpacity(ratePerMinute: PulseTiming.fullContrastRate) == 1,
-            "The flash is at full strength up to 180/min, which is the last rate drawn as a hard switch")
-        assertTest(
-            PulseTiming.flashOpacity(ratePerMinute: PulseTiming.maximumRate)
-                == PulseTiming.minimumFlashOpacity,
-            "…and at the ceiling it is faded to the minimum rather than switching at full contrast "
-                + "(\(PulseTiming.flashOpacity(ratePerMinute: PulseTiming.maximumRate)))")
-        let ramp = [200.0, 300.0, 400.0, 500.0].map { PulseTiming.flashOpacity(ratePerMinute: $0) }
-        assertTest(
-            zip(ramp, ramp.dropFirst()).allSatisfy { $0 > $1 },
-            "…falling monotonically between them, so no rate is drawn stronger than a slower one "
-                + "(\(ramp))")
-
         // ---- The duty cycle, asserted as a window rather than as a colour ----
         //
         // `isLit` must be on for the first 40% of a period and off for the rest, at a rate whose
@@ -106,6 +85,29 @@ enum PulseTimingTests {
             abs(insidePeriod - 0.001) < 1e-9,
             "…and inside a period it advances by the elapsed fraction of that period, so the two "
                 + "sides of the wrap are the same clock read twice (\(insidePeriod))")
+
+        // ---- Where the drawing changes from a flash to a travelling band ----
+        //
+        // **The photosensitivity rule, and the reason the ceiling can be 500.** A white/yellow switch
+        // at eight a second is in the band that can trigger a seizure, so past three a second the
+        // square stops flashing and a band travels round its edge instead — same rate, no flash. The
+        // boundary is asserted from both sides, because an off-by-one that flashed at 500 would leave
+        // every other assertion here passing.
+        assertTest(
+            !PulseTiming.isTravelling(ratePerMinute: 0)
+                && !PulseTiming.isTravelling(ratePerMinute: 60)
+                && !PulseTiming.isTravelling(ratePerMinute: PulseTiming.flashingCeiling),
+            "At and below the flashing ceiling the square still flashes, which is the drawing a slow "
+                + "rhythm is matched against")
+        assertTest(
+            PulseTiming.isTravelling(ratePerMinute: PulseTiming.flashingCeiling + 1)
+                && PulseTiming.isTravelling(ratePerMinute: PulseTiming.maximumRate),
+            "…and one pulse a minute past it — and at the ceiling — it travels instead, so no rate the "
+                + "gauge can reach is drawn as a strobe")
+        assertTest(
+            PulseTiming.isLit(at: 0, ratePerMinute: PulseTiming.maximumRate),
+            "…though `isLit` still answers above the ceiling, because the travelling band is positioned "
+                + "from the same phase and the two must not disagree about where a period starts")
 
         // ---- The same rate in hertz ----
         //

@@ -16,23 +16,21 @@ public enum PulseTiming {
 
     /// The fastest rate the gauge offers, in pulses per minute.
     ///
-    /// 500 is eight and a third flashes a second — **inside the 3–30 Hz band a flashing surface is
-    /// normally kept out of** — and the owner asked for the range, so the control offers it. The
-    /// hazard is mitigated by `flashOpacity(ratePerMinute:)` rather than by a lower ceiling: above
-    /// `fullContrastRate` the square's colour change is progressively softened, so the top of the
-    /// gauge shimmers instead of strobing at full white-on-dark contrast. The gauge's tick labels read
-    /// this constant, so the control and the cap cannot disagree.
+    /// 500 is eight and a third a second — **inside the 3–30 Hz band a flashing surface is normally
+    /// kept out of** — and the owner asked for the range, so the control offers it. The hazard is
+    /// answered by changing the drawing rather than lowering the ceiling: past `flashingCeiling` the
+    /// square stops flashing and a band of light travels around its edge once per pulse, which still
+    /// shows the speed and has no flash in it at all. The gauge's tick labels read this constant, so
+    /// the control and the cap cannot disagree.
     public static let maximumRate: Double = 500
 
-    /// The fastest rate drawn at full contrast, in pulses per minute.
+    /// The fastest rate the square **flashes** at, in pulses per minute.
     ///
-    /// Three flashes a second. Below this the square goes white to yellow at full strength; above it
-    /// the yellow is faded towards the white, reaching `minimumFlashOpacity` at `maximumRate`.
-    public static let fullContrastRate: Double = 180
-
-    /// How faint the flash is at `maximumRate`. Still visible as a change, and a fraction of the
-    /// luminance swing the full-contrast flash makes.
-    public static let minimumFlashOpacity: Double = 0.35
+    /// Three flashes a second, and the edge of what a person can resolve as separate events. At or
+    /// below it the square goes white to yellow; above it the flashing would fuse into a shimmer, so
+    /// the drawing changes to the travelling band instead — the owner's own call, *"spin instead of
+    /// flash"*, and the reason the range can be 500 without a strobe in it.
+    public static let flashingCeiling: Double = 180
 
     /// The share of each period the square is lit for.
     ///
@@ -76,18 +74,13 @@ public enum PulseTiming {
         max(ratePerMinute, 0) / 60
     }
 
-    /// How strongly the yellow is drawn at `ratePerMinute`.
+    /// Whether the square is drawn as a travelling band rather than a flash.
     ///
-    /// `1` up to `fullContrastRate`, then falling linearly to `minimumFlashOpacity` at
-    /// `maximumRate`. **This is the photosensitivity mitigation, and it is the reason the ceiling can
-    /// be 500 at all**: a full-contrast white/yellow switch at eight flashes a second is in the band
-    /// that can trigger a seizure, while the same pattern at a third of the luminance change is a
-    /// shimmer. The rate the owner reads is unaffected — only the strength of the drawing is.
-    public static func flashOpacity(ratePerMinute: Double) -> Double {
-        guard ratePerMinute > fullContrastRate else { return 1 }
-        let span = maximumRate - fullContrastRate
-        guard span > 0 else { return minimumFlashOpacity }
-        let fraction = min((ratePerMinute - fullContrastRate) / span, 1)
-        return 1 - fraction * (1 - minimumFlashOpacity)
+    /// **This is the whole of the photosensitivity mitigation, and it is the reason the ceiling can be
+    /// 500 at all.** A white/yellow switch at eight a second is in the band that can trigger a
+    /// seizure; the same rate drawn as a band going round an edge has no flash in it, and at 8 turns a
+    /// second it still reads unmistakably as *fast*.
+    public static func isTravelling(ratePerMinute: Double) -> Bool {
+        ratePerMinute > flashingCeiling
     }
 }
