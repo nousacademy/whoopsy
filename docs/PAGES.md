@@ -119,7 +119,10 @@ static currents dim while one is moving, the constriction or dantian ring the po
 the root on its circumference, one with the brow and the sacral, one with the throat and the solar
 plexus — each drawn as an arc with a gap and rotated, because a closed circle shows nothing when it
 turns, in alternating directions and at different rates so the set reads as currents rather than one
-spinner. Selecting either end of a pair lights that pair's circle and speeds it up. The column also
+spinner. **The outermost ring is two halves turning against each other** — the right half clockwise and
+the left counter-clockwise, so both sides travel down towards the root, on the owner's instruction
+(*"make right side go downward on its side and left side go downward on its side"*); a single
+direction for the whole ring sent both sides the same way, which is not what the drawing shows. Selecting either end of a pair lights that pair's circle and speeds it up. The column also
 opens out of the body at both poles as a shallow whirl of widening rings, cyan over the head and green
 at the soles. **The pulsing circles that used to leave a selected point were removed on the owner's
 instruction** (*"you can remove those tiny pulsing circles"*), which left the turning rings as the

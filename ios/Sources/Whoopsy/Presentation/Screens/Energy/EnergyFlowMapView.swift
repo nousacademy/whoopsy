@@ -204,16 +204,35 @@ public struct EnergyFlowMapView: View {
                 ForEach(Array(pairs.enumerated()), id: \.offset) { index, pair in
                     let diameter = (pair.bottom - pair.top) * Mark.height
                     let lit = selected == pair.numbers.0 || selected == pair.numbers.1
-                    let direction: Double = index.isMultiple(of: 2) ? 1 : -1
+                    let colour = lit ? Theme.textPrimary.opacity(0.6) : Theme.textSecondary.opacity(0.24)
+                    let lineWidth: CGFloat = lit ? 1.6 : 1.0
+                    let centre = Mark.height * (pair.top + pair.bottom) / 2
                     let speed = (18.0 + Double(index) * 7.0) * (lit ? 2.4 : 1)
-                    Circle()
-                        .trim(from: 0, to: lit ? 0.84 : 0.70)
-                        .stroke(
-                            lit ? Theme.textPrimary.opacity(0.6) : Theme.textSecondary.opacity(0.24),
-                            style: StrokeStyle(lineWidth: lit ? 1.6 : 1.0, lineCap: .round))
-                        .frame(width: diameter, height: diameter)
-                        .rotationEffect(.degrees(direction * seconds * speed))
-                        .position(x: width / 2, y: Mark.height * (pair.top + pair.bottom) / 2)
+
+                    if index == 0 {
+                        // **The outermost ring is two halves turning against each other**, on the
+                        // owner's instruction (*"make right side go downward on its side and left side
+                        // go downward on its side"*): the right half turns clockwise and the left
+                        // counter-clockwise, so both sides travel down towards the root while the ring
+                        // as a whole keeps its shape. One direction for the whole ring made both sides
+                        // travel the same way, which is not what the picture shows.
+                        ForEach([(0.0, 0.44, 1.0), (0.5, 0.94, -1.0)], id: \.0) { half in
+                            Circle()
+                                .trim(from: half.0, to: half.1)
+                                .stroke(colour, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                                .frame(width: diameter, height: diameter)
+                                .rotationEffect(.degrees(half.2 * seconds * speed))
+                                .position(x: width / 2, y: centre)
+                        }
+                    } else {
+                        let direction: Double = index.isMultiple(of: 2) ? 1 : -1
+                        Circle()
+                            .trim(from: 0, to: lit ? 0.84 : 0.70)
+                            .stroke(colour, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                            .frame(width: diameter, height: diameter)
+                            .rotationEffect(.degrees(direction * seconds * speed))
+                            .position(x: width / 2, y: centre)
+                    }
                 }
             }
         }
