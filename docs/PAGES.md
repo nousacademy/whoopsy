@@ -115,11 +115,13 @@ and sets the current that vortex sits on moving, in that current's own direction
 current runs down towards the heart for the upper points, the rising one runs up for the lower, the
 heart takes both at once, and the sacral draws in from the palms and the root from the soles. The
 static currents dim while one is moving, the constriction or dantian ring the point sits on lights up,
-**The ladder is ringed as the reference rings it, and the rings turn**: one circle with the crown and
-the root on its circumference, one with the brow and the sacral, one with the throat and the solar
-plexus — each drawn as an arc with a gap and rotated, because a closed circle shows nothing when it
-turns, in alternating directions and at different rates so the set reads as currents rather than one
-spinner. **The outermost ring is two halves turning against each other** — the right half clockwise and
+**The ladder is ringed as the reference rings it**: one circle with the crown and the root on its
+circumference, one with the brow and the sacral, one with the throat and the solar plexus. **At rest
+all three are plain faint circles and nothing moves**; tapping a number activates the ring it sits on
+— that one becomes an arc with a gap and turns, because a closed circle shows nothing when it rotates,
+in alternating directions and at different rates so the set reads as currents rather than one spinner.
+The owner's instruction was *"i only want the big ring activated when the number like 1 is clicked"*,
+so the motion is tied to the selection and the schedule is paused when nothing is. **The outermost ring is two halves turning against each other** — the right half clockwise and
 the left counter-clockwise, so both sides travel down towards the root, on the owner's instruction
 (*"make right side go downward on its side and left side go downward on its side"*); a single
 direction for the whole ring sent both sides the same way, which is not what the drawing shows. Selecting either end of a pair lights that pair's circle and speeds it up. The column also

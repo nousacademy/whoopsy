@@ -179,20 +179,23 @@ public struct EnergyFlowMapView: View {
     /// A pair is drawn as a true circle, not an ellipse fitted to the body, because the two points it
     /// joins are the only thing it is measured against.
     ///
-    /// **They turn.** A closed circle shows nothing when it rotates, so each is drawn as an arc with a
-    /// gap in it and turned about its own centre — the gap is the only thing that makes the motion
-    /// visible, and it is what makes the ring read as a vortex rather than a hoop. The rings turn in
-    /// alternating directions and at different rates, because three rings turning as one rigid body
-    /// would read as a single spinner rather than a set of currents.
+    /// **The selected pair's ring turns, and the others do not.** A still ring is drawn as a plain
+    /// circle; the pair whose end has been tapped is drawn as an arc with a gap and turned about its
+    /// own centre, because a closed circle shows nothing when it rotates and the gap is the only thing
+    /// that makes the motion visible. That is the "activated" the owner asked for (*"i only want the
+    /// big ring activated when the number like 1 is clicked"*) — the map's shape is always there, and
+    /// the motion waits for a tap. The rings turn in alternating directions and at different rates,
+    /// because turning as one rigid body would read as a single spinner rather than a set of currents.
     ///
-    /// The phase is the clock, so the motion is continuous and there is no state to start or stop.
+    /// The phase is the clock and the schedule is paused while nothing is selected, so there is no
+    /// state to start or stop and no work being done when the card is at rest.
     private func linkingRings(width: CGFloat) -> some View {
         let pairs: [(top: CGFloat, bottom: CGFloat, numbers: (Int, Int))] = [
             (Self.vortexY[0], Self.vortexY[6], (1, 7)),
             (Self.vortexY[1], Self.vortexY[5], (2, 6)),
             (Self.vortexY[2], Self.vortexY[4], (3, 5)),
         ]
-        return TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+        return TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: selected == nil)) { context in
             // **Wrapped to a minute, and that is not tidiness.** The raw interval since the reference
             // date is ~7.8e8, and multiplying it by an angular speed puts a ~1e10-degree value into
             // `rotationEffect`, where the mantissa cannot resolve a fraction of a degree — the rings
@@ -204,22 +207,30 @@ public struct EnergyFlowMapView: View {
                 ForEach(Array(pairs.enumerated()), id: \.offset) { index, pair in
                     let diameter = (pair.bottom - pair.top) * Mark.height
                     let lit = selected == pair.numbers.0 || selected == pair.numbers.1
-                    let colour = lit ? Theme.textPrimary.opacity(0.6) : Theme.textSecondary.opacity(0.24)
-                    let lineWidth: CGFloat = lit ? 1.6 : 1.0
                     let centre = Mark.height * (pair.top + pair.bottom) / 2
-                    let speed = (18.0 + Double(index) * 7.0) * (lit ? 2.4 : 1)
+                    let speed = (18.0 + Double(index) * 7.0) * 2.4
 
-                    if index == 0 {
+                    if !lit {
+                        // **A ring that is not the selected pair's does not turn** — on the owner's
+                        // instruction (*"i only want the big ring activated when the number like 1 is
+                        // clicked"*). It is still drawn, as a plain circle, because the ladder's shape
+                        // is part of the map; only the motion waits for a tap. `paused:` above is what
+                        // stops the clock doing any work when nothing is selected.
+                        Circle()
+                            .strokeBorder(Theme.textSecondary.opacity(0.20), lineWidth: 0.9)
+                            .frame(width: diameter, height: diameter)
+                            .position(x: width / 2, y: centre)
+                    } else if index == 0 {
                         // **The outermost ring is two halves turning against each other**, on the
                         // owner's instruction (*"make right side go downward on its side and left side
                         // go downward on its side"*): the right half turns clockwise and the left
                         // counter-clockwise, so both sides travel down towards the root while the ring
-                        // as a whole keeps its shape. One direction for the whole ring made both sides
-                        // travel the same way, which is not what the picture shows.
+                        // as a whole keeps its shape.
                         ForEach([(0.0, 0.44, 1.0), (0.5, 0.94, -1.0)], id: \.0) { half in
                             Circle()
                                 .trim(from: half.0, to: half.1)
-                                .stroke(colour, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                                .stroke(Theme.textPrimary.opacity(0.6),
+                                        style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
                                 .frame(width: diameter, height: diameter)
                                 .rotationEffect(.degrees(half.2 * seconds * speed))
                                 .position(x: width / 2, y: centre)
@@ -227,8 +238,9 @@ public struct EnergyFlowMapView: View {
                     } else {
                         let direction: Double = index.isMultiple(of: 2) ? 1 : -1
                         Circle()
-                            .trim(from: 0, to: lit ? 0.84 : 0.70)
-                            .stroke(colour, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                            .trim(from: 0, to: 0.84)
+                            .stroke(Theme.textPrimary.opacity(0.6),
+                                    style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
                             .frame(width: diameter, height: diameter)
                             .rotationEffect(.degrees(direction * seconds * speed))
                             .position(x: width / 2, y: centre)
