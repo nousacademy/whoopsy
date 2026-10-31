@@ -272,7 +272,7 @@ Core          (HRV/Strain/Stress math, logging, extensions)
 - **A night's evidence is rotated out by the drain that produced it, and the stillness spine's input was never validated — so the sleep decision has its own file and its own probe.**
 - **A drained record's timestamp is verified as a field and unverified as a value, and the failure files history onto a wrong day rather than onto no day.**
 - **A protocol default implementation beats the conforming type's own method through an existential, silently.**
-- **A stored night records the rule that classified it and the input it saw, and is re-read rather than re-analysed.**
+- **A stored night records the rule that classified it and the input it saw, and is re-read rather than re-analysed — unless it is too short to be a night, in which case it is provisional.**
 - **An estimate about the person is read from the last measured day, never from the day on screen.**
 - **A page that recomputes on open must draw the stored row first, and bound how often it recomputes.**
 - **A zone row's time comes from exactly one producer, and the page's grey average is measured samples only.**

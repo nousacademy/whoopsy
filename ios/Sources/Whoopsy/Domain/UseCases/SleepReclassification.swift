@@ -30,6 +30,24 @@ public enum SleepReclassification {
     /// growing into. Anything later is wake time.
     public static let extensionGraceSeconds: TimeInterval = 600
 
+    /// A stored night shorter than this is **provisional**, whatever its wake verdict says.
+    ///
+    /// **Measured 2026-10-31.** The phone classified a night at 08:06 from a window whose samples
+    /// stopped at 00:06 — an hour of stillness before bed, closed by the movement of getting into it.
+    /// The analyzer was right about what it could see, and the row it wrote said *trimmed at a wake*,
+    /// which is the verdict that makes a night final. When the drain an hour later delivered the real
+    /// seven-hour sleep, nothing re-ran: a night ending at a movement cannot grow, and the day already
+    /// had its one night. The user was left with `10:48pm → 11:49pm`.
+    ///
+    /// The fix is a floor rather than a new verdict: **a night too short to be a night is not final**.
+    /// When input has arrived past its grace the day is re-classified, and the analyzer's own rule —
+    /// the first qualifying run opens the night, the last closes it — then answers with the real
+    /// night. It converges in one pass: that night is long, so this branch stops firing.
+    ///
+    /// Two hours, because the app already has a separate table for naps and a night under this is a
+    /// mis-detection far more often than it is a short night.
+    public static let provisionalNightSeconds: TimeInterval = 2 * 3600
+
     /// `nightEnd` is the stored night's own end, and it is what stops the morning churn.
     ///
     /// **Measured 2026-10-27.** The edge was the newest sample anywhere in the 21:00 → 10:00 read
@@ -46,12 +64,21 @@ public enum SleepReclassification {
         watermark: Date?,
         inputEdge: Date?,
         nightEnd: Date? = nil,
-        endedAtDataEdge: Bool? = nil
+        endedAtDataEdge: Bool? = nil,
+        nightStart: Date? = nil
     ) -> Bool {
         guard let watermark else { return true }
         guard let inputEdge else { return false }
         guard inputEdge > watermark else { return false }
         guard let nightEnd else { return true }
+        // **A night too short to be one is provisional**, and this is the branch that reopens it. It
+        // has to sit above the switch: `some(false)` is the verdict that says *final*, and the whole
+        // failure this rule answers was a short night carrying exactly that verdict.
+        if let nightStart,
+           nightEnd.timeIntervalSince(nightStart) < provisionalNightSeconds,
+           inputEdge > nightEnd.addingTimeInterval(extensionGraceSeconds) {
+            return true
+        }
         // **The night's own record of how it ended decides, and nothing has to be inferred.**
         switch endedAtDataEdge {
         case .some(true):

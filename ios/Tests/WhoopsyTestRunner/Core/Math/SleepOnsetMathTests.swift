@@ -484,5 +484,45 @@ enum SleepOnsetMathTests {
             "The **nearest** later epoch decides, not the farthest: a live tail hours away does not "
                 + "outvote evidence that resumed a minute after the end, and the input is a set rather "
                 + "than a sequence, so its order changes nothing")
+
+        // ── A night too short to be a night is provisional ──────────────────────────────────────────
+        //
+        // Measured 2026-10-31: an hour of stillness before bed, closed by the movement of getting into
+        // it, was stored as the night — and because it was trimmed at a wake the rule made it final,
+        // so the seven hours the next drain delivered never re-ran. The floor below is the fix, and
+        // these are the assertions that fail if it moves: the same wake verdict and the same input
+        // edge must answer differently for a short night than for a long one.
+        let midnight = Date(timeIntervalSince1970: 1_790_000_000)
+        let shortStart = midnight
+        let shortEnd = midnight.addingTimeInterval(61 * 60)
+        let longStart = midnight
+        let longEnd = midnight.addingTimeInterval(7 * 3600)
+        // The watermark is the moment the fragment was written, the edge is the morning drain's input.
+        let writtenAt = shortEnd.addingTimeInterval(4 * 3600)
+        let laterInput = shortEnd.addingTimeInterval(8 * 3600)
+
+        assertTest(
+            SleepReclassification.isOwed(
+                watermark: writtenAt, inputEdge: laterInput, nightEnd: shortEnd,
+                endedAtDataEdge: false, nightStart: shortStart),
+            "A 61-minute night trimmed at a wake is **not final**: input arriving past its grace "
+                + "reopens the day, which is what the morning drain that found the real sleep had to "
+                + "be able to do")
+        assertTest(
+            !SleepReclassification.isOwed(
+                watermark: writtenAt, inputEdge: laterInput, nightEnd: longEnd,
+                endedAtDataEdge: false, nightStart: longStart),
+            "…while a seven-hour night with the same verdict and the same later input stays final, so "
+                + "the morning churn the watermark rule exists to stop does not come back")
+        assertTest(
+            SleepReclassification.provisionalNightSeconds == 2 * 3600,
+            "The floor is two hours — a night under it is a mis-detection far more often than a short "
+                + "night, and the app already has a table for naps")
+        assertTest(
+            !SleepReclassification.isOwed(
+                watermark: laterInput, inputEdge: laterInput, nightEnd: shortEnd,
+                endedAtDataEdge: false, nightStart: shortStart),
+            "…and a short night with no new input is still not re-run: the provisional rule widens "
+                + "*what counts as unfinished*, not *when the analyzer runs*")
     }
 }

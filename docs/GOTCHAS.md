@@ -1022,3 +1022,23 @@ keep-alive, so discovery re-runs `didDiscoverCharacteristicsFor` and the connect
 measured consequence here was a reconnect on 2026-10-24 that fired the auto-drain and drained nothing,
 because the request never left — the handshake that arms it had been skipped.
 
+
+## A night too short to be a night is provisional
+
+**Measured 2026-10-31.** A foreground at 08:06 classified a night from a window whose samples stopped
+at 00:06 — an hour of stillness before bed, closed by the movement of getting into it. The analyzer was
+right about what it could see; the row it wrote was `10:48pm → 11:49pm` and said *trimmed at a wake*,
+which is the verdict that makes a night final. When the drain an hour later delivered the real
+seven-hour sleep, nothing re-ran: a night ending at a movement cannot grow, and the day already had its
+one night.
+
+The rule that replaced it is a floor, not a new verdict: `SleepReclassification.provisionalNightSeconds`
+(two hours). A stored night under it is owed a re-classification whenever input has arrived past its
+grace, whatever the wake verdict says, and the analyzer's own rule — first qualifying run opens, last
+closes — then answers with the real night. It converges in one pass, because that night is long and
+this branch stops firing. The morning-churn rule is untouched: a long night trimmed at a wake is still
+final.
+
+**Residual:** the re-classified night opens at the pre-bed stillness (22:48), so its onset is early by
+about an hour on a night whose owner sat still before bed. That is the onset detector's own limit, not
+this rule's, and it is a separate question from the one this gotcha answers.

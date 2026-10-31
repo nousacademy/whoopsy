@@ -358,6 +358,10 @@ write carries the rating **and the offline-map region** — the field `applying(
 this is the assertion that fails if it is dropped again — along with the measurements and the name;
 re-writing the value already held is a no-op; and a value above the scale is clamped on the write.
 
+**§13 also pins the provisional-night floor.** A 61-minute night trimmed at a wake is reopened by input
+past its grace, while a seven-hour night with the same verdict and the same later input stays final —
+the pair is the assertion, because either one alone passes a rule that ignores duration entirely.
+
 ### §26 — the pulse metronome's timing
 
 **A new section, appended; nothing renumbered.** It exists because the rule it asserts cannot be

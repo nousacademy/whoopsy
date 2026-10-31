@@ -148,7 +148,7 @@ public actor RefreshNightsUseCase {
         let edge = try? await analyze.inputEdge(for: day)
         let owed = SleepReclassification.isOwed(
             watermark: watermark, inputEdge: edge, nightEnd: stored.endTime,
-            endedAtDataEdge: stored.endedAtDataEdge)
+            endedAtDataEdge: stored.endedAtDataEdge, nightStart: stored.startTime)
         // **The three instants, for the capture that has to explain a skip.** A night left as a
         // fragment is diagnosed from exactly this line: a stored end far behind a watermark that is
         // itself far behind the edge says the row saw data the night did not include, and the
