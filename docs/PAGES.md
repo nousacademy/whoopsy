@@ -107,11 +107,13 @@ leaving through the palms, the lower dantian below the navel drawn as the store,
 constrictions — throat, heart, hips — the rising channel passes through. The sources are a chakra flow
 chart, a qigong instruction for drawing earth qi in through the hands and feet, and a research figure
 of where emotions are felt in the body; the last contributes the regions rather than a flow, which is
-why the torso is drawn as one. **Nothing on it is measured and nothing on it moves with the day**, and
-the card's caption says so — the ring above is the page's only figure, and a visualisation of a number
-without a producer is the fabrication class this repo treats as a defect. The numbered badges follow
-the legend's order rather than the page's geometry, because a badge that disagrees with its legend is
-the same fault one layer over. The caption now names
+why the torso is drawn as one. **Nothing on it is measured and nothing on it moves with the day.** The card says so in one line
+rather than a paragraph — the paragraph was removed on the user's instruction the same evening — and
+the reading is behind the numbers: **tapping a badge opens that region's paragraph under the figure**,
+and tapping it again or pressing Close puts the hint back. A list of six rows under the drawing was
+tried first and made the card louder than the map it is about. The badges are numbered in the order
+the flow runs rather than down the page, because a badge that disagrees with its own text is the same
+fault as a number with no producer, one layer over. The caption now names
   **Sentry**, because a disclosure that says "a diagnostics key" is the layer rule's letter at the
   cost of its point: a person deciding whether to send their strap's metadata to a third party is
   entitled to know who receives it.

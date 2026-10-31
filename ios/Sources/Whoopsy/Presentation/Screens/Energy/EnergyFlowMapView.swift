@@ -62,6 +62,9 @@ public struct EnergyFlowMapView: View {
         static let feet: CGFloat = 0.980
     }
 
+    /// The region whose paragraph is showing, or `nil` for none.
+    @State private var selected: Int?
+
     public init() {}
 
     public var body: some View {
@@ -73,17 +76,9 @@ public struct EnergyFlowMapView: View {
 
             legend
 
-            Text(
-                "A map of three traditions, not a reading: a chakra flow chart, a qigong instruction "
-                + "for drawing earth qi through the hands and feet into the lower dantian, and a "
-                + "research figure of where emotions are felt in the body. Together they say where "
-                + "energy is said to enter, gather and leave — the crown, the heart, the lower belly, "
-                + "the palms and the soles. Nothing on it is measured, and nothing on it changes with "
-                + "your day. This tab is a study of its own: it reads none of the app's records and "
-                + "writes none, so nothing here can move a figure elsewhere.")
-                .font(.system(size: 11))
+            Text("A traditional map, not a measurement.")
+                .font(.system(size: 10))
                 .foregroundStyle(Theme.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard()
@@ -300,39 +295,106 @@ public struct EnergyFlowMapView: View {
     }
 
     private func badge(_ number: Int, x: CGFloat, y: CGFloat) -> some View {
-        Text("\(number)")
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(Theme.backgroundDark)
-            .frame(width: 15, height: 15)
-            .background(Circle().fill(Theme.textSecondary))
-            .position(x: x, y: y)
+        Button {
+            selected = selected == number ? nil : number
+        } label: {
+            Text("\(number)")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(selected == number ? Theme.textPrimary : Theme.backgroundDark)
+                .frame(width: 15, height: 15)
+                .background(
+                    Circle().fill(selected == number ? Theme.strainPrimary : Theme.textSecondary))
+                .overlay(
+                    Circle().strokeBorder(
+                        Theme.textPrimary.opacity(selected == number ? 0.9 : 0),
+                        lineWidth: 1))
+                // A 15-point circle is well under a fingertip; the content shape does not change the
+                // drawing and gives the tap somewhere to land.
+                .frame(width: 34, height: 34)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("\(number). \(Region.all[number - 1].title)"))
+        .position(x: x, y: y)
     }
 
     // MARK: - The legend
 
-    /// The same six numbers, in the order the flow runs. Written here so the drawing carries no
-    /// sentence too small to read.
+    /// **The information is behind the numbers rather than under the drawing.** Each badge is a
+    /// button, and tapping one replaces the list with that region's paragraph — so the card is the
+    /// figure plus a line, and the reading appears when it is asked for. Tapping the same number again,
+    /// or the close row, puts the list back.
+    ///
+    /// A list of six rows was tried first and it was louder than the drawing: the card's subject is
+    /// the map, and six sentences under it competed with it for the eye.
     private var legend: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            legendRow(1, "Divine energy enters through the crown and travels down the centre.")
-            legendRow(2, "Earth energy enters through the soles and rises to the root.")
-            legendRow(3, "At the heart the two are said to meet and blend.")
-            legendRow(4, "The rising channel is drawn through three constrictions — throat, heart, hips.")
-            legendRow(5, "The blend leaves through the palms.")
-            legendRow(6, "What is drawn in is stored in the lower dantian, below the navel.")
+        VStack(alignment: .leading, spacing: 6) {
+            if let selected, let region = Region.all.first(where: { $0.number == selected }) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\(region.number)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.backgroundDark)
+                        .frame(width: 15, height: 15)
+                        .background(Circle().fill(Theme.textSecondary))
+                    Text(region.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Spacer(minLength: 8)
+                    Button("Close") { self.selected = nil }
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                        .buttonStyle(.plain)
+                }
+                Text(region.detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Tap a number on the body to read what it marks.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textMuted)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeOut(duration: 0.15), value: selected)
     }
 
-    private func legendRow(_ number: Int, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Text("\(number)")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(Theme.textSecondary)
-                .frame(width: 12, alignment: .leading)
-            Text(text)
-                .font(.system(size: 10))
-                .foregroundStyle(Theme.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+    /// One region of the map: the number on the drawing, its name, its one-line legend entry and the
+    /// paragraph a tap reveals.
+    private struct Region {
+        let number: Int
+        let title: String
+        let detail: String
+
+        static let all: [Region] = [
+            Region(
+                number: 1, title: "Crown",
+                detail: "The uppermost opening. Energy from above is drawn in at the top of the head "
+                    + "and carried down the central channel — the highest of the three centres in the "
+                    + "qigong framing, above the brows."),
+            Region(
+                number: 2, title: "Soles",
+                detail: "The grounding half. The soles draw from below while the hands draw from the "
+                    + "sides, and in the qigong instruction both are absorbed and carried up to be "
+                    + "stored below the navel."),
+            Region(
+                number: 3, title: "Heart",
+                detail: "Where the two are said to meet. The rising and descending currents combine "
+                    + "here, and everything above and below is held to pass through the junction."),
+            Region(
+                number: 4, title: "Rising channel",
+                detail: "The channel is drawn through three constrictions — throat, heart and hips — "
+                    + "the narrowings a rising current is said to have to move past."),
+            Region(
+                number: 5, title: "Palms",
+                detail: "The outlet. What gathered at the heart is said to leave through the hands, "
+                    + "which is why the figure is drawn with the palms open rather than at its sides."),
+            Region(
+                number: 6, title: "Lower centre",
+                detail: "The store. Everything drawn in through the hands and feet is gathered below "
+                    + "the navel — the lower of the three centres, and the one the practice is said to "
+                    + "build."),
+        ]
     }
+
 }
