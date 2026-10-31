@@ -105,9 +105,12 @@ public struct EnergyFlowMapView: View {
                 .frame(width: width, height: Mark.height)
 
             torsoWashes(width: width)
+            linkingRings(width: width)
             centralColumn(width: width)
             divineFlow(width: width)
             earthFlow(width: width)
+            crownWhirl(width: width)
+            rootWhirl(width: width)
             heartMerge(width: width)
             dantian(width: width)
             constrictions(width: width)
@@ -163,6 +166,69 @@ public struct EnergyFlowMapView: View {
             path.addLine(to: CGPoint(x: width / 2, y: Mark.height * Mark.root))
         }
         .stroke(Theme.textMuted.opacity(0.45 * staticFlow), style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+    }
+
+    /// **The ring that joins the column's ends, and the two inside it.**
+    ///
+    /// The reference draws the ladder inside a circle, and the ends of the ladder — the seventh
+    /// vortex and the first — on its rim; the next pair in sits on a smaller one, and so on. So the
+    /// drawing carries one circle with crown and root on its circumference, one with brow and sacral,
+    /// one with throat and solar plexus. Selecting either end of a pair lights that pair's circle,
+    /// which is what makes "connected" a thing the card shows rather than a thing its prose claims.
+    ///
+    /// A pair is drawn as a true circle, not an ellipse fitted to the body, because the two points it
+    /// joins are the only thing it is measured against.
+    private func linkingRings(width: CGFloat) -> some View {
+        let pairs: [(top: CGFloat, bottom: CGFloat, numbers: (Int, Int))] = [
+            (Self.vortexY[0], Self.vortexY[6], (1, 7)),
+            (Self.vortexY[1], Self.vortexY[5], (2, 6)),
+            (Self.vortexY[2], Self.vortexY[4], (3, 5)),
+        ]
+        return ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
+            let diameter = (pair.bottom - pair.top) * Mark.height
+            let lit = selected == pair.numbers.0 || selected == pair.numbers.1
+            Circle()
+                .strokeBorder(
+                    lit ? Theme.textPrimary.opacity(0.55) : Theme.textSecondary.opacity(0.15 * staticFlow),
+                    lineWidth: lit ? 1.3 : 0.8)
+                .frame(width: diameter, height: diameter)
+                .position(x: width / 2, y: Mark.height * (pair.top + pair.bottom) / 2)
+        }
+    }
+
+    /// **Where the column leaves the body at the top**: the crown's vortex opening, drawn as a shallow
+    /// whirl of widening rings over the head. Three, because one ellipse reads as a hat and a stack
+    /// reads as something turning.
+    private func crownWhirl(width: CGFloat) -> some View {
+        let lit = selected == 1
+        return whirl(
+            width: width, centre: 0.055, colour: Theme.livePulseCyan,
+            specs: [(0.30, 0.06), (0.46, 0.10), (0.64, 0.14)],
+            boost: lit ? 0.55 : 0)
+    }
+
+    /// **And at the bottom**: the same whirl at the soles, where the earth current is drawn entering —
+    /// so the column is open at both ends rather than stopping at the ankles.
+    private func rootWhirl(width: CGFloat) -> some View {
+        let lit = selected == 7
+        return whirl(
+            width: width, centre: 0.95, colour: Theme.recoveryGreen,
+            specs: [(0.30, 0.06), (0.46, 0.10), (0.64, 0.14)],
+            boost: lit ? 0.55 : 0)
+    }
+
+    private func whirl(
+        width: CGFloat, centre: CGFloat, colour: Color,
+        specs: [(width: CGFloat, height: CGFloat)], boost: Double
+    ) -> some View {
+        ForEach(Array(specs.enumerated()), id: \.offset) { index, spec in
+            Ellipse()
+                .strokeBorder(
+                    colour.opacity((0.50 * pow(0.72, Double(index)) * staticFlow) + boost),
+                    lineWidth: 0.9)
+                .frame(width: width * spec.width, height: Mark.height * spec.height)
+                .position(x: width / 2, y: Mark.height * centre)
+        }
     }
 
     /// Divine energy: down through the crown, along the column, gathering at the heart.
@@ -326,8 +392,8 @@ public struct EnergyFlowMapView: View {
                     ForEach([0.0, 0.5], id: \.self) { offset in
                         let r = (ripple + offset).truncatingRemainder(dividingBy: 1)
                         Circle()
-                            .strokeBorder(colour.opacity(0.85 * (1 - r)), lineWidth: 1.3)
-                            .frame(width: 12 + r * 34, height: 12 + r * 34)
+                            .strokeBorder(colour.opacity(0.85 * (1 - r)), lineWidth: 1.6)
+                            .frame(width: 24 + r * 46, height: 24 + r * 46)
                             .position(x: width / 2, y: Mark.height * Self.vortexY[selected - 1])
                     }
                 }
@@ -395,7 +461,7 @@ public struct EnergyFlowMapView: View {
         ForEach(Array(Self.vortexY.enumerated()), id: \.offset) { index, fraction in
             Circle()
                 .fill(Self.vortexColors[index])
-                .frame(width: index == 3 ? 9 : 6.5, height: index == 3 ? 9 : 6.5)
+                .frame(width: index == 3 ? 13 : 8.5, height: index == 3 ? 13 : 8.5)
                 .overlay(
                     Circle().strokeBorder(Theme.textPrimary.opacity(selected == index + 1 ? 0.95 : 0), lineWidth: 1))
                 .position(x: width / 2, y: Mark.height * fraction)
