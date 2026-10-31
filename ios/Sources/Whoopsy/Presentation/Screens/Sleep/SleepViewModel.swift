@@ -267,7 +267,7 @@ import SwiftUI
     ///
     /// A current-version row with no watermark cannot be produced by this build; it is treated as
     /// stale rather than trusted, the conservative direction for a night that is about to be read.
-    private func shouldReclassify(_ stored: SleepSession?, on date: Date) async -> Bool {
+    private func shouldReclassify(_ stored: SleepSession?, on date: Date, force: Bool = false) async -> Bool {
         if stored?.hasWhoopSleepNeed == true { return false }
         guard let stored else { return true }
         guard stored.algorithm == SleepAlgorithm.current else { return true }
@@ -275,9 +275,28 @@ import SwiftUI
         // The one read, paid only on the path that can still say "no": a night of the current
         // version whose row already covers everything the analyzer can see is answered from storage.
         let edge = try? await analyze.inputEdge(for: date)
+        // **A pull-down is the reader saying *look again*, and the imported rule is above it** — the
+        // guard at the top of this function runs before `isOwed` is asked anything.
         return SleepReclassification.isOwed(
             watermark: watermark, inputEdge: edge, nightEnd: stored.endTime,
-            endedAtDataEdge: stored.endedAtDataEdge)
+            endedAtDataEdge: stored.endedAtDataEdge, nightStart: stored.startTime, force: force)
+    }
+
+    /// Re-classify the night this page is on, **bypassing the freshness gate** — what a pull-down means.
+    ///
+    /// **The gate answers "has new input arrived"; it cannot answer "is the stored night right".** The
+    /// case that made this control necessary is the one measured 2026-10-31: an hour of stillness
+    /// before bed stored as the whole night, and a verdict that made it final, so no foreground would
+    /// ever look again. `execute` is unconditional, so this recomputes from whatever the phone holds
+    /// now, and the page then re-reads the row it wrote — the same shape as
+    /// `RecoveryViewModel.recalculate()`, and the same reason it exists on both pages.
+    ///
+    /// A past day still reloads; only today is re-classified, because the analyzer's window is the
+    /// night that ended this morning and running it over a night from last week would answer with the
+    /// wrong night rather than with that day's.
+    public func recalculate() async {
+        guard let day = loadedDay else { return }
+        await load(for: day, force: true)
     }
 
     /// Writes the night's two bounds and re-reads the page from the row that was saved.
@@ -318,7 +337,7 @@ import SwiftUI
         return true
     }
 
-    public func load(for date: Date) async {
+    public func load(for date: Date, force: Bool = false) async {
         let started = Date()
         var reclassified = false
         let day = date.startOfDay
@@ -362,7 +381,7 @@ import SwiftUI
             // the old code then deleted the row, taking Home's ring and the page's whole timeline
             // with it until the next night. The deletion survives only for the one case that earns
             // it: a stored row whose algorithm no longer exists here.
-            if Calendar.current.isDateInToday(date), await shouldReclassify(stored, on: date) {
+            if Calendar.current.isDateInToday(date), await shouldReclassify(stored, on: date, force: force) {
                 reclassified = true
                 let provisional = stored
                 let analysisStarted = Date()

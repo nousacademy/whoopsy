@@ -65,9 +65,16 @@ public enum SleepReclassification {
         inputEdge: Date?,
         nightEnd: Date? = nil,
         endedAtDataEdge: Bool? = nil,
-        nightStart: Date? = nil
+        nightStart: Date? = nil,
+        force: Bool = false
     ) -> Bool {
         guard let watermark else { return true }
+        // **A forced run is the reader asking for a recomputation, not a claim about input.** It sits
+        // above the edge guard because the edge can be `nil` — a phone with no samples in the window
+        // still has a stored night a person may want re-decided — and above the watermark guard for
+        // the same reason: a pull-down is exactly the case where the row says *current* and the
+        // reader disagrees. The imported-row rule is the caller's, and it stays above this.
+        if force { return true }
         guard let inputEdge else { return false }
         guard inputEdge > watermark else { return false }
         guard let nightEnd else { return true }

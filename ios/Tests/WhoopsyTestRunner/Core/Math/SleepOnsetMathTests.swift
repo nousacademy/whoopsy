@@ -524,5 +524,26 @@ enum SleepOnsetMathTests {
                 endedAtDataEdge: false, nightStart: shortStart),
             "…and a short night with no new input is still not re-run: the provisional rule widens "
                 + "*what counts as unfinished*, not *when the analyzer runs*")
+        // **The pull-down.** A forced run is the reader saying *recompute this*, so it answers `true`
+        // even when the row is current and even when there is no input edge at all — which is the
+        // whole difference between swiping down and waiting for a foreground.
+        assertTest(
+            SleepReclassification.isOwed(
+                watermark: laterInput, inputEdge: nil, nightEnd: longEnd,
+                endedAtDataEdge: false, nightStart: longStart, force: true),
+            "A forced re-classification runs even with no input edge to compare against, which is the "
+                + "case a phone with nothing in the window still has a pull-down for")
+        assertTest(
+            SleepReclassification.isOwed(
+                watermark: laterInput, inputEdge: laterInput, nightEnd: longEnd,
+                endedAtDataEdge: false, nightStart: longStart, force: true),
+            "…and even over a row the freshness rule would call current, which is what the swipe is "
+                + "for: the gate answers *has input arrived*, never *is the night right*")
+        assertTest(
+            !SleepReclassification.isOwed(
+                watermark: laterInput, inputEdge: nil, nightEnd: longEnd,
+                endedAtDataEdge: false, nightStart: longStart),
+            "…while the same row without the force is still not re-run, so the control's effect is the "
+                + "control and not a change to the automatic rule")
     }
 }

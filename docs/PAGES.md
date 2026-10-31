@@ -654,3 +654,20 @@ not stop an engine already running — `REBOOT STRAP`, directly above it, is the
 disabled unless a 5.0/MG is connected (`supportsPersistentRecording`, not `supportsSync`: the latter
 answers whether this *build* frames the model, while the command is published for those two generations
 alone).
+
+## The sleep page's pull-to-refresh
+
+**Added 2026-10-31, on `RecoveryDetailView`'s pattern.** Swiping down on `SleepPerformanceView` calls
+`SleepViewModel.recalculate()`, which re-runs the analyzer for the day being shown and then re-reads
+the row it wrote. `load(for:force:)` threads the flag into `SleepReclassification.isOwed(force:)`, so
+the pure rule stays the one place the decision lives and §13 can assert it.
+
+**Why the automatic gate is not enough.** It answers *has new input arrived*, and the failure it cannot
+see is a night that is final and wrong — the 2026-10-31 case, where an hour of stillness before bed was
+stored as the whole night and its wake verdict made it final. The swipe is the reader saying *look
+again*, and it is the only control that can reopen such a row without a code change.
+
+**Two things it does not do.** An imported night is never re-classified, however hard the page is
+pulled — WHOOP's own figures are not this app's to re-decide. And only today is re-analysed: a past day
+still reloads, but the analyzer's window is the night that ended this morning, so running it over last
+week would answer with the wrong night.

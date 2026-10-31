@@ -158,6 +158,10 @@ public struct SleepPerformanceView: View {
         }
         .background(Theme.backgroundDark)
         .task { await viewModel.load(for: date) }
+        // Pull-to-refresh, on `RecoveryDetailView`'s rule: the reader saying *recompute this* rather
+        // than waiting for the freshness gate to notice. The night is re-classified from whatever the
+        // phone holds now, and the page re-reads the row that was written.
+        .refreshable { await viewModel.recalculate() }
         .preferredColorScheme(.dark)
     }
 
