@@ -46,6 +46,10 @@ public struct PulseMetronomeView: View {
     public nonisolated static let offText = "OFF"
     public nonisolated static let accessibilityLabel = "Pulse frequency"
 
+    /// The line under the gauge. A constant rather than a literal in the `body`, on this repo's rule:
+    /// the runner has no renderer, so copy written into a view is copy nothing can assert.
+    public nonisolated static let soundHint = "Turn sound on to hear the pulse."
+
     private static let squareSize: CGFloat = 120
     private static let trackHeight: CGFloat = 8
     private static let handleDiameter: CGFloat = 22
@@ -65,9 +69,24 @@ public struct PulseMetronomeView: View {
             readout
             gauge
 
-            Text("Match the flashes to the pulse you feel.")
-                .font(.system(size: 11))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Match the flashes to the pulse you feel.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textMuted)
+
+                // **The silent switch is why this line exists.** The click is played in the `.ambient`
+                // category, which obeys the ringer — so a phone on silent shows the flash and says
+                // nothing, and the notice is the only thing telling the reader why. iOS exposes no
+                // way to ask whether the switch is on, so the sentence is always drawn rather than
+                // appearing in the case it describes.
+                HStack(spacing: 5) {
+                    Image(systemName: "speaker.wave.2")
+                        .font(.system(size: 10))
+                    Text(Self.soundHint)
+                        .font(.system(size: 11))
+                }
                 .foregroundStyle(Theme.textMuted)
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(Self.accessibilityLabel))

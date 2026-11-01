@@ -1092,7 +1092,9 @@ data and this is a study reading.
 second the square is a shimmer the eye cannot resolve, so the beat is carried by audio as well; the tone
 is synthesised into an `AVAudioPCMBuffer` at first use, because a 50 ms sine burst is not worth an eighth
 bundled resource and a `Bundle.module` lookup that can fail. The session category is `.ambient`, so the
-silent switch is obeyed. Its timing is `PulseTiming.secondsUntilNextPulse`, sampled from the same phase
+silent switch is obeyed — and because iOS exposes no way to ask whether that switch is on, the card
+always carries `PulseMetronomeView.soundHint`, *"Turn sound on to hear the pulse."*, rather than showing
+it only in the one case it describes. Its timing is `PulseTiming.secondsUntilNextPulse`, sampled from the same phase
 the square is lit from — measured on the simulator at 120/min, ten intervals came back within ±25 ms of
 half a second — which is why the cadence is assertable in §26 rather than a rule buried in an audio
 callback.

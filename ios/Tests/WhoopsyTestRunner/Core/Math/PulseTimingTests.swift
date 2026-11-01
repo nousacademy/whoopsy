@@ -149,6 +149,22 @@ enum PulseTimingTests {
             PulseTiming.hertz(ratePerMinute: 0) == 0,
             "…and a rate of zero is zero hertz rather than a negative or a division by it")
 
+        // ---- The line that explains a silent phone ----
+        //
+        // **Pinned as a literal, which is the only form the runner can check.** The click obeys the
+        // silent switch — `.ambient` is what keeps a sheet from interrupting music — and nothing in
+        // iOS lets the app ask whether that switch is on, so the sentence has to be on screen at zero
+        // cost to the reader rather than in the one case it describes. A copy edit that dropped
+        // "sound" would leave a line that no longer says what to turn on, and nothing else would see
+        // it: a screenshot of a silent phone shows the same flash either way.
+        assertTest(
+            PulseMetronomeView.soundHint == "Turn sound on to hear the pulse.",
+            "The hint under the gauge names what to turn on (got \"\(PulseMetronomeView.soundHint)\"")
+        assertTest(
+            PulseMetronomeView.soundHint.lowercased().contains("sound"),
+            "…and the word is the one the reader has to act on, so it is pinned rather than left to a "
+                + "screenshot")
+
         // A rate above the ceiling cannot come from the gauge, but the rule is not the place that
         // refuses it — the draft and the entity clamp — so this only pins that the math still answers
         // rather than dividing into nonsense.
