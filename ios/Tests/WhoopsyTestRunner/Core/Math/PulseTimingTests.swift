@@ -149,6 +149,31 @@ enum PulseTimingTests {
             PulseTiming.hertz(ratePerMinute: 0) == 0,
             "…and a rate of zero is zero hertz rather than a negative or a division by it")
 
+        // ---- The tone's character, pinned as numbers because it cannot be pinned by ear ----
+        //
+        // **The click was sharp, and sharp was the problem.** A 1 kHz burst at full attack is a tick
+        // that startles on the first pulse and tires over a minute; the constants below are the softer
+        // reading of the same pulse, and each is a property a screenshot and a suite would otherwise
+        // leave to whoever next opened the sheet.
+        assertTest(
+            PulseSounder.toneFrequency <= 600,
+            "The tone sits below a click's pitch, which is what makes it sound round rather than sharp "
+                + "(\(PulseSounder.toneFrequency) Hz)")
+        assertTest(
+            PulseSounder.toneAmplitude <= 0.25,
+            "…and it peaks at a quarter, so it can play under the sheet's words rather than over them "
+                + "(\(PulseSounder.toneAmplitude))")
+        assertTest(
+            PulseSounder.toneAttack > 0 && PulseSounder.toneAttack < PulseSounder.toneDuration,
+            "…with a short attack inside its own length, because a sine that starts at full amplitude "
+                + "makes the broadband transient that reads as a click "
+                + "(\(PulseSounder.toneAttack) s of \(PulseSounder.toneDuration) s)")
+        assertTest(
+            PulseSounder.toneDuration < PulseTiming.period(ratePerMinute: PulseTiming.maximumRate),
+            "…and the tone is shorter than the fastest period, so two pulses never overlap at the "
+                + "ceiling (\(PulseSounder.toneDuration) s against "
+                + "\(PulseTiming.period(ratePerMinute: PulseTiming.maximumRate)) s)")
+
         // ---- The line that explains a silent phone ----
         //
         // **Pinned as a literal, which is the only form the runner can check.** The click obeys the

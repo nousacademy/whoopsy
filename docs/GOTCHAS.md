@@ -1090,7 +1090,7 @@ data and this is a study reading.
 
 **A click sounds on every pulse, and it is generated rather than bundled.** Past roughly three a
 second the square is a shimmer the eye cannot resolve, so the beat is carried by audio as well; the tone
-is synthesised into an `AVAudioPCMBuffer` at first use, because a 50 ms sine burst is not worth an eighth
+is synthesised into an `AVAudioPCMBuffer` at first use, because a 60 ms sine burst is not worth an eighth
 bundled resource and a `Bundle.module` lookup that can fail. The session category is `.ambient`, so the
 silent switch is obeyed — and because iOS exposes no way to ask whether that switch is on, the card
 always carries `PulseMetronomeView.soundHint`, *"Turn sound on to hear the pulse."*, rather than showing

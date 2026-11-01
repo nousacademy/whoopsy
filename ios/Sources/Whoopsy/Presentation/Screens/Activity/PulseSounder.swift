@@ -16,11 +16,35 @@ import AVFoundation
 /// plays. That split is what lets §26 assert the cadence — a rule written into an audio callback is a
 /// rule the runner cannot see.
 ///
+/// **The tone is soft rather than a tick.** A metronome at this rate is listened to for a minute or
+/// two at a time while a note is typed, so a bright click at full attack is tiring and startles on the
+/// first pulse. The burst is a low sine with a short raised-cosine attack, a slow decay and a third of
+/// the peak a click would use — audible as a *pulse* under the reading rather than as a sound on top
+/// of it. The three constants are `nonisolated static`, so §26 can pin the character rather than
+/// leaving it to an ear.
+///
 /// **It obeys the silent switch.** The session category is `.ambient`, so a phone on silent stays
 /// silent and any music already playing keeps playing; a metronome that overrode the ringer would be a
 /// surprise in a sheet the user opened to type a note.
 @MainActor
-final class PulseSounder {
+public final class PulseSounder {
+
+    /// The tone's pitch, in hertz. Low enough to sound round rather than sharp — a click lives around
+    /// 1 kHz, and this is less than half that.
+    public nonisolated static let toneFrequency: Double = 440
+
+    /// How long the tone lasts. Short enough that two never overlap at the 500/min ceiling, where a
+    /// whole period is 120 ms; long enough to be heard as a pulse rather than as a tick.
+    public nonisolated static let toneDuration: TimeInterval = 0.06
+
+    /// Peak amplitude. A quarter is a sound the reader can leave playing without reaching for the
+    /// volume, and it keeps the pulse under the words on the sheet.
+    public nonisolated static let toneAmplitude: Double = 0.22
+
+    /// How abruptly the tone arrives, in seconds. A few milliseconds of raised-cosine removes the
+    /// broadband transient that a sine starting at full amplitude makes — that transient is most of
+    /// what reads as *sharp*.
+    public nonisolated static let toneAttack: TimeInterval = 0.006
 
     #if canImport(AVFoundation)
     private let engine = AVAudioEngine()
@@ -71,17 +95,20 @@ final class PulseSounder {
         #endif
 
         let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1)
+        let frames = AVAudioFrameCount(Self.toneDuration * 44_100)
         guard let format,
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 2_205) else { return }
-        // 50 ms: long enough to be heard as a tick, short enough that two clicks never overlap at the
-        // 500/min ceiling, where a whole period is 120 ms.
-        buffer.frameLength = 2_205
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return }
+        buffer.frameLength = frames
         if let samples = buffer.floatChannelData?[0] {
             let rate = format.sampleRate
             for frame in 0..<Int(buffer.frameLength) {
                 let t = Double(frame) / rate
-                let envelope = exp(-t * 90)
-                samples[frame] = Float(sin(2 * .pi * 1_000 * t) * envelope * 0.35)
+                // Raised-cosine attack, exponential decay: no transient to read as a click, and a
+                // tail that falls away rather than stopping.
+                let attack = 0.5 - 0.5 * cos(.pi * min(1, t / Self.toneAttack))
+                let envelope = attack * exp(-t * 45)
+                samples[frame] = Float(
+                    sin(2 * .pi * Self.toneFrequency * t) * envelope * Self.toneAmplitude)
             }
         }
         click = buffer

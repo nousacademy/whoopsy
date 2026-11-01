@@ -212,7 +212,8 @@ is shown is the number the range covers.
 
 **The click is part of the measurement rather than decoration.** Past about three pulses a second the
 square is a shimmer and the eye cannot resolve the beat, so `PulseSounder` plays a short synthesised
-click at the same rate — generated as a 50 ms sine burst with a fast decay rather than shipped as an
+click at the same rate — generated as a 60 ms sine at 440 Hz with a soft attack and a slow decay — a pulse under the
+reading rather than a click over it — rather than shipped as an
 eighth bundled resource, and scheduled by `PulseTiming.secondsUntilNextPulse` from the same phase the
 square is lit from, so the two cannot drift. The session category is `.ambient`: a phone on silent stays
 silent and any music already playing keeps playing — which is why the card carries a line under the gauge,
