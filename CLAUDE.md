@@ -21,6 +21,7 @@ Written in Swift 6 with strict concurrency (`async`/`await`, `AsyncStream`, `Sen
 | the reasoning and the evidence behind any gotcha | `docs/GOTCHAS.md` (grep the headline) |
 | the Worker's resources, routes and gates | `docs/BACKEND.md` |
 | how a number gets from the strap to a screen, and which writer owns each stored row | `docs/DATAFLOW.md` |
+| how the band's bytes become those rows — connect, streams, decode, flash drain | `docs/DEAD_WHOOP_BAND.md` |
 
 Grep the headline rather than reading a file whole: every gotcha below appears in `docs/GOTCHAS.md` under the same bolded words.
 
@@ -411,6 +412,11 @@ Keep these in sync with the code — they are the spec for the non-obvious math 
   sigmoid are recorded. **It is a record, not a changelog** — §8 lists what it argues should change and
   none of it has been applied. Read it before claiming any constant in `docs/ALGORITHMS.md` is WHOOP's.
 - `docs/ARCHITECTURE.md` — layer philosophy, folder layout, and the data-flow diagram covering both the strap and HealthKit inputs.
+- `docs/DEAD_WHOOP_BAND.md` — **the strap → phone path, and only that**: the three straps and how one is
+  identified, the standing connect and keep-alive, the five streams and what each feeds, the decode
+  chain, the flash drain with its ACK loop and its three endings, and what each record type writes. It
+  starts at the antenna and ends at the tables, linking `BLE_PROTOCOL.md` for the bytes and
+  `DATAFLOW.md` for the rows, so no offset and no ownership rule is written down twice.
 - `docs/DATAFLOW.md` — **the operational map** `ARCHITECTURE.md` deliberately does not restate: every
   input path, which writer owns each stored table and what provenance it stamps, the order of the
   foreground chain, how a day becomes current with no screen open, and the concurrency rule a new

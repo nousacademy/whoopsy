@@ -1,5 +1,11 @@
 # Whoopsy Architecture Guide: Clean Architecture & Local-First Design
 
+> **Scope: the design pattern.** This file answers *how the code is organised* — Clean Architecture's
+> layers, the folder layout, the dependency rule and the migration history. It is not the data path:
+> for what moves through those layers and in what order see **[docs/DATAFLOW.md](DATAFLOW.md)**, for the
+> wire see **[docs/BLE_PROTOCOL.md](BLE_PROTOCOL.md)**, for the strap path
+> **[docs/DEAD_WHOOP_BAND.md](DEAD_WHOOP_BAND.md)**.
+
 ## 1. Architectural Philosophy
 
 **Whoopsy** is designed from the ground up as a **100% offline-first, subscription-free, privacy-preserving** iOS companion application for WHOOP® straps (Gen 4, Gen 5 and Gen 5 MG — three models, two wire formats, and the app must be told which one it is holding).

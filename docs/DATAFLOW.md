@@ -1,5 +1,9 @@
 # Whoopsy Data Flow
 
+> **Reading order.** This file answers *in what order data is loaded, and which writer owns each row*.
+> Previous: **[docs/PAGES.md](PAGES.md)** · Next: **[docs/ALGORITHMS.md](ALGORITHMS.md)** — the math for each step.
+> Where the strap's bytes come from: **[docs/DEAD_WHOOP_BAND.md](DEAD_WHOOP_BAND.md)**
+
 **One document, one question: where does a number on a screen come from, and who was allowed to write
 it?** `docs/ARCHITECTURE.md` says what the layers *are*; this file says what actually moves through
 them, in which order, and which writer owns each stored row. It is the map to hold while changing a
@@ -36,6 +40,10 @@ either from the foreground chain or from a stream, never from a view's body**.
 | WHOOP export (bundled CSV) | `WhoopExportParser` → `WhoopExportImporter` | `recoveries`, `sleeps`, `strains`, `workouts`, `naps`, steps | deliberate tap on `LOGS` |
 | Zero Fasting / dreams.json | their own importers | `workouts` (fasts) / `receptive_inactivities` | deliberate tap on `LOGS` |
 | Cloud restore | `RestoreFromCloudUseCase` | all seven synced tables | manual `RESTORE`, or a launch that finds no days |
+
+**The first two rows are the strap's, and how its bytes become those records is its own document:**
+[DEAD_WHOOP_BAND.md](DEAD_WHOOP_BAND.md) covers the connect, the streams, the decode and the flash
+drain, and links back here for who writes each row. This table starts where that one ends.
 
 **The drain is the one input that is not live.** A strap worn overnight banks records with no phone
 near it; `DrainCoordinator` pulls that flash, and it is the only path that makes a night visible the

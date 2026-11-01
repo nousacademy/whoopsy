@@ -1,5 +1,9 @@
 # The backend Worker
 
+> **Reading order.** The Worker's own toolchain, resources and gates. The client half of the same
+> contract is **[docs/DATAFLOW.md](DATAFLOW.md)** §the sync; the contract itself is `shared/`.
+> Chain: **[PAGES](PAGES.md)** → **[DATAFLOW](DATAFLOW.md)** → **[ALGORITHMS](ALGORITHMS.md)**
+
 The Cloudflare Worker in `backend/` — Hono in front of D1 + R2 — and the eight resources it
 carries. This is the reference for the Worker's own conventions; `CLAUDE.md` keeps only the
 one-line version, because most work in this repo is on the app, not on the Worker.

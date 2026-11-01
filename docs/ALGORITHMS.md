@@ -1,5 +1,9 @@
 # Whoopsy Mathematical & Physiological Algorithms Specification
 
+> **Reading order.** This file answers *how each number is computed*.
+> Previous: **[docs/DATAFLOW.md](DATAFLOW.md)** — which step calls this math, and which writer stores it.
+> Screens that draw it: **[docs/PAGES.md](PAGES.md)** · Wire format: **[docs/BLE_PROTOCOL.md](BLE_PROTOCOL.md)**
+
 This document details the open mathematical models implemented in Whoopsy for computing **Recovery**, **Strain**, **Heart Rate Variability (HRV)**, **Sleep Staging**, **Sleep Need**, **Stress Monitor**, **VO₂ Max** and **Steps**.
 
 Two sections are exceptions to the rest, in opposite directions. §6 is the only model whose constant is **not** this app's own and is not fitted to anything this app can see — it is quoted from a published method and cited — and it is the only one whose output the screen labels as an **estimate** rather than a measurement. It also still records WHOOP's own three-tier model and why none of that is implemented. §7 is the reverse case: WHOOP publishes no step model at all, so there is nothing to cite and nothing to fit against, and its two fitted constants are stated as this app's own calibration.

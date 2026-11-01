@@ -1,5 +1,9 @@
 # Persistent gotchas — the full text
 
+> **Reading order.** This is the evidence file behind `CLAUDE.md`'s headline gotchas; it sits outside the
+> Pages → Data flow → Algorithms chain and is cited from all three.
+> Chain: **[PAGES](PAGES.md)** → **[DATAFLOW](DATAFLOW.md)** → **[ALGORITHMS](ALGORITHMS.md)**
+
 Every trap this repo has already hit once, with the measurement, the reasoning and the history
 behind it. `CLAUDE.md` `### Persistent gotchas` carries the **headline and the rule** for each of
 these, in the same order; grep the headline to land here.

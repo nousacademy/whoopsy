@@ -1,5 +1,8 @@
 # The suite, section by section
 
+> **Reading order.** What each suite section asserts. Outside the chain, cited from all three:
+> **[PAGES](PAGES.md)** → **[DATAFLOW](DATAFLOW.md)** → **[ALGORITHMS](ALGORITHMS.md)**
+
 What each numbered section of `ios/Tests/WhoopsyTestRunner/` asserts, in the runner's own words.
 This is the **reference** for a section's blocks; `CLAUDE.md` keeps only the mechanics of building
 and running the suite, plus the rules that govern adding to it.

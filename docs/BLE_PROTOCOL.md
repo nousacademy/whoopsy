@@ -1,5 +1,9 @@
 # WHOOP 4.0 / 5.0 / 5.0 MG BLE Protocol Specification
 
+> **Reading order.** This file answers *what the bytes are*: envelopes, CRCs, offsets, record layouts.
+> Up: **[docs/DEAD_WHOOP_BAND.md](DEAD_WHOOP_BAND.md)** — the strap → phone flow that consumes them.
+> Its constants are cross-checked against **[docs/ALGORITHMS.md](ALGORITHMS.md)** where a decoder feeds a model.
+
 Reverse-engineered Bluetooth Low Energy protocol for WHOOP hardware. Three straps are in scope and
 **they do not share a wire format**: WHOOP 4.0 ("Harvard" / Gen 4), WHOOP 5.0, and WHOOP 5.0 MG
 (Medical Grade). Which one a claim applies to is stated on every claim below.

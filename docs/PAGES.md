@@ -1,9 +1,42 @@
 # Pages — the design reasoning
 
+> **Reading order.** This file answers *what a screen shows and why it is shaped that way*.
+> Next: **[docs/DATAFLOW.md](DATAFLOW.md)** — the load/refresh sequence that produces every figure here.
+> Strap side: **[docs/DEAD_WHOOP_BAND.md](DEAD_WHOOP_BAND.md)** · Rules: **[docs/GOTCHAS.md](GOTCHAS.md)**
+
 The decisions behind the screens, panes and controls that carry one worth recording: the instructions
 behind them, the measurements that corrected them, and the traps a new screen modelled on one would
 hit. The full inventory is `CLAUDE.md`'s `## Pages`; the five screens whose shape has no such decision
 to record are listed below, each linked to the file that implements it.
+
+## The figures, and where each one comes from
+
+**One row per figure, and no formula here.** The middle column is the step that produces it — read it in
+**[DATAFLOW.md](DATAFLOW.md)** §2 (who owns each row) and §4 (the foreground chain) — and the last column
+is where its math lives in **[ALGORITHMS.md](ALGORITHMS.md)**. A page never restates either: if a figure
+needs explaining, the explanation already exists in one of the two.
+
+| Page | Figure | Produced by ([DATAFLOW](DATAFLOW.md)) | Math ([ALGORITHMS](ALGORITHMS.md)) |
+| :--- | :--- | :--- | :--- |
+| Home | recovery ring | `CalculateRecoveryUseCase` → `recoveries`, foreground after the night refresh | §3 Recovery |
+| Home | sleep ring | `AnalyzeSleepUseCase` → `sleeps`, night refresh | §4 Staging & Need |
+| Home | strain ring | `RefreshStrainUseCase` → `strains`, 5-minute tick + drain | §2 Strain |
+| Home | `HEALTH MONITOR` sheet | the night's `recoveries` row, five vitals + the night's samples | §3, §4 |
+| Home | `STEPS` tile | `TrackStepsUseCase` (detector) + `StepCounterAccumulator` (R18 counter) → `stepCounts` | §7 Steps |
+| Home | `RHR` panel | `recoveries.resting_heart_rate` + the trailing window | §3 |
+| Home | `HRV` panel | `recoveries.hrv_value_ms` (RMSSD) + the same window | §1 HRV |
+| Home | `VO₂ MAX (EST.)` panel | `Vo2MaxMath` over `recoveries` + the profile | §6 VO₂ max |
+| Home | `STRESS MONITOR` tile | `AnalyzeStressUseCase` → five-minute windows | §5 Stress Monitor |
+| Home | calendar day colours | one read of the month's `recoveries` | §3 |
+| Home | `ACTIVITIES` rows | `workouts`, written by the session or an import | §8 (zones), §9 (a fast) |
+| Home | `RECEPTIVE INACTIVITIES` rows | `receptive_inactivities`, written by the sheet or the import; `pulse_rate` is the metronome's own reading | — |
+| Sleep page | ring, breakdown, cards, week charts | `sleeps`, plus `AnalyzeSleepStressUseCase` for the stress card | §4, §5 |
+| Recovery page | gauge, HRV/RHR cards, trend | `recoveries` + its history window | §3 |
+| Strain page | score, five zone rows, history | `strains` + the day's `biometric_samples` | §2, §8 |
+| Activity page | the session, its zones, route, splits | `workouts`, `workout_splits`, `workout_route_points` | §8 |
+| Profile `LOGS` / `STORAGE` | import tallies, sync status | `WhoopExportImporter`, `InactivityImporter`, `HealthKitImporter`, `DailySyncUseCase` | — |
+| Device page | strap, battery, firmware | the BLE streams — see **[DEAD_WHOOP_BAND.md](DEAD_WHOOP_BAND.md)** | — |
+| Energy | **nothing** — a study surface that reads no row | — | §10 (the metronome's timing, via §26 of the suite) |
 
 > **Sources.** Other people's reverse-engineering is cited here by **role**, never by project
 > name — the community reference, the research reference, the APK reading and the Swift 4.0
