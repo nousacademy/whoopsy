@@ -358,6 +358,10 @@ write carries the rating **and the offline-map region** — the field `applying(
 this is the assertion that fails if it is dropped again — along with the measurements and the name;
 re-writing the value already held is a no-op; and a value above the scale is clamped on the write.
 
+**§10 pins the HRV window's support floor** — that `preferredHRVDifferences` is 60, that it is strictly
+above the measurement gate, and that a 21-difference anchor the gate accepts is *not* accepted at the
+floor: the same fixture, two rules, two answers.
+
 **§13 also pins the pull-down's force flag** — a forced run answers `true` with no input edge at all
 and over a row the freshness rule calls current, while the same row without the force stays un-run.
 

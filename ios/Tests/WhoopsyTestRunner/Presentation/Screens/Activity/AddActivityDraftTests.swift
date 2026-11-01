@@ -60,11 +60,21 @@ enum AddActivityDraftTests {
         // A `DatePicker` re-fires its setter with a freshly built instant, and the rebuild is what makes
         // the resulting comparison meaningful: this pick carries a different day's stamp and the same
         // clock time, and must be recognised as the write it is not.
+        // **The repick is built from the draft's own clock reading, not from a literal hour.** A
+        // fixture that says "noon" is only noon when `startOfDay + 12 h` is twelve o'clock — which is
+        // false on any day the zone moves, and false on *every* fixture day once the machine's own
+        // offset changes, because `clockTime(on:)` rebuilds a reading taken in today's zone onto a day
+        // in another one. Measured 2026-11-01, the morning the US offset changed: the literal sent the
+        // pick an hour off the seed and the assertion failed for a reason that had nothing to do with
+        // the guard it exists to test. Reading the hour off `seeded.start` is what the sentence above
+        // actually claims — *the same clock time, another day's stamp*.
         let seeded = draft
+        let seededClock = Calendar.current.dateComponents([.hour, .minute], from: seeded.start)
         let todayNoon = Calendar.current.date(
-            byAdding: .hour,
-            value: AddActivityDraft.defaultStartHour,
-            to: Calendar.current.startOfDay(for: Date()))!
+            bySettingHour: seededClock.hour ?? AddActivityDraft.defaultStartHour,
+            minute: seededClock.minute ?? 0,
+            second: 0,
+            of: Date())!
         draft.setStart(todayNoon)
         assertTest(
             draft.start == seeded.start,
@@ -78,12 +88,17 @@ enum AddActivityDraftTests {
         // year, month and day. Filing either raw would put yesterday's walk on today, and a workout's
         // `date` column is snapped from `startedAt` — so the row would be filed under a day the user
         // never opened.
+        // **`bySettingHour`, not midnight plus eight hours.** The two differ on any day the zone
+        // moves, and 2026-11-01 is that day on this machine: midnight plus eight elapsed hours lands
+        // at 07:00, so the fixture asked for "8:00" and got a 7:00 pick — a failure of the fixture,
+        // not of the rebuild it is testing. The picker this stands in for also hands back a wall-clock
+        // reading, which is what a `DatePicker` actually does.
         var rebuilt = AddActivityDraft(on: day)
         let todayEight = Calendar.current.date(
-            byAdding: .hour, value: 8, to: Calendar.current.startOfDay(for: Date()))!
+            bySettingHour: 8, minute: 0, second: 0, of: Date())!
         rebuilt.setStart(todayEight)
         let todayNine = Calendar.current.date(
-            byAdding: .hour, value: 9, to: Calendar.current.startOfDay(for: Date()))!
+            bySettingHour: 9, minute: 0, second: 0, of: Date())!
         rebuilt.setEnd(todayNine)
         assertTest(
             Calendar.current.startOfDay(for: rebuilt.start) == day

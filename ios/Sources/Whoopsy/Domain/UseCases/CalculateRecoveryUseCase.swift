@@ -66,7 +66,8 @@ public final class CalculateRecoveryUseCase: Sendable {
         let selection = Self.selectHRVWindow(
             anchor: Self.deepestLastRun(in: sleepSession),
             session: DateInterval(start: sleepStart, end: sleepEnd),
-            samples: overnightSamples)
+            samples: overnightSamples,
+            minimumDifferences: Self.preferredHRVDifferences)
         let hrvSamples = selection.samples
         let windowNote = if !selection.hasDeepRun {
             " [no deep run — whole session]"
@@ -289,6 +290,24 @@ public final class CalculateRecoveryUseCase: Sendable {
         }
         return DateInterval(start: runStart, end: runEnd)
     }
+
+    /// How many successive differences the window should hold before it is trusted.
+    ///
+    /// **Twenty is the floor for *a measurement*; this is the floor for *a stable one*.** Measured
+    /// 2026-11-01 against the owner's WHOOP export: their 910 nights have a median HRV of 53 ms and a
+    /// standard deviation of 10.5, while this app's first nine nights spread 39–152 ms. The cause is
+    /// the strap's R-R stream rather than the arithmetic — on a real night **22,264 of 22,572
+    /// notifications carried exactly one interval**, so adjacent-beat pairs exist only in the few
+    /// hundred multi-beat notifications, and a whole night yields ~190 differences. The old rule
+    /// stopped the first moment it had 20, which on 2026-11-01 meant the final 64 minutes and an
+    /// RMSSD of 152 ms; sliding thirty-minute windows over that same night read 21–211 ms depending
+    /// only on which pairs fell inside.
+    ///
+    /// Sixty is where the window has enough of the night in it to stop being a lottery while still
+    /// preferring the deep run the patent names. When the anchor cannot reach it, the existing
+    /// backward expansion walks to the session's start and the whole night is used — which on the
+    /// nine measured nights lands the median at 58.6 ms against WHOOP's 53.
+    public static let preferredHRVDifferences = 60
 
     /// Which stretch of the night Recovery HRV is measured over, and the samples inside it.
     ///

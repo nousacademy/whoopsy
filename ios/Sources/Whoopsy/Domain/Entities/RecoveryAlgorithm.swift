@@ -20,8 +20,17 @@ public enum RecoveryAlgorithm: String, CaseIterable, Sendable {
     /// The z-score model in `RecoveryScoring`, over the last thirty days that have measurements.
     case scorerV1 = "scorer-v1"
 
+    /// The same model, with the HRV window required to hold sixty successive differences rather than
+    /// the twenty that merely make a measurement (`CalculateRecoveryUseCase.preferredHRVDifferences`).
+    ///
+    /// **A parameter change is a version bump, and this is one**: the formula is untouched, but a
+    /// stored night's HRV — and therefore its score — is computed over a different stretch of the
+    /// night. Rows under `scorer-v1` are re-scored by the gate, which is the whole point of storing
+    /// the version.
+    case scorerV2 = "scorer-v2"
+
     /// The version a row written now records.
-    public static let current: RecoveryAlgorithm = .scorerV1
+    public static let current: RecoveryAlgorithm = .scorerV2
 
     /// The version a stored string names, or `nil` when the row predates the column.
     public init?(stored: String?) {

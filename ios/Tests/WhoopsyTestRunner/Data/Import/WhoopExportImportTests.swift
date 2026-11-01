@@ -402,7 +402,17 @@ enum WhoopExportImportTests {
                 // machine that happens to run in UTC. Written as the device's own offset, 23:48 → 02:36
                 // crosses local midnight wherever the suite runs, which is what makes it a test of the
                 // rule rather than of the time zone.
-                let deviceOffset = TimeZone.current.secondsFromGMT()
+                // **The offset of the fixture's own date, not of the day the suite runs.** A label
+                // taken from today's offset is wrong for a 2024 fixture whenever the machine's zone
+                // sits on the other side of a DST boundary from the fixture's month — measured
+                // 2026-11-01, the morning US DST ended, when an August fixture labelled `UTC-05:00`
+                // parsed an hour early: 23:48 became 00:48 the next morning, the nap's start and wake
+                // landed on the same day, and the assertion below failed for a reason that has
+                // nothing to do with naps. `secondsFromGMT(for:)` asks the zone about the instant the
+                // file names.
+                let fixtureInstant = Calendar(identifier: .gregorian).date(
+                    from: DateComponents(year: 2024, month: 8, day: 26, hour: 23, minute: 48)) ?? Date()
+                let deviceOffset = TimeZone.current.secondsFromGMT(for: fixtureInstant)
                 let sign = deviceOffset < 0 ? "-" : "+"
                 let magnitude = abs(deviceOffset)
                 let deviceZoneLabel = String(

@@ -412,6 +412,39 @@ enum NoDataDayTests {
                 bounded.window == sessionInterval && bounded.expandedBy == 60,
                 "Expansion stops at the session's start and returns the whole session rather than "
                     + "a window that begins before the night")
+
+            // ---- The support floor the estimator now asks for ----
+            //
+            // **Measured 2026-11-01 against the owner's WHOOP export**: 910 nights with a median HRV
+            // of 53 ms and a standard deviation of 10.5, against this app's 39–152 ms over nine. The
+            // strap sends one R-R interval per notification most of the time, so a 20-difference
+            // window is a handful of pairs and swings with which ones it caught. The production floor
+            // is 60; both the number and its relation to the measurement gate are pinned here,
+            // because a floor that drifted back to 20 would silently restore the old behaviour.
+            assertTest(
+                CalculateRecoveryUseCase.preferredHRVDifferences == 60,
+                "The window asks for sixty successive differences before it is trusted "
+                    + "(\(CalculateRecoveryUseCase.preferredHRVDifferences))")
+            assertTest(
+                CalculateRecoveryUseCase.preferredHRVDifferences
+                    > HeartRateVariabilityMath.minimumRMSSDDifferences,
+                "…which is strictly above the twenty that merely make a measurement, so the two "
+                    + "numbers cannot collapse into one")
+
+            // The same anchor that is accepted at the measurement gate is **not** accepted at the
+            // support floor: twenty-one differences is a measurement and not a stable one, so the
+            // window expands past it.
+            let thinAtFloor = CalculateRecoveryUseCase.selectHRVWindow(
+                anchor: anchor,
+                session: sessionInterval,
+                samples: fourBeatSamples(
+                    at: [3_000, 3_006, 3_012, 3_018, 3_024, 3_030, 3_036]),
+                step: 600,
+                minimumDifferences: CalculateRecoveryUseCase.preferredHRVDifferences)
+            assertTest(
+                thinAtFloor.window != anchor,
+                "A deep run holding 21 differences is used unchanged at the measurement gate but "
+                    + "**not** at the support floor — the same fixture, two rules, two answers")
         }
     }
 }
