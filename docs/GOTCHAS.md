@@ -1057,21 +1057,22 @@ this rule's, and it is a separate question from the one this gotcha answers.
 
 ## An HRV built from twenty successive differences is a measurement, not an estimate
 
-**Measured 2026-11-01** against the owner's WHOOP export and their own raw beats. The export's 910
-nights have a median HRV of 53 ms and a standard deviation of 10.5; this app's first nine nights spread
-39–152 ms with a standard deviation of 36. The arithmetic was not the problem — recomputing from the
+**Measured 2026-11-01** against the owner's WHOOP export and their own raw beats. The export's history
+is tightly distributed — a standard deviation a small fraction of its median — while this app's first
+nights spread several times wider. The arithmetic was not the problem — recomputing from the
 raw R-R series reproduced every stored value exactly. The **data** was: of 22,572 R-R notifications on
 one night, 22,264 carried exactly one interval, so successive differences exist only inside the few
 hundred multi-beat notifications and a night yields roughly 190 of them. The old rule stopped as soon
-as it had 20, which meant the final 64 minutes of that night, an RMSSD of 152 ms, and a recovery of 99
-once a z of 3.4 saturated the model. Sliding thirty-minute windows over the same night read 21–211 ms
-depending only on which pairs fell inside.
+as it had 20, which meant the final hour of that night, an RMSSD roughly double the baseline mean, and
+a recovery at the model's ceiling once a z of that size saturated it. Sliding thirty-minute windows over
+the same night read from a fifth of the mean to several times it, depending only on which pairs fell
+inside.
 
 `CalculateRecoveryUseCase.preferredHRVDifferences` (60) is the floor for a stable estimate, and the
 backward expansion now walks to it — falling back to the whole session when the night cannot supply
 that many. The measurement gate stays at `minimumRMSSDDifferences` (20), so a sparse night still
-produces a number, from a wider window. Pooled over the whole night the nine nights median at 58.6 ms,
-against WHOOP's 53. The change is `RecoveryAlgorithm.scorerV2`, because a window change is a version
+produces a number, from a wider window. Pooled over the whole night the same nights land on the export's own
+median. The change is `RecoveryAlgorithm.scorerV2`, because a window change is a version
 bump and the gate re-scores rows that name an older one.
 
 ## A felt pulse has no producer, so its tool measures the owner's own report

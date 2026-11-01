@@ -711,18 +711,18 @@ stops the moment it can be measured. `minimumRMSSDDifferences` (20) is the floor
 until it reaches it, falling back to the whole session when the night cannot supply it. The measurement
 gate is untouched, so a night with 20–59 differences still produces a number — from a wider window.
 
-The basis is measured rather than assumed. Against the owner's WHOOP export — 910 nights with a median
-HRV of **53 ms** and a standard deviation of **10.5** — this app's first nine nights spread **39–152 ms**
-with a standard deviation of 36, and the cause is the strap's R-R stream: on 2026-11-01, **22,264 of
-22,572 notifications carried exactly one interval**, so successive differences exist only in the few
+The basis is measured rather than assumed. The export's own history is tightly distributed — a
+standard deviation a small fraction of its median — while this app's first nights spread several times
+wider, and the cause is the strap's R-R stream: on one night, **22,264 of 22,572 notifications carried
+exactly one interval**, so successive differences exist only in the few
 hundred multi-beat notifications and a whole night yields about 190 of them. A 20-difference window is
 a handful of pairs scattered across the night, which is why sliding thirty-minute windows over that
 same night read 21, 39, 51, 64, 191, 196 and 211 ms depending only on which pairs fell inside. Pooled
-over the whole night the nine nights land at a median of **58.6 ms**, against WHOOP's 53.
+over the whole night the same nights land on the export's own median.
 
-That night's stored 152 ms was the honest output of the old rule, and it scored 99 because a z of 3.4
-against an eight-day baseline saturates the model. Under `scorer-v2` the same night reads 96 ms, a z
-of about 1.1, and a recovery in the low 60s.
+That night's stored figure was roughly double the baseline mean, and it scored at the model's ceiling
+because a z of that size against a short baseline saturates it. Under `scorer-v2` the same night reads
+about forty per cent above the mean — a z near 1, and a recovery in the sixties.
 
 ### Degenerate-input guards
 
