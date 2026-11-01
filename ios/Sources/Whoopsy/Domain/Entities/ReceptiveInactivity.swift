@@ -99,36 +99,42 @@ public struct ReceptiveInactivity: Identifiable, Equatable, Hashable, Sendable {
     /// their own rule makes an ordinary answer rather than a gap waiting to be filled in.
     public let startedAt: Date?
 
-    /// The pulse rate matched on the sheet's metronome, in pulses per minute — or `nil` when none was
-    /// given, which is the ordinary case for every entry that is not about a felt rhythm.
+    /// The rate matched on the sheet's metronome, in **hertz** — the stored fact — or `nil` when none
+    /// was given, which is the ordinary case for every entry that is not about a felt rhythm.
+    ///
+    /// **Hertz is the column and the minute figure is derived from it.** The gauge produces an integer
+    /// number of pulses a minute, and fifteen of those are not representable as whole hertz, so the
+    /// sheet writes `rate / 60` at full precision and `pulseRatePerMinute` rounds it back for the
+    /// control. Storing the displayed `1.1` instead would lose the rate it came from.
     ///
     /// **It is the owner's own report and nothing derives from it.** The metronome is a square that
-    /// flashes at a chosen rate so a felt pulse can be matched by eye; the number is what the eye
-    /// settled on, not something this app measured, and no figure on any screen is computed from it.
+    /// flashes at a chosen rate so a felt pulse can be matched by eye and ear; the number is what the
+    /// owner settled on, not something this app measured, and no figure on any screen is computed
+    /// from it.
     ///
-    /// **It is local-only, and the wire drops it.** `ReceptiveInactivitySyncRow` reads this type field
-    /// by field and does not carry it, which is the `v23` precedent (`workouts`' offline-region
-    /// coordinates): the seven synced resources are the app's own data, and a study reading stays on
-    /// the phone. If it is ever wanted in the database it becomes a sync-row field and a Worker DTO
-    /// change, and that is a decision rather than an oversight.
-    ///
-    /// **Zero is never stored**, and the stored range is `1…PulseTiming.maximumRate`. The metronome's
-    /// gauge reads zero as *no reading given*, which arrives here as `nil`; the clamp is what keeps a
-    /// value that could not have come from the control from being written by anything else either.
-    public let pulseRate: Int?
+    /// **Zero is never stored.** The gauge's zero means *no reading given*, which arrives here as
+    /// `nil`, and the clamp is what keeps a value that could not have come from the control from being
+    /// written by anything else either.
+    public let pulseHz: Double?
+
+    /// The same reading in pulses a minute, for the control that produces it. `nil` when there is no
+    /// reading; otherwise the stored hertz times sixty, rounded — the inverse of what the draft writes.
+    public var pulseRatePerMinute: Int? {
+        pulseHz.map { Int(($0 * 60).rounded()) }
+    }
 
     public init(
         id: UUID = UUID(), date: Date, name: String, note: String? = nil,
-        startedAt: Date? = nil, pulseRate: Int? = nil
+        startedAt: Date? = nil, pulseHz: Double? = nil
     ) {
         self.id = id
         self.date = date.startOfDay
         self.name = name
         self.note = note
         self.startedAt = startedAt
-        self.pulseRate = pulseRate.flatMap { rate in
-            guard rate > 0 else { return nil }
-            return min(rate, Int(PulseTiming.maximumRate))
+        self.pulseHz = pulseHz.flatMap { hertz in
+            guard hertz > 0 else { return nil }
+            return min(hertz, PulseTiming.maximumRate / 60)
         }
     }
 

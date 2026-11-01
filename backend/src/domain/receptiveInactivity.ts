@@ -70,6 +70,16 @@ export interface ReceptiveInactivity {
    * thing that says which day the clock belongs to.
    */
   readonly startedAt: string | null;
+
+  /**
+   * The metronome reading, in hertz, or `null` for an entry with none.
+   *
+   * **A stored value, not a derived one.** The phone's column is `pulse_hz` (its `v42`) and this is
+   * that column; the minute figure a gauge produces is `pulseHz × 60`, which the client derives for
+   * display and never sends. Nullable for `note`'s reason — an entry that is not about a felt rhythm
+   * has no reading, and `0` would be a claim that none was felt.
+   */
+  readonly pulseHz: number | null;
 }
 
 /**

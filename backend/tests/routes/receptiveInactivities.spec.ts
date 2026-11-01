@@ -128,6 +128,7 @@ interface ReceptiveInactivityWire {
   name: string;
   note: string | null;
   startedAt: string | null;
+  pulseHz: number | null;
 }
 
 /** What a `PUT` body carries: the entry, without its id, which is in the path. */
@@ -158,6 +159,7 @@ function measuredEntry(
     name: "Dream",
     note: MEASURED_NOTE,
     startedAt: MEASURED_START,
+    pulseHz: null,
     ...overrides,
   };
 }

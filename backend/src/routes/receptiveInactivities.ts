@@ -98,6 +98,7 @@ function toWire(activity: ReceptiveInactivity): ReceptiveInactivityWire {
     name: activity.name,
     note: activity.note,
     startedAt: activity.startedAt,
+    pulseHz: activity.pulseHz,
   };
 }
 

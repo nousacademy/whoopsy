@@ -1078,26 +1078,19 @@ bump and the gate re-scores rows that name an older one.
 ## A felt pulse has no producer, so its tool measures the owner's own report
 
 The `PULSE` section of the receptive-inactivity sheet is a metronome: a square that flashes at a rate
-the gauge sets, so a felt rhythm can be matched by eye and its speed stored on the entry as
-`pulse_rate` (`v41`). It is not a reading of the strap and nothing derives from it.
+the gauge sets, so a felt rhythm can be matched by eye and ear and its speed stored on the entry. It is
+not a reading of the strap and nothing derives from it.
 
-Three things follow, and each was measured rather than assumed. **The rate is the owner's report** — the
-model has no sensor behind it, so no figure on any screen is computed from `pulse_rate`. **Zero means
-no reading**, not a rate of zero pulses, and the draft maps it to `nil` so the column holds `NULL`
-rather than a claim. **The column is local-only**: `ReceptiveInactivitySyncRow` reads the entity field by
-field and does not carry it, on `v23`'s precedent, because the seven synced resources are the app's own
-data and this is a study reading.
+**Hertz is the stored unit, and the minute figure is derived.** The gauge produces an integer number of
+pulses a minute and fifteen of those are not whole hertz, so the sheet writes `rate / 60` at full
+precision into `pulse_hz` (`v42`) and `pulseRatePerMinute` rounds it back for the control. `v41` had
+stored the minutes; `v42` adds the hertz column and backfills it, and the old column stays shipped and
+unwritten. The field rides the wire — `ReceptiveInactivitySyncRow` and the Worker's `pulseHz` — because
+it is a stored value rather than a computed one; `pulse_hz` is the D1 column.
 
-**A click sounds on every pulse, and it is generated rather than bundled.** Past roughly three a
-second the square is a shimmer the eye cannot resolve, so the beat is carried by audio as well; the tone
-is synthesised into an `AVAudioPCMBuffer` at first use, because a 60 ms sine burst is not worth an eighth
-bundled resource and a `Bundle.module` lookup that can fail. The session category is `.ambient`, so the
-silent switch is obeyed — and because iOS exposes no way to ask whether that switch is on, the card
-always carries `PulseMetronomeView.soundHint`, *"Turn sound on to hear the pulse."*, rather than showing
-it only in the one case it describes. Its timing is `PulseTiming.secondsUntilNextPulse`, sampled from the same phase
-the square is lit from — measured on the simulator at 120/min, ten intervals came back within ±25 ms of
-half a second — which is why the cadence is assertable in §26 rather than a rule buried in an audio
-callback.
+Two things do not follow from that. **Zero means no reading**, not a rate of zero pulses, and the draft
+maps it to `nil` so the column holds `NULL` rather than a claim. And **the rate is the owner's report**:
+the model has no sensor behind it, so no figure on any screen is computed from it.
 
 Two drawing rules came out of building it. A full-contrast white/yellow switch above three flashes a
 second is the photosensitive band, so past 180/min the square stops flashing and a band slides round

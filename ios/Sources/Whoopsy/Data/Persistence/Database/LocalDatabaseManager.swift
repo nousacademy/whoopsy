@@ -1096,6 +1096,30 @@ public actor LocalDatabaseManager {
                 in: db)
         }
 
+        // **Hertz becomes the stored fact, and the minute column stops being written.** `v41` stored the
+        // gauge's own integer, which is what the control produces but not what the screens print; fifteen
+        // of its values are not whole hertz, so a conversion on read would have to round somewhere. This
+        // adds the hertz column and fills it from the minutes already stored — the one direction that
+        // loses nothing, because the integer divided by sixty is exact in binary for the values a gauge
+        // can produce.
+        //
+        // `pulse_rate` is left in place and unwritten, as a shipped column always is. A row written by
+        // this build holds `pulse_hz` and a NULL minute, and nothing reads the old column.
+        migrator.registerMigration("v42_receptive_inactivity_pulse_hz") { db in
+            try Self.addMissingColumns(
+                to: ReceptiveInactivityRecord.databaseTableName,
+                columns: [("pulse_hz", .double)],
+                in: db)
+            guard try db.tableExists(ReceptiveInactivityRecord.databaseTableName) else { return }
+            let columns = Set(try db.columns(in: ReceptiveInactivityRecord.databaseTableName).map(\.name))
+            guard columns.contains("pulse_rate") else { return }
+            try db.execute(sql: """
+                UPDATE receptive_inactivities
+                SET pulse_hz = pulse_rate / 60.0
+                WHERE pulse_hz IS NULL AND pulse_rate IS NOT NULL
+                """)
+        }
+
         try migrator.migrate(queue)
     }
 

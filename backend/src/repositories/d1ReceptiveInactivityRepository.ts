@@ -42,6 +42,7 @@ interface ReceptiveInactivityRow {
   readonly name: string;
   readonly note: string | null;
   readonly started_at: string | null;
+  readonly pulse_hz: number | null;
 }
 
 /**
@@ -49,7 +50,7 @@ interface ReceptiveInactivityRow {
  * mapper's contract depend on the table's column order — which a later `ALTER TABLE` is free to change
  * without any file here mentioning it.
  */
-const COLUMNS = ["user_id", "id", "date", "name", "note", "started_at"].join(", ");
+const COLUMNS = ["user_id", "id", "date", "name", "note", "started_at", "pulse_hz"].join(", ");
 
 /**
  * Map a row to the domain type.
@@ -72,15 +73,17 @@ function toReceptiveInactivity(row: ReceptiveInactivityRow): ReceptiveInactivity
     name: row.name,
     note: row.note,
     startedAt: row.started_at,
+    pulseHz: row.pulse_hz,
   };
 }
 
-const UPSERT = `INSERT INTO receptive_inactivities (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?)
+const UPSERT = `INSERT INTO receptive_inactivities (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (user_id, id) DO UPDATE SET
   date = excluded.date,
   name = excluded.name,
   note = excluded.note,
-  started_at = excluded.started_at`;
+  started_at = excluded.started_at,
+  pulse_hz = excluded.pulse_hz`;
 
 const SELECT_BY_ID = `SELECT ${COLUMNS} FROM receptive_inactivities WHERE user_id = ? AND id = ?`;
 
@@ -236,5 +239,6 @@ function bindings(activity: ReceptiveInactivity): (string | number | null)[] {
     activity.name,
     activity.note,
     activity.startedAt,
+    activity.pulseHz,
   ];
 }

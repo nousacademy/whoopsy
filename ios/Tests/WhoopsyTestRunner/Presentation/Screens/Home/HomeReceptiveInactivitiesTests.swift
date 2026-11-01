@@ -153,9 +153,12 @@ enum HomeReceptiveInactivitiesTests {
             let thirdEye = try await repository.getReceptiveInactivities(for: day)
                 .first { $0.name == "Third eye" }
             assertTest(
-                thirdEye?.pulseRate == 42,
-                "A pulse rate saved on an entry reads back unchanged "
-                    + "(\(thirdEye?.pulseRate.map(String.init) ?? "nil"))")
+                abs((thirdEye?.pulseHz ?? -1) - 0.7) < 1e-9
+                    && thirdEye?.pulseRatePerMinute == 42,
+                "A pulse rate saved on an entry reads back as the hertz it was stored in, and the same "
+                    + "reading in minutes comes back off it "
+                    + "(\(thirdEye?.pulseHz.map { String($0) } ?? "nil") Hz, "
+                    + "\(thirdEye?.pulseRatePerMinute.map(String.init) ?? "nil")/min)")
 
             // **Zero is the gauge's rest position and its meaning is *no reading***, not a rate of no
             // pulses. The draft maps it to `nil`, so clearing the control on an existing entry is an
@@ -167,7 +170,7 @@ enum HomeReceptiveInactivitiesTests {
                 clearedDraft.pulseRate == nil,
                 "A gauge at zero stores **no reading** rather than a rate of zero pulses")
             assertTest(
-                clearedDraft.hasChanges(on: day) && clearedDraft.applying(to: day)?.pulseRate == nil,
+                clearedDraft.hasChanges(on: day) && clearedDraft.applying(to: day)?.pulseHz == nil,
                 "…and clearing a stored rate is an edit that writes `nil`, so the field's own clause in "
                     + "`hasChanges(on:)` is what lights `SAVE` over it")
 
@@ -181,8 +184,8 @@ enum HomeReceptiveInactivitiesTests {
                 "A rate above the gauge's ceiling is clamped to it in the draft "
                     + "(\(ceilingDraft.pulseRate.map(String.init) ?? "nil"))")
             assertTest(
-                ReceptiveInactivity(date: day, name: "Third eye", pulseRate: 10_000).pulseRate
-                    == Int(PulseTiming.maximumRate),
+                ReceptiveInactivity(date: day, name: "Third eye", pulseHz: 10_000).pulseHz
+                    == PulseTiming.maximumRate / 60,
                 "…and again in the entity, so a caller that is not the sheet cannot write one either")
 
             // Every row saved without a reading holds `nil` — the ordinary case, and the value a
@@ -190,9 +193,9 @@ enum HomeReceptiveInactivitiesTests {
             let unreadEntries = try await repository.getReceptiveInactivities(for: day)
                 .filter { $0.name != "Third eye" }
             assertTest(
-                unreadEntries.allSatisfy { $0.pulseRate == nil },
+                unreadEntries.allSatisfy { $0.pulseHz == nil },
                 "…and every entry recorded without a reading stores NULL rather than zero "
-                    + "(\(unreadEntries.compactMap(\.pulseRate)))")
+                    + "(\(unreadEntries.compactMap(\.pulseHz)))")
 
         } catch {
             assertTest(false, "The receptive inactivity round trip threw: \(error)")
@@ -543,7 +546,7 @@ enum HomeReceptiveInactivitiesTests {
             reflecting: ReceptiveInactivity(date: Date(), name: "Dream")
         ).children.compactMap(\.label)
         assertTest(
-            surface == ["id", "date", "name", "note", "startedAt", "pulseRate"],
+            surface == ["id", "date", "name", "note", "startedAt", "pulseHz"],
             "A receptive inactivity stores six things and derives nothing, so there is no end instant "
                 + "to print a range from and no state for the row to be `ACTIVE` in (\(surface))")
 

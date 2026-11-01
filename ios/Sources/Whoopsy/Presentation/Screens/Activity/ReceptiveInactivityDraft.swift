@@ -147,7 +147,7 @@ public struct ReceptiveInactivityDraft: Equatable, Identifiable, Sendable {
         self.name = activity.name
         self.note = activity.note
         self.startedAt = activity.startedAt
-        self.pulseRate = activity.pulseRate
+        self.pulseRate = activity.pulseRatePerMinute
         self.draftID = activity.id
     }
 
@@ -222,7 +222,7 @@ public struct ReceptiveInactivityDraft: Equatable, Identifiable, Sendable {
             name: name,
             note: note,
             startedAt: startedAt.map { Self.instant(of: $0, on: day) },
-            pulseRate: pulseRate
+            pulseHz: pulseRate.map { Double($0) / 60 }
         )
     }
 
@@ -241,7 +241,7 @@ public struct ReceptiveInactivityDraft: Equatable, Identifiable, Sendable {
         return candidate.name != original.name
             || candidate.note != original.note
             || candidate.startedAt != stored
-            || candidate.pulseRate != original.pulseRate
+            || candidate.pulseHz != original.pulseHz
     }
 
     /// `time`'s hour and minute, rebuilt onto `day`'s own midnight.

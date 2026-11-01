@@ -28,7 +28,7 @@ needs explaining, the explanation already exists in one of the two.
 | Home | `STRESS MONITOR` tile | `AnalyzeStressUseCase` → five-minute windows | §5 Stress Monitor |
 | Home | calendar day colours | one read of the month's `recoveries` | §3 |
 | Home | `ACTIVITIES` rows | `workouts`, written by the session or an import | §8 (zones), §9 (a fast) |
-| Home | `RECEPTIVE INACTIVITIES` rows | `receptive_inactivities`, written by the sheet or the import; `pulse_rate` is the metronome's own reading | — |
+| Home | `RECEPTIVE INACTIVITIES` rows | `receptive_inactivities`, written by the sheet or the import; `pulse_hz` is the metronome's own reading, stored in hertz and synced | — |
 | Sleep page | ring, breakdown, cards, week charts | `sleeps`, plus `AnalyzeSleepStressUseCase` for the stress card | §4, §5 |
 | Recovery page | gauge, HRV/RHR cards, trend | `recoveries` + its history window | §3 |
 | Strain page | score, five zone rows, history | `strains` + the day's `biometric_samples` | §2, §8 |

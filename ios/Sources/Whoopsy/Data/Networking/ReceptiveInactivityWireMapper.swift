@@ -38,12 +38,22 @@ public struct ReceptiveInactivityDTO: Codable, Equatable, Sendable {
     /// The moment it began, in the canonical fixed-width UTC form, or `null`.
     public let startedAt: String?
 
-    public init(id: String, date: String, name: String, note: String?, startedAt: String?) {
+    /// The metronome reading, in **hertz**, or `null` for an entry with none.
+    ///
+    /// **A stored value, not a conversion.** The phone writes `pulse_hz` (`v42`) and this field is
+    /// that column; a mapper that divided a minute figure here would be a second place the unit
+    /// could change.
+    public let pulseHz: Double?
+
+    public init(
+        id: String, date: String, name: String, note: String?, startedAt: String?, pulseHz: Double?
+    ) {
         self.id = id
         self.date = date
         self.name = name
         self.note = note
         self.startedAt = startedAt
+        self.pulseHz = pulseHz
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -52,6 +62,7 @@ public struct ReceptiveInactivityDTO: Codable, Equatable, Sendable {
         case name
         case note
         case startedAt
+        case pulseHz
     }
 
     /// Written by hand so `note` and `startedAt` reach the wire as `null` rather than as nothing.
@@ -66,6 +77,7 @@ public struct ReceptiveInactivityDTO: Codable, Equatable, Sendable {
         try container.encode(name, forKey: .name)
         try container.encode(note, forKey: .note)
         try container.encode(startedAt, forKey: .startedAt)
+        try container.encode(pulseHz, forKey: .pulseHz)
     }
 }
 
@@ -113,7 +125,8 @@ public enum ReceptiveInactivityWireMapper {
             date: dayKey(for: row.date, in: calendar),
             name: row.name,
             note: row.note,
-            startedAt: row.startedAt.map(instantKey(for:))
+            startedAt: row.startedAt.map(instantKey(for:)),
+            pulseHz: row.pulseHz
         )
     }
 
@@ -153,7 +166,8 @@ public enum ReceptiveInactivityWireMapper {
             date: day,
             name: dto.name,
             note: dto.note,
-            startedAt: startedAt
+            startedAt: startedAt,
+            pulseHz: dto.pulseHz
         )
     }
 

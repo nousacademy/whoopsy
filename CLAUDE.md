@@ -384,7 +384,7 @@ Core          (HRV/Strain/Stress math, logging, extensions)
 - **A sync upsert can erase a local-only user field.**
 - **A night too short to be a night is provisional, and input arriving past its grace reopens the day.**
 - **An HRV built from twenty successive differences is a measurement, not an estimate — the strap sends one interval per notification, so the window asks for sixty.**
-- **A felt pulse has no producer: the metronome measures the owner's own report, and `pulse_rate` is a local-only column the wire drops.**
+- **A felt pulse has no producer: the metronome measures the owner's own report, and it syncs as hertz (`pulse_hz`).**
 
 ### Reference docs
 

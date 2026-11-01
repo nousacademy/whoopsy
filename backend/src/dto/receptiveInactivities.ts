@@ -86,6 +86,17 @@ const receptiveInactivityFields = {
       example: "Standing in a house that was not mine.",
     }),
 
+  pulseHz: z
+    .number()
+    .gt(0)
+    .max(8.34)
+    .nullable()
+    .openapi({
+      description:
+        "The rate matched on the sheet's metronome, in **hertz**, or `null` for an entry with none. **A stored value and not a derived one**: the client writes hertz (`pulse_hz`) and derives the gauge's minute figure as ×60 for display, so a conversion here would be a second place the unit could change. The ceiling is the gauge's own — 500 pulses a minute is 8⅓ Hz — and zero is refused, because the control's zero means *no reading* and is sent as `null`.",
+      example: 1.1,
+    }),
+
   startedAt: InstantSchema.nullable().openapi({
     description:
       "A time-of-day on `date`, or `null` for an untimed entry — which is the ordinary case rather than the exception, and every one of the app's 62 bundled rows is untimed. **The first nullable instant in this API**: a session has a beginning by definition, while a note routinely has no recorded time at all, and defaulting one to midnight would sort and print as a time nobody gave. The client rebuilds the hour and minute onto `date`'s own year, month and day, so a non-null value is always on the day beside it.",

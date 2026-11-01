@@ -30,7 +30,7 @@ public final class GRDBReceptiveInactivityRepository: ReceptiveInactivityReposit
             name: activity.name,
             note: activity.note,
             startedAt: activity.startedAt,
-            pulseRate: activity.pulseRate
+            pulseHz: activity.pulseHz
         )
         try await db.saveReceptiveInactivity(record)
     }
@@ -62,7 +62,7 @@ public final class GRDBReceptiveInactivityRepository: ReceptiveInactivityReposit
                 name: record.name,
                 note: record.note,
                 startedAt: record.startedAt,
-                pulseRate: record.pulseRate
+                pulseHz: record.pulseHz
             )
         }
     }

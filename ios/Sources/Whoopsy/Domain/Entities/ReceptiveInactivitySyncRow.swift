@@ -40,12 +40,19 @@ public struct ReceptiveInactivitySyncRow: Equatable, Sendable {
     /// When the entry began, or `nil` for one recorded with no time.
     public let startedAt: Date?
 
-    public init(id: String, date: Date, name: String, note: String?, startedAt: Date?) {
+    /// The rate matched on the sheet's metronome, in **hertz**, or `nil` for an entry with no
+    /// reading. **A stored value and not a derived one**: the phone's column is `pulse_hz` since
+    /// `v42`, and the field-for-field rule this row exists to obey is why the wire carries hertz
+    /// rather than the minute figure a screen prints.
+    public let pulseHz: Double?
+
+    public init(id: String, date: Date, name: String, note: String?, startedAt: Date?, pulseHz: Double? = nil) {
         self.id = id
         self.date = date
         self.name = name
         self.note = note
         self.startedAt = startedAt
+        self.pulseHz = pulseHz
     }
 
     /// The row an entry would be stored as. The entity's `UUID` id crosses to the record's `String`
@@ -57,7 +64,8 @@ public struct ReceptiveInactivitySyncRow: Equatable, Sendable {
             date: activity.date,
             name: activity.name,
             note: activity.note,
-            startedAt: activity.startedAt
+            startedAt: activity.startedAt,
+            pulseHz: activity.pulseHz
         )
     }
 
@@ -66,6 +74,7 @@ public struct ReceptiveInactivitySyncRow: Equatable, Sendable {
     /// with no addressable identity must not come back as a fresh `UUID` that corresponds to nothing.
     public var activity: ReceptiveInactivity? {
         guard let id = UUID(uuidString: id) else { return nil }
-        return ReceptiveInactivity(id: id, date: date, name: name, note: note, startedAt: startedAt)
+        return ReceptiveInactivity(
+            id: id, date: date, name: name, note: note, startedAt: startedAt, pulseHz: pulseHz)
     }
 }

@@ -1610,7 +1610,7 @@ public struct HomeDashboardView: View {
             // world writes a frequency in. It is the owner's report rather than a measurement, which
             // is why it is set in the same muted type as the time rather than as a figure the row is
             // about.
-            if let pulseRate = activity.pulseRate {
+            if let pulseRate = activity.pulseRatePerMinute {
                 Text("\(PulseTiming.formattedHertz(ratePerMinute: pulseRate))Hz")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.textSecondary)

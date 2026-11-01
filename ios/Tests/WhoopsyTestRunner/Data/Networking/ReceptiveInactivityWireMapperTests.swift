@@ -78,19 +78,19 @@ enum ReceptiveInactivityWireMapperTests {
             assertTest(false, "The wire's body encodes to a JSON object")
             return
         }
-        assertTest(Set(object.keys) == ["id", "date", "name", "note", "startedAt"],
-                   "The body's keys are the wire's five, spelled as the server declares them")
+        assertTest(Set(object.keys) == ["id", "date", "name", "note", "startedAt", "pulseHz"],
+                   "The body's keys are the wire's six, spelled as the server declares them")
 
         // The shape the whole file exists for: **both nullable fields present, both `null`, neither
         // omitted.** An imported entry has neither, so this is the common case rather than a corner.
         let bare = ReceptiveInactivityDTO(id: UUID().uuidString, date: "2026-08-21", name: "Dream",
-                                          note: nil, startedAt: nil)
+                                          note: nil, startedAt: nil, pulseHz: nil)
         let bareEncoded = try JSONEncoder().encode(bare)
         guard let bareObject = try JSONSerialization.jsonObject(with: bareEncoded) as? [String: Any] else {
             assertTest(false, "A body with both optionals absent still encodes")
             return
         }
-        for key in ["note", "startedAt"] {
+        for key in ["note", "startedAt", "pulseHz"] {
             assertTest(bareObject.keys.contains(key),
                        "The body carries '\(key)' as a key even when the entry has none")
             assertTest(bareObject[key] is NSNull, "…and carries it as null, which is a value the schema accepts")
@@ -142,7 +142,7 @@ enum ReceptiveInactivityWireMapperTests {
         do {
             _ = try ReceptiveInactivityWireMapper.row(
                 for: ReceptiveInactivityDTO(id: UUID().uuidString, date: "not-a-day", name: "Dream",
-                                            note: nil, startedAt: nil))
+                                            note: nil, startedAt: nil, pulseHz: nil))
             assertTest(false, "A day this app cannot read is refused rather than guessed at")
         } catch let error as CloudSyncError {
             guard case let .malformed(message) = error else {
@@ -157,7 +157,7 @@ enum ReceptiveInactivityWireMapperTests {
         do {
             _ = try ReceptiveInactivityWireMapper.row(
                 for: ReceptiveInactivityDTO(id: UUID().uuidString, date: "2026-08-21", name: "Dream",
-                                            note: nil, startedAt: "2026-08-21T00:00:00"))
+                                            note: nil, startedAt: "2026-08-21T00:00:00", pulseHz: nil))
         } catch let error as CloudSyncError {
             guard case let .malformed(message) = error else {
                 assertTest(false, "…with the malformed case")
