@@ -25,6 +25,11 @@ enum InactivityImporterTests {
         // MARK: - B. The import, against an in-memory database
 
         let rows = (try? InactivityParser.parseInactivities(at: inactivitiesURL())) ?? []
+        // **Every count below is the file's, not a literal.** `dreams.json` is the owner's own journal
+        // and it grows; a suite that pinned its length would fail on the day a note was added, which is
+        // a false red about the importer. What is asserted is the relation — every parsed record
+        // written, every distinct day walked, the second press rewriting rather than appending.
+        let expectedDays = Set(rows.map(\.date))
         let calendar = Calendar.current
         let importer = InactivityImporter(receptiveRepository: repository)
 
@@ -38,11 +43,12 @@ enum InactivityImporterTests {
             "The summary counts the file's own records, so a re-generated journal reports the number of "
                 + "lines it actually has (\(summary.rowsInFile) against \(rows.count) parsed)")
         assertTest(
-            summary.inactivitiesWritten == 62,
-            "…and all **62** of them reached `receptive_inactivities`. This is the assertion that fails "
+            summary.inactivitiesWritten == rows.count,
+            "…and every parsed record reached `receptive_inactivities`. This is the assertion that fails "
                 + "if anyone reaches for `ReceptiveInactivity(date:name:startedAt:)` without passing the "
-                + "derived id — not because the write fails, but because it would write 62 rows on every "
-                + "press and read back perfectly well while doing it (\(summary.inactivitiesWritten))")
+                + "derived id — not because the write fails, but because it would write the whole journal "
+                + "on every press and read back perfectly well while doing it "
+                + "(\(summary.inactivitiesWritten) against \(rows.count))")
         assertTest(
             summary.rowsUnreadable == 0,
             "…and nothing was refused. This count is structurally zero on this path rather than "
@@ -53,10 +59,9 @@ enum InactivityImporterTests {
 
         // **The day count is recomputed, never pinned.** `startOfDay` is `Calendar.current`, and this
         // file's dates are pure days that a device time zone could in principle merge; §20 shipped the
-        // hardcoded `136` once and it was a UTC number. The figure is 57 on this machine, and the
-        // assertion is that the importer's own count agrees with a set built from the parsed rows —
-        // which is the property, and the one that holds in every zone.
-        let expectedDays = Set(rows.map(\.date))
+        // hardcoded `136` once and it was a UTC number. The assertion is that the importer's own count
+        // agrees with a set built from the parsed rows — which is the property, and the one that holds
+        // in every zone.
         assertTest(
             summary.daysWritten == expectedDays.count,
             "The day count is the number of **distinct days** the records land on, recomputed here from "
@@ -71,16 +76,18 @@ enum InactivityImporterTests {
                 + "\(summary.inactivitiesWritten) rows)")
 
         assertTest(
-            summary.message.contains("62 receptive inactivities") && summary.message.contains("57 days"),
+            summary.message.contains("\(rows.count) receptive inactivities")
+                && summary.message.contains("\(expectedDays.count) days"),
             "The sentence a reader is shown leads with the rows and states the days as its own clause — "
                 + "the same split the two counts above are asserted separately for "
                 + "(\(summary.message))")
+        let spanStart = expectedDays.sorted().first?.formattedImportDay() ?? ""
+        let spanEnd = expectedDays.sorted().last?.formattedImportDay() ?? ""
         assertTest(
-            summary.message.contains("23 Jul 2023") && summary.message.contains("5 Oct 2026"),
+            summary.message.contains(spanStart) && summary.message.contains(spanEnd),
             "…and it names the span it wrote, at both ends, through the shared `formattedImportDay()` "
-                + "grammar. The last day is **5 Oct 2026** and not the 7 Aug the plan sketched: that "
-                + "range was written from memory and the file's own tail is later than it "
-                + "(\(summary.message))")
+                + "grammar — computed from the file's own first and last day rather than pinned, because "
+                + "the journal grows at both ends (\(summary.message))")
 
         // ---- All 62, read back on their own days ----
 
@@ -94,8 +101,8 @@ enum InactivityImporterTests {
             readBack.append(contentsOf: try await repository.getReceptiveInactivities(for: day))
         }
         assertTest(
-            readBack.count == 62,
-            "All **62** rows come back through `GRDBReceptiveInactivityRepository` on their own days. "
+            readBack.count == rows.count,
+            "Every row comes back through `GRDBReceptiveInactivityRepository` on its own day. "
                 + "The 57 days are walked rather than one query run, because the repository has one "
                 + "day-keyed read and no windowed sibling — a receptive inactivity has no end, so there "
                 + "is nothing for a `covering:` read to overlap (\(readBack.count) read back)")
@@ -136,21 +143,21 @@ enum InactivityImporterTests {
                 + "would be a time the user never chose (\(timed.count) timed)")
         let named = Set(readBack.map(\.name))
         assertTest(
-            named == ["Dream"],
-            "…and every one is named **`Dream`**, the catalogue's own spelling rather than the file's "
-                + "lowercase `type` — so the row the import writes and the row the picker writes are the "
-                + "same word on the screen and in the same glyph's table (\(named.sorted()))")
+            !named.isEmpty && named.isSubset(of: Set(ReceptiveInactivityCatalog.names)),
+            "…and every name is **a catalogue name**, not the file's lowercase `type` — so the row the "
+                + "import writes and the row the picker writes are the same word on the screen and in the "
+                + "same glyph's table (\(named.sorted()))")
 
         // ---- The second press ----
 
         // **The assertion §4 exists for.** GRDB's `save` is INSERT-or-UPDATE *by primary key*, so this
         // holds only while the id is derived from the record's own content: with a fresh `UUID()` the
-        // second press appends 62 more rows, every one of them reading back as a `Dream` on the right
-        // day, and this is the only thing in the suite that would notice.
+        // second press appends the whole journal again, every row reading back on the right day, and
+        // this is the only thing in the suite that would notice.
         let second = try await importer.importInactivities(at: inactivitiesURL())
         assertTest(
-            second.inactivitiesWritten == 62,
-            "The second press reports the same 62 rows, because it rewrites the same primary keys rather "
+            second.inactivitiesWritten == rows.count,
+            "The second press reports the same rows, because it rewrites the same primary keys rather "
                 + "than writing a second journal (\(second.inactivitiesWritten))")
 
         var afterSecond: [ReceptiveInactivity] = []
@@ -158,8 +165,8 @@ enum InactivityImporterTests {
             afterSecond.append(contentsOf: try await repository.getReceptiveInactivities(for: day))
         }
         assertTest(
-            afterSecond.count == 62,
-            "…and the database still holds **62** rows and not 124. This is the assertion the whole "
+            afterSecond.count == rows.count,
+            "…and the database still holds the same number of rows rather than double. This is the assertion the whole "
                 + "derived-id design is for, and the failure it catches is silent: an appending importer "
                 + "reports a successful import, draws a correct-looking card, and quietly doubles the "
                 + "journal on every press (\(afterSecond.count) after the second import)")

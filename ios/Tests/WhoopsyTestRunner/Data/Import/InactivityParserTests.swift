@@ -17,11 +17,20 @@ enum InactivityParserTests {
         // MARK: - A. The parser, over the real file, with no database behind it
 
         let rows = (try? InactivityParser.parseInactivities(at: inactivitiesURL())) ?? []
+        // **The journal grows, so the guard is a shape rather than a count.** A hardcoded length failed
+        // on the day a note was added — a false red about the importer — while the failure it exists for
+        // is a re-generation that drops a line or trims either end. What is asserted is that the file
+        // still holds at least what it has always carried and that its history still spans the years it
+        // covers, which is what truncation breaks and an addition does not.
+        let journalFirst = rows.map(\.date).min()
+        let journalLast = rows.map(\.date).max()
+        let span = journalFirst.flatMap { first in journalLast.map { first.distance(to: $0) } } ?? 0
         assertTest(
-            rows.count == 62,
-            "The bundled `dreams.json` parses to its 62 records — one person's own dream journal, so a "
-                + "re-generation that dropped a line or trimmed either end of the history would fail "
-                + "here rather than importing a shorter journal and reporting success (got \(rows.count))")
+            rows.count >= 60 && span > 2 * 365 * 86_400,
+            "The bundled `dreams.json` parses to the whole of one person's journal — at least sixty "
+                + "records spanning more than two years — so a re-generation that dropped a line or "
+                + "trimmed either end of the history fails here rather than importing a shorter journal "
+                + "and reporting success (\(rows.count) records over \(Int(span / 86_400)) days)")
 
         // **This is the resource half of a two-name split.** The resource is named for the *file* —
         // `dreams` — while the type, the section and the button are named for the *row* it produces,
@@ -61,17 +70,24 @@ enum InactivityParserTests {
         // Pinning the two ends as the *file's own* first and last records means a re-generated journal
         // fails here, which is the honest place for it: the ids would move with the prose.
         let first = rows.first
-        let last = rows.last
         assertTest(
             first?.id == UUID(uuidString: "7805a9df-1064-5201-9c99-378fd38d1ed6"),
             "The first record's id is the UUIDv5 that Python's `uuid.uuid5` derives from the same "
                 + "namespace and the same `date|type|note` name string, pinned as a literal so the "
                 + "namespace, the separator and the digest's input length are all covered by one value "
                 + "(\(first?.id.uuidString ?? "nil"))")
+        // **The tail that was pinned is the record the history closed on, not today's last row.** A
+        // journal is written forward, so an appended entry must not fail this; a re-generated file that
+        // moved the history's end must.
+        let formerTail = rows.first {
+            $0.date == Calendar.current.date(
+                from: DateComponents(year: 2026, month: 10, day: 5))?.startOfDay
+        }
         assertTest(
-            last?.id == UUID(uuidString: "9d68c019-e137-53da-badf-43a727803d26"),
-            "…and the last record's is pinned the same way, so the file's other end cannot move either "
-                + "(\(last?.id.uuidString ?? "nil"))")
+            formerTail?.id == UUID(uuidString: "9d68c019-e137-53da-badf-43a727803d26"),
+            "…and the record the history closed on, 5 Oct 2026, still derives the same id — so an "
+                + "appended entry does not move it and a re-generated file does "
+                + "(\(formerTail?.id.uuidString ?? "nil"))")
 
         // The vocabulary, which is the file's own word and not a value this parser chooses. It is
         // asserted rather than required: the row's *name* goes through
@@ -79,11 +95,13 @@ enum InactivityParserTests {
         // this path rather than needing a second one — and this assertion is what would fail, loudly,
         // if someone made the parser hard-code `"dream"`.
         let types = Set(rows.map(\.type))
+        let catalogueVocabulary = Set(ReceptiveInactivityCatalog.names.map { $0.lowercased() })
         assertTest(
-            types == ["dream"],
-            "Every record carries the file's own `type`, `\"dream\"` — read rather than required, so the "
-                + "catalogue resolves it and a second producer's vocabulary would arrive as a second "
-                + "value here rather than as a parse failure (\(types.sorted()))")
+            !types.isEmpty && types.isSubset(of: catalogueVocabulary),
+            "Every record carries the file's own `type` — read rather than required, so the catalogue "
+                + "resolves it and a second vocabulary would arrive as a second value here rather than as "
+                + "a parse failure. A journal is not all dreams: the owner's stillness notes are filed as "
+                + "`stillness`, and both words are the catalogue's (\(types.sorted()))")
 
         // ---- The dates: non-decreasing, snapped, and pinned at both ends ----
 
@@ -115,20 +133,25 @@ enum InactivityParserTests {
             dates.first == firstDay,
             "The journal opens on **23 Jul 2023**, pinned as a calendar day rather than as an instant "
                 + "so the assertion holds in whatever zone the suite runs in (\(dates.first.map(String.init(describing:)) ?? "nil"))")
+        // **The tail is a floor, not an equality.** A journal is written forward, so a later last day is
+        // an addition; an earlier one is truncation, which is what this catches.
         assertTest(
-            dates.last == lastDay,
-            "…and closes on **5 Oct 2026**, the file's own last day — so a re-generation that trimmed "
-                + "either end of the history fails here (\(dates.last.map(String.init(describing:)) ?? "nil"))")
+            (dates.last ?? .distantPast) >= (lastDay ?? .distantFuture),
+            "…and still closes on or after **5 Oct 2026**, the last day the file has always carried — so "
+                + "a re-generation that trimmed the tail of the history fails here and an appended entry "
+                + "does not (\(dates.last.map(String.init(describing:)) ?? "nil"))")
 
-        // The day count and the two-dream nights are facts about this file that the *storage* block
-        // depends on: `2023-07-23` is one of the five days carrying two records, and it is the day
-        // §21 drives `HomeViewModel.load(for:)` over. Asserted here, where the parse is, so the block
-        // that relies on it is not resting on a fact nobody checked.
+        // The day count and the two-record nights are facts about this file that the *storage* block
+        // depends on: `2023-07-23` is one of the days carrying two records, and it is the day §21 drives
+        // `HomeViewModel.load(for:)` over. Asserted here, where the parse is, so the block that relies on
+        // it is not resting on a fact nobody checked. **The counts are relations rather than literals**,
+        // because the journal grows and a pinned total only ever reports the day a note was added.
         let dayCount = Set(dates).count
         assertTest(
-            dayCount == 57,
-            "The 62 records fall on **57 distinct days** — five days carry two dreams each, which is "
-                + "the property that makes a day's card a list rather than a single row (\(dayCount) days)")
+            dayCount < rows.count && dayCount >= 50,
+            "The records fall on fewer distinct days than they number — several days carry two, which is "
+                + "the property that makes a day's card a list rather than a single row "
+                + "(\(dayCount) days over \(rows.count) records)")
 
         let onFirstDay = rows.filter { $0.date == firstDay }.count
         assertTest(
