@@ -16,7 +16,7 @@ Written in Swift 6 with strict concurrency (`async`/`await`, `AsyncStream`, `Sen
 
 | for | read |
 | :--- | :--- |
-| what each of the 25 suite sections asserts | `docs/TESTING.md` |
+| what each of the 26 suite sections asserts | `docs/TESTING.md` |
 | why a screen or control is the shape it is | `docs/PAGES.md` |
 | the reasoning and the evidence behind any gotcha | `docs/GOTCHAS.md` (grep the headline) |
 | the Worker's resources, routes and gates | `docs/BACKEND.md` |
@@ -135,7 +135,7 @@ For the decisive check that the running binary holds a specific edit — indepen
 ### Tests
 
 ```bash
-make test                        # build + run all 25 sections
+make test                        # build + run all 26 sections
 make test SECTIONS=13,15         # just those two
 ./scripts/test.sh 13 15          # same thing
 swift test --package-path ios    # FAILS: "no tests found" — Package.swift declares no test target
@@ -145,7 +145,7 @@ The real suite lives under `ios/Tests/WhoopsyTestRunner/` (a hand-rolled assert 
 
 **The test tree mirrors `ios/Sources/Whoopsy/`, and that is the rule that answers "where does this test go?".** A test file is named `<SourceFile>Tests.swift` and sits at its source file's own path with `Sources/Whoopsy/` dropped — so the counterpart of `Sources/Whoopsy/Core/Math/SleepNeedMath.swift` is `Tests/WhoopsyTestRunner/Core/Math/SleepNeedMathTests.swift`, and a new domain model, route or repository is findable without searching. `Support/` deliberately does **not** mirror, because the harness (`SuiteTally`, `assertTest`, `finishSuite`), the section registry and the twelve shared fixtures have no app counterpart. **`main.swift` is the one file that may hold top-level statements** — Swift permits executable code at file scope in a file literally named that and in no other — so everything that is a declaration lives in a sibling file and `main.swift` is about 50 lines. `scripts/test.sh` links `main.swift` plus every other `.swift` under the test root, sorted, so compile order is deterministic and a failure's `#file`/`#line` is stable run to run.
 
-**A section is a grouping and the file is the unit.** §1–§25 are *stable ids*, not positions: `Support/SectionRegistry.swift` holds one `TestSection` entry per section carrying its id, its title and the closure that runs it, so **adding a section means appending one entry and nothing is renumbered** — `WHOOPSY_SECTIONS=13` keeps its meaning for good, and every `§N` reference in this file, in `docs/` and in the section doc comments keeps its own.
+**A section is a grouping and the file is the unit.** §1–§26 are *stable ids*, not positions: `Support/SectionRegistry.swift` holds one `TestSection` entry per section carrying its id, its title and the closure that runs it, so **adding a section means appending one entry and nothing is renumbered** — `WHOOPSY_SECTIONS=13` keeps its meaning for good, and every `§N` reference in this file, in `docs/` and in the section doc comments keeps its own.
 
 **Its two steps each resolve a compiler through `PATH`, so an exported `DEVELOPER_DIR` makes them disagree — and this is a false green, not a build error you will notice.** `xcode-select` points at CommandLineTools (Swift 6.3.3) while Xcode 27 is Swift 6.4, and that variable is what moves `/usr/bin/swiftc` from one to the other; the script's `swift build` leaves a module in the scratch path and its bare `swiftc` then refuses it with *"module compiled with Swift 6.3.3 cannot be imported by the Swift 6.4 compiler"*. **Do not leave `DEVELOPER_DIR` exported in the shell you run `scripts/test.sh` from** — unset it, or export it so *both* steps see it. Recover by re-running with it unset; the module is only stale against the other toolchain, so no clean is needed. Measured 2026-09-30: a background run of the suite reported **exit 0** while its output held that compile error, no `SUITE` line and no `✅ ALL WHOOPSY TESTS PASSED SUCCESSFULLY!` banner — which is §7's rule in the flesh, and the reason the banner and the `sections=`/`assertions=` fields are the verdict and `$?` is not. Reproduced the same day by running the script's own link step twice, identical but for the variable: **without** it the link succeeds and writes its binary; **with** it the link prints that error and writes no binary at all — and that failing step reports `exit=0` too, so the exit code does not separate the two cases even at the step that fails.
 
@@ -154,16 +154,16 @@ The real suite lives under `ios/Tests/WhoopsyTestRunner/` (a hand-rolled assert 
 **Read the summary line, not the scrollback:**
 
 ```
-SUITE sections=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26 assertions=3663 failed=0 exit=0
+SUITE sections=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26 assertions=3679 failed=0 exit=0
 ```
 
 `sections=` is the field that catches a dropped section, `assertions=` the field that catches a section that ran but stopped asserting, and the exit code is trustworthy. Sections live in `Support/SectionRegistry.swift`'s `testSections()`, which `runSections(_:)` iterates and the `Task` awaits inside a `do`/`catch`, and `finishSuite` is the single exit path for every outcome — an unobserved throw, or a hang at the 30 s timeout, would otherwise idle out the `RunLoop` and exit **0**. A `WHOOPSY_SECTIONS` value naming a section that does not exist exits 1 rather than running nothing and reporting success.
 
 `packageRoot()` in `Support/TestResourceURLs.swift` locates the bundle's CSVs from `#filePath`, and `#filePath` is whatever path is handed to `swiftc` — so the path must be **absolute**, or the **package root** it computes depends on the caller's cwd and §11–§21 fail with *"The bundled export is missing at …/Sources/…"*, which reads like a broken import and is only a wrong working directory. `scripts/test.sh` passes an absolute path; do not reintroduce a relative one. **The climb is a marker walk** — up until a directory holds both `Package.swift` and `Sources/Whoopsy` — rather than a count of `deletingLastPathComponent()` calls, because the count was correct only while the code sat at `Tests/WhoopsyTestRunner/main.swift`: the mirrored tree makes depth a property of the *file*, so a helper in `Support/` would climb three levels and land on `Tests/`. `WHOOPSY_PACKAGE_ROOT` is preferred when set, which `scripts/test.sh` exports beside the absolute path.
 
-The runner has 25 sections and all 25 now execute. Keep it that way. A new section is one entry appended to `testSections()` in `Support/SectionRegistry.swift` — its own `id`, its title and its body — and **nothing existing moves**: the banner's denominator is the registry's own count and its numerator is the entry's own id.
+The runner has 26 sections and all 26 now execute. Keep it that way. A new section is one entry appended to `testSections()` in `Support/SectionRegistry.swift` — its own `id`, its title and its body — and **nothing existing moves**: the banner's denominator is the registry's own count and its numerator is the entry's own id.
 
-**What each section asserts is not here — it is `docs/TESTING.md`.** That file describes all 25: §1–§10 and §16–§18 in one long entry, §21 in its own, then §11–§15 with a heading per block, and §19–§20 and §22–§25 after them. This file keeps the mechanics of running the suite and the rules for adding to it. Read that file's entry for a section before you edit that section, because a block described there that stops running is a deleted guarantee rather than a refactor.
+**What each section asserts is not here — it is `docs/TESTING.md`.** That file describes all 26: §1–§10 and §16–§18 in one long entry, §21 in its own, then §11–§15 with a heading per block, and §19–§20, §22–§25 and §26 after them. This file keeps the mechanics of running the suite and the rules for adding to it. Read that file's entry for a section before you edit that section, because a block described there that stops running is a deleted guarantee rather than a refactor.
 
 There is no test discovery, so a section that stops running looks exactly like one that passed — read the `sections=` and `assertions=` fields of the summary line, record them before you edit, and treat a drop in either as a deleted guarantee.
 
@@ -363,7 +363,7 @@ Core          (HRV/Strain/Stress math, logging, extensions)
 - **Importing recomputes Recovery rather than storing WHOOP's.**
 - **HealthKit availability is a runtime question.**
 - **HealthKit never discloses read-permission status.**
-- **Six files are bundled and read through `Bundle.module` — three CSVs and three JSONs**, the third JSON being the life tables `scripts/build-life-tables.py` generates.
+- **Seven files are bundled and read through `Bundle.module` — three CSVs, three JSONs and the energy figure**, the third JSON being the life tables `scripts/build-life-tables.py` generates and the figure being `Data/Resources/Energy/body.png`, loaded by URL rather than by name because `Image(_:bundle:)` resolved to nothing while `Bundle.module.url(forResource:)` answered.
 - **`simctl launch` on an already-running app does not relaunch it, so a screenshot can show the previous build's code.**
 - **Filenames lie.**
 - **Repositories answer from local storage and nothing else.**
@@ -382,8 +382,9 @@ Core          (HRV/Strain/Stress math, logging, extensions)
 - **A stored metric row must record the formula that produced it, and a parameter change is a version bump.**
 - **A survey edit that rebuilds a value drops every field it does not name.**
 - **A sync upsert can erase a local-only user field.**
-- **A felt pulse has no producer: the metronome measures the owner's own report, and `pulse_rate` is a local-only column the wire drops.**
+- **A night too short to be a night is provisional, and input arriving past its grace reopens the day.**
 - **An HRV built from twenty successive differences is a measurement, not an estimate — the strap sends one interval per notification, so the window asks for sixty.**
+- **A felt pulse has no producer: the metronome measures the owner's own report, and `pulse_rate` is a local-only column the wire drops.**
 
 ### Reference docs
 

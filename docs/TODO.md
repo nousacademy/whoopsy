@@ -1154,12 +1154,13 @@ outstanding wording fix rather than a behaviour change.
 `HistoricalDrainSession` (token, live edge, stall), `StepCounterPayloadDecoder` (R18 payload 46/52/53,
 2020 stamp floor, one-shot `step_counter` diagnostic), `StepCounterAccumulator` (the delta rule),
 `StepCounterStateStore` (the ledger), `TrackStepsUseCase` (arbitration and throttling). §16 asserts all
-of it; the suite is **25/25 sections, 3,231 assertions** — measured 2026-10-24 after §14's radio-loss
+of it; the suite is **26/26 sections, 3,679 assertions** — re-measured 2026-11-01 after the HRV support
+floor and §26
 and charging-badge assertions and §16's `0x9A` block were added.
 
 ```bash
 unset DEVELOPER_DIR && make test SECTIONS=16   # the step/drain block
-unset DEVELOPER_DIR && make test              # all 25 sections
+unset DEVELOPER_DIR && make test              # all 26 sections
 make ipa                                      # tmp/whoopsy.ipa for Sideloadly
 ```
 

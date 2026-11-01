@@ -76,7 +76,7 @@ on one unit, and being specific about what that proved is more useful than a fea
   a WHOOP data export, and that path is covered end to end by the test suite.
 
 What *is* solid: the domain model, the scoring maths, the persistence layer, the import pipeline, and
-a 3158-assertion test runner that pins the behaviour of all of them.
+a 3679-assertion test runner that pins the behaviour of all of them.
 
 ---
 
@@ -136,10 +136,14 @@ file and `CLAUDE.md` are the only two left at the repo root.
 | File | What it holds |
 | :--- | :--- |
 | [`TODO.md`](docs/TODO.md) | **The roadmap.** Outstanding work, per CSV column, per component and — in §8 — per WHOOP 5.0 MG feature, with the reason each item is still open. |
-| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **App design.** Layer rules, folder layout, component inventory, data-flow diagram. |
+| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **The design pattern.** Layer rules, folder layout, component inventory, and the migration history. |
+| [`PAGES.md`](docs/PAGES.md) | **The screens.** Every page, the figures it draws, and a link per figure to the step that produces it and the maths behind it. |
 | [`DATAFLOW.md`](docs/DATAFLOW.md) | **Where numbers come from.** Every input path, who writes each table and what provenance it stamps, the foreground order, and the concurrency rule reads obey. |
+| [`DEAD_WHOOP_BAND.md`](docs/DEAD_WHOOP_BAND.md) | **The strap → phone path.** Connect and keep-alive, the five streams, the decode chain, the flash drain, and what each record type writes. |
 | [`ALGORITHMS.md`](docs/ALGORITHMS.md) | **The maths.** RMSSD/SDNN, the Strain model, the Recovery z-score, sleep staging, sleep need — with constants and citations. |
 | [`BLE_PROTOCOL.md`](docs/BLE_PROTOCOL.md) | **Bluetooth.** GATT UUIDs for all three straps, both `0xAA` envelopes, CRC layout, handshake sequence. |
+| [`GOTCHAS.md`](docs/GOTCHAS.md) | **Every trap this repo has hit**, with the measurement that exposed it. |
+| [`TESTING.md`](docs/TESTING.md) | **The suite, section by section** — what each of the 26 sections asserts. |
 | [`CLAUDE.md`](CLAUDE.md) | **Working in this repo.** Build and test commands, and the hard-won gotchas that are not obvious from the code. Also the entry point for AI-assisted development. |
 | [`BACKEND.md`](docs/BACKEND.md) | **The optional backend.** The Worker's resources, routes, gates, deployment, and the app-side sync configuration. Not required to build or run the app. |
 
@@ -154,7 +158,7 @@ whoopsy/
 ├── ios/              the app — one SwiftPM package plus Whoopsy.xcodeproj
 │   ├── Sources/      Whoopsy/ (the four layers) and WhoopsyLiveActivityKit/
 │   ├── App/          Xcode-only sources: iOS/, Map/, LiveActivity/, Config/
-│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 3158-assertion suite,
+│   └── Tests/        WhoopsyTestRunner/ — the hand-rolled 3679-assertion suite,
 │                     mirroring Sources/Whoopsy/ file for file
 ├── backend/          optional Cloudflare Worker — see docs/BACKEND.md
 ├── shared/           one {resource}/openapi.json per route, generated
@@ -419,11 +423,11 @@ and compare its size and timestamp against the built one.
 
 ### Tests
 
-The suite is a hand-rolled assertion runner rather than XCTest — 25 sections, 3158 assertions, and no
+The suite is a hand-rolled assertion runner rather than XCTest — 26 sections, 3679 assertions, and no
 test discovery:
 
 ```bash
-make test                 # build + run all 24 sections
+make test                 # build + run all 26 sections
 make test SECTIONS=13,15  # just those two
 ```
 
@@ -432,7 +436,7 @@ deleted sources and the link fails) and hands the runner an absolute `#filePath`
 longer cares which directory you run it from. It ends with one machine-readable line:
 
 ```
-SUITE sections=1,2,...,25 assertions=3158 failed=0 exit=0
+SUITE sections=1,2,...,26 assertions=3679 failed=0 exit=0
 ```
 
 Read that line rather than the scrollback — the suite has no test discovery, so a section that

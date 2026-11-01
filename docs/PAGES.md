@@ -35,7 +35,7 @@ needs explaining, the explanation already exists in one of the two.
 | Activity page | the session, its zones, route, splits | `workouts`, `workout_splits`, `workout_route_points` | §8 |
 | Profile `LOGS` / `STORAGE` | import tallies, sync status | `WhoopExportImporter`, `InactivityImporter`, `HealthKitImporter`, `DailySyncUseCase` | — |
 | Device page | strap, battery, firmware | the BLE streams — see **[DEAD_WHOOP_BAND.md](DEAD_WHOOP_BAND.md)** | — |
-| Energy | **nothing** — a study surface that reads no row | — | §10 (the metronome's timing, via §26 of the suite) |
+| Energy | **nothing** — a study surface that reads no row | — | — (the metronome's timing is `PulseTiming`, pinned by §26 of the suite) |
 
 > **Sources.** Other people's reverse-engineering is cited here by **role**, never by project
 > name — the community reference, the research reference, the APK reading and the Swift 4.0

@@ -60,8 +60,8 @@ makes "calculated once, stored, read" checkable rather than a slogan.
 | `biometric_samples` | decoder (live + drain), importers | every notification / batch | `timestamp` is an arrival instant; `rrIntervalsMs` is the raw series |
 | `motionEpochs` | `RecordMotionUseCase` | every 30 s window | grid-keyed |
 | `stepCounts` | `TrackStepsUseCase` (motion + `R18` counter) | motion batch / counter tick | `measuredSeconds`; **no `source` column** |
-| `sleeps` | `AnalyzeSleepUseCase` (via `RefreshNightsUseCase` and the sleep page) | drain, foreground, page open when owed | `algorithm`, `scored_through`, `stillness_spine` |
-| `recoveries` | `CalculateRecoveryUseCase` (via `RefreshRecoveryUseCase`) | foreground, after the night refresh | `algorithm`, `scored_through` (`v39`) |
+| `sleeps` | `AnalyzeSleepUseCase` (via `RefreshNightsUseCase` and the sleep page) | drain, foreground, page open when owed or pulled down | `algorithm` (`stager-v2`), `scored_through`, `stillness_spine`, `ended_at_data_edge` |
+| `recoveries` | `CalculateRecoveryUseCase` (via `RefreshRecoveryUseCase`) | foreground, after the night refresh, or a forced pull-down | `algorithm` (`scorer-v2`), `scored_through` (`v39`) |
 | `strains` | `CalculateStrainUseCase` (via `RefreshStrainUseCase`) | 5-minute tick, foreground, after a drain | `algorithm`, `scoredThrough`, `motionLoad` |
 | `workouts` | `SaveWorkoutUseCase`, `ActivityEditSheet`, importers | end of session / edit / import | `source`, `rpe` (local-only) |
 | `receptive_inactivities` | sheet, importer | write / import | id derived from date+type+note; `pulse_rate` is the owner's own metronome reading and is **local-only** (the sync row drops it) |
