@@ -74,6 +74,19 @@ public enum PulseTiming {
         max(ratePerMinute, 0) / 60
     }
 
+    /// How long until the next pulse begins, in seconds — the wait the sounder sleeps before its click.
+    ///
+    /// **The wait is measured from the same phase the square is lit from**, so the click and the yellow
+    /// cannot drift apart: both are answers to "where is the clock in this period". A wait of zero would
+    /// fire a second click for the pulse that just sounded, so the answer is never zero — it is floored
+    /// at a millisecond, which is a spin guard rather than a musical choice.
+    public static func secondsUntilNextPulse(at seconds: TimeInterval, ratePerMinute: Double) -> TimeInterval {
+        guard ratePerMinute > 0 else { return 0 }
+        let period = 60 / ratePerMinute
+        let remaining = (1 - phase(at: seconds, ratePerMinute: ratePerMinute)) * period
+        return max(remaining, 0.001)
+    }
+
     /// Whether the square is drawn as a travelling band rather than a flash.
     ///
     /// **This is the whole of the photosensitivity mitigation, and it is the reason the ceiling can be

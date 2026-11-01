@@ -16,6 +16,7 @@ public struct EnergyStudyView: View {
 
     public init() {}
 
+
     public var body: some View {
         NavigationStack {
             ScrollView {

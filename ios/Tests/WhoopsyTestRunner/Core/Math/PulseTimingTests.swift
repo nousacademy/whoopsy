@@ -109,6 +109,30 @@ enum PulseTimingTests {
             "…though `isLit` still answers above the ceiling, because the travelling band is positioned "
                 + "from the same phase and the two must not disagree about where a period starts")
 
+        // ---- The wait the click sleeps, which is how the sound keeps the beat ----
+        //
+        // The sounder asks this function each time it wakes, so the answer has to be the time to the
+        // next pulse and never zero — a zero would fire a second click for the pulse that just sounded.
+        assertTest(
+            PulseTiming.secondsUntilNextPulse(at: 0, ratePerMinute: 0) == 0,
+            "A rate of zero has no next pulse, so the sounder is told to wait not at all and its loop is "
+                + "never started")
+        assertTest(
+            PulseTiming.secondsUntilNextPulse(at: 0, ratePerMinute: 60) == 1,
+            "At the start of a period the wait is the whole period "
+                + "(\(PulseTiming.secondsUntilNextPulse(at: 0, ratePerMinute: 60)))")
+        assertTest(
+            abs(PulseTiming.secondsUntilNextPulse(at: 0.25, ratePerMinute: 60) - 0.75) < 1e-9,
+            "…a quarter of the way through, three quarters of it (\(PulseTiming.secondsUntilNextPulse(at: 0.25, ratePerMinute: 60)))")
+        assertTest(
+            PulseTiming.secondsUntilNextPulse(at: 0.1, ratePerMinute: 120) == 0.4,
+            "…and the same question at 120 a minute answers in half the time, which is the rate the "
+                + "click actually follows")
+        assertTest(
+            PulseTiming.secondsUntilNextPulse(at: 0.999_999, ratePerMinute: 60) > 0,
+            "The wait is never zero — a phase one hair short of the boundary still waits rather than "
+                + "firing twice for one pulse")
+
         // ---- The same rate in hertz ----
         //
         // The sheet prints both, and the conversion is the one thing about it that could be wrong

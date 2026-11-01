@@ -38,6 +38,10 @@ public struct PulseMetronomeView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// The click that carries the beat. A class held in `@State` so the audio engine is prepared once
+    /// per sheet rather than per frame, and torn down when the sheet closes.
+    @State private var sounder = PulseSounder()
+
     public nonisolated static let sectionTitle = "Pulse"
     public nonisolated static let offText = "OFF"
     public nonisolated static let accessibilityLabel = "Pulse frequency"
@@ -75,6 +79,17 @@ public struct PulseMetronomeView: View {
             @unknown default: break
             }
         }
+        // **The click runs off the same clock as the flash**, because `rate` is the task's id: a drag
+        // cancels the old loop and starts one at the new rate on the next frame, and closing the sheet
+        // cancels it too. Zero plays nothing and stops the engine.
+        .task(id: rate) {
+            guard rate > 0 else {
+                sounder.finish()
+                return
+            }
+            await sounder.run(ratePerMinute: Double(rate))
+        }
+        .onDisappear { sounder.finish() }
     }
 
     // MARK: - The square

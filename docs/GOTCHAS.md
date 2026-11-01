@@ -1088,6 +1088,15 @@ rather than a claim. **The column is local-only**: `ReceptiveInactivitySyncRow` 
 field and does not carry it, on `v23`'s precedent, because the seven synced resources are the app's own
 data and this is a study reading.
 
+**A click sounds on every pulse, and it is generated rather than bundled.** Past roughly three a
+second the square is a shimmer the eye cannot resolve, so the beat is carried by audio as well; the tone
+is synthesised into an `AVAudioPCMBuffer` at first use, because a 50 ms sine burst is not worth an eighth
+bundled resource and a `Bundle.module` lookup that can fail. The session category is `.ambient`, so the
+silent switch is obeyed. Its timing is `PulseTiming.secondsUntilNextPulse`, sampled from the same phase
+the square is lit from — measured on the simulator at 120/min, ten intervals came back within ±25 ms of
+half a second — which is why the cadence is assertable in §26 rather than a rule buried in an audio
+callback.
+
 Two drawing rules came out of building it. A full-contrast white/yellow switch above three flashes a
 second is the photosensitive band, so past 180/min the square stops flashing and a band slides round
 its edge instead — at 500/min that is eight turns a second, which reads as speed with no flash in it.
