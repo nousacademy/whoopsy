@@ -74,6 +74,15 @@ public enum PulseTiming {
         max(ratePerMinute, 0) / 60
     }
 
+    /// The hertz figure as the screens print it — one decimal place, no unit.
+    ///
+    /// **One formatter for the two places that show it**, the sheet's readout and the Home row, because
+    /// a number printed two ways is two numbers a reader has to reconcile. The unit is left to the
+    /// caller: the sheet writes `1.1 Hz` beside the rate, and the row writes `1.1Hz` as its own figure.
+    public static func formattedHertz(ratePerMinute: Int) -> String {
+        String(format: "%.1f", hertz(ratePerMinute: Double(ratePerMinute)))
+    }
+
     /// How long until the next pulse begins, in seconds — the wait the sounder sleeps before its click.
     ///
     /// **The wait is measured from the same phase the square is lit from**, so the click and the yellow

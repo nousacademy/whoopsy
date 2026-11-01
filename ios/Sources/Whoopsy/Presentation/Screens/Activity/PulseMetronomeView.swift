@@ -193,8 +193,7 @@ public struct PulseMetronomeView: View {
     }
 
     private var hertzValue: String {
-        let hertz = PulseTiming.hertz(ratePerMinute: Double(rate))
-        return String(format: "%.1f", hertz)
+        PulseTiming.formattedHertz(ratePerMinute: rate)
     }
 
     // MARK: - The gauge

@@ -1604,14 +1604,19 @@ public struct HomeDashboardView: View {
 
             Spacer(minLength: 8)
 
-            // The entry's own result, where a logged entry can read it without being opened. It is
-            // the owner's report rather than a measurement, which is why it is set in the same muted
-            // type as the time rather than as a figure the row is about.
+            // The entry's own result, where a logged entry can read it without being opened. **In
+            // hertz and in hertz only** — the sheet's gauge is where a rate is set and a minute is the
+            // unit it is matched in, and the row is where it is read back, in the unit the rest of the
+            // world writes a frequency in. It is the owner's report rather than a measurement, which
+            // is why it is set in the same muted type as the time rather than as a figure the row is
+            // about.
             if let pulseRate = activity.pulseRate {
-                Text("\(pulseRate)/min")
+                Text("\(PulseTiming.formattedHertz(ratePerMinute: pulseRate))Hz")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.textSecondary)
                     .monospacedDigit()
+                    .accessibilityLabel(Text(
+                        "\(PulseTiming.formattedHertz(ratePerMinute: pulseRate)) hertz"))
             }
 
             if let startedAt = activity.startedAt {

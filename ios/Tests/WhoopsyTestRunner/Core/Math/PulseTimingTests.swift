@@ -109,6 +109,25 @@ enum PulseTimingTests {
             "…though `isLit` still answers above the ceiling, because the travelling band is positioned "
                 + "from the same phase and the two must not disagree about where a period starts")
 
+        // ---- The one formatter the sheet and the Home row share ----
+        //
+        // **Two prints of one number is two numbers a reader has to reconcile**, so the hertz figure
+        // comes from one function and each caller supplies only its unit. Pinned at the ends and at the
+        // example the owner asked for.
+        assertTest(
+            PulseTiming.formattedHertz(ratePerMinute: 66) == "1.1",
+            "66 a minute prints as 1.1 — the figure the Home row shows as `1.1Hz` "
+                + "(\(PulseTiming.formattedHertz(ratePerMinute: 66)))")
+        assertTest(
+            PulseTiming.formattedHertz(ratePerMinute: 60) == "1.0"
+                && PulseTiming.formattedHertz(ratePerMinute: 500) == "8.3",
+            "…with one decimal place at both ends of the gauge, so the readout never jumps width as the "
+                + "rate moves")
+        assertTest(
+            PulseTiming.formattedHertz(ratePerMinute: 0) == "0.0",
+            "…and zero formats rather than being special-cased here — the *unit* is the caller's, and "
+                + "the sheet is where zero means OFF")
+
         // ---- The wait the click sleeps, which is how the sound keeps the beat ----
         //
         // The sounder asks this function each time it wakes, so the answer has to be the time to the
